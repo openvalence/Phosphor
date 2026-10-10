@@ -470,7 +470,7 @@ const CSS = `
 .ap-note { margin: 0; height: 1.45em; line-height: 1.45; font-size: .74rem; color: var(--ink-dim);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ap-note[data-slot=pending] { color: var(--intent); }
-.ap-note:is([data-slot=overdue], [data-slot=fault]) { color: var(--warn); }
+.ap-note:is([data-slot=overdue], [data-slot=fault]) { color: var(--warn-ink, var(--warn)); }
 .ap-note[data-slot=confirmed] { color: color-mix(in srgb, var(--reality) calc(var(--ga, 0) * 100%), var(--tx-mut)); }
 .ap-nums { --field-floor: 12rem; }   /* 6 layout columns: 'trough dwell (strokes)' holds one line */
 .ap-mtabs { --field-floor: 12rem; }
@@ -528,7 +528,7 @@ const CSS = `
 .ap-h:is([data-status=draft], [data-status=pending]) { --hc: var(--intent); }
 .ap-h:is([data-status=draft], [data-status=pending]):not([data-shape=tri])::after { border-style: dashed; }
 .ap-h:is([data-status=overdue], [data-status=fault]) { --hc: var(--warn); }
-.ap-h[data-status=fault] .ap-tag { color: var(--warn); }
+.ap-h[data-status=fault] .ap-tag { color: var(--warn-ink, var(--warn)); }
 .ap-h.off { opacity: .4; }
 .ap-tag { position: absolute; left: calc(50% + 12px); top: calc(50% + 4px); white-space: nowrap; font: .7rem/1.3 var(--mono); color: var(--reality);
   pointer-events: none; padding: 0 var(--sp-1); border-radius: 4px; }

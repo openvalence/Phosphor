@@ -36,6 +36,8 @@ sentences in PLUGINS.md; R-B is a CSP edit verified in the real shell (C-8).
 | scale | `scale.js` | the map every action takes before the wire, Manual or Auto; the settings card's Scale row (Interpolation) |
 | analyzer | `analyzer.js` | the expanded detail: lag readouts and the hub's Tuning controls, Live or Preview (Analyzer) |
 | kinetic | `kinetic/kinetic.js`, `kinetic/bytes.js`, `kinetic/kinetic.pin` | the machine's planner (Nucleus kinetic.wasm, pinned) in a Worker: the analyzer's motion preview (Kinetic) |
+| axes | `axes.js` | a script's V8/V9 sibling files paired by base name into `Script.axes` (Multi-axis) |
+| osc | `osc.js` | V8/V9 resampled at the grant rate to the hub's `osc.drive` STREAM, `api.submitSamples` (Multi-axis) |
 
 Order: core, host and stash start at once; scheduler follows core's
 signatures (not its code); player-ui codes against all contracts; plugin
@@ -57,8 +59,9 @@ integrates last. Shared kernel files (`host.js`, `plugins.svelte.js`,
  -> hub arbiter and planner
 ```
 
-Nothing else reaches the machine: no setpoint, no samples, no intent, no
-safety op, never resume. `api.net.fetch` refuses the hub's origins.
+Nothing else reaches the machine but the oscillator axes (Multi-axis): no
+setpoint, no motion samples, no intent, no safety op, never resume.
+`api.net.fetch` refuses the hub's origins.
 
 The player speaks execution time only: `{atMs, norm, durationMs}`, `atMs`
 an absolute `performance.now()` instant at which the machine should START
@@ -95,6 +98,80 @@ action gap, every knot free but the rests the player sees (Sync item 8),
 the grant declaring no curve family (the hub's
 `smoothness` shapes a free knot, Interpolation), no client feasibility past the handoff bound. Dense scripts are sent as authored
 and thinned only after a `RATE_EXCEEDED`, at the grant rate, extrema kept.
+
+## Multi-axis (ph-6dr6)
+
+The main axis (L0, stroke) keeps the segments path above, untouched. Of the
+other axes only the oscillator's are played: SPEC 9.7 reserves funscript
+axis **V8** (oscillation amplitude) and **V9** (oscillation frequency).
+Every other axis is listed in the status (`Extra axes ignored: roll`).
+
+**Formats** (funlib `funscript.schema.json`, Eroscripts/funlib):
+
+| form | main axis | oscillator axes |
+|---|---|---|
+| 1.0 | `actions` | sibling files |
+| 1.1 | `actions` | `axes[]` entries with `id` `V8`, `V9` |
+| 2.0 | `actions`, else `channels.stroke` (the schema's single-axis-device rule) | `channels` named `V8`, `V9` (case-insensitive) |
+| sibling files | `<base>.funscript` | `<base>.v8.funscript`, `<base>.v9.funscript` |
+
+A sibling pairs by base name, case-insensitive, from one Open video or Open
+script pick (both take several files) or a queued file entry; it overrides
+the same axis embedded in the main file. A Stash scene serves one file:
+embedded axes only. An axis that fails to parse is a note
+(`V8 axis dropped: no actions`), never a failed load.
+
+**Publishing.** Wired by default (operator 2026-10-09): whenever the loaded
+script has V8 or V9 and the hub's catalog has a c2h `samples` STREAM with
+channel role `osc.drive` (found by role, never a name or id; Nucleus names
+it `osc-drive`, 0x2140), `osc.js` publishes it while the main axis plays.
+
+```
+controller tick (once per animation frame)
+ -> osc.tick(script, mediaAt)       mediaAt only while playing with Motion on
+ -> oscSamples: V8, V9 by posAt at mediaAt(w), every 1000/rate ms of wall time
+ -> api.submitSamples('osc.drive', [{atMs, values: [amplitude, frequency]}])
+ -> motion.js door.samples          latch, STREAM by channel role, lazy grant,
+                                    the described instant is the stamp, one bundle
+ -> session.publishSamples          <= 20 ms span, <= 32 samples
+```
+
+- Layout by the role: amplitude then frequency, f32, 0..1, the axis value
+  as authored (`pos / 100`). The hub maps each through its own parameter's
+  bounds where that parameter's drive is `axis`. An axis the script lacks
+  rides 0.
+- Nothing else of the oscillator is written, `osc.enabled` included: the
+  hub renders by itself while the stream is live and a drive is `axis`,
+  and hands back to the card's values when it goes quiet or the session
+  ends (RFC-110 items 1, 2, draft; Nucleus 0.1.37). Shape stays the hub's
+  (a driven oscillator is a sine), no bounds or drive.
+- Rate: the grant's (`granted_rate_hz`, asked at the entry's `max_rate`).
+  The actions are interpolated linearly to it.
+- Timing, one lead (RFC-110 item 4): each point is stamped at the instant
+  it describes, `mediaAt(w)` being the plain display map with the user's
+  offset as its only trim (never the main axis's latency compensation),
+  and sent between the grant's `schedule_latency_us` plus 20 ms and plus
+  70 ms ahead (`OSC_FLOOR_MS`, `OSC_MARGIN_MS`), never past 230 ms (the
+  250 ms lead cap less clock error). The latency is the least notice a
+  point needs to land on its stamp (Nucleus `kOscDriveLeadUs`, 156 ms);
+  that send-ahead is the whole lead, and the media is never delayed by it.
+  Samples already sent cannot be superseded: a clock step (one dropped
+  frame) leaves up to the send-ahead on the old map, ~33 ms off; otherwise
+  they sit within 1 ms (test (o)).
+- Pause, seek, a stop, a gate and Motion off send nothing; the stream goes
+  quiet (`stream_quiet_release_ms` past the newest stamp) and the hub hands
+  back to the card's values. What was already sent runs out first.
+- No `osc.drive` on the hub: the axes are ignored and the status reads
+  `This machine has no oscillator input`.
+
+**Timeline.** Two thin lanes under the detail, V8 then V9, in the detail's
+window with its playhead, 0..1 bottom to top, untransformed. The detail
+gives up their height: the timeline box never changes. No axis, no lane.
+
+Owed: the end-to-end check on Nucleus 0.1.37 (val-o9r, the hub side) on
+Neutrino; the browser test runs on a fixture entry mirroring it. A per-scene
+"ignore the oscillator axes" setting (operator
+2026-10-09: allowed, default off) is not built.
 
 ## Interpolation
 
@@ -593,13 +670,14 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   Routed: a fatal refusal or media error, the gate and `Script past the
   input speed limit` (warn); `Preview: not saved`, a transient refusal, `No
   script for this video` or `scene` (it says why Play is grayed) and the
-  parse and extra-axes notes (no tone). A Dash card keeps its own one-line
-  row (the shell has no slot for a card).)*
+  parse and extra-axes notes (no tone). The Dash card draws no row either
+  (2026-10-09, peeve 19 extended, `ph-5u0g.17`): its status is the Dash's,
+  in the same slot.)*
 - **As built, PR11, PR14 and the compact hero (`ph-1qs5.8`):** the page
   registers `compactHero` and `status`. On the phone class the card sends
   `phosphor-page-status` on every change (`tone` `warn` or null; the notes
-  as `title`) and draws no status row; the dash card keeps its own row
-  (2026-10-09: on every class, into the top strip's slot; PR14).
+  as `title`) and draws no status row (2026-10-09: on every class, the
+  page and the Dash card both, into the top strip's slot; PR14).
   The Rail button shows wherever the host publishes `data-quick-rail` (the
   phone inline, any bare fullscreen in the hover row). The compact hero is
   the shell's to draw: at 420 x 860 with five strip operations its one row
@@ -642,7 +720,7 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   queue lists and tiles with the pager and the queue's drag reorder, the
   stage (center glyph, the hover bar as its overlay, the tap and double,
   fullscreen and the turn into it), the hover bar's seek, the split bar,
-  the status (the top strip's slot on the page, the Dash card's row), the Rail button and the
+  the status (the top strip's slot on the page and the Dash card), the Rail button and the
   page's fill are api.ui's (docs/PLUGINS.md, The UI kit); the heat bar's
   scrub rides `ui.drag`. A touch on a slider, the heat, the seek or the
   number box acts only after horizontal intent or a hold, so a vertical
@@ -777,8 +855,8 @@ FULL
   `telemetry.position` (as a share of `window.min/max`, drawn only when the
   window is reported, law 9; dimmed when stale, law 8) `--reality`;
   playhead, selected tile and focus `--highlight`; gates and over-cap
-  `--warn`, as a mark only: the status slot's 3 px bar, the speed bar,
-  striped heat. Text stays `--tx`: `--warn` is locked (law 13) and reads
+  `--warn`, as a mark only: the speed bar, striped heat (the status is
+  the top strip's slot, PR14). Text stays `--tx`: `--warn` is locked (law 13) and reads
   1.8:1 on Paper's white card. Muted text (title, the Offset label, zoom
   glyphs, connect labels) rides the shell's `--tx-mut`, held to 3:1 by
   `theme.test.mjs` (3.5:1 on the Ember and Phosphor cards); 4.5:1 would
@@ -1267,8 +1345,8 @@ Decisions (veto-able):
 
 - **Node, in `npm run check`:** `test/funscript-core.test.mjs`,
   `test/funscript-scheduler.test.mjs`, `test/funscript-stash.test.mjs`,
-  `test/kinetic-trace.test.mjs` (Kinetic), and the host sections (e2), (i),
-  (j) of `test/plugins.test.mjs`. Items:
+  `test/kinetic-trace.test.mjs` (Kinetic), and the host sections (e2), (e3)
+  (the role door), (i), (j) of `test/plugins.test.mjs`. Items:
   CONTRACT.md, per module.
 - **Browser, `npm run check:funscript` in `test:browser`:**
   `test/funscript-player.test.mjs`, the shell bundle against a fake hub on
@@ -1276,7 +1354,12 @@ Decisions (veto-able):
   latency 1000 us and horizon 250 or 1000 per scenario, STREAM bundles
   decoded) and the fake Stash; media generated at run time (no media file
   committed). Asserts: the claim on the fixture and the decline without a
-  segments STREAM; nothing sent before Play; preroll then video start;
+  segments STREAM; (o) V8/V9 siblings publish the fixture's added
+  `osc.drive` STREAM (Nucleus 0.1.37's entry, its grant at 156 ms latency)
+  at the grant rate, each stamp the instant its script time shows and sent
+  at least the latency ahead, no INTENT written, nothing after a pause, two
+  lanes, and without the role one status line and no stream (`--osc` runs
+  (o) alone); nothing sent before Play; preroll then video start;
   every start within half the horizon of its send; starts tile; seek
   re-stamps from now; Pause sends exactly one hold then silence; offset
   +50 moves stamps by 50 ms; rate 1.5 divides durations; a pushed PAUSE
@@ -1423,8 +1506,8 @@ Decisions (veto-able):
   `playing` (Play is still in force).
 - **D17** Local files by file input only; no drag and drop.
 - **D18** Funscript literal semantics: the hub's curve between actions (Interpolation),
-  `range` ignored, `inverted` honored, only L0 drives the rail, other axes
-  named in the status.
+  `range` ignored, `inverted` honored, only L0 drives the rail, V8 and V9
+  drive the oscillator (Multi-axis), other axes named in the status.
 - **D19** Library pages, never scrolls (DESIGN §10.6); the library is a side
   column in full and a tab in handheld (design 3's threshold, the renderer
   class's `FULL_UP`).

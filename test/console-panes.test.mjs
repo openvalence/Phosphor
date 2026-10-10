@@ -24,7 +24,7 @@ import { cbMap, cbUint, cbBstr, cbTstr, cbBool, cbArray, cbDecodeFull } from '..
 import {
   encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, PACKED, LIMITS,
 } from '../../Valence/clients/js/frames.js';
-import { CORE_CHANNEL, LOG_EVENT_KIND, PAIRING_EVENT_KIND } from '../../Valence/clients/js/generated/registry_vocab.js';
+import { CORE_CHANNEL, LOG_EVENT_KIND, PAIRING_EVENT_KIND, SAFETY_EVENT_KIND } from '../../Valence/clients/js/generated/registry_vocab.js';
 
 const HTML = readFileSync(DIST_HTML);
 const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
@@ -282,6 +282,13 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['ph
   await page.click('[data-feed="safety"]');
   await page.waitForTimeout(100);
   ok('log: the Safety feed has its own empty state', /No safety events/.test(await page.textContent('#lp-feed-safety')));
+  // ph-8l8: unitless integers read as sent, no decimals and no grouping.
+  const sKey = (name) => entry(CORE_CHANNEL.safety_events).schema.find((f) => f.name === name).key;
+  wire.send(FRAME.EVENT, CORE_CHANNEL.safety_events, cbMap([[K.event_kind, cbUint(SAFETY_EVENT_KIND.estop_cleared)],
+    [K.body, cbMap([[sKey('word'), cbUint(8)], [sKey('cause'), cbUint(0)], [sKey('owner_session'), cbUint(3576056062)], [sKey('estop_seq'), cbUint(0)]])]]));
+  await page.waitForSelector('#lp-feed-safety .line .kv');
+  const safetyKv = await page.$$eval('#lp-feed-safety .line .kv', (els) => els.map((e) => e.textContent).join(' '));
+  ok('log: a safety edge prints its integers as sent (ph-8l8)', /word=8 cause=0 owner_session=3576056062 estop_seq=0/.test(safetyKv), safetyKv);
   await page.click('[data-feed="log"]');
   await page.waitForTimeout(100);
   ok('log: a tab switch keeps the feed scroll position', await page.$eval('#lp-feed-log', (el) => el.scrollTop) === 120);

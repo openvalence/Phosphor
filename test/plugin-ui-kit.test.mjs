@@ -448,8 +448,17 @@ console.log('\n--- desktop 1428x900 dark ---');
   await page.waitForTimeout(200);
   const demo = await k(page, () => ({ card: !!document.querySelector('main.pane .ui-card .dash-title[data-pidx="01"]'), bar: !!document.querySelector('main.pane .ui-bar'),
     status: document.querySelector('main.pane .ui-status')?.textContent, rows: document.querySelectorAll('.ui-sheet:popover-open .ui-row').length }));
-  ok('kit-demo: the example page mounts its card, bar and status; its sheet holds the three settings rows', demo.card && demo.bar && demo.status === 'Ready' && demo.rows === 3, demo);
+  ok('kit-demo: the example page mounts its card, bar and an empty status (no informational status); its sheet holds the three settings rows',
+    demo.card && demo.bar && demo.status === '' && demo.rows === 3, demo);
   await page.keyboard.press('Escape');
+  // Its status example is a warning: Count past 8 in the strip's slot as a condition, cleared below it.
+  const count = async (v) => {
+    await page.evaluate((v) => { const i = document.querySelector('main.pane .ui-stepper input.og-num'); i.value = String(v); i.dispatchEvent(new Event('change')); }, v);
+    await page.waitForTimeout(100);
+    return page.evaluate(() => { const s = document.querySelector('.topstrip .status'); return { kind: s.dataset.kind, text: s.querySelector('.st-text')?.textContent || '' }; });
+  };
+  const w9 = await count(9), w3 = await count(3);
+  ok('kit-demo: Count past 8 is a warning in the strip\'s slot; back under it clears', w9.kind === 'page' && w9.text === 'Count past 8' && !['page', 'note'].includes(w3.kind), { w9, w3 });
   ok('desktop: no page error', errors.length === 0, errors.slice(0, 3));
   await ctx.close();
 }

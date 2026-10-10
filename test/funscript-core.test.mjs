@@ -8,13 +8,19 @@
  * if axis naming, file pairing, interpolation, the binary search, thinning,
  * heat bins or the time format drift; if Scale's wire stops being the Script
  * itself at scale 1, moves an action off its map, or a saved pref's retired
- * curve fields survive cleanScale (scale.js).
+ * curve fields survive cleanScale (scale.js). Multi-axis (ph-6dr6): fails if the
+ * funlib 1.1 axes[] or 2.0 channels{} oscillator axes (V8, V9) stop loading, a
+ * channels-only 2.0 file stops playing its stroke, a sibling <base>.v8 file stops
+ * pairing by base name (axes.js), or the resampler (osc.js oscSamples) and the
+ * publisher's pacing (createOsc) drift.
  *
  * Run: node test/funscript-core.test.mjs
  */
 import {
-  MAX_SPAN_MS, MAX_ACTIONS, AXES, parseFunscript, axisOf, pairFiles, posAt, indexAfter, speedAt, peakSpeed, thin, heat, fmtTime,
+  MAX_SPAN_MS, MAX_ACTIONS, AXES, OSC_AXES, parseFunscript, axisOf, pairFiles, posAt, indexAfter, speedAt, peakSpeed, thin, heat, fmtTime,
 } from '../plugins/factory/funscript-player/funscript.js';
+import { oscFiles, withAxes } from '../plugins/factory/funscript-player/axes.js';
+import { oscSamples, createOsc, hasOsc, OSC_FLOOR_MS, OSC_MARGIN_MS, OSC_CAP_MS, NO_STREAM } from '../plugins/factory/funscript-player/osc.js';
 import { SCALE, cleanScale, wire, fitMap, mapOf } from '../plugins/factory/funscript-player/scale.js';
 
 let fails = 0;
@@ -211,6 +217,91 @@ console.log('scale');
   const top = parseFunscript(acts([0, 0], [260, 100], [520, 70], [780, 100]));
   const m = fitMap([0, 1.05]), mt = wire(top, I({ map: m }));
   ok('Auto, top only: the bottom actions stay where they are, the top comes in', mt.pos[0] === 0 && mt.pos[1] < 1 && mt.pos[1] > 0.95, [...mt.pos]);
+}
+
+console.log('multi-axis');
+{
+  const A = (...pairs) => pairs.map(([at, pos]) => ({ at, pos }));
+  ok('V8 and V9 are the oscillator axes; .v8/.V9 name them', OSC_AXES.join() === 'V8,V9' && axisOf('Clip.v8.funscript').axis === 'V8'
+    && axisOf('Clip.V9.funscript').base === 'Clip');
+  const v11 = parseFunscript({ version: '1.1', actions: A([0, 0], [100, 100]),
+    axes: [{ id: 'R0', actions: A([0, 50]) }, { id: 'V8', actions: A([0, 0], [1000, 100]) }, { id: 'V9', actions: A([0, 40]) }, { id: 'L0', actions: A([0, 1]) }] });
+  ok('1.1 axes[]: V8 and V9 load, others listed ignored, L0 stays the main', Object.keys(v11.axes).join() === 'V8,V9'
+    && near(posAt(v11.axes.V8, 500), 0.5) && near(v11.axes.V9.pos[0], 0.4) && v11.ignored.join() === 'R0' && v11.at.length === 2);
+  const v20 = parseFunscript({ version: '2.0', actions: A([0, 10]),
+    channels: { stroke: { actions: A([0, 90]) }, twist: { actions: A([0, 1]) }, v8: { actions: A([0, 70]) } } });
+  ok('2.0 channels{}: actions win over channels.stroke (single-axis device), v8 loads, twist ignored',
+    near(v20.pos[0], 0.1) && near(v20.axes.V8.pos[0], 0.7) && v20.ignored.join() === 'twist');
+  const only = parseFunscript({ version: '2.0', channels: { stroke: { actions: A([0, 30], [50, 60]) }, V9: { actions: A([0, 20]) } } });
+  ok('2.0 without actions: channels.stroke is the main axis', only.at.length === 2 && near(only.pos[1], 0.6) && near(only.axes.V9.pos[0], 0.2));
+  ok('no actions and no channels.stroke: not a funscript', throws(() => parseFunscript({ channels: { roll: { actions: A([0, 1]) } } }), 'not a funscript'));
+  const bad = parseFunscript({ actions: A([0, 0]), axes: [{ id: 'V8', actions: [] }] });
+  ok('a broken oscillator axis is noted and dropped, never fatal', !bad.axes.V8 && bad.notes.includes('V8 axis dropped: no actions'), bad.notes.join('; '));
+  ok('hasOsc: a script with either axis', hasOsc(v11) && hasOsc(only) && !hasOsc(bad) && !hasOsc(null));
+
+  const f = (name, text) => ({ name, text });
+  const main = f('Scene.funscript'), v8 = f('scene.V8.funscript'), v9 = f('Scene.v9.funscript'), roll = f('Scene.roll.funscript'), other = f('Other.v8.funscript');
+  const sp = oscFiles(main, [roll, v8, other, v9]);
+  ok('oscFiles: siblings by base name, case-insensitive; the rest stays', sp.osc.join() === [v8, v9].join() && sp.osc.length === 2
+    && sp.rest.length === 2 && sp.rest.includes(roll) && sp.rest.includes(other));
+  ok('oscFiles: no main, nothing pairs', oscFiles(null, [v8]).osc.length === 0);
+  const read = (x) => (x.text === 'boom' ? Promise.reject(new Error('not a funscript')) : parseFunscript(x.text, x.name));
+  const s = await withAxes(parseFunscript({ actions: A([0, 0]), axes: [{ id: 'V8', actions: A([0, 10]) }] }),
+    [f('a.v8.funscript', JSON.stringify({ actions: A([0, 80]) })), f('a.v9.funscript', 'boom')], read);
+  ok('withAxes: a sibling file overrides the embedded axis; a bad one is a note', near(s.axes.V8.pos[0], 0.8) && !s.axes.V9
+    && s.notes.includes('V9 file dropped: not a funscript'), s.notes.join('; '));
+
+  const axes = { V8: { at: Float64Array.of(0, 1000), pos: Float32Array.of(0, 1) } };
+  const sm = oscSamples(axes, 0, 20, 100, (w) => 500 + w);
+  ok('resample: a step of 20 ms over 100 ms is six samples, inclusive', sm.length === 6 && sm[5].atMs === 100);
+  ok('resample: linear between actions at the mapped script time; a missing V9 rides 0',
+    sm.every((x) => near(x.values[0], (500 + x.atMs) / 1000, 1e-6) && x.values[1] === 0));
+  const half = oscSamples(axes, 0, 10, 50, (w) => w * 2);
+  ok('resample: the map carries the rate (2x)', near(half[5].values[0], 0.1, 1e-6));
+  ok('resample: held flat outside the actions; stops where the map has no time',
+    oscSamples(axes, 0, 10, 10, () => 5000)[0].values[0] === 1 && oscSamples(axes, 0, 10, 50, (w) => (w < 25 ? w : NaN)).length === 3);
+
+  // RFC-110 item 4: the grant's latency is the least notice; the send-ahead is the one lead.
+  let now = 1000, calls = [];
+  const hub = { rate: 50, lat: 156, missing: false, n: 3 };
+  const submit = (list) => {
+    if (hub.missing) { calls.push(list); return { ok: false, sent: 0, reason: NO_STREAM }; }
+    const n = Math.min(list.length, hub.n);
+    calls.push(list.slice(0, n));
+    return { ok: true, sent: n, rateHz: hub.rate, latencyMs: hub.lat };
+  };
+  const o = createOsc({ submit, now: () => now });
+  const sc = { axes };
+  const sentNow = () => calls.filter((l) => l.length).flat();
+  o.tick(sc, (w) => w);
+  let sent = sentNow();
+  ok('playing: points from now + the latency + ' + OSC_FLOOR_MS + ' ms to the latency + ' + OSC_MARGIN_MS + ' ms at the granted rate, in bundles the host takes; none nearer',
+    OSC_FLOOR_MS === 20 && sent.length === 3 && sent[0].atMs === 1176 && sent[2].atMs === 1216 && calls.filter((l) => l.length).length === 1, sent.map((x) => x.atMs));
+  ok('each point stamped at the instant it describes (its values at mediaAt(atMs), no shift)', sent.every((x) => near(x.values[0], posAt(axes.V8, x.atMs), 1e-6)));
+  calls = []; now += 20;
+  o.tick(sc, (w) => w);
+  sent = sentNow();
+  ok('every frame continues the cursor, never resending, never nearer than the latency',
+    sent.length === 1 && sent[0].atMs === 1236 && sent.every((x) => x.atMs - now >= hub.lat + OSC_FLOOR_MS && x.atMs - now <= hub.lat + OSC_MARGIN_MS), sent.map((x) => x.atMs));
+  calls = []; now += 1000;
+  o.tick(sc, null);
+  ok('paused: only the empty probe, nothing sent', calls.length === 1 && calls[0].length === 0);
+  calls = [];
+  o.tick(sc, (w) => w);
+  ok('a restart after the tail ran out begins at now + the latency + the floor', sentNow()[0].atMs === now + hub.lat + OSC_FLOOR_MS);
+  hub.lat = 240; calls = []; now += 1000;
+  o.tick(sc, (w) => w);
+  ok('a latency near the cap: the cap bounds the margin, never the latency', sentNow().length >= 1
+    && sentNow().every((x) => x.atMs - now >= 240 + OSC_FLOOR_MS && x.atMs - now <= Math.max(240 + OSC_FLOOR_MS, OSC_CAP_MS)) && OSC_CAP_MS < 250);
+  hub.lat = 0; calls = []; now += 1000;
+  o.tick(sc, (w) => w);
+  ok('no declared latency: from now + the floor to the margin', sentNow()[0].atMs === now + OSC_FLOOR_MS && sentNow().at(-1).atMs <= now + OSC_MARGIN_MS);
+  hub.missing = true;
+  o.tick(sc, null);
+  ok('the hub offers no osc.drive: absent', o.absent);
+  calls = [];
+  o.tick({ axes: {} }, (w) => w);
+  ok('no oscillator axes: nothing asked, not absent', calls.length === 0 && !o.absent);
 }
 
 console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');

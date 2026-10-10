@@ -90,7 +90,7 @@
   @media (pointer: coarse) { .nest-bar { height: 40px; } }
   /* Words and color only (ph-sbu): intent while in flight, amber once overdue. */
   .nest-busy { color: var(--intent); }
-  .nest-busy.overdue { color: var(--warn); }
+  .nest-busy.overdue { color: var(--warn-ink); }
   /* Out of flow at the bar's right end, wrapping downward over the subgrid
      on a nest narrower than they are. */
   .nest-ops {

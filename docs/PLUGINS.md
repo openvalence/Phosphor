@@ -144,8 +144,12 @@ Plugins`, its page region the plugin's to fill full width.
   compact hero sits beside the numeral instead of taking its place. Send
   conditions only (a refusal, an error, a limit, a standing note); never what
   the page already shows (empty, playing, paused). An empty `text` clears it.
-  A status sent from the page's card on the Dash is ignored. Seams:
-  `src/App.svelte` (per page), `src/ui/TopStrip.svelte` (the slot).
+  A hero's card on the Dash or a category page sends the same event from
+  its element and draws no status row either; the shell takes it as that
+  page's status, ranked the same. Each source keeps its latest; the slot
+  shows one per page: the newest `'warn'` or `'bad'`, else the newest
+  other. Seams: `src/App.svelte` (per page), `src/ui/TopStrip.svelte` (the
+  slot).
 - **The quick rail** (experimental, `ph-5u0g.5`; DESIGN §10.3). The hero's
   own rail opened from the page's bar: on the phone class the vertical pop-up
   on the right edge (in the page and in page fullscreen), on the desktop the
@@ -359,6 +363,7 @@ and moved on a reorder, so a control keeps its in-flight write.
 | `registerHero`'s `replaces: '<built-in hero id>'` | tier-2 "renders instead" of the named built-in when this plugin's own claim succeeds (`ph-vdk.29`) | experimental |
 | `submitMotion(norm, durationMs)` returning `{ok, reason}` | motion input, 0..1 across the stroke window. Needs `motion` | experimental |
 | `submitSegments(list)` returning `{ok, sent, rateHz, reason}` | lookahead motion input: `[{atMs, norm, durationMs, endVel?}]`, `atMs` the `performance.now()` instant the machine starts each, ascending, `endVel` its end velocity in norm/s (absent: `unspecified`, a free knot the hub shapes and, on a stream, passes moving while it expects a successor; 0 for a real stop); advance by `sent`. Needs `motion` (`ph-smvd.2`) | experimental |
+| `submitSamples(role, list)` returning `{ok, sent, rateHz, latencyMs, reason}` | a c2h `samples` STREAM found by channel role (e.g. SPEC 9.7's `osc.drive`): `[{atMs, values}]`, `atMs` the `performance.now()` instant each sample describes, ascending, `values` in the role's layout order; one bundle per call, advance by `sent`; `latencyMs` the grant's `schedule_latency_us`, the least notice a point needs (RFC-110 item 4): send each that far ahead or more, never past the 250 ms lead cap; `reason` `NO_STREAM` when the hub has no such entry. Not motion input: no producer lock. Needs `motion` (`ph-6dr6`) | experimental |
 | `net.listenTcp(port, onLine)` returning `close()` | loopback TCP line service, shell only. Needs `net.listen:<port>` | experimental |
 | `net.fetch(url, init)` returning a `Promise<Response>` | HTTP(S) to a non-machine service (a media library), CORS-free through the shell's HTTP plugin; vite dev uses the page's `fetch`. Refuses other schemes and the connected hub's own origins (its host on 80, 443 or its WS port). Needs `net.fetch` (ruling R-A, `ph-smvd.2`) | experimental |
 | `registerSettings(mount)` | a card on the plugin's row in the Plugins pane | experimental |
@@ -409,6 +414,17 @@ one transport payload, end velocity `unspecified`. `sent` counts the leading
 items done with through the last one packed; offer each once and advance by
 it, and a later bundle supersedes from its first start. An empty list warms
 the grant and takes nothing.
+
+`submitSamples(role, list)` is the same door for a c2h `samples` STREAM that
+a channel role names (the oscillator's `osc.drive`, SPEC 9.7): found by
+class, direction, stream_kind and role, never motion input, never a
+fallback. Each stamp is the described instant in hub time, never less
+`schedule_latency_us`: on `osc.drive` that latency is the least notice a
+point needs to land on its stamp (RFC-110 item 4, draft), so the caller
+sends each point at least `latencyMs` ahead and that send-ahead is its only
+lead. One bundle carries the leading samples within `bundle_max_span_ms`
+(20 ms) and the 250 ms lead cap, at most 32 and one transport payload,
+values filling the layout in order. Samples are not superseded.
 
 **One producer.** An ok `submitSegments` with `sent > 0` holds the motion
 input for its plugin until the latest sent end plus `MOTION_HOLD_MS` (500);
@@ -519,7 +535,7 @@ returns the `<svg>`; an `icon` option takes a name or a stroke path `d`.
 | `scrub` | `max`, `value`, `buffered`, `step` (the arrows' step, default 1 % of `max`), `label`, `format(v)` (the hover readout and `aria-valuetext`), `onSeek(v, phase)` (`'start'`, `'move'`, `'end'`) | `value` (ignored mid-drag), `max`, `buffered`, `track` (paint a background here, e.g. a heat map) |
 | `split` | `min`, `max`, `value` (px of the region after the bar, or null), `size()` (that region's height while `value` is null), `label`, `onChange(px, commit)` | a horizontal resize bar: drag, arrows (8 px, Shift 1), a double-click asks for null |
 | `sheet` | `title`, `index`, `form` (`'auto'`, `'sheet'`, `'drawer'`, `'popover'`, `'slot'`), `slot` (an element of the plugin's: the slot form is a card there), `anchor` (its toggle: a popover opens under it, a tap on it is no outside tap; settable later), `onClose` (a user's close) | `body`, `open` (get/set), `form`, `anchor`; `data-open` while open. Auto: the right drawer in page fullscreen, the bottom sheet on a phone upright, else the slot when one is given, else the drawer; it follows a turn or a fullscreen while open, its content moving with it. The sheet drags down to close; the slot card closes on its close button. |
-| `status` | none | `set({text, tone, title})`, `tone` null, `'ok'`, `'warn'` or `'intent'` (sent as null). Inside a page, on every class, it is the top strip's status slot (the page registers `status`; Pages, above) and draws nothing in place; elsewhere (a card on the Dash) it is a one-line row where the plugin placed it. |
+| `status` | none | `set({text, tone, title})`, `tone` null, `'ok'`, `'warn'` or `'intent'` (sent as null). Inside the shell's pane (a page that registers `status`, a hero's card on the Dash or a category page), on every class, it is the top strip's status slot (Pages, above) and draws nothing in place; elsewhere it is a one-line row where the plugin placed it. Set conditions only; `{text: ''}` clears it. |
 | `quickRail` | none | the Rail button: it opens and closes the quick rail; `shown` (default true): it is hidden (the `hidden` attribute, so the shell counts it out and shows the footer's own icon) while the host offers no rail or `shown` is false |
 | `list` | `form` (`'grid'`, `'rows'`), `paged` (default true: as many whole items as fit, and a page foot; false: it scrolls with the shell's recess shades and asks for everything once), `tile: {min, max}` (grid tile widths in px), `count(total)` (the foot's count words), `onPage(page, perPage)` (show that page: call `show`), `onMove(from, to)` (rows drag to reorder: a mouse at once, a touch after a hold; the drag is no pick) | `show(items, total)`, `note(text, tone)` (loading, empty or an error, over the body), `busy`, `page`, `perPage`, `form` (settable: the page refits), `refit()` (measure the page size again) |
 | `tile` | `image`, `title`, `meta`, `current`, `actions` (kit buttons over the shot, or at a row's end), `onClick` | `current`, `button` (the tile's own button); the parent `list`'s form draws it as a tile or a row |
@@ -562,7 +578,8 @@ within one task (a reorder) keeps it. Seams: `kit.js` `field`, `module`,
 `src/ui/BoundControl.svelte`.
 
 **Example** (`plugins/examples/kit-demo/`): a settings card, and a page with
-a card, a bar and a sheet, in about 40 lines.
+a card, a bar, a sheet and a warning in the status (Count past 8), in about
+40 lines.
 
 ## Manifest (`manifest.json`, beside the module)
 
@@ -663,7 +680,8 @@ Production builds compile that path out.
   framework.
 - `plugins/examples/kit-demo/`: the UI kit (`api.ui`) in about 40 lines: a
   settings card of rows (a switch, a slider, a select) and a page with a
-  card, a bar, a sheet and the status. It draws nothing of its own.
+  card, a bar, a sheet and a warning in the status. It draws nothing of its
+  own.
 - `plugins/examples/tcode-adapter/`: RFC-044 rung 1 as an adapter. The shell
   listens on 127.0.0.1:8000 (MultiFunPlayer's default endpoint port; the
   spec pins none, drafted as Valence RFC-061), each line is parsed for `L0`
@@ -822,7 +840,9 @@ Shipped:
   position, `limit.input.speed`, both generator run roles and the plan
   strip's elapsed and duration (automatic latency) are optional.
   Motion leaves only through `submitSegments`, one segment per funscript
-  span on the media clock, and every stop of its own sends one hold; a
+  span on the media clock, and every stop of its own sends one hold; the
+  script's V8 and V9 axes ride `submitSamples('osc.drive', ...)` while it
+  plays, where the hub offers the role (FUNSCRIPT.md, Multi-axis); a
   gate or a hub refusal pauses it with no hold. The card's Play is the
   only start, and a latch, a running generator or another producer grays
   it with the gate's words. Stash rides `net.fetch`, its connect card

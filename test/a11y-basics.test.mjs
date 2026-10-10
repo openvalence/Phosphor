@@ -139,9 +139,19 @@ const browser = await chromium.launch();
     document.querySelector('nav.rail [role=tab][aria-selected="true"]')?.dataset.tabId);
   ok('rail: the arrow-focused tab is also the selected one (automatic activation)', selected === after);
 
+  // One Tab leaves the tabs: to the selected page's operations pill (inside the rail) or past the rail.
   await page.keyboard.press('Tab');
-  const stillInRail = await page.evaluate(() => !!document.activeElement.closest('nav.rail'));
-  ok('rail: a plain Tab leaves the tablist in one step', !stillInRail);
+  const onTab = await page.evaluate(() => document.activeElement.matches('[role=tab]')
+    || !!(document.activeElement.closest('nav.rail') && !document.activeElement.closest('.rail-ops')));
+  ok('rail: a plain Tab leaves the tabs in one step', !onTab);
+
+  // ph-40q: the heatmap is an image whose tooltip names the row under the pointer.
+  const grid = page.locator('canvas.act-grid');
+  const gb = await grid.boundingBox();
+  const tips = [];
+  for (const y of [1, gb.height - 1]) { await page.mouse.move(gb.x + gb.width / 2, gb.y + y); tips.push(await grid.getAttribute('title')); }
+  ok('heatmap: an image, its tooltip the row under the pointer (ph-40q)', await grid.getAttribute('role') === 'img'
+    && tips.every((t) => /^[A-Z][^.]*, last 3 s: brighter is busier$/.test(t)) && tips[0] !== tips[1], tips.join(' | '));
 
   if (pageErrors.length) ok('rail: no page errors', false, pageErrors.join(' | '));
   await ctx.close();
@@ -368,7 +378,7 @@ await checkRootFontAt(1280, 720);
 }
 
 // ---- 8. the category page footer holds still (ph-vdk.60.3, ph-vdk.60.12) --
-for (const [w, h, touch] of [[1440, 900, false], [360, 800, true]]) {
+for (const [w, h, touch] of [[1440, 900, false], [420, 860, true], [390, 844, true], [360, 800, true]]) {
   const tag = w + 'w' + (touch ? ' touch' : '') + ' footer: ';
   const { ctx, page, pageErrors } = await bootPage(browser, { width: w, height: h }, null, { hasTouch: touch });
   await page.waitForSelector(w >= 960 ? 'nav.rail [role=tab][data-tab-id^="cat"]' : '.menu-btn', { timeout: 15000 });
@@ -381,11 +391,11 @@ for (const [w, h, touch] of [[1440, 900, false], [360, 800, true]]) {
   for (let i = 0; i < cats.length && !found; i++) {
     await goTab(page, cats[i]);
     await page.waitForTimeout(200);
-    found = await page.locator('main.pane .page-foot .adv-toggle', { hasText: 'advanced' }).count() > 0;
+    found = await page.locator('main.pane .page-foot .adv-toggle[aria-label$=" advanced"]').count() > 0;
   }
   ok(tag + 'a page with advanced settings carries its toggle in the footer', found);
   if (found) {
-    const t = page.locator('main.pane .page-foot .adv-toggle', { hasText: 'advanced' }).first();
+    const t = page.locator('main.pane .page-foot .adv-toggle[aria-label$=" advanced"]').first();
     const foot = page.locator('main.pane .page-foot');
     const main = page.locator('main.pane .pane-main');
     // From the page top: a reveal above a scrolled view is the scroll anchor's to hold (the flip-keeps-the-scroll checks).
@@ -440,6 +450,27 @@ for (const [w, h, touch] of [[1440, 900, false], [360, 800, true]]) {
       ok(tag + dir + ' keeps the scroll and the footer every frame', r.track.length === 30 && (w >= 960 || r.s0 > 0)
         && r.track.every(([s, max, still]) => still && s >= Math.min(r.s0, max) - 1), JSON.stringify(r));
     }
+    // ph-dj9: the in-flight count appearing moves nothing (this hub never answers a write), on a page
+    // with a footer and a control this hub leaves enabled.
+    const live = page.locator('main.pane .field :is(input[type=range], input[role=switch]):not(:disabled)');
+    for (let i = 0; i < cats.length && !(await live.count() && await page.locator('main.pane .page-foot .cat-busy').count()); i++) {
+      await goTab(page, cats[i]);
+      await page.waitForTimeout(200);
+    }
+    const boxes = () => page.$$eval('main.pane .page-foot, main.pane .page-foot button', (els) => els.map((e) => {
+      const r = e.getBoundingClientRect();
+      return [r.x, r.y, r.width, r.height].map(Math.round).join();
+    }).join(' '));
+    const footH = () => page.$eval('main.pane .page-foot', (f) => f.getBoundingClientRect().height);
+    const k0 = await boxes(), h0 = await footH();
+    const range = await live.first().getAttribute('type') === 'range';
+    await live.first().focus();
+    await page.keyboard.press(range ? 'ArrowRight' : 'Space');
+    await page.waitForTimeout(300);
+    const busy = (await page.textContent('main.pane .page-foot .cat-busy')).trim();
+    ok(tag + 'the in-flight count appears in its slot and moves nothing (ph-dj9)', /^\d+ in flight$/.test(busy) && await boxes() === k0, busy + ' | ' + k0);
+    // DESIGN 10.3: on the phone the footer is one 48 px row, with or without a count.
+    if (w < 960) ok(tag + 'one 48 px row at rest and with a count (ph-dj9)', h0 === 48 && await footH() === 48, h0 + ' -> ' + await footH());
   }
   if (pageErrors.length) ok(tag + 'no page errors', false, pageErrors.join(' | '));
   await ctx.close();

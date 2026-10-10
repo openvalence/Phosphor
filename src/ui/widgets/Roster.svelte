@@ -86,6 +86,6 @@
   li[data-state='empty'] { border-style: dashed; }
   li[data-state='empty'] .name { color: var(--tx-mut); }
   li[data-state='locked'] .name { color: var(--ink-dim); }
-  li[data-state='error'] .name { color: var(--warn); }
+  li[data-state='error'] .name { color: var(--warn-ink); }
   .hint { margin: 0; color: var(--ink-dim); font-size: 0.78rem; }
 </style>

@@ -130,36 +130,11 @@ looping-script motion provider also defaults to Pchip.
 
 ### Mapping onto the segments lookahead
 
-Superseded 2026-10-08: the player has no client curve modes; the hub's
-`smoothness` shapes the curve (FUNSCRIPT.md, Interpolation).
-
-- **Linear** is what the player sent then: one segment per span, end
-  velocity `unspecified`, no `curve_family` (D4). The hub derives each
-  boundary velocity from the adjoining chords when the successor is
-  scheduled and resolves to rest when it is not (SPEC §9.6, RFC-058).
-- **Pchip and Makima map exactly, without sampling**, and the protocol
-  already has the fields: `{target, duration, end_velocity}` determines a
-  cubic Hermite, so span `k` is a segment whose `end_velocity` is the
-  Pchip or Makima slope at knot `k`, plus a `curve_family` wish of
-  `c1_cubic` (registry `curve_families` 1, which names Pchip and Makima).
-  The start slope is the predecessor's end slope, which is how MFP's
-  per-span Hermite is continuous. This is D4's veto alternative. Cost: the
-  player's `submitSegments` list and the host's packer gain an end
-  velocity (the host packs `input.end_velocity` in the layout's unit and
-  scale; it is a registered role, not an invented field) and the door
-  carries the `curve_family` wish on PUBLISH. Slope conversion for the
-  player: `s` in pos per media ms becomes
-  `s * (hi - lo) * (invert ? -1 : 1) * 1000 * rate` norm per wall second.
-  The hub bounds `|end_vel| <= 1.5 * min(|chord_in|, |chord_out|)`
-  (`segment_handoff_k`) and surfaces each bound as an anomaly; Pchip
-  slopes can exceed that near uneven spacing, so expect bounded handoffs
-  on dense content. The slope at knot `k` needs `k+1` (Pchip) or `k+2`
-  (Makima): the lookahead already holds them.
-- **Step does not map.** Its jump is zero-duration; the host drops
-  segments under 10 ms and `curve_family` `step` is reserved (rendered as
-  `c2_quintic`). Do not offer it.
-- MFP's 0..1 clamp after Makima overshoot is the hub's job here
-  ("bounded output": the hub clamps to the window).
+The player sends one segment per action and declares no curve family; the
+hub's `smoothness` shapes the curve between actions (FUNSCRIPT.md,
+Interpolation). MFP's Pchip, Makima and Step modes have no client
+counterpart, and its 0..1 clamp after Makima overshoot is the hub's job here
+("bounded output": the hub clamps to the window).
 
 ## 2. Auto-home
 

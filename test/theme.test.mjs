@@ -9,7 +9,9 @@
  *
  * Run: node test/theme.test.mjs
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const mem = new Map();
 const storage = {
@@ -124,6 +126,12 @@ ok('the ratio readout follows a pinned value', T.deriveTokens(pinned).ratios.tex
 const lockedCss = T.themeCss({ ...T.DEFAULT_THEME, overrides: { '--warn': '#000000', '--warn-ink': '#00FF00' } });
 ok('no theme CSS sets a safety color', !/[{;]--(warn|bad|estop|glow-warn|warn-rgb|bad-rgb):/.test(lockedCss) && !lockedCss.includes('#00FF00'));
 ok('the safety inks cannot be pinned', !('--warn-ink' in T.normalizeTheme({ overrides: { '--warn-ink': '#00FF00', '--bad-ink': '#00FF00' } }).overrides));
+const ROOT = fileURLToPath(new URL('..', import.meta.url));
+const walk = (d) => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name))
+  : /\.(svelte|js|css)$/.test(e.name) ? [join(d, e.name)] : []));
+const rawText = ['src', 'plugins'].flatMap((d) => walk(join(ROOT, d))).flatMap((f) => readFileSync(f, 'utf8').split('\n')
+  .flatMap((l, i) => (/(^|[^-])color:\s*var\(--(warn|bad|estop)\)/.test(l) ? [relative(ROOT, f) + ':' + (i + 1)] : [])));
+ok('safety text rides the inks, never the raw color (ph-632)', rawText.length === 0, rawText.join(', '));
 
 // ---- token set coverage ------------------------------------------------------------
 console.log('token set');
@@ -146,6 +154,9 @@ mem.set('sd32.theme', 'ember');
 ok('an old preset id migrates', T.loadTheme().id === 'ember' && T.loadTheme().accents.reality === '#FF8A4D');
 mem.set('phosphor.theme', JSON.stringify({ ...T.THEMES.find((x) => x.id === 'slate') }));
 ok('the new key wins over the legacy ones', T.loadTheme().id === 'slate');
+mem.set('phosphor.theme', JSON.stringify({ ...T.THEMES.find((x) => x.id === 'ember'), accents: { reality: '#FF8A4D', intent: '#FFD24D' }, look: { scale: 1.3 } }));
+ok('a stored shipped preset follows this build\'s preset, keeping its scale (ph-76i)',
+  T.loadTheme().accents.intent === T.THEMES.find((x) => x.id === 'ember').accents.intent && T.loadTheme().look.scale === 1.3);
 mem.clear();
 mem.set('sd32.theme', 'mytheme-neon');
 T.applyStoredTheme();

@@ -56,6 +56,8 @@ for (let at = 0, k = 0; at < 120000; k++) {
   at += 150 + ((k * 37) % 50);
 }
 const SCRIPT = Buffer.from(JSON.stringify({ version: '1.0', inverted: false, range: 100, actions }));
+// The same timing over 45..55: under the input speed limit, so the player's page warning stays out of the slot ranking below.
+const GENTLE = Buffer.from(JSON.stringify({ version: '1.0', inverted: false, range: 100, actions: actions.map((a) => ({ at: a.at, pos: 45 + a.pos / 10 })) }));
 
 const TMP = mkdtempSync(join(tmpdir(), 'health-'));
 const sims = [];
@@ -120,6 +122,8 @@ async function open({ width = 1428, height = 900, theme = null, port = PORT } = 
   await ctx.grantPermissions(['clipboard-read', 'clipboard-write']);
   await ctx.addInitScript(TAURI_STUB);
   await ctx.addInitScript(REPORT_STUB);
+  // The host's own CPU pressure (a busy test machine reads critical) would raise "overloaded" over the injected causes.
+  await ctx.addInitScript(() => { delete globalThis.PressureObserver; });
   await ctx.addInitScript(([port, theme]) => {
     try {
       if (sessionStorage.getItem('health.seeded')) return;
@@ -138,14 +142,14 @@ async function open({ width = 1428, height = 900, theme = null, port = PORT } = 
 }
 
 const C = 'main.pane .fsp';
-async function play(page) {
+async function play(page, script = SCRIPT) {
   const TAB = 'plugin:funscript-player:player';
   await page.waitForSelector('[data-tab-id="' + TAB + '"]', { state: 'attached', timeout: 20000 });
   for (let i = 0; i < 4 && !await page.locator(C).first().isVisible().catch(() => false); i++) {
     await goTab(page, TAB).catch(() => {});
     await page.waitForTimeout(800);
   }
-  await page.setInputFiles(C + ' .fsp-files', [{ name: 'clip.funscript', mimeType: 'application/json', buffer: SCRIPT }]);
+  await page.setInputFiles(C + ' .fsp-files', [{ name: 'clip.funscript', mimeType: 'application/json', buffer: script }]);
   await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-play').disabled, C, { timeout: 15000 });
   await page.locator(C + ' .fsp-play').evaluate((e) => e.click());
 }
@@ -225,8 +229,8 @@ else {
 await goTab(page, 'log');
 await page.click('[data-feed="log"]');
 const lines = await logLines(page);
-ok('Log: a health line per cause, plain words first', lines.some((l) => /Motion paused .* · this device fell behind/.test(l))
-  && lines.some((l) => /Motion paused .* · WiFi delay \(likely\)/.test(l)), lines);
+ok('Log: a health line per cause, the pause and its measured cause', lines.some((l) => /Motion paused .* · this device stalled \d+ ms/.test(l))
+  && lines.some((l) => /Motion paused .* · (WiFi delay|no updates for) \d+ ms \(likely\)/.test(l)), lines);
 
 ok('no page error', errors.length === 0, errors);
 // ---- 2. the report ------------------------------------------------------------
@@ -272,7 +276,8 @@ console.log('\n--- the status slot ---');
   const o = await open();
   const slot = () => o.page.evaluate(() => {
     const s = document.querySelector('.topstrip .status');
-    return { kind: s && s.dataset.kind, text: s ? s.textContent.trim() : '' };
+    const b = s && s.querySelector('.st-dismiss');
+    return { kind: s && s.dataset.kind, text: s ? s.textContent.trim() : '', title: b ? b.title : '' };
   });
   const pause = o.page.locator('.topstrip .btn-pause');
   const waitKind = async (kind, ms = 4000) => {
@@ -280,7 +285,7 @@ console.log('\n--- the status slot ---');
     for (;;) { const s = await slot(); if (s.kind === kind || Date.now() - t > ms) return s; await o.page.waitForTimeout(150); }
   };
   const stall = () => o.page.evaluate(() => { const t = performance.now(); while (performance.now() - t < 700) { /* busy */ } });
-  await play(o.page);
+  await play(o.page, GENTLE);
   await o.page.waitForTimeout(2000);
   // A safety edge first: pause, then resume (the player stops on the latch and plays again after).
   await pause.click();
@@ -288,7 +293,7 @@ console.log('\n--- the status slot ---');
   await pause.click();
   const edge = await waitKind('edge');
   ok('slot: the latch notice, then the safety edge it leaves', paused.kind === 'notice' && /Paused/.test(paused.text) && edge.kind === 'edge', [paused, edge]);
-  await play(o.page);
+  await play(o.page, GENTLE);
   await o.page.waitForTimeout(2500);
   await stall();
   await o.page.waitForTimeout(1500);
@@ -299,7 +304,10 @@ console.log('\n--- the status slot ---');
   await o.page.waitForTimeout(11000);
   await stall();
   const act = await waitKind('health');
-  ok('slot: the third cutout in 60 s is act and takes the slot over the edge', act.kind === 'health' && /this device fell behind/.test(act.text), act);
+  ok('slot: the third cutout in 60 s is act and takes the slot over the edge', act.kind === 'health' && /this device stalled \d+ ms/.test(act.text), act);
+  const tip = act.title.split('\n');
+  ok('slot: the tooltip is the detail, never the line: measured, since, threshold, action, the click', tip.length >= 4 && !tip.includes(act.text)
+    && /^Measured: /.test(tip[0]) && /^Since /.test(tip[1]) && tip[tip.length - 1] === 'Click to open this incident', act.title);
   await pause.click();
   const over = await waitKind('notice');
   ok('slot: a latch notice still outranks an act health condition', over.kind === 'notice' && /Paused/.test(over.text), over);
@@ -308,6 +316,8 @@ console.log('\n--- the status slot ---');
   await o.page.click('.topstrip .status[data-kind="health"] .st-dismiss');
   ok('slot: the health line opens the Log page on its Health view', await o.page.waitForSelector('.health', { timeout: 5000 }).then(() => true, () => false)
     && await o.page.getAttribute('[data-feed="health"]', 'aria-selected') === 'true');
+  ok('slot: ...with its incident open', await o.page.evaluate(() => [...document.querySelectorAll('.incs > li')]
+    .filter((li) => li.querySelector('details').open).map((li) => li.dataset.cond).join() === 'cutout-client'));
   await o.ctx.close();
 }
 

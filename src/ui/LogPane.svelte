@@ -24,7 +24,7 @@
   import {
     CH, SESSION_EVENT_KIND, SAFETY_EVENT_KIND, LOG_EVENT_KIND, LOG_LEVEL_NAME,
   } from '../../../Valence/clients/js/index.js';
-  import { optionLabel, formatValue, formatWithUnit } from '../model/format.js';
+  import { optionLabel, formatValue, formatWithUnit, unitOf } from '../model/format.js';
   import { logView } from './logview.svelte.js';
   import { history, undo, revertAll, revertPlan, fieldOfEntry, say } from '../model/history.svelte.js';
   import { askConfirm } from './confirm.svelte.js';
@@ -91,7 +91,9 @@
       const v = evt.body[k];
       const field = byName.get(k);
       let display;
+      // A unitless integer is a word, a cause or an id: printed as sent, never grouped.
       if (field && field.options) display = optionLabel(field, v);
+      else if (Number.isInteger(v) && !unitOf(field)) display = String(v);
       else if (field) display = formatWithUnit(field, v);
       else if (typeof v === 'number') display = formatValue(null, v);
       else display = String(v);

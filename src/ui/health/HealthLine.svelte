@@ -1,7 +1,8 @@
 <script>
   /**
    * HealthLine.svelte -- under a health Log line (ph-9t5l): the plain detail,
-   * the one action, the evidence and Send report, folded until asked.
+   * what was measured, the threshold, the one action, the evidence and Send
+   * report, folded until asked.
    * Renders nothing once the incident is no longer kept.
    */
   import { health } from '../../model/health/health.svelte.js';
@@ -17,7 +18,7 @@
   <details class="hl">
     <summary>Details</summary>
     {#if d.detail}<p>{d.detail}</p>{/if}
-    {#if d.action}<p class="act">{d.action}</p>{/if}
+    {#each inc.tip || [] as l, k (k)}<p class:act={l === d.action}>{l}</p>{/each}
     <p class="ev mono">{[inc.why, evidenceText(inc.evidence)].filter(Boolean).join(' · ')}</p>
     <button type="button" class="og-btn sm" onclick={() => { health.review = id; logView.tab = 'health'; }}>Send report</button>
   </details>

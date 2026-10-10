@@ -48,7 +48,7 @@
   import { isFieldEnabled, resetsToDefault, WIDGET } from './model/settings.js';
   import { UI_CATEGORY, UI_CATEGORY_TIER, UI_NAV_TIER } from '../../Valence/clients/js/index.js';
   import { navIcon } from './ui/navIcons.js';
-  import { writeSetting, statusOf, STATUS } from './model/shadow.svelte.js';
+  import { writeSetting, inFlight } from './model/shadow.svelte.js';
   import { withoutClaimed, claimRoles } from './model/roles.js';
   import { heroClaims } from './ui/heroes.js';
   import PluginsPane from './plugins/PluginsPane.svelte';
@@ -207,16 +207,20 @@
     return () => window.removeEventListener('phosphor-page-fullscreen', ask);
   });
   $effect(() => { if (OS_SHELL) document.documentElement.dataset.fullscreenMode = $prefs.fullscreen; });
-  // The page status (docs/PLUGINS.md, Pages, `status`): the latest
-  // phosphor-page-status per page, drawn in TopStrip's status slot on every class.
+  // The page status (docs/PLUGINS.md, Pages, `status`): per page, the latest
+  // phosphor-page-status of each source in the pane (a plugin page, or a card
+  // on the Dash or a category page), newest last. TopStrip's status slot shows
+  // one: the newest warn or bad, else the newest other.
   const TONES = ['ok', 'warn', 'bad'];
-  let pageStatus = $state({});
+  let pageStatus = $state.raw({});
   $effect(() => {
     const put = (e) => {
-      if (!current?.page || !e.target?.closest?.('main.pane .pane-main.plugin')) return;
+      const src = e.target;
+      if (!current || !src?.closest?.('main.pane .pane-main')) return;
       const d = e.detail || {};
-      pageStatus[current.id] = { text: String(d.text ?? ''), tone: TONES.includes(d.tone) ? d.tone : null,
-        title: d.title == null ? '' : String(d.title) };
+      const list = (pageStatus[current.id] || []).filter((s) => s.src !== src && s.src.isConnected);
+      if (d.text) list.push({ src, text: String(d.text), tone: TONES.includes(d.tone) ? d.tone : null, title: d.title == null ? '' : String(d.title) });
+      pageStatus = { ...pageStatus, [current.id]: list };
     };
     window.addEventListener('phosphor-page-status', put);
     return () => window.removeEventListener('phosphor-page-status', put);
@@ -249,7 +253,13 @@
     window.addEventListener('phosphor-quick-rail', ask);
     return () => window.removeEventListener('phosphor-quick-rail', ask);
   });
-  const statusSlot = $derived(current?.page?.status ? pageStatus[current.id] || null : null);
+  // ponytail: a card unmounted with the page on screen (a Dash edit) keeps its status until that page's next one or a page switch.
+  const statusSlot = $derived.by(() => {
+    if (!current || (current.page && !current.page.status)) return null;
+    const all = (pageStatus[current.id] || []).filter((s) => s.src.isConnected);
+    const warn = all.filter((s) => s.tone === 'warn' || s.tone === 'bad');
+    return (warn.length ? warn : all).at(-1) || null;
+  });
   $effect(() => { window.dispatchEvent(new CustomEvent('phosphor-page-fullscreen-change', { detail: { on: isFull } })); });
   // Scrollbars are a pref, off by default; style.css switches on this one attribute.
   $effect(() => { document.documentElement.toggleAttribute('data-scrollbars', $prefs.scrollbars); });
@@ -415,11 +425,32 @@
   // collapsed until asked for, with the count stated. Browser-local.
   let showDiagnostic = $state(false);
 
+  // A built-in card hero's advanced bindings follow the same disclosure: its
+  // optional ones and its wholly advanced instances. A required binding stays,
+  // the hero cannot draw without it; a plugin hero presents its own.
+  function heroAdv(h) {
+    if (h.plugin) return [];
+    const f = h.fields, s = h.spec || {};
+    return [
+      ...Object.keys(s.optional || {}).map((k) => f[k]),
+      ...Object.keys(s.instances || {}).flatMap((k) => (f[k] || []).map((m) => Object.values(m).filter((x) => x?.uid))
+        .filter((ms) => ms.every((x) => x.advanced)).flat()),
+    ].filter((x) => x?.advanced);
+  }
+  const heroAdvUids = $derived(new Set((current?.cat?.heroes || []).flatMap(heroAdv).map((f) => f.uid)));
+  function heroShown(h) {
+    if (showAdvanced) return h;
+    const f = { ...h.fields };
+    for (const k of Object.keys(h.spec?.optional || {})) if (heroAdvUids.has(f[k]?.uid)) f[k] = null;
+    for (const k of Object.keys(h.spec?.instances || {})) f[k] = (f[k] || []).filter((m) => !Object.values(m).some((x) => heroAdvUids.has(x?.uid)));
+    return { ...h, fields: f };
+  }
+
   // `adv` and `diagAll` count whether shown or not, so the footer's toggles
   // keep one label width in both states.
   const visibleGroups = $derived.by(() => {
     if (!current || !current.cat) return { groups: [], hidden: 0, diag: 0, adv: 0, diagAll: 0 };
-    let hidden = 0, diag = 0, adv = 0, diagAll = 0;
+    let hidden = showAdvanced ? 0 : heroAdvUids.size, diag = 0, adv = heroAdvUids.size, diagAll = 0;
     const groups = [];
     for (const g of current.cat.groups) {
       if (g.diagnostic) diagAll += g.fields.length;
@@ -453,7 +484,7 @@
     return model ? [...model.fields, ...model.actions].filter((f) => uids.has(f.uid)) : [];
   });
   const onScreen = $derived(drillItem ? drillItem.group.fields
-    : [...visibleGroups.groups.flatMap((g) => g.fields), ...heroFields]);
+    : [...visibleGroups.groups.flatMap((g) => g.fields), ...heroFields.filter((f) => showAdvanced || !heroAdvUids.has(f.uid))]);
   const hasDefaults = $derived([...(current?.cat?.groups || []).flatMap((g) => g.fields), ...heroFields]
     .some(resetsToDefault));
   const resettable = $derived(onScreen.filter((f) => resetsToDefault(f)
@@ -463,7 +494,7 @@
   // The category branch of pane() below: its controls ride the footer.
   const catPage = $derived(!current.pane && ready && current.id !== 'machine' && !!current.cat);
   // Writes in flight on this page, in the footer's fixed slot (law 5).
-  const pageBusy = $derived(onScreen.filter((f) => statusOf(f) !== STATUS.confirmed).length);
+  const pageBusy = $derived(inFlight(onScreen));
   const applyReset = () => { for (const f of resettable) writeSetting(f, f.dflt); };
   async function resetCategory() {
     const n = resettable.length;
@@ -521,8 +552,8 @@
   // follow one header row (settings.js orders them together, DESIGN §10.11).
   const settingItems = $derived([
     ...(current && current.cat ? current.cat.heroes : []).map((h) =>
-      ({ id: 'hero:' + h.id, title: h.title || capitalize(h.id), snippet: heroCard, hero: h,
-         fields: heroFields.filter((f) => h.fields.claimed.has(f.uid)) })),
+      ({ id: 'hero:' + h.id, title: h.title || capitalize(h.id), snippet: heroCard, hero: heroShown(h),
+         fields: heroFields.filter((f) => h.fields.claimed.has(f.uid) && (showAdvanced || !heroAdvUids.has(f.uid))) })),
     ...projectGroups(visibleGroups.groups, view.cls).flatMap(({ group: g, drill: promoted }, i, all) => [
       ...(g.section && g.section !== all[i - 1]?.group.section
         ? [{ id: 'section:' + current.cat.id + ':' + g.section, kind: 'section', title: g.section }] : []),
@@ -688,18 +719,24 @@
       {#if catPage && !railOps}
         {#if visibleGroups.diagAll}
           <button class="og-btn sm adv-toggle" type="button" onclick={() => (showDiagnostic = !showDiagnostic)} aria-expanded={showDiagnostic}
-                  title={showDiagnostic ? 'Hide diagnostic' : 'Show diagnostic'}>{visibleGroups.diagAll} diagnostic</button>
+                  aria-label={visibleGroups.diagAll + ' diagnostic'}
+                  title={showDiagnostic ? 'Hide diagnostic' : 'Show diagnostic'}>{visibleGroups.diagAll} {view.bucket <= 2 ? 'diag' : 'diagnostic'}</button>
         {/if}
         {#if visibleGroups.adv}
           <button class="og-btn sm adv-toggle" type="button" onclick={toggleAdvanced} aria-expanded={showAdvanced}
-                  title={showAdvanced ? 'Hide advanced' : 'Show advanced'}>{visibleGroups.adv} advanced</button>
+                  aria-label={visibleGroups.adv + ' advanced'}
+                  title={showAdvanced ? 'Hide advanced' : 'Show advanced'}>{visibleGroups.adv} {view.bucket <= 2 ? 'adv' : 'advanced'}</button>
         {/if}
         {#if hasDefaults}
           <button class="og-btn sm reset-cat" type="button" disabled={!!resetWhy}
                   title={resetWhy || (drillItem ? 'Reset group to defaults' : 'Reset page to defaults')}
                   onclick={resetCategory}>Reset</button>
         {/if}
-        <span class="cat-busy" role="status">{pageBusy ? pageBusy + ' in flight' : ''}</span>
+        <!-- Handheld: an icon and the count in a fixed chip, so the one 48 px row holds (DESIGN §10.3). -->
+        <span class="cat-busy" class:chip={view.bucket <= 2} class:idle={!pageBusy.n} class:overdue={pageBusy.overdue} role="status">
+          {#if view.bucket <= 2}<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5" /><path d="M8 5v3l2 1.5" /></svg
+          ><b>{pageBusy.n || ''}</b><span class="sr">{pageBusy.n ? ' in flight' : ''}</span>{:else}{pageBusy.n ? pageBusy.n + ' in flight' : ''}{/if}
+        </span>
       {/if}
     </PageFoot>
   </main>
@@ -856,7 +893,7 @@
     margin: var(--sp-2) var(--sp-2) var(--sp-1);
     min-width: 28px;
     min-height: 28px;
-    color: var(--ink-faint);
+    color: var(--ink-dim);
     border-radius: var(--radius);
     font-size: 13px;
   }
@@ -929,6 +966,8 @@
     border: 1px solid var(--shell-border);
     border-radius: var(--radius);
   }
+  /* Collapsed, the section's tabs keep the others' width (law 12). */
+  .rail.mini .rail-sec.shell { padding-inline: 0; }
   .rail-sec.shell :global(.rail-tab:not(.on)),
   .rail-sec.shell .rail-lbl { color: var(--shell-fg); }
   .rail-sec.shell .rail-glyph { color: var(--shell-fg); }
@@ -938,7 +977,7 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: .1em;
-    color: var(--ink-faint);
+    color: var(--tx-val);
   }
 
   :global(.rail-tab) {
@@ -949,7 +988,7 @@
     padding: 0 var(--sp-3);
     border-radius: var(--radius);
     border: 1px solid transparent;
-    color: var(--ink-dim);
+    color: var(--tx-val);
     font-size: .85rem;
     font-weight: 500;
     text-align: left;
@@ -974,7 +1013,7 @@
     display: grid;
     place-items: center;
     width: 24px;
-    color: var(--ink-faint);
+    color: var(--ink-dim);
   }
   .rail-glyph svg {
     width: 16px;

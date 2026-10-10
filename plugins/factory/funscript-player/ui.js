@@ -66,7 +66,8 @@
 // - 'Preview: not saved' stands in the slot while any client holds a trial (RFC-099),
 //   outranked only by a refusal and the gate.
 // - The status carries conditions only (ph-5u0g peeve 19): never what the card already shows (empty, motion
-//   only, playing, positioning, buffering). On the page it is the top strip's slot on every class, never a row.
+//   only, playing, positioning, buffering). On the page and on a Dash card it is the top strip's slot on every
+//   class, never a row (peeve 19 extended).
 // - A loop wrap's seek is not a stop: no hold, no clock reset, no trace reset. Every other
 //   seek resets the loop's lap; one while playing restarts with the seek transition.
 // - With a loop the clock runs in unrolled media time; everything shown is folded back.
@@ -85,6 +86,8 @@ import { mountTimeline, CSS as TL_CSS } from './timeline.js';
 import { mountAnalyzer, CSS as AN_CSS, COPY as AN_COPY } from './analyzer.js';
 import { readPrefs, writePref } from './prefs.js';
 import { wire, fitMap, mapOf } from './scale.js';
+import { oscFiles, withAxes } from './axes.js';
+import { createOsc, OSC_ROLE } from './osc.js';
 
 import { mountQueue, toStored, fromStored, move, COPY as QCOPY } from './queue.js';
 
@@ -135,6 +138,7 @@ export const COPY = Object.freeze({
   noScriptScene: 'No script for this scene',
   badFormat: 'Format not playable here',
   extra: 'Extra axes ignored: ',
+  noOsc: 'This machine has no oscillator input',
   overLimit: 'Script past the input speed limit',
   more: 'more',
   meter: 'Stroke',
@@ -229,10 +233,10 @@ export function extraNote(script, extra = []) {
  * ended, seeking, currentTime, duration, playbackRate, src, poster,
  * addEventListener); clock (MediaClock); scheduler; submit (Seg[] ->
  * SegResult, the probe-wrapped api.submitSegments); now; probe(entry);
- * onChange(); revoke(url); loop (clock.js createLoop).
+ * onChange(); revoke(url); loop (clock.js createLoop); osc (osc.js createOsc) or null.
  */
 export function createControl({ api, video, clock, scheduler, submit, now = () => performance.now(),
-  probe = () => {}, onChange = () => {}, revoke = (u) => URL.revokeObjectURL(u), loop = createLoop() }) {
+  probe = () => {}, onChange = () => {}, revoke = (u) => URL.revokeObjectURL(u), loop = createLoop(), osc = null }) {
   const prefs = readPrefs(api);
   const state = { phase: 'empty', scene: null, script: null, shaped: null, T: { ...prefs.T }, motion: prefs.motion !== false,
     status: { text: '', tone: '', notes: [] }, view: prefs.view === 'library' ? 'library' : 'player', composition: 'full',
@@ -373,6 +377,8 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
       else transient = r.ok ? '' : r.reason;
       observePlan();
     } else if (state.phase === 'ready' && now() >= homeAt) goHome();
+    if (osc) osc.tick(state.script, state.phase === 'playing' && state.motion && clock.ready && !buffering && !video.seeking
+      ? (w) => fold(clock.mediaAt(w - state.T.offsetMs)) : null);
     if (state.phase === 'playing' && !video.seeking && loop.due(video.currentTime * 1000)) {
       probe({ k: 'mark', t: now(), name: 'wrap', lap: loop.lap });
       video.currentTime = loop.wrap() / 1000;
@@ -551,9 +557,11 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     if (transient) return { text: transient, tone: '' };
     const ceil = fields ? ceilingOf(api, fields) : {};
     if (ceil.vmax && ceil.spanMm && peak * (state.T.hi - state.T.lo) * ceil.spanMm * (video.playbackRate || 1) > ceil.vmax) return { text: COPY.overLimit, tone: 'warn' };
-    return { text: info.length ? info[0] + (info.length > 1 ? ' (+' + (info.length - 1) + ' ' + COPY.more + ')' : '') : '', tone: '' };
+    const n = notes();
+    return { text: n.length ? n[0] + (n.length > 1 ? ' (+' + (n.length - 1) + ' ' + COPY.more + ')' : '') : '', tone: '' };
   }
-  function refresh() { state.status = { ...status(), notes: info }; }
+  const notes = () => (osc && osc.absent ? [COPY.noOsc, ...info] : info);
+  function refresh() { state.status = { ...status(), notes: notes() }; }
   function changed() { refresh(); onChange(); }
 
   const on = (ev, fn) => video.addEventListener(ev, fn);
@@ -614,7 +622,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
 // Its 16:9 spacer, capped at 240 px, gives it height where the card has none of its own (a category page).
 export const CSS = `
 .fsp { position: relative; height: 100%; min-height: 0; display: grid; gap: var(--sp-2); --fsp-detail: 96px; --fsp-src: 30px; --fsp-bar: 30px; --fsp-sp: var(--sp-2);
-  --fsp-stage-min: 120px; --fsp-detail-min: 64px; --fsp-trh: var(--fsp-bar); --fsp-st: 20px;
+  --fsp-stage-min: 120px; --fsp-detail-min: 64px; --fsp-trh: var(--fsp-bar); --fsp-st: 0px;
   min-height: calc(var(--fsp-src) + var(--fsp-sp) + var(--fsp-bar) + var(--fsp-trh) + var(--fsp-detail-min) + var(--fsp-st) + 6 * var(--sp-2) + var(--fsp-stage-min) + var(--fsp-pad, 0px));
   grid-template-columns: minmax(0, 1fr) 320px;
   grid-template-rows: var(--fsp-src) minmax(var(--fsp-stage-min), 1fr) var(--fsp-trh) var(--fsp-sp) var(--fsp-bar) minmax(var(--fsp-detail-min), var(--fsp-detail)) var(--fsp-st);
@@ -636,8 +644,8 @@ export const CSS = `
   grid-template-rows: var(--tap) minmax(var(--fsp-stage-min), 1fr) var(--fsp-sp) var(--fsp-bar) minmax(var(--fsp-detail-min), var(--fsp-detail)) var(--fsp-trh) var(--fsp-st);
   min-height: calc(var(--tap) + var(--fsp-sp) + var(--fsp-bar) + var(--fsp-trh) + var(--fsp-detail-min) + var(--fsp-st) + 6 * var(--sp-2) + var(--fsp-stage-min) + var(--fsp-pad, 0px));
   grid-template-areas: "src" "stage" "sp" "tlh" "tl" "tr" "st"; }
-.fsp[data-comp=glance] { min-height: 0; --fsp-bar: var(--tap); grid-template-columns: minmax(0, 1fr); grid-template-rows: 20px 24px var(--tap) 20px;
-  grid-template-areas: "src" "meter" "tr" "st"; }
+.fsp[data-comp=glance] { min-height: 0; --fsp-bar: var(--tap); grid-template-columns: minmax(0, 1fr); grid-template-rows: 20px 24px var(--tap);
+  grid-template-areas: "src" "meter" "tr"; }
 .fsp [hidden] { display: none !important; }
 :where(.fsp button, .fsp input) { font: inherit; }
 .fsp[data-comp=full]:not([data-libshut]) .fsp-libbox { box-sizing: border-box; padding-top: max(0px, calc(var(--stop-reserve-h, 0px) - var(--caret-h, 0px) + var(--sp-2))); }
@@ -714,16 +722,15 @@ export const CSS = `
 .fsp-tick.int { background: var(--intent); }
 .fsp-tick.real { background: var(--reality); }
 .fsp-tick.stale { opacity: .4; }
-/* The status is the kit's (style.css .foot-status); this places it in the Dash card's last row. */
-.fsp-slot { grid-area: st; height: var(--fsp-st); }
-/* The page's status is the top strip's slot (ph-5u0g peeve 19): no row; the st track is only the card's bottom
-   inset, the trailing gap plus it making --sp-3 like the top. */
+/* The status is the top strip's slot on the page and on a Dash card (ph-5u0g peeve 19): no row. The st track is
+   only the page card's bottom inset, the trailing gap plus it making --sp-3 like the top; 0 on a Dash card. */
+.fsp-slot { display: none; }
 .fsp[data-page] { --fsp-st: calc(var(--sp-3) - var(--sp-2)); }
-.fsp[data-page] .fsp-slot { display: none; }
 .fsp-tr { grid-area: tr; display: flex; align-items: center; gap: var(--sp-2); min-width: 0; container-type: inline-size; }
 @container (max-width: 22em) { .fsp-tr .fsp-vol { display: none; } }
 .fsp-tr > * { flex: none; min-width: 0; }
-.fsp-tr > .og-btn { min-height: var(--fsp-bar); }
+/* No block padding: a text button keeps the bar's height at every Look (1.4 included). */
+.fsp-tr > .og-btn { min-height: var(--fsp-bar); padding-block: 0; }
 .fsp-tr > .fsp-ov { flex: 1 1 60px; }
 .fsp-tr .fsp-rate { min-width: 5ch; padding-inline: var(--sp-2); font: .75rem var(--mono); }
 .fsp-el, .fsp-rem { font: .75rem var(--mono); color: var(--tx-val); white-space: nowrap; overflow: hidden; }
@@ -745,7 +752,7 @@ export const CSS = `
 @container (max-width: 20em) { .fsp-tlh .fsp-off .unit { display: none; } }
 @container (max-width: 18.5em) { .fsp-tlcaret > span { display: none; } }
 .fsp-tlh > * { flex: none; }
-.fsp-tlh > .og-btn { min-height: var(--fsp-bar); }
+.fsp-tlh > .og-btn { min-height: var(--fsp-bar); padding-block: 0; }
 .fsp-tlgap { flex: 1 1 0; }
 .fsp-tlh > .fsp-tlcaret { flex: none; min-height: var(--fsp-bar); padding: 0 var(--sp-2) 0 0; }
 .fsp:is([data-comp=handheld], [data-cls=portrait], [data-cls=landscape]) .fsp-tlh .fsp-zoom { display: none; }
@@ -763,7 +770,6 @@ export const CSS = `
 .fsp-speed[data-over] i { background: var(--warn); }
 .fsp-speed span { color: var(--tx-mut); white-space: nowrap; overflow: hidden; }
 .fsp-speed[data-over] span { color: var(--tx); }
-.fsp-slot[data-tone=intent] { border-left-color: var(--intent); }
 .fsp-anbox { grid-area: an; min-width: 0; min-height: 0; display: none; }
 .fsp[data-an]:not([data-comp=glance]) .fsp-anbox { display: block; contain: size; }
 .fsp[data-an]:not([data-comp=glance]) .fsp-libbox { display: none; }
@@ -939,8 +945,9 @@ export function createPlayer(api) {
     return r;
   };
   const scheduler = createScheduler({ submit, log: (m, l) => api.log(m, l) });
+  const osc = createOsc({ submit: (list) => api.submitSamples(OSC_ROLE, list) });
   const views = [];
-  const ctl = createControl({ api, video, clock, scheduler, submit, probe, onChange: () => views.forEach((v) => v.render()) });
+  const ctl = createControl({ api, video, clock, scheduler, submit, probe, osc, onChange: () => views.forEach((v) => v.render()) });
   const stopFrames = frameSource(vel, ctl.onFrame);
 
   let stash = null, stashId = '';
@@ -961,8 +968,8 @@ export function createPlayer(api) {
   function openLocal(files) {
     const scene = localScene([...files]);
     if (!scene) return;
-    const sc = scene.script;
-    ctl.load(scene, sc ? parse(sc) : null, COPY.noScriptVideo, scene.extra);
+    const sc = scene.script, { osc: sib, rest } = oscFiles(sc, scene.extra);
+    ctl.load(scene, sc ? withAxes(parse(sc), sib, parse) : null, COPY.noScriptVideo, rest);
   }
   /** Open video (PR3): a video alone attaches to a loaded script without one; a .funscript picked with it pairs by base name. */
   function openVideo(files) {
@@ -985,16 +992,18 @@ export function createPlayer(api) {
     const { video: v, script } = pairFiles(files);
     const st = ctl.state;
     if (st.view !== 'player') ctl.setView('player');
-    if (!v) { if (script) openScript(script); return; }
+    if (!v) { if (script) openScript(files); return; }
     if (!script && st.script && st.scene && !st.scene.stream) ctl.load(localScene([v]), st.script, COPY.noScriptVideo);
     else openLocal(files);
   }
-  /** Open script (PR3): attaches to a loaded video, else plays motion only (PR4). */
-  function openScript(f) {
-    const st = ctl.state;
+  /** Open script (PR3): attaches to a loaded video, else plays motion only (PR4); its V8/V9 siblings pair by base name. */
+  function openScript(files) {
+    const { script: f, extra } = pairFiles(files);
+    if (!f) return;
+    const st = ctl.state, { osc: sib, rest } = oscFiles(f, extra), sc = withAxes(parse(f), sib, parse);
     if (st.view !== 'player') ctl.setView('player');
-    if (st.scene && st.scene.stream) ctl.attach(parse(f));
-    else ctl.load({ key: 'script:' + f.name + ':' + f.size, title: f.name.replace(/\.funscript$/i, ''), stream: null }, parse(f), '');
+    if (st.scene && st.scene.stream) ctl.attach(sc, rest);
+    else ctl.load({ key: 'script:' + f.name + ':' + f.size, title: f.name.replace(/\.funscript$/i, ''), stream: null }, sc, '', rest);
   }
 
   let raf = 0;
@@ -1071,7 +1080,7 @@ export function createPlayer(api) {
     let comp = '', prevCls = '';
     // The kit draws every control (api.ui, docs/PLUGINS.md The UI kit); this view composes them.
     const fileV = ui.files({ accept: VIDEO_ACCEPT, multiple: true, onFiles: openVideo, class: 'fsp-filev' });
-    const fileS = ui.files({ accept: '.funscript', onFiles: (fl) => openScript(fl[0]), class: 'fsp-files' });
+    const fileS = ui.files({ accept: '.funscript', multiple: true, onFiles: openScript, class: 'fsp-files' });
     const tabs = ui.segmented({ tabs: true, class: 'fsp-tabs', value: st.view, onChange: (v) => ctl.setView(v),
       options: [{ value: 'player', label: COPY.player }, { value: 'queue', label: QCOPY.queue }, { value: 'library', label: COPY.library }] });
     // Desktop and the drawer: Library | Queue at the head of the column (a view switch for the session).
@@ -1136,7 +1145,7 @@ export function createPlayer(api) {
     const tlbox = h('div', { class: 'fsp-tlbox' });
     const lib = h('div', { class: 'fsp-libbox' });
     const anbox = h('div', { class: 'fsp-anbox' });
-    // On the page the top strip's slot, on every class; on a Dash card its own row.
+    // The top strip's slot on the page and on a Dash card, on every class; never a row.
     const status = ui.status({ class: 'fsp-slot' });
     const pframe = opts.page ? h('div', { class: 'fsp-pframe surface-card', 'aria-hidden': 'true' }) : '';
 

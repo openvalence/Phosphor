@@ -107,6 +107,7 @@ class PermissionError extends Error {
  *   storeSlots(field)             -> Promise<slot records | null> for an action.store writer
  *   submitMotion(norm, durationMs)-> {ok, reason?}
  *   submitSegments(list)          -> {ok, sent, rateHz?, reason?} (motion.js submit.segments)
+ *   submitSamples(role, list)     -> {ok, sent, rateHz?, reason?} (motion.js submit.samples)
  *   now()                         -> ms clock of submitSegments' atMs (default performance.now)
  *   registerTheme(theme)          -> adds a preset to the theme table
  *   listenTcp(port, onLine)       -> Promise<close()>  (absent outside the shell)
@@ -265,6 +266,13 @@ export function createPluginHost(deps) {
           lock = { name, until: end + MOTION_HOLD_MS };
         }
         return r;
+      },
+
+      // A c2h samples STREAM found by channel role (SPEC 9.7 osc.drive). Not motion input: no producer lock.
+      submitSamples: (role, list) => {
+        need(rec, 'motion');
+        if (typeof role !== 'string' || !role) return { ok: false, sent: 0, reason: 'no role' };
+        return deps.submitSamples ? deps.submitSamples(role, list) : { ok: false, sent: 0, reason: 'NO_STREAM' };
       },
 
       // ---- contributions ----

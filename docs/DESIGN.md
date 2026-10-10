@@ -622,7 +622,11 @@ question in §10.8).
   page's warn status reads in the warn ink like the strip's other
   conditions and in the compact hero takes the numeral's place; its other
   status reads quiet and sits beside the numeral. A page sends conditions
-  only, never what it already shows (empty, playing, paused).
+  only, never what it already shows (empty, playing, paused). A plugin's
+  card on the Dash or a category page draws no status row either (ruling
+  2026-10-09, peeve 19 extended): its status is that page's status, ranked
+  the same. The slot shows one source per page: the newest warn or bad
+  status, else the newest other.
 - The page frame (operator ruling 2026-10-05, `ph-p43h`): the window has no
   side margin. The top bar, the hero bar and the bottom status row are full
   bleed; the sidebar sits flush on the window's left edge, and the frame
@@ -1127,6 +1131,11 @@ derives from one unit, and no size is tuned by hand.
   a plugin page, and rebuilds when any of them changes. Matching is fuzzy,
   Blender F3 style: words in any order and subsequences ("spd in" finds "In
   speed"), ranked by how tight the match is, a label hit before a path hit.
+- In the node editor F3 is the node search (operator 2026-10-09,
+  `ph-5wo6`): every node source on the same matcher, Enter adds at the
+  pointer, Shift+Enter shows the one placed; its add menu groups sources as
+  the pages do (docs/GRAPH.md, The add menu), and a node names its card,
+  desc, range, socket roles and live state (docs/GRAPH.md, What a node says).
 - History: the last 256 setting writes this session made, each with its
   before and after, in a visible list (the Log pane's Changes feed), each
   undoable; Ctrl+Z undoes the latest outside an editor that owns its own
@@ -1178,9 +1187,16 @@ its own: no continuous telemetry, ever.
 - Three areas: Link, This device, Machine. The 26 conditions, their
   thresholds, holds and words are one table, `CONDITIONS` in
   `src/model/health/core.js`; the design survey is the `ph-9t5l` note. A
-  condition shows a short line (COPY.md), then one plain sentence for an
-  average DIYer and one action. Jargon (milliseconds, RTT) lives only in the
-  evidence line under it.
+  condition's line is a measured fact with the number that raised it
+  ("Memory up 140 MB in 35 min", "Motion paused 420 ms · WiFi delay 300 ms
+  (likely)"), never a verdict about Phosphor; its tooltip and its incident
+  say what was measured, since when, the threshold and one action, never the
+  line again (COPY.md rule 11), with one plain sentence for an average DIYer
+  in the incident. Jargon (RTT, loop lag) lives only in the evidence line.
+- Growth (D4) is a leak, never a GC sawtooth: each 5-minute block's lowest
+  memory reading higher than the block before for 30 minutes or more, and
+  100 MB up over the run; it holds while the floor stays 50 MB up. Workers
+  piling up (D6) are their own condition with their own count.
 - The flagship case is a stream cutout, classified by cause, first match
   wins: CLIENT (a move left after the hub's last one ended, or with less lead
   than the hub needs; or the hub ran dry right after this page stalled or
@@ -1204,7 +1220,8 @@ its own: no continuous telemetry, ever.
   list; the top strip's status slot takes act and warn, below link fault,
   unattended, refusal, the jog note, the history message and the latch
   notices, act above the safety edge, warn below it, a 5 s minimum dwell
-  (`health.slot`, drawn by TopStrip); the slot's line opens the Health view.
+  (`health.slot`, drawn by TopStrip); the slot's line opens its incident on
+  the Health view.
 - Local only: a 10-minute ring at 1 Hz, 10 Hz for the last 2 minutes of the
   stream signals; an incident keeps a snapshot of -60 to +30 s, the last 20
   in memory and the last 5 in `localStorage` so a reload keeps them.
@@ -1319,7 +1336,10 @@ issue the user submits under their own account; Phosphor sends nothing.
 | 2026-10-09 | §10.12 | The phone menu's drawer is compact: one narrow width, as tall as its rows, rows at the compact tap height, the Phosphor section in flow (`ph-5u0g` peeve 13). | operator (12 rem, the 40 px floor scaled as the tap, no shading on the drawer's Phosphor section, are the agent's, veto-able) |
 | 2026-10-09 | §10.14 | Health: three areas (Link, This device, Machine), 26 conditions in plain words with one action each, the stream cutout classified CLIENT / NETWORK / HUB / UNKNOWN, hysteresis, Log lines, the Health view and the status slot; a local ring and incident snapshots, no telemetry; reports as public GitHub issues the user submits, reviewed field by field, Hold to send, Save report, Sent reports with removal by `/remove` (`ph-9t5l`, `ph-9t5l.1`). | operator (no continuous telemetry; plain language with one action; nothing degrades silently; the GitHub issue flow, ruled 2026-10-09. The Health view as a Log page tab until it gets its own row, the 1 s ramp-in exemption, CLIENT likely on a starvation after a page stall, the 5 s uplink look-back and saving to Downloads without a dialog are the agent's, veto-able) |
 | 2026-10-09 | §10.3, plugins | A page's status moves from the phone footer's slot and the desktop card's last row into the strip's status slot on every class: no row, no reserved height; a warn status ranks under an act health condition and over the safety edge, any other under a warn health condition; informational states the page already shows are not sent (the funscript player drops `No scene loaded`, `Motion only`, `Positioning`, `Buffering`). The compact row's fit counts an overflow into the strip's end padding (a live numeral at 420x860 had pushed the stop pair 9 px into the gutter) and keeps its decisions while a condition hides the numeral, so a condition moves no control. Supersedes the 2026-10-08 §10.3 footer status slot and FUNSCRIPT.md PR14 (`ph-5u0g` peeve 19, `ph-5u0g.16`). | operator ("the status line takes its own row: remove it or move it somewhere that costs no space"; restated 2026-10-09 on the desktop card's last row: "I thought we were removing this?". The warn status above the safety edge (the edge stands for the whole session and the compact hero hides it, so below it a warning would never show), the quiet tier for notes, and `No script for this video` kept as a note because it explains a grayed Play, are the agent's, veto-able) |
+| 2026-10-09 | §10.3, plugins | A plugin card's status (a hero on the Dash or a category page) goes to the strip's status slot too: the card draws no status row (the funscript player's Dash card drops its row), its status is that page's, ranked like a page's status; one source shows per page, the newest warn or bad, else the newest other. The kit-demo example sends a warning, never an informational status. Extends the row above (`ph-5u0g` peeve 19, `ph-5u0g.17`). | operator's peeve 19 as extended by Fable's ruling ("warnings and refusals go to the shell's status slot; one source at a time per page, the newest warning wins"). The newest note showing when no source warns, category-page cards counting as Dash cards, and a card unmounted on screen keeping its status until that page's next status or a page switch, are the agent's, veto-able) |
+| 2026-10-09 | §10.13 | The node editor's F3 searches every node source on the shell's matcher (Enter adds at the pointer, Shift+Enter or a show button finds the placed node); the add menu groups as the pages do (hub, category, section, card, then plugin modules, ButtplugIO, the node families); a field or toy node names its card, desc, range, socket roles and live state, one accent per card (`ph-5wo6`). | operator ("this is 0 info"; F3 and categorization by card and module). The device after the card in a node's label, the accent order, a flat list naming each source once under its card (modules browse in the tree only), Enter on a placed field showing it, the hub's Other for fields no page draws and Ctrl+F staying the shell's are the agent's, veto-able |
 | 2026-10-09 | §10.13, plugins | The shell context menu replaces the webview's (Print, Reload, Inspect) outside text entry: field, module and page items innermost first, Copy path as the Valence path `valence://<hub>/<identity>`, Copy and Paste value, Reset to default, Send to node editor (`phosphor-node-add`, else a queue the node editor drains), Show in history; plugins add items behind a new `menu` permission (`ph-kyjd`). | operator ("replace the right click system print and bullshit menu with something actually useful"; the path format, the item set, Paste enabled only for a fitting value, the queue seam and Inspect behind Shift in a dev build are the agent's, veto-able) |
 | 2026-10-09 | §10.3, plugins | The right dock: a plugin-registered region, its toggle in the top bar only while a dock exists, closed until the user opens it; a column that narrows the content on the desktop, a drawer under the strip on the phone class. Field-bound kit controls, `ui.field` and `ui.module`, draw the shell's own control by identity behind `intent`. The quick access tray is the factory plugin built on these and the menu (`ph-kyjd`, `ph-5wsk.6`). | operator ("hidden by default, useful in more than 1 way", "factory plugin"; the toggle appearing only once something is pinned, the phone drawer closing on an outside tap and not persisting, the 21 rem column and the rail pinned as its mini are the agent's, veto-able) |
+| 2026-10-09 | §10.14 | Health lines are measured facts with their number and the tooltip is the detail (measured, since, threshold, one action, the click), never a repeat (COPY.md rule 11); the slot opens its incident. D4 growth judged on the 5-minute floors of the memory sawtooth, rising every block for 30 min and 100 MB up, the loop-lag arm gone; D6 workers its own condition. A report's least, typical and worst values are over its stated window (`evidence.from_ms`, `to_ms`), a growth report carries what grew, from, to, over and how fast, an event's kind is its condition, and a condition with no classifier reports where it was measured as its cause (`ph-9t5l`). | operator ("the worst error/anomaly message of ALL time": vague, no number, no cause, no action, a tooltip repeating it); the coordinator's read of report KMCBXOPP (a GC sawtooth, 28 to 49 MB, raised growth; maxima that were point samples). The 5-minute blocks, the 100 MB and 50 MB figures, the run a plateau breaks, the area-to-cause map, the stall measured from the overdue tick and the uplink delay counted up to a starvation's classification are the agent's, veto-able |
 | 2026-10-10 | §10.1, §10.6 | Add to Dash writes any named layout, the Dashes being §10.6's layouts with nothing parallel: the first free rect, written once measured; an unbuilt layout takes its seed as placements first (`ph-hi4i.1`). | operator ("opens a SUBMENU for picking which Dash"; the seed copy on an unbuilt Default, operator-accepted pick; corrected the same day: "Phosphor already has multiple Dashes ... build nothing parallel". The seed copy on every unbuilt layout and not only Default, New Dash… holding only the item, an add leaving the user on the page, and Add to Dash absent off the full class instead of read-only reflowed Dashes are the agent's, veto-able) |
 | 2026-10-10 | §10.13, plugins | The context menu's Add to Dash submenu: every Dash with a check on those holding the item, New Dash… naming in place, ArrowRight or Enter to open and ArrowLeft or Escape to close, a tap opening it inline; `kit.js` `menu` items take `items`, `checked` and `ask`, plugin items stay flat (`ph-hi4i.1`). | operator (the keys and the inline tap are the ruling's; hover opening the flyout with a 300 ms grace on the way to it, a checked Dash opening with the card's first control focused, the `Dash name` placeholder, and no submenu for `registerMenu` items are the agent's, veto-able) |
