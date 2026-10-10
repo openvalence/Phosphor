@@ -17,6 +17,11 @@ import { connect, machine, parseHost, recentHubs } from './model/machine.svelte.
 import { applyStoredTheme } from './model/theme.js';
 import './ui/still.svelte.js';
 import { loadPlugins } from './plugins/plugins.svelte.js';
+import { bindControls } from './plugins/kit.js';
+import { mountBound } from './ui/BoundControl.svelte';
+
+// api.ui.field and api.ui.module draw the shell's own controls (docs/PLUGINS.md, Field-bound controls).
+bindControls(mountBound);
 
 // Client preferences, applied before first paint so the page never flashes the
 // default palette. These are BROWSER state, not machine state — the

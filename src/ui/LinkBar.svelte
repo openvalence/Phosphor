@@ -31,6 +31,7 @@
   import { ROLE } from '../model/roles.js';
   import { ac } from '../model/theme.js';
   import { phoneMenu } from './PhoneMenu.svelte';
+  import { dock, toggleDock, dockOpen } from './Dock.svelte';
 
   // shell: the shell's window buttons (src/shell/ShellStrip.svelte), or null.
   let { shell: Shell = null } = $props();
@@ -331,6 +332,12 @@
       <span class="mono">{rxAge}</span>
     </span>
   </div>
+  <!-- The right dock (Dock.svelte): here once a plugin docks something, opened only by the user. -->
+  {#if dock.shown}
+    <button type="button" class="dock-btn" aria-label={dock.label} title={dock.label} aria-expanded={dockOpen()} onclick={toggleDock}>
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3h11v10h-11zM10 3v10" /></svg>
+    </button>
+  {/if}
   {#if Shell}<Shell />{/if}
 </header>
 
@@ -387,7 +394,23 @@
     color: var(--ink);
     border-radius: var(--r-s);
   }
-  .menu-btn[aria-expanded='true'] { color: var(--highlight); }
+  .menu-btn[aria-expanded='true'], .dock-btn[aria-expanded='true'] { color: var(--highlight); }
+  /* The dock's toggle mirrors the hamburger: a 40 px target overhanging the bar and its gaps, never growing the row. */
+  .dock-btn {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    margin-block: calc(var(--sp-2) * -1);
+    margin-inline: calc(var(--sp-3) * -1);
+    color: var(--ink);
+    border-radius: var(--r-s);
+  }
+  /* Where only the optional row's last chip is left, it sheds for the toggle (optional chips go first). */
+  @media (max-width: 560px) { .linkbar:has(> .dock-btn) .chips.opt { display: none; } }
+  .dock-btn:focus-visible { outline-offset: -2px; }
+  .dock-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; }
   /* At the screen's top edge beside a cutout: the ring stays inside the target. */
   .menu-btn:focus-visible { outline-offset: -2px; }
   .menu-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }

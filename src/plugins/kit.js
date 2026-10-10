@@ -262,15 +262,17 @@ function swallow() {
 }
 
 /**
- * onOutside(e) for a pointerdown outside `el` and the `except` elements; its
- * click is swallowed unless it landed on the top strip or the stop pair. -> off()
+ * onOutside(e) for a pointerdown outside `el` and the `except` elements (or
+ * selectors); its click is swallowed unless it landed on the top strip or the
+ * stop pair. -> off()
  */
 export function outside(el, onOutside, except = []) {
   const fn = (e) => {
     // An overlay that left the document while open takes its rule with it: no swallow is left behind.
     if (!el.isConnected) { off(); return; }
     const t = e.target;
-    if (!(t instanceof Node) || el.contains(t) || except.some((x) => x && x.contains(t))) return;
+    const exempt = (x) => x && (typeof x === 'string' ? t instanceof Element && !!t.closest(x) : x.contains(t));
+    if (!(t instanceof Node) || el.contains(t) || except.some(exempt)) return;
     onOutside(e);
     if (!(t instanceof Element && t.closest(STRIP))) swallow();
   };
@@ -1137,6 +1139,101 @@ export function tile(o = {}) {
   return el;
 }
 
+// ---- field-bound controls (ph-5wsk.6) ----------------------------------------------
+
+let mountBound = null;
+/** The shell installs the rendering behind ui.field and ui.module (main.js): (el, {key, kind, title}) -> unmount(). */
+export function bindControls(fn) { mountBound = fn; }
+
+let controlDefined = false;
+function defineControl() {
+  if (controlDefined) return;
+  controlDefined = true;
+  // The element mounts the shell rendering while it is in the document and releases it once it has
+  // left; a move within one task (a reorder) keeps it, so an in-flight write keeps its ladder.
+  customElements.define('phosphor-control', class extends HTMLElement {
+    connectedCallback() { clearTimeout(this._t); if (!this._off && mountBound) this._off = mountBound(this, this._spec); }
+    disconnectedCallback() { this._t = setTimeout(() => { if (!this.isConnected && this._off) { this._off(); this._off = null; } }); }
+  });
+}
+function bound(kind, identity) {
+  const key = typeof identity === 'string' ? identity : identity && identity.key;
+  if (typeof key !== 'string' || !key) throw new Error('ui.' + kind + ' takes an identity: a key or {key, title}');
+  defineControl();
+  const el = document.createElement('phosphor-control');
+  el.className = 'ui-control';
+  el.dataset.kind = kind;
+  el.dataset.menuKey = key;
+  el._spec = { key, kind, title: (identity && typeof identity === 'object' && identity.title) || '' };
+  return def(el, { key: { value: key } });
+}
+/** The shell's own control for one field, by identity, with every RENDERING law; a missing one is a quiet row. */
+export const field = (identity) => bound('field', identity);
+/** The shell's own module (a field, a composite, a card of fields, a Dash summary), by identity. */
+export const module = (identity) => bound('module', identity);
+
+// ---- the shell context menu ------------------------------------------------------------
+
+/**
+ * The shell's context menu (src/ui/contextmenu.js): a top-layer list at a
+ * point, kept below the top strip and the stop pair and inside the window,
+ * moving nothing beneath. Arrows and Home/End move, Enter picks; Escape, Tab,
+ * a scroll and a tap outside close, and focus returns where it was. A
+ * disabled item names its reason as its title (law 3).
+ * items: [{label, run, disabled, section}]: `disabled` '' or the reason;
+ * `section` captions a group starting at that item.
+ */
+export function menu(o = {}) {
+  check('menu', o, ['title', 'desc', 'items', 'x', 'y', 'onClose']);
+  const el = h('div', { class: cls('ui-menu surface-card', o), popover: 'manual', role: 'menu', tabindex: '-1', 'aria-label': o.title || 'Menu' });
+  if (o.title) el.append(h('div', { class: 'ui-menu-h' }, h('div', { class: 'ui-menu-t', text: o.title }), o.desc ? h('div', { class: 'ui-menu-d', text: o.desc }) : null));
+  const back = document.activeElement;
+  let open = true, off = null;
+  const btns = [];
+  const close = (e) => {
+    if (!open) return;
+    open = false;
+    if (off) off();
+    for (const [t, f] of L) window.removeEventListener(t, f, true);
+    const inside = el.contains(document.activeElement);
+    if (el.matches(':popover-open')) el.hidePopover();
+    el.remove();
+    if (inside && back && back.isConnected && back.focus) back.focus({ preventScroll: true });
+    if (o.onClose) o.onClose(e);
+  };
+  for (const it of o.items || []) {
+    if (it.section) el.append(h('div', { class: 'ui-menu-sec', role: 'separator', text: it.section }));
+    const b = h('button', { type: 'button', role: 'menuitem', class: 'ui-menu-i', text: it.label, title: it.disabled || null });
+    b.disabled = !!it.disabled;
+    b.addEventListener('click', (e) => { close(e); if (it.run) it.run(e); });
+    btns.push(b);
+    el.append(b);
+  }
+  el.addEventListener('keydown', (e) => {
+    const live = btns.filter((b) => !b.disabled), i = live.indexOf(document.activeElement), n = live.length;
+    const to = e.key === 'ArrowDown' ? i + 1 : e.key === 'ArrowUp' ? (i < 0 ? n - 1 : i - 1) : e.key === 'Home' ? 0 : e.key === 'End' ? n - 1 : null;
+    if (to != null) { e.preventDefault(); if (n) live[(to + n) % n].focus(); return; }
+    if (e.key === 'Escape' || e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); close(e); }
+  });
+  const away = (e) => { if (!(e.target instanceof Node && el.contains(e.target))) close(e); };
+  const L = [['resize', close], ['blur', (e) => { if (e.target === window) close(e); }], ['wheel', away], ['scroll', away]];
+  document.body.append(el);
+  el.showPopover();
+  // Below the strip and the pair (in page fullscreen the pair floats alone), clear of the screen corners.
+  const rs = getComputedStyle(document.documentElement), px = (v) => parseFloat(rs.getPropertyValue(v)) || 0;
+  const top0 = Math.max(px('--strip-h'), px('--stop-reserve-h')) + 4, m = 8 + px('--corner-r') * 0.3;
+  el.style.maxHeight = Math.max(120, innerHeight - top0 - m) + 'px';
+  const w = el.offsetWidth, ht = el.offsetHeight;
+  const x = (o.x ?? 0) + w > innerWidth - m ? (o.x ?? 0) - w : (o.x ?? 0);
+  const y = (o.y ?? 0) + ht > innerHeight - m ? (o.y ?? 0) - ht : (o.y ?? 0);
+  el.style.left = clamp(x, m, Math.max(m, innerWidth - w - m)) + 'px';
+  el.style.top = clamp(y, top0, Math.max(top0, innerHeight - ht - m)) + 'px';
+  off = outside(el, close);
+  for (const [t, f] of L) window.addEventListener(t, f, true);
+  (btns.find((b) => !b.disabled) || el).focus({ preventScroll: true });
+  return def(el, { items: { value: btns }, close: { value: close } });
+}
+
 /** The shell's recess shades on a scroller of the plugin's own (DESIGN 10.3). -> off() */
 export function shade(el) {
   return scrollshade(el).destroy;
@@ -1147,5 +1244,5 @@ export const KIT = Object.freeze({
   version: VERSION, icons: ICONS, icon,
   button, files, segmented, switch: switchCtl, slider, stepper, select, text,
   page, card, rows, row, bar, stage, scrub, split, sheet, status, quickRail, list, tile,
-  outside, gestures, drag, shade,
+  outside, gestures, drag, shade, field, module,
 });

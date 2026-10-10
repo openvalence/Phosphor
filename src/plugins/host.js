@@ -28,9 +28,12 @@ export const KINDS = ['widget', 'adapter', 'theme'];
 export const MOTION_HOLD_MS = 500;
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
-const PERM_RE = /^(intent|motion|net\.fetch|net\.listen:([1-9][0-9]{0,4}))$/;
+const PERM_RE = /^(intent|motion|menu|net\.fetch|net\.listen:([1-9][0-9]{0,4}))$/;
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 const PATH_RE = /^[MmZzLlHhVvCcSsQqTtAa0-9eE.,\s+-]{1,2000}$/;
+
+/** The menus a contribution may join (docs/PLUGINS.md, Context menus). */
+export const MENU_TARGETS = ['field', 'module', 'page'];
 
 /** A plugin's Show tab switch, per plugin, '1' or '0'; absent, a factory plugin's pages show. */
 export const PAGES_KEY = 'phosphor.plugins.pages.';
@@ -109,6 +112,7 @@ class PermissionError extends Error {
  *   listenTcp(port, onLine)       -> Promise<close()>  (absent outside the shell)
  *   fetch(url, init)              -> Promise<Response>, CORS-free in the shell; null where none
  *   isHub(URL)                    -> true for the connected hub's own origins
+ *   hub()                         -> the connected hub's key (prefs.js hubKey), null without one
  *   prefs                         -> Storage-like {getItem, setItem} or null
  *   ui                            -> the plugin UI kit (kit.js KIT), one frozen object; null where none
  *   log(pluginName, level, msg)   -> the log pane
@@ -136,7 +140,7 @@ export function createPluginHost(deps) {
   function record(manifest, source) {
     return {
       manifest, source, status: 'loaded', error: null,
-      heroes: [], pages: [], settings: null, closers: [], deactivate: null,
+      heroes: [], pages: [], menus: [], docks: [], settings: null, closers: [], deactivate: null,
     };
   }
 
@@ -165,19 +169,41 @@ export function createPluginHost(deps) {
     if (!(rec.manifest.permissions || []).includes(perm)) throw new PermissionError(rec.manifest.name, perm);
   }
 
+  /**
+   * A contribution list slot that withdraw() takes back out. `note` tells the
+   * kernel: changed() reruns the claim pass and remounts every plugin hero, so
+   * a menu item (read when a menu opens) says nothing and a dock says only docks.
+   */
+  function slotted(rec, list, def, note = changed) {
+    const slot = { def, failed: false };
+    list.push(slot);
+    if (rec.status === 'active') note();
+    return () => {
+      const i = list.indexOf(slot);
+      if (i < 0) return;
+      list.splice(i, 1);
+      note();
+    };
+  }
+  const dockListeners = new Set();
+  const docksChanged = () => { for (const fn of dockListeners) { try { fn(); } catch (e) { /* a kernel listener */ } } };
+
   function makeApi(rec) {
     const name = rec.manifest.name;
     const prefix = 'plugin.' + name + '.';
+    // A field-bound control writes through the shell path from the plugin surface: it needs intent.
+    const bound = (kind) => (identity) => { need(rec, 'intent'); return deps.ui[kind](identity); };
     const api = {
       apiVersion: API_VERSION,
       // One glyph per shell surface a page draws itself (docs/PLUGINS.md, Pages).
       icons: Object.freeze({ quickRail: NAV_ICONS.quickRail }),
       // The shell's controls and layout primitives (docs/PLUGINS.md, The UI kit).
-      ui: deps.ui || null,
+      ui: deps.ui ? Object.freeze({ ...deps.ui, field: bound('field'), module: bound('module') }) : null,
       manifest: Object.freeze(JSON.parse(JSON.stringify(rec.manifest))),
 
       // ---- read: the model, never the wire ----
       catalog: () => deps.model(),
+      hub: () => (deps.hub ? deps.hub() : null),
       field: (role) => {
         const m = deps.model();
         const list = m && m.byRole && m.byRole.get(role);
@@ -254,16 +280,8 @@ export function createPluginHost(deps) {
         if (def.cells != null && !(cellPair(def.cells.h) && cellPair(def.cells.v))) {
           throw new Error('registerHero: cells must be {h: [w, h], v: [w, h]} in whole grid cells');
         }
-        const slot = { def, failed: false };
-        rec.heroes.push(slot);
-        if (rec.status === 'active') changed();
         // Withdraw this hero (a device that went away); its placement key stays inert.
-        return () => {
-          const i = rec.heroes.indexOf(slot);
-          if (i < 0) return;
-          rec.heroes.splice(i, 1);
-          changed();
-        };
+        return slotted(rec, rec.heroes, def);
       },
       // A tab under Plugins in the sidebar. `mount` is a hero's mount; `spec`
       // resolves without claiming, so a page never takes a field from a card.
@@ -281,15 +299,36 @@ export function createPluginHost(deps) {
           throw new Error('registerPage: search must be [{label, key}]');
         }
         if (rec.pages.some((p) => p.def.id === def.id)) throw new Error('registerPage: id "' + def.id + '" is taken');
-        const slot = { def, failed: false };
-        rec.pages.push(slot);
-        if (rec.status === 'active') changed();
-        return () => {
-          const i = rec.pages.indexOf(slot);
-          if (i < 0) return;
-          rec.pages.splice(i, 1);
-          changed();
-        };
+        return slotted(rec, rec.pages, def);
+      },
+      // An item in the shell context menu of a field, a module or a page (docs/PLUGINS.md, Context menus).
+      registerMenu: (def) => {
+        need(rec, 'menu');
+        if (!def || typeof def.id !== 'string' || !NAME_RE.test(def.id) || typeof def.run !== 'function') {
+          throw new Error('registerMenu needs {id, targets, label, run}');
+        }
+        if (!Array.isArray(def.targets) || !def.targets.length || !def.targets.every((t) => MENU_TARGETS.includes(t))) {
+          throw new Error('registerMenu: targets must list ' + MENU_TARGETS.join(', '));
+        }
+        if (!(typeof def.label === 'function' || (typeof def.label === 'string' && def.label.trim() && def.label.length <= 40))) {
+          throw new Error('registerMenu: label must be 1 to 40 characters or a function of the target');
+        }
+        if (rec.menus.some((m) => m.def.id === def.id)) throw new Error('registerMenu: id "' + def.id + '" is taken');
+        return slotted(rec, rec.menus, def, () => {});
+      },
+      // A panel in the shell right dock, closed until the user opens it (docs/PLUGINS.md, The dock).
+      registerDock: (def) => {
+        if (!def || typeof def.id !== 'string' || !NAME_RE.test(def.id) || typeof def.mount !== 'function') {
+          throw new Error('registerDock needs {id, label, mount}');
+        }
+        if (typeof def.label !== 'string' || !def.label.trim() || def.label.length > 24) {
+          throw new Error('registerDock: label must be 1 to 24 characters');
+        }
+        if (def.icon != null && !(typeof def.icon === 'string' && PATH_RE.test(def.icon))) {
+          throw new Error('registerDock: icon must be one SVG path d on a 16-unit viewBox');
+        }
+        if (rec.docks.some((d) => d.def.id === def.id)) throw new Error('registerDock: id "' + def.id + '" is taken');
+        return slotted(rec, rec.docks, def, docksChanged);
       },
       registerSettings: (mount) => {
         if (typeof mount !== 'function') throw new Error('registerSettings needs a mount function');
@@ -385,6 +424,8 @@ export function createPluginHost(deps) {
     rec.error = null;
     rec.heroes = [];
     rec.pages = [];
+    rec.menus = [];
+    rec.docks = [];
     rec.settings = null;
     rec.status = 'activating';
     const api = makeApi(rec);
@@ -401,6 +442,8 @@ export function createPluginHost(deps) {
       // plugin must not keep claims on fields the generic tree then loses.
       rec.heroes = [];
       rec.pages = [];
+      rec.menus = [];
+      rec.docks = [];
       rec.settings = null;
       closeAll(rec);
       rec.status = 'error';
@@ -422,6 +465,8 @@ export function createPluginHost(deps) {
     rec.deactivate = null;
     rec.heroes = [];
     rec.pages = [];
+    rec.menus = [];
+    rec.docks = [];
     rec.settings = null;
     rec.status = 'disabled';
   }
@@ -522,6 +567,40 @@ export function createPluginHost(deps) {
     return out;
   }
 
+  /**
+   * Active plugins' context-menu items for `target` ({kind, key, hub, title,
+   * path}), in load order: [{plugin, label, run}]. A label function that
+   * throws or returns nothing leaves its item out; run() is guarded.
+   */
+  function menus(target) {
+    const out = [];
+    for (const rec of plugins.values()) {
+      if (rec.status !== 'active') continue;
+      for (const m of rec.menus) {
+        if (!m.def.targets.includes(target.kind)) continue;
+        const label = typeof m.def.label === 'function' ? guard(rec, 'menu label', () => m.def.label(target)) : m.def.label;
+        if (typeof label !== 'string' || !label.trim()) continue;
+        out.push({ plugin: rec.manifest.name, label: label.trim().slice(0, 40),
+          run: () => guard(rec, 'menu ' + m.def.id, () => m.def.run(target)) });
+      }
+    }
+    return out;
+  }
+
+  /** Active plugins' docks, shaped as pages so PluginSlot mounts them. Id `plugin:<name>:<dock id>`. */
+  function docks() {
+    const out = [];
+    for (const rec of plugins.values()) {
+      if (rec.status !== 'active') continue;
+      for (const d of rec.docks) {
+        if (d.failed) continue;
+        out.push({ id: 'plugin:' + rec.manifest.name + ':' + d.def.id, label: d.def.label.trim(), icon: d.def.icon || null,
+          spec: {}, plugin: rec.manifest.name, slot: d });
+      }
+    }
+    return out;
+  }
+
   // A hero that throws is dropped, its claims released, and the fields it
   // held return to the generic renderer on the next claim pass.
   function heroFault(name, slot, where, e) {
@@ -577,13 +656,15 @@ export function createPluginHost(deps) {
       error: r.error,
       heroes: r.heroes.map((h) => ({ id: h.def.id, failed: h.failed })),
       pages: r.pages.map((p) => ({ id: p.def.id, label: p.def.label, failed: p.failed })),
+      docks: r.docks.map((d) => ({ id: d.def.id, label: d.def.label, failed: d.failed })),
       pageShown: pageShown(key),
       hasSettings: !!r.settings,
     }));
   }
 
   return {
-    add, remove, setEnabled, heroes, pages, pageShown, setPageShown, mountHero, updateHero, unmountHero, mountSettings, list,
+    add, remove, setEnabled, heroes, pages, menus, docks, pageShown, setPageShown, mountHero, updateHero, unmountHero, mountSettings, list,
     onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); },
+    onDocks(fn) { dockListeners.add(fn); return () => dockListeners.delete(fn); },
   };
 }
