@@ -79,19 +79,28 @@
   // ---- sample capture: one telebuf per candidate, fed on STATE arrival ----
   const RING_N = 420;          // 16.8 s at 25 Hz, past the visible window
   const WINDOW_MS = 10000;     // 10 s visible span
-  const lanes = new Map();     // field.uid -> { tele, lastTs }
+  const lanes = new Map();     // field.uid -> { tele, lastTs, lastV, changedAt }
+  // ON DEMAND (ph-p8yz): frames run on a new value in a plotted lane, a stale
+  // edge, a lane or grant change, a resize or a theme change, and keep going
+  // only while something drawn still scrolls (see moving()). Never a frame per
+  // display refresh while nothing moves.
+  let wake = () => {};
 
   $effect(() => {
     const live = new Set();
     for (const f of candidates) {
       live.add(f.uid);
       let lane = lanes.get(f.uid);
-      if (!lane) { lane = { tele: createTelebuf({ capacity: RING_N }), lastTs: 0 }; lanes.set(f.uid, lane); }
+      if (!lane) { lane = { tele: createTelebuf({ capacity: RING_N }), lastTs: 0, lastV: undefined, changedAt: 0 }; lanes.set(f.uid, lane); }
       const ts = machine.sampleTs[f.channelId];
       if (!ts || ts === lane.lastTs) continue;
       lane.lastTs = ts;
       const v = reportedValue(f, machine.samples[f.channelId]);
-      if (typeof v === 'number' && isFinite(v)) lane.tele.push(v, ts);
+      if (typeof v === 'number' && isFinite(v)) {
+        lane.tele.push(v, ts);
+        // A republished unchanged value draws nothing new: only a change wakes.
+        if (v !== lane.lastV) { lane.lastV = v; lane.changedAt = ts; if (untrack(() => selected.includes(f.role))) wake(); }
+      }
     }
     for (const uid of lanes.keys()) if (!live.has(uid)) lanes.delete(uid);
   });
@@ -107,7 +116,9 @@
     const open = last && last.to == null;
     if (stale && !open) gaps.push({ from: untrack(() => machine.stats.lastRxMs) || Date.now(), to: null });
     else if (!stale && open) last.to = Date.now();
+    else return;
     if (gaps.length > 256) gaps.shift();
+    wake();
   });
 
   let canvasEl = $state(null);
@@ -129,25 +140,29 @@
     }
     readTokens();
     const colorFor = (f) => paletteColors[Math.max(0, candidates.indexOf(f)) % paletteColors.length];
-    const themeObserver = new MutationObserver(() => { readTokens(); });
+    const themeObserver = new MutationObserver(() => { readTokens(); wake(); });
     themeObserver.observe(root, { attributes: true, attributeFilter: ['class', 'style'] });
-    const offTheme = onTheme(readTokens);
+    const offTheme = onTheme(() => { readTokens(); wake(); });
 
     const reduced = still.on;   // tracked: the Motion toggle re-runs this effect
 
+    // The size comes from a ResizeObserver, never a read in the frame: one
+    // there forces a layout behind whatever the page wrote this frame. A
+    // resize clears the canvas, so it redraws at once.
     let cssW = 0, cssH = 0;
-    function sizeIfNeeded() {
+    const ro = new ResizeObserver(() => {
       const w = canvasEl.clientWidth, h = canvasEl.clientHeight;
-      if (!w || !h) return false;
-      if (w !== cssW || h !== cssH) {
+      if (w && h && (w !== cssW || h !== cssH)) {
         const dpr = window.devicePixelRatio || 1;
         canvasEl.width = Math.round(w * dpr);
         canvasEl.height = Math.round(h * dpr);
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         cssW = w; cssH = h;
+        draw();
       }
-      return true;
-    }
+      wake();
+    });
+    ro.observe(canvasEl);
 
     // The visible window's samples plus the one before it, so a line enters
     // from the left edge instead of starting mid-lane.
@@ -176,7 +191,7 @@
     }
 
     function draw() {
-      if (!sizeIfNeeded()) return;
+      if (!cssW || !cssH) return;
       ctx.clearRect(0, 0, cssW, cssH);
       const series = resolvedSeries;
       const n = series.length;
@@ -244,30 +259,44 @@
       });
     }
 
-    let raf = null;
-    let timer = null;
-    function frame() {
-      draw();
-      raf = requestAnimationFrame(frame);
+    // Something drawn still scrolls while a plotted lane's last change or the
+    // newest stale edge is inside the window (plus 1 s for telebuf's
+    // reconstructed times); past that every frame is the same picture.
+    function moving(now) {
+      let at = 0;
+      for (const f of resolvedSeries) { const l = lanes.get(f.uid); if (l && l.changedAt > at) at = l.changedAt; }
+      const g = gaps[gaps.length - 1];
+      if (g) at = Math.max(at, g.from, g.to || 0);
+      return now - at < WINDOW_MS + 1000;
     }
 
-    // html.still: no continuous scroll, a discrete 1 s redraw.
-    // Capture is independent of this (the arrival effect above), and the HTML
-    // legend is plain reactive markup, live either way. untrack: a synchronous
-    // draw here would subscribe this effect to telemetry (webui.md T23).
-    if (reduced) {
-      untrack(draw);
-      timer = setInterval(draw, 1000);
-    } else {
-      raf = requestAnimationFrame(frame);
+    // html.still: no continuous scroll, a discrete 1 s redraw. Capture is
+    // independent of this (the arrival effect above), and the HTML legend is
+    // plain reactive markup, live either way.
+    let raf = 0, timer = 0;
+    function frame() {
+      raf = 0;
+      draw();
+      if (!moving(Date.now())) return;
+      if (reduced) timer = setTimeout(() => { timer = 0; raf = requestAnimationFrame(frame); }, 1000);
+      else raf = requestAnimationFrame(frame);
     }
+    wake = () => { if (!raf && !timer) raf = requestAnimationFrame(frame); };
 
     return () => {
+      wake = () => {};
       themeObserver.disconnect();
       offTheme();
+      ro.disconnect();
       if (raf) cancelAnimationFrame(raf);
-      if (timer) clearInterval(timer);
+      if (timer) clearTimeout(timer);
     };
+  });
+
+  // A lane toggle or a new grant (the hold-then-step bound) changes the picture.
+  $effect(() => {
+    for (const f of resolvedSeries) void machine.grants[f.channelId];
+    wake();
   });
 </script>
 
