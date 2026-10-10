@@ -213,6 +213,7 @@ export function createClient(o) {
     });
     ses.on('close', (c) => {
       if (s !== ses) return;
+      lastDiag = null;
       stopActivities();
       live = false;
       if (!closing) { bump(stats.reaps, String(c && c.code)); rec('closed', c && c.code); }
@@ -249,13 +250,17 @@ export function createClient(o) {
     } else if (o.record && byId.get(ch)?.settingChannel != null) rec('cfg', [ch, v]);
   }
 
+  // Against this session's own last sample: two clients of one hub see its samples through their own link
+  // delays, so across clients an older sample can land after a newer one.
+  let lastDiag = null;
   function diagCheck(v) {
-    const p = hub.diag;
+    const p = lastDiag;
     if (p && p.reset_gen === v.reset_gen) {
       for (const k of ['plans', 'failures', 'anomalies', 'sync_bundles', 'sync_samples', 'sync_seg_bundles', 'sync_dropped'])
         if (v[k] < p[k]) flag('non-monotonic ' + k, p[k] + ' -> ' + v[k]);
     }
-    hub.diag = v;
+    lastDiag = v;
+    if (!hub.diag || hub.diag.reset_gen !== v.reset_gen || v.sync_bundles >= hub.diag.sync_bundles) hub.diag = v;
   }
 
   function flag(kind, detail) {
