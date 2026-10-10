@@ -21,6 +21,8 @@ assert.equal(stageEcho(staging, K, fields, 0x3200, { 1: true, 3: 40 }), 1, 'patt
 assert.ok(!staging[K][uid(0x1200, 'running')]);
 assert.equal(staging[K][uid(0x1000, 'window_max')].value, 700);
 assert.equal(stageEcho(staging, K, fields, 0x3101, { 1: 1 }), 0, 'a verb stages nothing');
+const secret = { uid: '7e00:passphrase', name: 'passphrase', writeChannel: 0x7e01, settingKey: 6, flagBits: { secret: true } };
+assert.equal(stageEcho(staging, K, [secret], 0x7e01, { 6: true }), 0, 'a secret never stages (ph-buvu)');
 stageEcho(staging, K, fields, 0x3000, { 2: 650 });
 assert.equal(staging[K][uid(0x1000, 'window_max')].value, 650, 'the latest echo wins');
 // A field the live hub will lack, and one whose type will change.

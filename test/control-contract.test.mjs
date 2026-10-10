@@ -14,7 +14,8 @@
  * intent's late session timeout (ph-6i9); display-only presentations write
  * nothing; every presentation keeps one height idle, pending, overdue,
  * confirmed, grayed (enabled_mask), stale (hub silence) and at fault, the
- * words in the head-row slot (ph-vdk.60.1); an aspect flip at w = h swaps
+ * words in the head-row slot (ph-vdk.60.1), on screen whole overdue, at fault
+ * and at 4 and 10 cells (ph-4j5f); an aspect flip at w = h swaps
  * orientation without dropping a write
  * in flight; a secret action payload masks and never reaches the status text
  * (ph-vic), and an action press climbs the same ladder with the same stamp
@@ -27,7 +28,10 @@
  * no pulses (ph-vdk.60.11; --shots <dir> saves the held slider). Through a
  * placement look (RFC-080 by ruling, ph-huv): a two-valued toggle on a
  * three-option field writes B then A, and a narrowed slider marks a reported
- * value outside its range, each up the same ladder.
+ * value outside its range, each up the same ladder. A toggle reading its
+ * boolean default has Reset disabled and a motion start has none (ph-hyu7); a
+ * secret's input empties once its write lands, never echoes, and never enters
+ * history (ph-buvu).
  *
  * Live mode (--live): the same page against a running valencesim; one
  * slider-class field driven through slider, knob and stepper, the two-valued
@@ -53,7 +57,7 @@ import { cbMap, cbUint, cbInt, cbF32, cbBool, cbBstr, cbTstr, cbArray, cbDecodeF
 import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, PACKED, LIMITS, NACK, CBOR_FIELD, SETTING_FLAG } from '../../Valence/clients/js/frames.js';
 import { createSession, catalogEtag, toHex } from '../../Valence/clients/js/index.js';
 import { acquireToken } from '../../Valence/clients/js/credentials.js';
-import { buildSettingsModel, placeableControls, WIDGET } from '../src/model/settings.js';
+import { buildSettingsModel, placeableControls, resetsToDefault, WIDGET } from '../src/model/settings.js';
 import { precisionFor } from '../src/model/format.js';
 
 const args = process.argv.slice(2);
@@ -90,10 +94,12 @@ function withExtras(raw) {
       lf('arm', PACKED.u8, 3, [[10, off], [15, cbUint(SETTING_FLAG.destructive)]]),
       lf('lamp', PACKED.u8, 4, [[10, off]]),
       lf('long_advanced_toggle_label', PACKED.u8, 5, [[10, off], [15, cbUint(SETTING_FLAG.advanced)]]),
+      lf('passphrase', PACKED.str16, 6, [[15, cbUint(SETTING_FLAG.secret)]]),
     ])], [14, cbUint(XI)]]);
   const intent = cbMap([[1, cbUint(XI)], [2, cbTstr('fixture-extras-set')], [3, cbUint(2)], [4, cbUint(1)], [5, cbUint(1)],
     [6, cbF32(5)], [7, cbUint(1)], [9, cbMap([[1, sf('label_text', CBOR_FIELD.tstr_t)], [2, sf('lamp_bits', CBOR_FIELD.uint_t)],
-      [3, sf('arm', CBOR_FIELD.uint_t)], [4, sf('lamp', CBOR_FIELD.uint_t)], [5, sf('long_advanced_toggle_label', CBOR_FIELD.uint_t)]])]]);
+      [3, sf('arm', CBOR_FIELD.uint_t)], [4, sf('lamp', CBOR_FIELD.uint_t)], [5, sf('long_advanced_toggle_label', CBOR_FIELD.uint_t)],
+      [6, sf('passphrase', CBOR_FIELD.tstr_t)]])]]);
   return concatBytes([head(4, n + 2), raw.subarray(hl), state, intent]);
 }
 const ETAG = toHex(catalogEtag(CAT, LIMITS.etag_bytes));
@@ -252,15 +258,17 @@ function fakeHub(ws) {
         hub.log.push({ ch, val });
         // One INTENT channel may set fields of several STATE channels.
         const sts = ENTRIES.filter((e) => e.settingChannel === ch && e.layout);
+        // SPEC 8.8: a secret's STATE is a presence mark and its ECHO says `true`, never the value.
+        const secret = (k) => sts.some((st) => st.layout.some((x) => x.settingKey === k && x.flagBits && x.flagBits.secret));
         const answer = () => {
           for (const [k, v] of val) {
             for (const st of sts) {
               const f = st.layout.find((x) => x.settingKey === k);
-              if (f) hub.values[st.id + ':' + f.name] = v;
+              if (f) hub.values[st.id + ':' + f.name] = secret(k) ? (v ? 'set' : '') : v;
             }
           }
           send(FRAME.ECHO, ch, cbMap([[K.cfg_gen, cbUint(2)], [K.intent_id, cbUint(id)],
-            [K.applied, cbMap(val.map(([k, v]) => [k, cbAny(v)]))]]));
+            [K.applied, cbMap(val.map(([k, v]) => [k, secret(k) ? cbBool(true) : cbAny(v)]))]]));
           const push = () => { for (const st of sts) pushState(st.id); };
           if (hub.stateLagMs) setTimeout(push, hub.stateLagMs); else push();
         };
@@ -305,6 +313,10 @@ const F32 = MODEL.fields.find((f) => !f.readOnly && f.type === PACKED.f32 && f.s
 // ph-62w: a merged min/max pair; ph-z5o: a long advanced toggle label.
 const RANGE = placeableControls(MODEL).find((c) => c.field && c.field.widget === WIDGET.range);
 const LONG = MODEL.fields.find((f) => f.uid === XS + ':long_advanced_toggle_label');
+// ph-hyu7: a resettable toggle whose catalog default is a boolean, and a motion start; ph-buvu: a secret.
+const DEF = MODEL.fields.find((f) => f.widget === WIDGET.toggle && typeof f.dflt === 'boolean' && resetsToDefault(f));
+const RUN = MODEL.fields.find((f) => f.role === 'pattern.running');
+const SEC = MODEL.fields.find((f) => f.uid === XS + ':passphrase');
 // Placement looks (RFC-080 by ruling, ph-huv), drawn through Control: a toggle
 // writing options 1 and 2 of a three-option field, and a slider narrowed to
 // the middle half of another field's range, on its step grid.
@@ -317,7 +329,8 @@ const TWO_KEY = 'toggle@' + TWO.uid + '@a=1;b=2';
 const NARROW_KEY = 'slider@' + NARROW.uid + '@min=' + NLO + ';max=' + NHI;
 const MORE = [...(SMALL ? ['numeral@' + SMALL.uid] : []),
   ...Object.entries(LADDER).filter(([, f]) => f).map(([p, f]) => p + '@' + f.uid), 'toggle@' + ARM.uid, TWO_KEY, NARROW_KEY,
-  ...(F32 ? ['stepper@' + F32.uid] : []), ...(RANGE ? ['range@' + RANGE.key] : []), ...(LONG ? ['toggle@' + LONG.uid] : [])];
+  ...(F32 ? ['stepper@' + F32.uid] : []), ...(RANGE ? ['range@' + RANGE.key] : []), ...(LONG ? ['toggle@' + LONG.uid] : []),
+  ...[DEF, RUN].filter(Boolean).map((f) => 'toggle@' + f.uid), ...(SEC ? ['secret@' + SEC.uid] : [])];
 const browser = await chromium.launch();
 const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 } });
 if (!LIVE) {
@@ -590,6 +603,57 @@ if (!LIVE) {
     && document.querySelector('.cell[data-pres="toggle@' + u + '"] .field').dataset.shadow === 'confirmed', ARM.uid,
     { timeout: 3000 }).then(() => true).catch(() => false) && await armBox.isChecked() === !was);
 
+  console.log('\n[reset] a toggle at its boolean default; a motion start has no Reset (ph-hyu7)');
+  if (DEF && RUN) {
+    const rb = page.locator('.cell[data-pres="toggle@' + DEF.uid + '"] .field button.info.reset');
+    // Settled on the echo, so no write of this field is left in flight for the hold below.
+    const rbIs = (re, off) => page.waitForFunction(([u, src, off]) => {
+      const b = document.querySelector('.cell[data-pres="toggle@' + u + '"] .field[data-shadow=confirmed] button.info.reset');
+      return !!b && b.disabled === off && new RegExp(src).test(b.title);
+    }, [DEF.uid, re.source, off], { timeout: 3000 }).then(() => true).catch(() => false);
+    const rbNow = async () => [await rb.isDisabled(), await rb.getAttribute('title')];
+    ok('reset: a toggle reading its boolean default says so, Reset disabled', await rbIs(/^At machine default/, true), await rbNow());
+    await page.locator('.cell[data-pres="toggle@' + DEF.uid + '"] .og-switch').click();
+    ok('reset: switched off its default, Reset is live', await rbIs(/^Reset to machine default/, false), await rbNow());
+    await rb.click();
+    const wrote = () => { const w = hub.log.filter((x) => x.ch === DEF.writeChannel).at(-1); return w && w.val.find(([k]) => k === DEF.settingKey); };
+    ok('reset: Reset writes the default and reads at default again', await rbIs(/^At machine default/, true)
+      && wrote() && Number(wrote()[1]) === 0, [await rbNow(), wrote()]);
+    ok('reset: a motion start (pattern.running) offers no per-field Reset',
+      await page.locator('.cell[data-pres="toggle@' + RUN.uid + '"] .field').count() === 1
+      && await page.locator('.cell[data-pres="toggle@' + RUN.uid + '"] button.info.reset').count() === 0);
+  } else ok('the fixture has a resettable boolean toggle and pattern.running', false);
+
+  console.log('\n[secret] the typed secret leaves the input once its write lands (ph-buvu)');
+  if (SEC) {
+    const PW = 'hunter2a';
+    const si = page.locator('.cell[data-pres="secret@' + SEC.uid + '"] .field input[type=password]');
+    const lands = (st) => page.waitForFunction(([u, st]) => document.querySelector('.cell[data-pres="secret@' + u + '"] .field')
+      .dataset.shadow === st, [SEC.uid, st], { timeout: 3000 }).then(() => true).catch(() => false);
+    // Typed, then the focus leaves: the browser's own change, once.
+    const typeIn = async (s) => { await si.fill(s); await si.blur(); };
+    ok('secret: unset reads not set', await si.getAttribute('placeholder') === 'not set', await si.getAttribute('placeholder'));
+    hub.mode = 'hold';
+    await typeIn(PW);
+    ok('secret: pending', await lands('pending'));
+    ok('secret: in flight the field keeps the machine\'s word, never the request', await si.getAttribute('placeholder') === 'not set',
+      await si.getAttribute('placeholder'));
+    await release();
+    ok('secret: confirmed', await lands('confirmed'));
+    ok('secret: a confirmed write empties the input and the placeholder says set',
+      await si.inputValue() === '' && /\(set\)/.test(await si.getAttribute('placeholder')), [await si.inputValue(), await si.getAttribute('placeholder')]);
+    hub.mode = 'nack';
+    await typeIn(PW + 'b');
+    ok('secret: a refused write empties the input too', await lands('fault') && await si.inputValue() === '', await si.inputValue());
+    hub.mode = 'echo';
+    ok('secret: the secret is nowhere on the page', await page.evaluate((s) => !document.documentElement.outerHTML.includes(s)
+      && ![...document.querySelectorAll('input')].some((i) => i.value.includes(s)), PW));
+    const hist = await page.evaluate(() => window.__history());
+    ok('secret: history and undo never hold it', !hist.includes(PW) && !hist.includes(SEC.uid), hist.length);
+  } else ok('the fixture extras carry a secret', false);
+  // The drag checks below aim the mouse at the first row: no scroll left behind.
+  await page.evaluate(() => window.scrollTo(0, 0));
+
   console.log('\n[display-only]');
   for (const p of ['numeral', 'bar']) {
     ok(p + ': a read-only presentation of a writable field has no control',
@@ -637,6 +701,15 @@ if (!LIVE) {
       const f = document.querySelector('.cell[data-pres="range@' + k + '"] .field');
       return f.dataset.shadow === 'confirmed' && !!f.dataset.glow && f.querySelector('.ladder').textContent === 'confirmed';
     }, RANGE.key, { timeout: 3000 }).then(() => true).catch(() => false), await rg.locator('.ladder').textContent());
+    hub.mode = 'nack';
+    await rg.locator('input.range-hi').evaluate((el) => el.focus({ preventScroll: true }));
+    await page.keyboard.press('ArrowLeft');
+    const words = await page.waitForFunction((k) => {
+      const l = document.querySelector('.cell[data-pres="range@' + k + '"] .field[data-shadow=fault] .ladder');
+      return l && { text: l.textContent, w: l.clientWidth, sw: l.scrollWidth };
+    }, RANGE.key, { timeout: 1500 }).then((h) => h.jsonValue()).catch(() => null);
+    ok('range: a refusal shows its words whole beside the pair (ph-4j5f)', !!words && /INVALID_VALUE/.test(words.text)
+      && words.sw <= words.w, words);
     hub.mode = 'echo';
   } else ok('the fixture has a min/max pair', false);
 
@@ -668,6 +741,13 @@ if (!LIVE) {
     const h = await heights();
     for (const p of PRES) ok(p + ': the same boxes ' + state, sameGeo(h[p], idle[p]), [idle[p], h[p]]);
   };
+  // A write's words and a gate's are on screen whole, not only in the DOM and the title (laws 3, 5, ph-4j5f).
+  const wordsWhole = async (state) => {
+    const cut = await page.evaluate(() => [...document.querySelectorAll('.cell[data-pres] .field .ladder:is([data-slot=pending], [data-slot=overdue], [data-slot=fault], [data-slot=gate])')]
+      .filter((l) => l.scrollWidth > l.clientWidth)
+      .map((l) => l.closest('.cell').dataset.pres + ' "' + l.textContent + '" ' + l.clientWidth + '/' + l.scrollWidth));
+    ok('every presentation shows its words whole ' + state + ' (ph-4j5f)', cut.length === 0, cut);
+  };
   hub.mode = 'hold';
   await drive('slider');
   ok('a write is pending', await waitShadow('slider', 'pending', 1000));
@@ -676,6 +756,7 @@ if (!LIVE) {
   ok('in flight: pending counts, not overdue (ph-sbu)', JSON.stringify(await fl()) === '{"n":1,"overdue":false}', await fl());
   ok('...then overdue', await waitShadow('slider', 'overdue', 1500));
   await same('overdue');
+  await wordsWhole('overdue');
   ok('in flight: overdue counts and says so', JSON.stringify(await fl()) === '{"n":1,"overdue":true}', await fl());
   await release();
   ok('...then confirmed', await waitShadow('slider', 'confirmed'));
@@ -701,6 +782,7 @@ if (!LIVE) {
   await drive('slider');
   ok('a refused write faults', await waitShadow('slider', 'fault', 1500));
   await same('at fault, its reason in the slot');
+  await wordsWhole('at fault');
   ok('in flight: a refused write is not in flight (ph-sbu)',
     (await page.evaluate((u) => window.__inFlight([u]), FIELD.uid)).n === 0);
   hub.mode = 'echo';
@@ -1215,8 +1297,8 @@ if (!LIVE) {
   hub.mode = 'echo';
 
   // ---- density rungs and targets (ph-z50z, ph-46yw, ph-1ggd, ph-3z96) ----------
-  // Compact below 18rem, normal above; the ladder slot keeps the width of
-  // 'still waiting' at a 10-cell field (a 4-cell one holds the chip alone); under a coarse pointer
+  // Compact below 20rem, normal above; a refusal's words show whole at both (ph-4j5f), and the
+  // ladder slot keeps the width of 'still waiting' at a 10-cell field; under a coarse pointer
   // every hit target in both rungs is 40 px, the reset button and bit rows too.
   const setW = (pg, px) => pg.evaluate((w) => document.querySelectorAll('.cell').forEach((c) => { c.style.width = w + 'px'; }), px);
   const slotW = (p) => cell(p).locator('.ladder').evaluate((e) => e.getBoundingClientRect().width);
@@ -1232,8 +1314,13 @@ if (!LIVE) {
     return out;
   });
   const gapOf = (p) => cell(p).evaluate((e) => getComputedStyle(e.querySelector('.field-head')).columnGap);
+  hub.mode = 'nack';
+  await drive('slider');
+  ok('a refusal for the rungs', await waitShadow('slider', 'fault', 1500));
+  hub.mode = 'echo';
   for (const [cells, px] of [[4, 4 * 36 + 16], [10, 10 * 36 + 16]]) {
     await setW(page, px);
+    await wordsWhole('at ' + cells + ' cells');
     if (SHOTS) await page.locator('.row').first().screenshot({ path: join(SHOTS, 'rung-' + cells + '-cells.png') });
     if (cells > 4) for (const p of WRITERS) ok(p + ' at ' + cells + ' cells: the status slot holds a still-waiting word', await slotW(p) >= 70, await slotW(p));
     if (cells === 4) {
