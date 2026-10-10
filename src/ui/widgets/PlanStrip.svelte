@@ -52,6 +52,7 @@
    * `plan.style` renders through optionLabel() off the catalog's own option
    * list, so a planner that gains or retires a style needs no change here.
    */
+  import { untrack } from 'svelte';
   import { machine } from '../../model/machine.svelte.js';
   import { isStill } from '../still.svelte.js';
   import { formatParts, optionLabel, labelFor } from '../../model/format.js';
@@ -149,6 +150,7 @@
   // RFC-100: how the planner bent the plan, in the registry's words; any
   // word at all means the plan could not run as commanded.
   const bent = $derived(fields && fields.flags ? planFlagNames(fieldValue(fields.flags) ?? 0) : []);
+  const isBent = $derived(bent.length > 0);
   // The source holding the rail, in the hub's own words; '' reads "plan".
   const owner = $derived(railOwnerName(machine.catalog.entries.find((e) => e.id === CH_CONTROL_OWNER),
     machine.samples[CH_CONTROL_OWNER]));
@@ -173,7 +175,7 @@
   const FRESH_MS = 250;
   const HIDE_GRACE_MS = 1000;
   let isActive = $state(false);
-  let hideTimer = null;
+  let hideTimer = null, pollTimer = null;
 
   function claimedChannelIds() {
     if (!fields) return [];
@@ -188,21 +190,24 @@
   // may publish nothing new while it holds: it counts as streaming until its
   // own remaining time has run out, so a long dwell never reads as a stall.
   const MS_PER = { [UNIT_ID.us]: 1e-3, [UNIT_ID.ms]: 1, [UNIT_ID.s]: 1e3 };
-  function holding(now) {
+  function holdEnd() {
     const d = fields && fields.duration, e = fields && fields.elapsed;
     const k = d && e && d.unitId === e.unitId ? MS_PER[d.unitId] : null;
-    if (!k || !haveSpan || Math.abs(endPct - startPct) > LIMITS.segment_dwell_span) return false;
-    if (!(durVal > 0) || !(elapsedVal < durVal)) return false;
-    return now - (machine.sampleTs[d.channelId] || 0) < (durVal - elapsedVal) * k;
+    if (!k || !haveSpan || Math.abs(endPct - startPct) > LIMITS.segment_dwell_span) return 0;
+    if (!(durVal > 0) || !(elapsedVal < durVal)) return 0;
+    return (machine.sampleTs[d.channelId] || 0) + (durVal - elapsedVal) * k;
   }
 
+  // Polled on new plan data and again when that data goes stale, never per frame.
   function pollActivity() {
-    const ids = claimedChannelIds();
-    const now = Date.now();
-    const fresh = ids.some((id) => (now - (machine.sampleTs[id] || 0)) < FRESH_MS) || holding(now);
-    if (fresh) {
+    clearTimeout(pollTimer);
+    pollTimer = null;
+    const until = Math.max(holdEnd(), ...claimedChannelIds().map((id) => (machine.sampleTs[id] || 0) + FRESH_MS));
+    const left = until - Date.now();
+    if (left > 0) {
       if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
       isActive = true;
+      pollTimer = setTimeout(pollActivity, left);
     } else if (isActive && !hideTimer) {
       hideTimer = setTimeout(() => { isActive = false; hideTimer = null; }, HIDE_GRACE_MS);
     }
@@ -212,6 +217,10 @@
   let canvasEl = $state(null);
   const GHOST_N = 5;
   const GHOST_FADE_MS = 1200;
+  // ON DEMAND (ph-3w4u): frames run on new plan data, a prop, a resize or a
+  // theme change, and the span view keeps them going while its ghosts fade.
+  // Never a frame per display refresh while nothing moves.
+  let wake = () => {};
 
   $effect(() => {
     if (!canvasEl || !haveAnyPosition || !shown) return;
@@ -223,22 +232,23 @@
       cReal = cssVar('--reality'); cIntent = cssVar('--intent'); cWarn = cssVar('--warn'); cLine = cssVar('--line');
     };
     readTokens();
-    const offTheme = onTheme(readTokens);
+    const offTheme = onTheme(() => { readTokens(); wake(); });
 
-
+    // The size comes from a ResizeObserver, never a read in the frame: one
+    // there forces a layout behind whatever the page wrote this frame.
     let cssW = 0, cssH = 0;
-    function sizeIfNeeded() {
+    const ro = new ResizeObserver(() => {
       const w = canvasEl.clientWidth, h = canvasEl.clientHeight;
-      if (!w || !h) return false;
-      if (w !== cssW || h !== cssH) {
+      if (w && h && (w !== cssW || h !== cssH)) {
         const dpr = window.devicePixelRatio || 1;
         canvasEl.width = Math.round(w * dpr);
         canvasEl.height = Math.round(h * dpr);
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         cssW = w; cssH = h;
       }
-      return true;
-    }
+      wake();
+    });
+    ro.observe(canvasEl);
 
     let dispFrom = null, dispTo = null;
     let lastKey = '';
@@ -253,8 +263,7 @@
     }
 
     function draw() {
-      pollActivity();
-      if (!sizeIfNeeded()) return;
+      if (!cssW || !cssH) return;
       ctx.clearRect(0, 0, cssW, cssH);
       const h = cssH;
       const now = performance.now();
@@ -286,7 +295,7 @@
         ctx.shadowBlur = isStill() ? 0 : 6;
         ctx.shadowColor = ctx.fillStyle = cIntent;
         ctx.fillRect(xe - 1, 0, 2, h);
-        const late = bent.length > 0 || !isActive || (durVal > 0 && elapsedVal > durVal);
+        const late = isBent || !isActive || (durVal > 0 && elapsedVal > durVal);
         ctx.shadowColor = ctx.fillStyle = late ? cWarn : cReal;
         ctx.fillRect(xc - 1, -1, 2, h + 2);
         ctx.restore();
@@ -344,17 +353,45 @@
       ctx.restore();
     }
 
-    let raf = null, timer = null;
-    function frame() { draw(); raf = requestAnimationFrame(frame); }
-    if (isStill()) { draw(); timer = setInterval(draw, 1000); }
-    else raf = requestAnimationFrame(frame);
+    // Still: the ghost fade steps once a second.
+    let raf = 0, timer = 0, until = 0;
+    function frame() {
+      raf = 0;
+      draw();
+      if (performance.now() >= until) return;
+      if (isStill()) timer = setTimeout(() => { timer = 0; raf = requestAnimationFrame(frame); }, 1000);
+      else raf = requestAnimationFrame(frame);
+    }
+    wake = () => {
+      until = performance.now() + (segment ? 0 : GHOST_FADE_MS);
+      if (timer) { clearTimeout(timer); timer = 0; }
+      if (!raf) raf = requestAnimationFrame(frame);
+    };
+    wake();
 
     return () => {
+      wake = () => {};
       offTheme();
+      ro.disconnect();
       if (raf) cancelAnimationFrame(raf);
-      if (timer) clearInterval(timer);
+      if (timer) clearTimeout(timer);
       if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+      if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
     };
+  });
+
+  // Every plan arrival polls the streaming state; only a change to what a
+  // frame draws wakes it (a hub may republish an unchanged plan).
+  $effect(() => {
+    if (!canvasEl || !haveAnyPosition || !shown) return;
+    for (const id of claimedChannelIds()) void machine.sampleTs[id];
+    untrack(pollActivity);
+  });
+  $effect(() => {
+    if (!canvasEl || !haveAnyPosition || !shown) return;
+    void startPct; void endPct; void curPct; void durVal; void elapsedVal; void isBent; void isActive;
+    void edge0; void edge1; void pos; void target; void isStill();
+    wake();
   });
 </script>
 
