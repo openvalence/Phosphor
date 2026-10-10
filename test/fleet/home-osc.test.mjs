@@ -14,7 +14,7 @@
 import { bootNeutrino, wasmBytes } from './neutrino.mjs';
 import { createSession, CH, PRIORITY, SAFETY_OP } from '../../../Valence/clients/js/index.js';
 
-const REFUSAL_LANDED = false;
+const REFUSAL_LANDED = true;
 let fails = 0;
 const ok = (name, cond, extra) => {
   console.log('  [' + (cond ? 'PASS' : 'FAIL') + '] ' + name + (extra !== undefined ? '  -- ' + JSON.stringify(extra) : ''));
@@ -107,5 +107,5 @@ if (r === 'ok') { await until(() => flags().homing, 3000); await until(() => !fl
 
 running = false;
 s.close();
-console.log(fails ? fails + ' FAILED' : 'all passed (XFAIL is the pending val-dzf refusal)');
+console.log(fails ? fails + ' FAILED' : 'all passed' + (REFUSAL_LANDED ? '' : ' (XFAIL is the pending val-dzf refusal)'));
 process.exit(fails ? 1 : 0);

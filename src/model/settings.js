@@ -82,6 +82,8 @@ export const DRAG_TICKS_MIN = 20;
 /** RFC-083: the roles that carry a hub-time moment (unit hub_s). */
 export const DATETIME_ROLES = new Set([FIELD_ROLE.datetime_moment, FIELD_ROLE.datetime_start, FIELD_ROLE.datetime_end]);
 const COLOR_ROLES = [FIELD_ROLE.color_red, FIELD_ROLE.color_green, FIELD_ROLE.color_blue];
+// RFC-089: an action.store op's own arguments. They ride the op; no widget claims them.
+const STORE_ARGS = new Set([FIELD_ROLE.store_slot, FIELD_ROLE.store_name, FIELD_ROLE.store_item]);
 
 /**
  * How many distinct values the range holds, or null when it has no bounds.
@@ -547,9 +549,9 @@ export function buildSettingsModel(entries) {
         type: f.type,
         // The other schema fields of the same INTENT ride with the op (a
         // preset's slot and name, say). Roled value fields are claimed by
-        // their own widgets and never ride here.
-        payload: entry.schema.filter((p) => p !== f && !p.role && p.rank !== UI_RANK.hidden)
-          .map((p) => ({ key: p.key, name: p.name, label: humanize(p.name), desc: p.desc || '',
+        // their own widgets and never ride here; the store arguments do.
+        payload: entry.schema.filter((p) => p !== f && (!p.role || STORE_ARGS.has(p.role)) && p.rank !== UI_RANK.hidden)
+          .map((p) => ({ key: p.key, name: p.name, label: humanize(p.name), desc: p.desc || '', role: p.role || null,
                          type: p.type, unit: p.unit || '', min: p.min, max: p.max,
                          secret: !!(p.flagBits && p.flagBits.secret) })),
         archetype: UI_ARCHETYPE.trigger,   // §8.2 row 6

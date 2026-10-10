@@ -1325,9 +1325,11 @@ function mountCard(api, el, fields) {
 
 function presetRow(api, F, updaters, tools) {
   const op = F.presetOp;
-  // The registry names no role for the op's slot and name: told apart by type (ph-e82.18).
-  const slotKey = ((op.payload || []).find((p) => p.type === CBOR.uint) || {}).key;
-  const nameKey = ((op.payload || []).find((p) => p.type === CBOR.tstr) || {}).key;
+  // The op's slot and name by their RFC-089 roles; a hub without them, told apart by type (ph-e82.18).
+  const arg = (role, type) => ((op.payload || []).find((p) => p.role === role)
+    || (op.payload || []).find((p) => !p.role && p.type === type) || {}).key;
+  const slotKey = arg('store.slot', CBOR.uint);
+  const nameKey = arg('store.name', CBOR.tstr);
   let slots = null, reading = false, again = false, asking = false, renaming = null;   // renaming: the slot whose name is edited
   const sel = h('select', { 'aria-label': 'Preset' });
   const save = h('button', { type: 'button', class: 'og-btn', text: 'Save' });

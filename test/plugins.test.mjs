@@ -718,10 +718,12 @@ console.log('(e3) role door: a samples STREAM by channel role');
 {
   const H = 50_000_000, T = 10_000, ROLE_OSC = 'osc.drive';
   const f32 = (name) => ({ name, type: 6, typeName: 'f32', scale: 1 });
-  // Names unlike any device's: only class, direction, stream_kind and the role find it.
+  // Names unlike any device's: only class, direction, stream_kind and the role find it. The fixture's own
+  // osc-drive leaves, so the look-alikes are the only competition.
   const osc = { id: 0x7140, cls: CHANNEL_CLASS.STREAM, dirName: 'c2h', streamKind: STREAM_KIND.samples, maxRateHz: 100, role: ROLE_OSC,
     layout: [f32('p'), f32('q')] };
-  const ents = [...entries, { ...osc, id: 0x7141, streamKind: STREAM_KIND.segments }, { ...osc, id: 0x7142, role: null }, osc];
+  const ents = [...entries.filter((e) => e.role !== ROLE_OSC), { ...osc, id: 0x7141, streamKind: STREAM_KIND.segments },
+    { ...osc, id: 0x7142, role: null }, osc];
   const tick = () => new Promise((r) => setTimeout(r, 0));
   const s = {
     sent: [], asked: [], state: { sessionId: 9, grantedPublishes: new Map() }, hubNowUs: () => H,

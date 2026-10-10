@@ -27,7 +27,7 @@
  *              and none sits directly in a box of its own token; nothing in
  *              the pane scrolls on its own (ph-e82.22)
  *   sections   a " / " group is a card under its section's one header row:
- *              Motion's Tuning holds the eleven former Tuning cards, System's
+ *              Motion's Tuning holds the twelve Tuning cards, System's
  *              Library its presets card; the header paints no tint, and the
  *              advanced toggle moves neither it nor anything above it, and
  *              toggling twice lands every card where it began
@@ -381,9 +381,9 @@ if (!LIVE) {
      JSON.stringify(await sectionRuns()) === JSON.stringify([{ head: 'Library', cards: ['Pattern presets'] }]), await sectionRuns());
   await page.click('nav.rail [role=tab][title="Motion"]');
   await page.waitForTimeout(150);
-  const TUNING = ['Motion behavior', 'Streaming', 'Curve', 'Ceilings', 'Re-planning', 'Sample streams',
-    'Anomalies', 'Active plan', 'Planner', 'Stream ingress', 'Plan time'];
-  ok('sections: Motion shows one Tuning section header with its eleven cards under it',
+  const TUNING = ['Motion behavior', 'Streaming', 'Safety', 'Curve', 'Ceilings', 'Sample streams', 'Planner',
+    'Re-planning', 'Active plan', 'Anomalies', 'Plan time', 'Stream ingress'];
+  ok('sections: Motion shows one Tuning section header with its twelve cards under it',
      JSON.stringify(await sectionRuns()) === JSON.stringify([{ head: 'Tuning', cards: TUNING }]), await sectionRuns());
   const headTint = await page.$eval('main.pane .dash-section', (h) => {
     const out = [];

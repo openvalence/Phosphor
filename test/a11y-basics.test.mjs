@@ -451,11 +451,16 @@ for (const [w, h, touch] of [[1440, 900, false], [420, 860, true], [390, 844, tr
         && r.track.every(([s, max, still]) => still && s >= Math.min(r.s0, max) - 1), JSON.stringify(r));
     }
     // ph-dj9: the in-flight count appearing moves nothing (this hub never answers a write), on a page
-    // with a footer and a control this hub leaves enabled.
+    // with a footer and a control this hub leaves enabled. On a phone a big card is a drill-in page.
     const live = page.locator('main.pane .field :is(input[type=range], input[role=switch]):not(:disabled)');
     for (let i = 0; i < cats.length && !(await live.count() && await page.locator('main.pane .page-foot .cat-busy').count()); i++) {
       await goTab(page, cats[i]);
       await page.waitForTimeout(200);
+      for (let j = 0; !(await live.count()) && j < await page.locator('main.pane .drill-open').count(); j++) {
+        await page.locator('main.pane .drill-open').nth(j).click();
+        await page.waitForTimeout(200);
+        if (!(await live.count())) { await page.click('main.pane .drill-back'); await page.waitForTimeout(150); }
+      }
     }
     const boxes = () => page.$$eval('main.pane .page-foot, main.pane .page-foot button', (els) => els.map((e) => {
       const r = e.getBoundingClientRect();

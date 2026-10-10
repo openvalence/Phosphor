@@ -784,8 +784,9 @@ Shipped:
   edge and the staircase half a handle and a gap past it, so the amp
   handle stays inside at any width; the offset label sits under the
   track. The dwells'
-  modulators get tabs like the other six. The registry names no role for a
-  store op's slot and name, so it tells them apart by schema type.
+  modulators get tabs like the other six. A store op's slot and name are
+  found by their RFC-089 roles (`store.slot`, `store.name`), on a hub
+  without them by schema type.
 
   **Narrow** (the card under 480 px, a phone or a two-cell placement): the
   hint and the depth ticks drop and the modifier tabs pair up.

@@ -33,7 +33,7 @@ Rules for every module:
 | analyzer | ph-smvd.11 | `analyzer.js`; the playhead and the expand in `ui.js`, `timeline.js`; sections (c2), (g) and the live analyzer checks of `test/funscript-player.test.mjs` |
 | kinetic | ph-ge35 | `kinetic/kinetic.js`, `kinetic/bytes.js`, `kinetic/kinetic.pin`, `test/kinetic-trace.test.mjs`, `test/kinetic-pin.mjs`, `test/fixtures/kinetic_trace.json`; the render glue in `analyzer.js`, `timeline.js`; sections (c2) and (k) of `test/funscript-player.test.mjs` |
 | integration | ph-smvd.13, ph-smvd.14 | the playback wiring in `ui.js`, `timeline.js`, `index.js`; sections (h) and (p) `--live-playback` of `test/funscript-player.test.mjs`; the fixture |
-| multi-axis | ph-6dr6 | `axes.js`, `osc.js`; the multi-axis parse in `funscript.js`; the lanes in `timeline.js`; `submit.samples` in `src/model/motion.js`, `api.submitSamples`; the multi-axis section of `test/funscript-core.test.mjs`, (e3) of `test/plugins.test.mjs`, (o) of `test/funscript-player.test.mjs`, the fixture's `oscDrive` |
+| multi-axis | ph-6dr6 | `axes.js`, `osc.js`; the multi-axis parse in `funscript.js`; the lanes in `timeline.js`; `submit.samples` in `src/model/motion.js`, `api.submitSamples`; the multi-axis section of `test/funscript-core.test.mjs`, (e3) of `test/plugins.test.mjs`, (o) of `test/funscript-player.test.mjs`, the fixture's `noOscDrive` |
 
 Bare file names live in `plugins/factory/funscript-player/`. Import graph,
 no cycles: `index -> ui, prefs, library, scale`; `ui -> funscript, clock,

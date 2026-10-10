@@ -808,7 +808,7 @@ let saved = null;
   ok('...the card path in full on hover', await C.locator('.gcard').getAttribute('title') === HUB + ' › Motion › Oscillator');
   const desc = await C.locator('.gdesc').textContent();
   ok('...its catalog desc on one line, in full on hover', desc.length > 0 && await C.locator('.gdesc').getAttribute('title') === desc, desc);
-  ok('...its range, unit and what the sockets do', await C.locator('.gspec').textContent() === '0 to 20 Hz · in sets, out reads', await C.locator('.gspec').textContent());
+  ok('...its range, unit and what the sockets do', await C.locator('.gspec').textContent() === '0 to 100 Hz · in sets, out reads', await C.locator('.gspec').textContent());
   ok('...and each socket says it in its tooltip', await C.locator(':scope > [data-sock][data-side=in]').getAttribute('title') === 'Input: sets Cycles a second (float)'
     && await C.locator(':scope > [data-sock][data-side=out]').getAttribute('title') === 'Output: reads Cycles a second (float)');
   ok('nodes of one card share its key and accent; another card gets another', await C.getAttribute('data-card') === await A.getAttribute('data-card')
