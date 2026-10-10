@@ -141,8 +141,8 @@ async function open() {
 const unavailable = (since) => wire.filter((w) => !w.up && w.code === NACK.CHUNK_UNAVAILABLE && w.t >= since && !w.injected);
 async function linkNacks(page) {
   await goTab(page, 'valence');
-  await page.waitForSelector('#vp-nacks', { timeout: 10000 });
-  return page.evaluate(() => document.querySelector('#vp-nacks').closest('section').innerText);
+  await page.waitForSelector('#vp-refusals', { timeout: 10000 });
+  return page.evaluate(() => document.querySelector('#vp-refusals').closest('section').innerText);
 }
 
 // ---- the presets row (the factory pattern card) ----
