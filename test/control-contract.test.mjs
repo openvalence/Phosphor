@@ -1299,7 +1299,7 @@ if (!LIVE) {
   hub.mode = 'echo';
 
   // ---- density rungs and targets (ph-z50z, ph-46yw, ph-1ggd, ph-3z96) ----------
-  // Compact below 24rem (430 px at the default scale), normal above; a refusal's words show whole at
+  // Compact below 22rem (394 px at the default scale), normal above; a refusal's words show whole at
   // both (ph-4j5f), terse with a tagged field at the first normal width too, and the ladder slot
   // keeps the width of 'still waiting' at a 12-cell field; under a coarse pointer
   // every hit target in both rungs is 40 px, the reset button and bit rows too.
@@ -1339,10 +1339,10 @@ if (!LIVE) {
   // The first normal-row width, terse (the info button shows), a refusal on the slider and on the
   // tagged toggle: label, info, reset, tag, chip and words on one row, the words whole.
   {
-    // The cell's width that gives its field the first width past the 24rem line.
+    // The cell's width that gives its field the first width past the 22rem line.
     const line = await page.evaluate(() => {
       const c = document.querySelector('.cell[data-pres=slider]');
-      return 24 * parseFloat(getComputedStyle(document.documentElement).fontSize) + c.getBoundingClientRect().width - c.querySelector('.field').getBoundingClientRect().width;
+      return 22 * parseFloat(getComputedStyle(document.documentElement).fontSize) + c.getBoundingClientRect().width - c.querySelector('.field').getBoundingClientRect().width;
     });
     await setW(page, Math.ceil(line) + 1);
     await page.evaluate(() => document.documentElement.classList.add('terse'));

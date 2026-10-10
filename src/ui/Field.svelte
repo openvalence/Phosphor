@@ -996,9 +996,12 @@
   /* The label voice (.field-label, .field-label-text) and the value chip's
      base (.field-value, its .unit) are style.css's: the plugin kit wears them too. */
 
+  /* Breaks anywhere for intrinsic sizing only: a tag lays out at its full
+     width, so one wrapped out of sight never sets the label's floor. */
   .tag {
     display: inline-block;
     flex: none;
+    overflow-wrap: anywhere;
     margin-left: var(--sp-2);
     padding: 1px var(--sp-2);
     font-size: .62rem;
@@ -1335,15 +1338,15 @@
   }
   @media (pointer: coarse) { .bitfield input[type='checkbox'] { width: 24px; height: 24px; } }
 
-  /* Density rungs (DESIGN §10.12): compact under 24rem (about 11 cells), normal
+  /* Density rungs (DESIGN §10.12): compact under 22rem (about 10 cells), normal
      above, where label, ⓘ, reset, a tag, a chip with its unit and the longest
-     words fit one row at every UI scale. Compact is a fixed two-row head in
+     words fit one row at UI scale 0.9 and up. Compact is a fixed two-row head in
      every state: the label with its tags and info/reset and the value chip,
      then the status words on a line of their own, whole at every width (law 5,
      ph-4j5f). Under 13rem the chip takes a line of its own between them and
      the label may shorten under 3em. Heights follow the width alone, never a
      state or a value. */
-  @container (max-width: 24rem) {
+  @container (max-width: 22rem) {
     .field-head {
       display: grid;
       grid-template-columns: minmax(min-content, 1fr) auto;
@@ -1389,7 +1392,7 @@
   }
   /* Hit-box geometry (40 px box, 11 px reach): px on purpose, not spacing. */
   @media (pointer: coarse) {
-    @container (max-width: 24rem) { .field-head { row-gap: 11px; } }
+    @container (max-width: 22rem) { .field-head { row-gap: 11px; } }
     @container (max-width: 28rem) { .field[data-widget='range'] .field-head { row-gap: 11px; } }
   }
 

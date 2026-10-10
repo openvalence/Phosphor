@@ -218,11 +218,11 @@ throws like any bad `registerPage` field; absent, the page is found by
 name only. Seam: `registerPage` in `src/plugins/host.js`, `src/ui/LookFor.svelte`.
 
 **Density rungs** (DESIGN §10.5). A widget or hero has two rungs, compact and
-normal, picked by the width its card gives it: compact under 24rem, normal
+normal, picked by the width its card gives it: compact under 22rem, normal
 above, the line the built-in fields use (`src/ui/Field.svelte`); a widget
 whose content turns at another width may place its own line. The host sets
 no container on a plugin's element: the mount makes its root
-`container-type: inline-size` and writes `@container (max-width: 24rem)` for
+`container-type: inline-size` and writes `@container (max-width: 22rem)` for
 the compact form, or measures its own width (the reference plugin turns its
 narrow form at 480 px of its root). Compact never goes under the 40 px
 target and never hides the four-state reason (law 5).
