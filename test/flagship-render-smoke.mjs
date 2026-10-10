@@ -3,13 +3,14 @@
  * UI frame against the real device (or any live hub serving the bundle).
  *
  * Asserts, at a desktop viewport:
- *   - the nav rail renders with a Home tab plus machine-derived entries,
+ *   - the nav rail renders with a Dash tab plus machine-derived entries,
  *     switching tabs swaps the pane, and the mini-rail collapse works;
  *   - the top strip holds the safety pair (pause, then the e-stop outermost),
  *     visible and fireable, with one e-stop on the page and no TransportBar
  *     or bottom safety dock (RFC-085, DESIGN §10.3);
  *   - NO strip control is the RFC-034 value-0 placeholder;
- *   - dashboard handles are hidden until "Edit layout" and hide again on Done;
+ *   - Dash handles are hidden until the sidebar wrench's Edit layout and hide
+ *     again on its Done editing; the edit bar's Layout menu offers Reset layout;
  *   - the phosphor ring (docs/EFFECTS.md) draws outside the field and wears
  *     each ladder state without moving the box;
  * and at a phone viewport, that the sections move into the phone menu's
@@ -20,43 +21,27 @@
  * verification is a bench activity, DOCTRINE build/test rules).
  *
  * The page must be loaded FROM THE DEVICE (same reason as browser-check.mjs:
- * /uitoken is same-origin-only; a localhost origin gets watch tier). With
- * --sim the bundle is dist/index.html served here, /uitoken proxied to a
- * running valencesim (build first: npm run build:only).
+ * /uitoken is same-origin-only; a localhost origin gets watch tier). With no
+ * host it runs against its own private valencesim (test/live-sim.mjs: the
+ * built page, /uitoken proxied to the sim's mint; build first: npm run
+ * build:only) and SKIPS (exit 0) without the exe; it rides test:browser as
+ * check:flagship.
  *
- * Run: node test/flagship-render-smoke.mjs <host>
- *      node test/flagship-render-smoke.mjs --sim [--port 8882] [--http 8880]
- *        (valencesim --homed --port 8882 --http 8880)
+ * Run: node test/flagship-render-smoke.mjs [host]
  */
 
-import { DIST_HTML } from './dist.mjs';
 import { chromium } from 'playwright';
-import { mkdirSync, readFileSync } from 'node:fs';
-import { createServer } from 'node:http';
-import { fileURLToPath } from 'node:url';
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { EVIDENCE } from './dist.mjs';
 import { catalogTabs } from './nav.mjs';
+import { startSim, serveBundle, SIM } from './live-sim.mjs';
 
-const args = process.argv.slice(2);
-const argOf = (f, d) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : d; };
-const HOST = args.includes('--sim') ? await serveBundle(argOf('--port', '8882'), argOf('--http', '8880')) : args[0];
-if (!HOST) { console.error('usage: node test/flagship-render-smoke.mjs <host> | --sim [--port N] [--http N] -- no baked default, name the hub'); process.exit(1); }
-const PAGE_URL = 'http://' + HOST + (HOST.includes('/') ? '' : '/');
-
-/** dist/index.html on an ephemeral port, /uitoken proxied to the sim; returns the page's host, path and query. */
-async function serveBundle(wsPort, httpPort) {
-  const html = readFileSync(DIST_HTML);
-  const srv = createServer((q, s) => {
-    if (!q.url.startsWith('/uitoken')) { s.writeHead(200, { 'Content-Type': 'text/html' }); s.end(html); return; }
-    fetch('http://127.0.0.1:' + httpPort + '/uitoken').then(async (r) => {
-      s.writeHead(r.status, { 'Content-Type': 'application/json' }); s.end(await r.text());
-    }).catch(() => { s.writeHead(502); s.end('{}'); });
-  });
-  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
-  srv.unref();
-  return '127.0.0.1:' + srv.address().port + '/?hub=127.0.0.1:' + wsPort;
-}
-const OUT = join(fileURLToPath(new URL('.', import.meta.url)), 'evidence');
+const HOST = process.argv[2];
+const own = HOST ? null : await startSim();
+if (!HOST && !own) { console.log('SKIP: no host given and no valencesim at ' + SIM); process.exit(0); }
+const PAGE_URL = HOST ? 'http://' + HOST + '/' : await serveBundle(own.port, own.http);
+const OUT = EVIDENCE;
 mkdirSync(OUT, { recursive: true });
 
 let fails = 0;
@@ -74,28 +59,27 @@ console.log('flagship render smoke @ ' + PAGE_URL);
 await page.goto(PAGE_URL, { waitUntil: 'domcontentloaded', timeout: 20000 });
 
 // ---- desktop: nav rail ------------------------------------------------------
-const railUp = await page.waitForSelector('nav.rail [role="tab"]', { timeout: 25000 })
-  .then(() => true).catch(() => false);
-ok('nav rail renders (catalog adopted)', railUp);
-
-const railTabs = await page.$$eval('nav.rail [role="tab"]', (els) => els.map((e) => e.textContent.trim()));
-ok('rail has Home + machine categories + console entries', railTabs.length >= 6 && /home/i.test(railTabs[0]),
-   railTabs.join(' | '));
+const railTabs = await catalogTabs(page);
+ok('nav rail renders (catalog adopted)', railTabs.length > 0);
+ok('rail has Dash + machine categories + console entries', railTabs.length >= 6 && railTabs[0].label === 'Dash',
+   railTabs.map((t) => t.label).join(' | '));
 ok('no legacy top tab strip at desktop width', (await page.$('nav.tabs')) == null);
+const sections = page.getByRole('navigation', { name: 'Sections' });
+const tab = (name) => sections.getByRole('tab', { name, exact: true });
 
-// Switching to the second rail entry must swap the pane to a settings grid.
-const second = (await page.$$('nav.rail [role="tab"]'))[1];
-if (second) {
-  await second.click();
-  const grid = await page.waitForSelector('.dash-grid', { timeout: 5000 }).then(() => true).catch(() => false);
-  ok('category tab renders a dashboard grid', grid);
+// Switching to the first category must swap the pane to a settings grid.
+const firstCat = railTabs.find((t) => t.id.startsWith('cat'));
+if (firstCat) {
+  await tab(firstCat.label).click();
+  const grid = await page.waitForSelector('main.pane .dash-grid', { timeout: 5000 }).then(() => true).catch(() => false);
+  ok('category tab renders a dashboard grid', grid, firstCat.label);
 }
 
 // Collapse to the mini rail and back — names hide, glyphs stay.
-await page.click('.rail-collapse');
+await page.getByRole('button', { name: 'Collapse navigation' }).click();
 ok('mini rail hides names', (await page.$$('nav.rail .rail-name')).length === 0);
 ok('mini rail keeps glyphs', (await page.$$('nav.rail .rail-glyph')).length >= 6);
-await page.click('.rail-collapse');
+await page.getByRole('button', { name: 'Expand navigation' }).click();
 ok('rail expands again', (await page.$$('nav.rail .rail-name')).length >= 6);
 
 // ---- the top strip -----------------------------------------------------------
@@ -132,23 +116,26 @@ const dockBox = await page.$eval('.topstrip', (el) => {
 ok('the strip is fully on screen without scrolling', dockBox);
 
 // ---- edit-layout mode -------------------------------------------------------
-await page.click('nav.rail [role="tab"]');            // back to Home
+// The sidebar wrench drives edit mode; the edit bar rides under the Dash (ph-mdqo.9).
+await tab('Dash').click();
 await page.waitForSelector('.home .dash-grid', { timeout: 5000 });
-// An unbuilt home is the seed: rank-surfaced fields, telemetry and the
+// An unbuilt Dash is the seed: rank-surfaced fields, telemetry and the
 // card-zone heroes (pattern, limits); the instrument zone holds only the rail.
-ok('the seeded home holds telemetry + card-zone hero modules', (await page.$$('.home .dash-item')).length >= 3,
+ok('the seeded Dash holds telemetry + card-zone hero modules', (await page.$$('.home .dash-item')).length >= 3,
    (await page.$$('.home .dash-item')).length + ' modules');
-ok('handles hidden while reading', (await page.$$('.dash-item .handle')).length === 0);
-{ const bar = page.locator('.home .dash-toolbar button:has-text("Edit layout")'); await (await bar.count() ? bar : page.locator('button[title="Edit layout"]:visible')).first().click(); }
-ok('handles appear in edit mode', (await page.$$('.dash-item .handle')).length > 0);
-const editButtons = await page.$$eval('.dash-toolbar button', (els) => els.map((e) => e.textContent.trim()));
-ok('edit mode offers Reset + Done', editButtons.join(',').includes('Reset') && editButtons.join(',').includes('Done'));
-await page.click('.home .dash-toolbar .done-btn');
-ok('handles hide again on Done', (await page.$$('.dash-item .handle')).length === 0);
+const grips = page.getByRole('button', { name: /^Move / });
+ok('handles hidden while reading', (await grips.count()) === 0);
+await page.getByRole('button', { name: 'Edit layout' }).click();
+ok('handles appear in edit mode', (await grips.count()) > 0);
+await page.getByRole('button', { name: 'Layout…' }).click();
+const resetUp = await page.getByRole('button', { name: 'Reset layout' }).isVisible();
+await page.keyboard.press('Escape');
+ok('edit mode offers Reset layout + Done editing', resetUp && await page.getByRole('button', { name: 'Done editing' }).isVisible());
+await page.getByRole('button', { name: 'Done editing' }).click();
+ok('handles hide again on Done', (await grips.count()) === 0);
 
 // ---- terse mode -------------------------------------------------------------
-const railTabsEls = await page.$$('nav.rail [role="tab"]');
-await railTabsEls[railTabsEls.length - 1].click();     // Display (last console entry)
+await tab('Display').click();
 const TERSE = 'label.og-switch:has-text("Terse instruments")';
 await page.waitForSelector(TERSE, { timeout: 5000 });
 const terseOn = () => page.evaluate(() => document.documentElement.classList.contains('terse'));
@@ -162,9 +149,7 @@ ok('...and back', (await terseOn()) === terseWas);
 // Field.svelte: verbose prints a field's description inline under the control,
 // terse holds it on the info button's hover tip. Exactly one carrier is ever
 // live — both at once is the duplicate truth the density pass exists to stop.
-const fieldTabs = await page.$$('nav.rail [role="tab"]');
-const tabText = await Promise.all(fieldTabs.map(async (t) => (await t.textContent()).trim().toLowerCase()));
-await fieldTabs[tabText.findIndex((t) => t.includes('motion'))].click();
+await tab('Motion').click();
 // The affordance only renders in TERSE, so it has to be measured there. A
 // display:none element reports an all-zero rect, which would make the
 // centering check below pass without measuring anything.
@@ -290,7 +275,7 @@ const staleCols = await page.$eval('canvas.act-grid', (c) => {
 ok('activity grid retains scroll history', staleCols <= 2,
    staleCols + '/14 columns at the empty baseline');
 
-await page.click('nav.rail [role="tab"]');             // back to Home for the shot
+await tab('Dash').click();                             // back to the Dash for the shot
 await page.evaluate(() => window.scrollTo(0, 0));
 await page.screenshot({ path: join(OUT, 'flagship-desktop.png'), fullPage: false });
 
