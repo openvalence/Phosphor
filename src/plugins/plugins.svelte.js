@@ -258,6 +258,14 @@ host.onChange(() => {
   pluginsUi.gen++;
 });
 host.onDocks(() => { pluginsUi.docks++; });
+// api.onHub: the connected hub's key moving reaches the plugins.
+$effect.root(() => {
+  let last;
+  $effect(() => {
+    const h = currentHub();
+    if (h !== last) { last = h; host.hubChanged(); }
+  });
+});
 
 /** The connected hub's key (prefs.js hubKey), null before a catalog: per-hub plugin state keys on it. */
 export function currentHub() {

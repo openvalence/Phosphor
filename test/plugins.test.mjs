@@ -1229,6 +1229,34 @@ console.log('(l) context menus, the dock, field-bound controls, identities, quic
   ok('quick-access: a pinned target reads Unpin; unpinning everything withdraws the dock', pinItem(tq('hero:rail')).label === 'Unpin from quick access'
     && (pinItem(tq('hero:rail')).run(), pinItem(tq('role:pattern.speed', 'field')).run(), pinItem(tq('hero:rail', 'module', 'hubB')).run(), hq.host.docks().length === 0));
   const L3 = [{ key: 'a' }, { key: 'b' }, { key: 'c' }];
+  // Per connected hub (ph-6ydd): the dock follows the connected hub's pins, and api.onHub re-syncs it.
+  let at = 'hubA';
+  const store2 = new Map();
+  const hh = makeHost({ prefs: { getItem: (k) => (store2.has(k) ? store2.get(k) : null), setItem: (k, v) => store2.set(k, String(v)) }, hub: () => at });
+  hh.host.add(qa.manifest, qa.module, { source: 'factory' });
+  const pin2 = (key, hub) => hh.host.menus(tq(key, 'module', hub)).find((i) => /quick access/.test(i.label)).run();
+  const dockN = () => hh.host.docks().length;
+  pin2('hero:rail', 'hubA');
+  const d1 = dockN();
+  pin2('hero:rail', 'hubB');
+  pin2('hero:rail', 'hubA');
+  const d2 = dockN();
+  ok('quick-access: the last unpin on the connected hub withdraws the dock though another hub keeps pins', d1 === 1 && d2 === 0
+    && JSON.parse(store2.get('plugin.quick-access.pins')).hubB.length === 1, [d1, d2]);
+  at = 'hubB'; hh.host.hubChanged();
+  const d3 = dockN();
+  at = null; hh.host.hubChanged();
+  const d4 = dockN();
+  at = 'hubA'; hh.host.hubChanged();
+  ok('quick-access: a hub with pins docks, no hub yet leaves it as it is, a hub without pins withdraws it', d3 === 1 && d4 === 1 && dockN() === 0, [d3, d4, dockN()]);
+  let heard = 0;
+  const ho = makeHost();
+  ho.host.add(m('hubber', []), { activate(api) { api.onHub(() => { heard++; }); api.onHub(() => { throw new Error('hub boom'); }); } });
+  ho.host.hubChanged();
+  const h1 = heard, err = ho.host.list()[0].error || '';
+  ho.host.setEnabled('hubber', false);
+  ho.host.hubChanged();
+  ok('api.onHub: hubChanged reaches it, a throw is recorded on the plugin, deactivation drops it', h1 === 1 && /hub boom/.test(err) && heard === 1, [h1, err, heard]);
   ok('quick-access: movePin moves by places and clamps at the ends', same(movePin(L3, 'a', 1).map((p) => p.key), ['b', 'a', 'c'])
     && same(movePin(L3, 'c', -5).map((p) => p.key), ['c', 'a', 'b']) && movePin(L3, 'a', -1) === L3 && movePin(L3, 'z', 1) === L3);
 }

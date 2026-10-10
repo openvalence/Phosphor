@@ -368,8 +368,9 @@ toggle in `src/ui/FootStrip.svelte`, `host.js` `docks` and `dockable`.
 access tray on these three capabilities and nothing else. Its `registerMenu`
 item (`needsDock`, so none on the phone class) reads Pin to quick access, or
 Unpin from quick access, in module and field menus; a pin is `{key, kind, title}` stored per hub in `api.prefs`
-(`pins`, keyed by `api.hub()`). It registers its dock, Quick access, once
-anything is pinned on any hub, so a user who never pins sees no toggle; each
+(`pins`, keyed by `api.hub()`). It registers its dock, Quick access, while
+the connected hub has pins and re-checks on `api.onHub`, so a user who never
+pins sees no toggle and the last unpin on a hub closes the dock; each
 pin is a kit card with a grip (drag, or ArrowUp and ArrowDown) and an Unpin
 button around `ui.field(pin)` or `ui.module(pin)`. A row is built once per pin
 and moved on a reorder, so a control keeps its in-flight write.
@@ -414,6 +415,7 @@ and moved on a reorder, so a control keeps its in-flight write.
 | `registerTheme(theme)` | a preset, kind `theme` only: the full object `{id, name, accents, chassis, look, overrides}` (docs/THEMES.md) or the old `{id, name, reality, intent}` pair. The id is namespaced; safety tokens are dropped (RENDERING law 13) | experimental |
 | `prefs.get(k)` / `prefs.set(k, v)` | per-plugin JSON in localStorage (browser state, never machine state) | experimental |
 | `hub()` | the connected hub's key (`hub_instance_id`, else `host:port`), null before a catalog: per-hub plugin state keys on it (Identities and paths) | experimental |
+| `onHub(fn)` | calls `fn()` whenever `hub()` reads differently (a hub adopted, switched or forgotten). Returns the unsubscribe; deactivating the plugin drops what is left; a throw is recorded on the plugin | experimental |
 | `registerMenu({id, targets, label, run, needsDock})` returning `withdraw()` | an item in the shell's context menu of a field, a module or a page (Context menus); `needsDock` leaves it out where the shell has no dock. Needs `menu` | experimental |
 | `registerDock({id, label, icon, mount})` returning `withdraw()` | a panel in the right dock, closed until the user opens it (The dock) | experimental |
 | `ui` | the shell's controls and layout primitives in plain DOM, `ui.version` 1 (The UI kit, below) | **the kit only grows**: v1 is a contract; additive only |
@@ -874,8 +876,9 @@ Shipped:
   through the same geometry, so it never jumps on pickup.
 - `plugins/factory/quick-access/`: the quick access tray, the worked example
   of Context menus, The dock and Field-bound controls (above). Enabled by
-  default; its dock exists once something is pinned and opens only when the
-  user opens it; none on the phone class, where its pins wait for the desktop. Declares `intent` and `menu`.
+  default; its dock exists while the connected hub has pins and opens only
+  when the user opens it; none on the phone class, where its pins wait for
+  the desktop. Declares `intent` and `menu`.
 - `plugins/factory/funscript-player/`: plays a local or Stash video and
   drives the rail from its main (L0) funscript. One hero, `player`
   (`absorb: false`), requires `input.target` and `input.duration`, so it

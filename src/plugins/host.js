@@ -204,6 +204,7 @@ export function createPluginHost(deps) {
   }
   const dockable = () => !deps.dockable || deps.dockable();
   const dockListeners = new Set();
+  const hubListeners = new Set();
   const docksChanged = () => { for (const fn of dockListeners) { try { fn(); } catch (e) { /* a kernel listener */ } } };
 
   function makeApi(rec) {
@@ -247,6 +248,14 @@ export function createPluginHost(deps) {
       onChanged: (channelsOrRoles, fn) => {
         if (!deps.onChanged || typeof fn !== 'function') return () => {};
         const off = deps.onChanged([].concat(channelsOrRoles), () => guard(rec, 'onChanged', fn));
+        rec.closers.push(off);
+        return () => { off(); const i = rec.closers.indexOf(off); if (i >= 0) rec.closers.splice(i, 1); };
+      },
+      // Experimental (ph-6ydd): fn() whenever api.hub() reads differently (a hub adopted, switched or
+      // forgotten). Returns the unsubscribe; deactivation drops what is left.
+      onHub: (fn) => {
+        if (typeof fn !== 'function') return () => {};
+        const off = ((w) => { hubListeners.add(w); return () => hubListeners.delete(w); })(() => guard(rec, 'onHub', fn));
         rec.closers.push(off);
         return () => { off(); const i = rec.closers.indexOf(off); if (i >= 0) rec.closers.splice(i, 1); };
       },
@@ -723,5 +732,7 @@ export function createPluginHost(deps) {
     add, remove, setEnabled, heroes, pages, menus, docks, pageShown, setPageShown, mountHero, updateHero, unmountHero, mountSettings, list,
     onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     onDocks(fn) { dockListeners.add(fn); return () => dockListeners.delete(fn); },
+    /** The kernel: the connected hub's key moved; every plugin's onHub runs. */
+    hubChanged() { for (const fn of [...hubListeners]) fn(); },
   };
 }

@@ -9,8 +9,10 @@
  * - Pins are per hub, by identity (api.hub(), the menu target's key), in
  *   api.prefs: a catalog etag change keeps a pin while its control exists,
  *   and one whose control is gone draws ui.module's "not on this machine".
- * - Hidden by default: the dock is registered once anything is pinned on any
- *   hub, and opens only when the user opens it.
+ * - Hidden by default: the dock is registered while the connected hub has
+ *   pins (api.onHub), and opens only when the user opens it; the last unpin
+ *   on that hub withdraws it, which closes it. With no hub yet (booting,
+ *   between hubs) it stays as it is.
  * - None on the phone class: the shell has no dock there, so the host drops
  *   the needsDock item; pins stay stored for the desktop.
  * - A row is built once per pin and moved, never rebuilt, on a reorder, so a
@@ -35,9 +37,12 @@ export function activate(api) {
   const pinsOf = (hub) => (hub && Array.isArray(all()[hub]) ? all()[hub] : []);
   let withdraw = null, redraw = null;
   const sync = () => {
-    const any = Object.values(all()).some((l) => Array.isArray(l) && l.length);
-    if (any && !withdraw) withdraw = api.registerDock({ id: 'tray', label: 'Quick access', mount });
-    else if (!any && withdraw) { withdraw(); withdraw = null; }
+    const hub = api.hub();
+    if (hub != null) {
+      const has = pinsOf(hub).length > 0;
+      if (has && !withdraw) withdraw = api.registerDock({ id: 'tray', label: 'Quick access', mount });
+      else if (!has && withdraw) { withdraw(); withdraw = null; }
+    }
     if (redraw) redraw();
   };
   const setPins = (hub, list) => {
@@ -56,6 +61,7 @@ export function activate(api) {
     run: (t) => setPins(t.hub, pinned(t.hub, t.key) ? pinsOf(t.hub).filter((p) => p.key !== t.key)
       : [...pinsOf(t.hub), { key: t.key, kind: t.kind, title: t.title }]),
   });
+  api.onHub(sync);
   sync();
 
   function mount(el) {

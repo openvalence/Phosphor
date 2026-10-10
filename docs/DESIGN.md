@@ -614,11 +614,14 @@ question in §10.8).
   how far the frame clock is off the wall clock (skew, which the rail's
   timing assumes is zero) in words. Held over 10 % and skew over 2 ms show
   inline, warn toned, in a slot left of the fps held whether empty or not;
-  two at once ellipsize, the tooltip has both. Under 30 fps the fps chip
-  wears the warn tone. The fps and rx values hold fixed widths (rx in whole
-  units, at most three characters: 59s, 12m, 3h). Under 561 px the fps
-  and the warning slot shed; rx sheds whole where it does not fit, never a
-  sliver.
+  two at once ellipsize, the tooltip has both. Under 30 fps, or with either
+  warning, the fps chip wears the warn tone. The fps and rx values hold
+  fixed widths (rx in whole units, at most three characters: 59s, 12m, 3h).
+  The order is rx, the warning slot, fps, so where room runs out the fps and
+  its slot shed before rx; under 561 px they are gone and rx sheds whole
+  where it does not fit, never a sliver. Phones keep no fps: at 420 px the
+  room the dock toggle gave back holds rx and leaves about 64 px, short of
+  the fps chip's 69 beside even a five-letter hub name.
 - The page footer (operator ruling 2026-10-02, `ph-vdk.60.12`;
   `src/ui/PageFoot.svelte`): one fixed 48 px bar at the bottom of the page
   area on every page with page controls (the advanced and diagnostic
@@ -1234,8 +1237,10 @@ derives from one unit, and no size is tuned by hand.
   column beside the content and narrows it; on the other non-phone classes a
   drawer from the right edge between the top strip and the bottom bars, never
   over the stop pair or its own toggle. One open state serves the dock, the
-  toggle and the stored pref; withdrawing the last dock (the last pin gone,
-  its plugin off) closes it, so the next one arrives closed. The phone class
+  toggle and the stored pref; withdrawing the last dock closes it, so the
+  next one arrives closed. Quick access docks per connected hub: its toggle
+  exists while that hub has pins, and the last unpin there withdraws the dock
+  and closes it, whatever other hubs hold. The phone class
   has no dock (operator: "unlikely to be used with mobile, have to cut some
   things for space"): no toggle, no drawer, and a plugin's dock-bound menu
   items (`needsDock`) are left out; what a plugin stored stays for the desktop
@@ -1419,3 +1424,4 @@ issue the user submits under their own account; Phosphor sends nothing.
 | 2026-10-10 | §10.13, plugins | No menu reads the clipboard to open (WebView2 asked the user for clipboard access on the first right-click): Paste value is always offered, reads once on the pick through `tauri-plugin-clipboard-manager` in the shell (read and write text only) and refuses a value that does not fit in the status slot. The shell menu replaces the webview's in text entry too (Undo, Cut, Copy, Paste, Select all, then the field's items), and a release build disables WebView2's default menus. Every plugin page gets the page menu; `api.ui.menu` puts a plugin's own items on its own elements; `api.net.open` opens a URL in the system browser inside the user's act; the funscript player's stage, timeline, scene rows and queue rows carry menus (`ph-hi4i`). | operator ("never read the clipboard just to open a menu"; the text-entry menu, the release switch, the three plugin layers and the player's item lists are the ruling's. Fullscreen and Manage plugins as the plugin page's items, a long press in text entry keeping the platform's selection bar, `net.open` behind `net.fetch` and the user's act, the keyboard's "here" being the playhead, Play next moving an already queued scene to the head, B before A swapping, and losing the webview's spelling suggestions are the agent's, veto-able) |
 | 2026-10-10 | §10.3, §10.13, plugins | The right dock's toggle leaves the top bar for the bottom status row's right end, beside the UI scale, in a slot held from the start so its arrival moves nothing; the top bar's under-560 px rx hide for it goes. The phone class drops quick access: no toggle, no drawer, no Pin item (the host leaves out `needsDock` menu items where it has no dock); pins stay stored and the plugin installed. One open state for the dock, the toggle and the stored pref; withdrawing the last dock closes it (the last unpin left the toggle reading open and the next pin reopened the dock, behind a teardown crash in the plugin slot) (`ph-6ydd`). | operator ("perhaps at the bottom, and fwiw, unlikely to be used with mobile, have to cut some things for space"; the unpin bug report. The toggle at the very end right of the scale, the build cell giving the held slot its room, the drawer kept for the non-phone handheld classes and now persisted with the column, and `needsDock` as the menu flag are the agent's, veto-able) |
 | 2026-10-10 | §10.3, §10.10, §10.14 | The top bar keeps what someone looks at when something goes wrong: heatmap, hub name, phase, tier, rx, fps. The catalog chip and the hub chip (address, firmware) move to the Health view's Link and Machine cards. Render reads `N fps`, its tooltip the smoothing delay, the held share and the clock skew in words; held over 10 % and skew over 2 ms show inline, warn toned, in a held slot; the fps and rx values hold fixed widths (`ph-6ydd`). | operator ("most of those indicators on the top can be condensed ... the fps keep"; the audit is the agent's, veto-able: the heatmap stays (activity at a glance, sheds first on handhelds), tier stays (why a control will not drive), the hub chip moves (the name says which machine; the address and firmware are for support), and the slot sits left of the fps with rx last so rx sheds whole) |
+| 2026-10-10 | §10.3, §10.13, plugins | Quick access docks per connected hub: the toggle exists while that hub has pins, and the last unpin there withdraws and closes the dock whatever other hubs hold (`api.onHub` re-checks on a hub change; with no hub yet the dock stays as it is). The top bar orders rx, the warning slot, fps, so fps sheds before rx; the fps chip wears the warn tone with either warning. Phones keep no fps: measured at 420 px the freed room holds rx and leaves about 64 px, short of the fps chip's 69 beside a five-letter hub name (`ph-6ydd`). | coordinator picks, veto-able: emptying closes per connected hub, keep the drawer on narrow windows and tablets; fps on phones was picked and not applied (it would need the hub name to yield on phones, or a narrower tier chip), the operator's to rule |

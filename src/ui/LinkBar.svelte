@@ -2,7 +2,7 @@
   /**
    * LinkBar.svelte -- the top bar: ONE row of fixed height (operator
    * 2026-10-02). Left: the activity heatmap and the hub name. Right: the
-   * chips (phase, tier, the render warning's held slot, fps, rx), then the
+   * chips (phase, tier, rx, the render warning's held slot, fps), then the
    * shell's window buttons at the far end, shell only. The bar is the Tauri
    * drag region. A reading nobody checks when something goes wrong lives in
    * the Health view instead (the address, the firmware, the control list;
@@ -100,9 +100,9 @@
     'No newer sample to draw: ' + render.heldPct + '% of frames',
     'Frame clock off wall clock by ' + Math.abs(render.skewMs || 0) + ' ms',
   ].join('\n'));
-  // The client's own frame health: warn when degraded, never the reality
-  // tone, which is the machine's liveness (ph-51k).
-  const fpsTone = $derived(render.fps != null && render.fps < 30 ? 'warn' : 'dim');
+  // The client's own frame health: warn when any reading is degraded, never
+  // the reality tone, which is the machine's liveness (ph-51k).
+  const fpsTone = $derived(render.fps != null && (render.fps < 30 || heldBad || skewBad) ? 'warn' : 'dim');
 
   // Beside a top cutout the row rises into its band only while the phase and
   // tier chips fit right of it, clear of the top right corner's arc; short of
@@ -318,15 +318,17 @@
     </span>
   </div>
   <div class="chips opt">
-    <span class="render-warn">
+    <!-- Zero wide and first on the line, so every chip after it wraps away whole. -->
+    <span class="opt-lead"></span>
+    <span class="chip chip-opt-last tone-{rxTone}" aria-label={'telemetry: ' + rxToneLabel}>
+      <span class="chip-lbl">rx</span>
+      <span class="mono rx-age">{rxAge}</span>
+    </span>
+    <span class="render-warn chip-opt">
       {#if renderWarn}<span class="chip tone-warn" title={renderTip}><span class="mono">{renderWarn}</span></span>{/if}
     </span>
     <span class="chip chip-opt tone-{fpsTone}" title={renderTip}>
       <span class="mono fps">{render.fps == null ? '-- fps' : render.fps + ' fps'}</span>
-    </span>
-    <span class="chip chip-opt-last tone-{rxTone}" aria-label={'telemetry: ' + rxToneLabel}>
-      <span class="chip-lbl">rx</span>
-      <span class="mono rx-age">{rxAge}</span>
     </span>
   </div>
   {#if Shell}<Shell />{/if}
@@ -473,9 +475,9 @@
      while empty; two warnings ellipsize, the tooltip has both. */
   .rx-age { width: 3ch; }
   .fps { width: 7ch; text-align: right; }
-  /* First on the line, it cannot wrap away: squeezed (a narrow window), it narrows and its chip ellipsizes.
-     Where the optional chips shed it stays, empty and zero wide, so rx after it wraps away whole. */
-  .render-warn { flex: 0 1 auto; min-width: 0; display: flex; justify-content: flex-end; width: calc(11ch + 2 * var(--sp-2) + 2px); font: .62rem var(--mono); }
+  /* The gap after it cancelled: the lead takes no room at all. */
+  .opt-lead { flex: none; width: 0; margin-right: calc(var(--sp-2) * -1); }
+  .render-warn { flex: none; display: flex; justify-content: flex-end; width: calc(11ch + 2 * var(--sp-2) + 2px); font: .62rem var(--mono); }
   .render-warn .chip { min-width: 0; max-width: 100%; }
   .render-warn .mono { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .chip-dot {
@@ -499,8 +501,6 @@
      :nth-child: a positional selector retargets when a chip turns conditional. */
   @media (max-width: 560px) {
     .chip-opt { display: none; }
-    .render-warn { width: 0; }
-    .render-warn > * { display: none; }
   }
   /* Handheld: the heatmap (decor) goes before the name ellipsizes. */
   @media (max-width: 479px) { .act-grid { display: none; } }

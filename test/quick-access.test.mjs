@@ -29,14 +29,17 @@
  *              closed, across a reload; the next pin arrives closed
  *   laws       a pinned field: pending while held, the refusal, the gate words
  *              at watch tier, stale dims on a silent link
+ *   perhub     the toggle follows the connected hub's pins: pins on another hub
+ *              only draw no toggle; the last unpin on the connected hub closes
+ *              the dock and the toggle goes, though another hub keeps its pins
  *   drawer     420x860 with a fine pointer (a narrow window, not the phone
  *              class): the toggle in the status row opens a drawer from the
  *              right edge between the top strip and the status row, the stop
  *              pair clear and unmoved, the page not shifted; a tap outside
  *              closes it, the toggle inactive and the stored state closed
  *   phone      420x860: no quick access (DESIGN §10.13): no toggle or slot, no
- *              dock, no Pin or Unpin item; the pins stay stored; the top bar
- *              keeps its rx chip
+ *              dock, no Pin or Unpin item; text entry keeps its own menu; the
+ *              pins stay stored; the top bar keeps its rx chip
  * Screenshots: 1428x900, 1024x768, 420x860, dark and Paper (test/evidence or --shots <dir>).
  *
  * Run: node test/quick-access.test.mjs [--shots <dir>]   (no device needed)
@@ -56,7 +59,7 @@ import { EVIDENCE } from './dist.mjs';
 const args = process.argv.slice(2);
 const SHOTS = args.includes('--shots') ? args[args.indexOf('--shots') + 1] : EVIDENCE;
 mkdirSync(SHOTS, { recursive: true });
-const ONLY = args.includes('--only') ? args[args.indexOf('--only') + 1] : '';   // desk | gate | mid | drawer | phone
+const ONLY = args.includes('--only') ? args[args.indexOf('--only') + 1] : '';   // desk | gate | mid | perhub | drawer | phone
 const run = (name) => !ONLY || ONLY === name;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let fails = 0;
@@ -227,6 +230,8 @@ const prefOpen = (page) => page.evaluate(() => JSON.parse(localStorage.getItem('
 // What must not move when the toggle arrives: the content, the scale control and every status row cell.
 const still = (page) => page.evaluate(() => ['.content', '.footstrip .foot-scale', ...[...document.querySelectorAll('.footstrip .fact')].map((_, i) => '.footstrip .fact:nth-child(' + (i + 1) + ')')]
   .map((q) => { const e = document.querySelector(q), b = e && e.getBoundingClientRect(); return b ? [b.left, b.top, b.width, b.height].map(Math.round).join(',') : '-'; }).join(' | '));
+// The connected hub's catalog is in (api.hub() set), so the plugin has synced against it.
+const page2wait = async (page) => { await page.waitForSelector('.footstrip .dock-slot', { state: 'attached', timeout: 15000 }); await page.waitForTimeout(500); };
 const shot = async (page, name) => { await page.waitForTimeout(300); return page.screenshot({ path: join(SHOTS, 'quick-access-' + name + '.png') }); };
 
 // ---- desktop 1428x900 ---------------------------------------------------------------
@@ -589,6 +594,34 @@ for (const [w, h, theme] of run('mid') ? [[1428, 900, null], [1428, 900, PAPER],
   await ctx.close();
 }
 
+// ---- per connected hub (ph-6ydd) ---------------------------------------------------------
+console.log('\n--- per connected hub ---');
+if (run('perhub')) {
+  const OTHER = { 'bench.local:82': [{ key: 'hero:rail', kind: 'module', title: 'Rail' }] };
+  let b = await boot({ width: 1428, height: 900 }, { pins: OTHER });
+  await page2wait(b.page);
+  await goTab(b.page, 'cat2');
+  await b.page.waitForSelector(F(FREQ));
+  await rclick(b.page, '.dash-cell[data-id="' + OSC + '"] .dash-title');
+  const known = (await menuState(b.page))?.items.includes('Pin to quick access');
+  await b.page.keyboard.press('Escape');
+  ok('perhub: pins on another hub only: the hub is known (Pin offered), yet no toggle (its slot held) and no dock', known && (await toggle(b.page)).n === 0
+    && (await toggle(b.page)).slot && await b.page.locator('.side-dock').count() === 0, { known, t: await toggle(b.page) });
+  await b.ctx.close();
+  b = await boot({ width: 1428, height: 900 }, { pins: { ...OTHER, [HUB]: [{ key: OSC, kind: 'module', title: 'Oscillator' }] } });
+  await page2wait(b.page);
+  await b.page.click('.footstrip .dock-btn');
+  await b.page.waitForSelector('.side-dock .qa-pin');
+  await b.page.locator('.side-dock .qa-pin[data-pin="' + OSC + '"] .qa-unpin').click();
+  await b.page.waitForTimeout(250);
+  const tp = await toggle(b.page);
+  const kept = await b.page.evaluate((k) => Object.keys(JSON.parse(localStorage.getItem(k) || '{}')), PIN_PREF);
+  ok('perhub: the last unpin on the connected hub closes the dock and the toggle goes; the other hub keeps its pins',
+    await b.page.locator('.side-dock').count() === 0 && tp.n === 0 && !(await prefOpen(b.page)) && JSON.stringify(kept) === JSON.stringify(['bench.local:82']), { tp, kept });
+  ok('no page errors', b.errors.length === 0, b.errors);
+  await b.ctx.close();
+}
+
 // ---- a narrow window 420x860, fine pointer: the drawer ------------------------------------
 console.log('\n--- narrow window 420x860 (drawer) ---');
 if (run('drawer')) {
@@ -634,6 +667,13 @@ for (const theme of run('phone') ? [null, PAPER] : []) {
   const fm = await menuState(page);
   ok(t + ': a field menu offers no Pin or Unpin', !!fm && fm.items.length > 0 && !fm.items.some((l) => /quick access/.test(l)), fm);
   await shot(page, '420x860-' + t.toLowerCase() + '-menu');
+  await page.keyboard.press('Escape');
+  await goTab(page, 'shell:hubs');
+  await page.waitForSelector('.he-host');
+  await rclick(page, '.he-host');
+  const xm = await menuState(page);
+  ok(t + ': text entry keeps its own menu (Paste, Select all) on the phone', !!xm && xm.items.some((l) => /Paste$/.test(l)) && xm.items.some((l) => /Select all$/.test(l))
+    && !xm.items.some((l) => /quick access/.test(l)), xm);
   await page.keyboard.press('Escape');
   ok(t + ': the pins stay stored for the desktop', JSON.stringify(await pins(page)) === JSON.stringify(stored), await pins(page));
   await shot(page, '420x860-' + t.toLowerCase());
