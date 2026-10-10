@@ -702,6 +702,8 @@ export function stage(o = {}) {
   const hide = () => { if (!overlay.matches(':hover') && !overlay.querySelector('[data-drag], :focus-visible')) el.removeAttribute('data-show'); };
   const poke = () => { el.setAttribute('data-show', ''); clearTimeout(idle); idle = setTimeout(hide, IDLE_MS); };
   el.addEventListener('pointermove', poke);
+  // A hidden overlay is display: none, out of the tab order: Tab in fullscreen shows it first.
+  winOn(el, 'keydown', (e) => { if (e.key === 'Tab' && full) poke(); });
   el.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse' && !overlay.querySelector('[data-drag]')) { clearTimeout(idle); el.removeAttribute('data-show'); } });
   // A touch on a hidden overlay only wakes it: no tap.
   el.addEventListener('pointerdown', (e) => { tapShow = live() && e.pointerType !== 'mouse' && !el.hasAttribute('data-show'); poke(); }, true);

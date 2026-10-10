@@ -28,6 +28,8 @@ export const span = (v) => (Number.isFinite(v) && v < 1000 ? Math.round(v) + ' m
 const bytes = (v) => (!Number.isFinite(v) ? '-- B' : v < 1024 ? v + ' B' : (v / 1024).toFixed(1) + ' KB');
 const plural = (n, one) => num(n) + ' ' + one + (n === 1 ? '' : 's');
 const PAUSE = { limit: 'Any pause while moves were due' };
+/** Video drops (ph-9t5l.7): over pct% of the frames the screen could show in winMs, in secs separate seconds, after minS of play; clear under clearPct%. */
+export const VIDEO = { winMs: 30000, minS: 20, pct: 1, clearPct: 0.5, secs: 3 };
 
 /**
  * id -> {area, sev, line(m, inc), what, limit, detail, action, hold, clear, act?, logOnly?, cause?, needs?}.
@@ -125,6 +127,12 @@ export const CONDITIONS = {
     what: 'Frames drawn per second while the window shows',
     limit: 'Raised under 30 for 30 s',
     detail: 'The screen is updating less often than usual.',
+    action: 'Close other apps' },
+  'video-drops': { area: 'device', sev: 'warn', hold: 5000, clear: 30000,
+    line: (m) => 'Video dropped ' + plural(m.excess, 'frame') + ' in ' + num(m.wallS) + ' s',
+    what: (m) => 'Skipped of ' + num(m.shown) + ' frames the screen could show, ' + num(m.fps) + ' fps video on a ' + num(m.hz) + ' Hz screen',
+    limit: 'Raised over ' + VIDEO.pct + '% in 30 s, in ' + VIDEO.secs + ' seconds or more',
+    detail: 'The video skips frames, so it plays less smoothly than this screen allows.',
     action: 'Close other apps' },
   growth: { area: 'device', sev: 'warn', hold: 0, clear: 300000,
     line: (m) => 'Memory up ' + num(m.nowMb - m.baseMb) + ' MB in ' + num(m.minutes) + ' min',
@@ -276,6 +284,70 @@ export function classify(e) {
   return { cause: 'unknown', confidence: 'likely', why: 'nothing decisive', fact: 'cause unknown' };
 }
 
+/**
+ * One read of a playing video's counters at t, or null: nothing is read
+ * while it is paused, ended or has no frame (the read itself is the cost).
+ * v: an HTMLVideoElement or a fake with the same members.
+ */
+export function videoRead(v, t) {
+  if (!v || v.paused || v.ended || v.readyState < 2 || v.isConnected === false || !v.getVideoPlaybackQuality) return null;
+  const q = v.getVideoPlaybackQuality();
+  return { t, v, total: q.totalVideoFrames, dropped: q.droppedVideoFrames, media: v.currentTime, rate: v.playbackRate || 1, w: v.videoWidth, h: v.videoHeight };
+}
+
+/**
+ * The step between two reads of one element about a second apart, or null
+ * when it spans a seek, a stall, a new source or a gap: media time must have
+ * advanced by rate x wall time within a fifth.
+ */
+export function videoStep(a, b) {
+  if (!a || !b || a.v !== b.v) return null;
+  const wall = (b.t - a.t) / 1000, media = b.media - a.media, frames = b.total - a.total, dropped = b.dropped - a.dropped;
+  if (wall < 0.5 || wall > 2.5 || frames < 0 || dropped < 0 || dropped > frames || Math.abs(media - b.rate * wall) > 0.2 * wall) return null;
+  return { t: b.t, wall, media, frames, dropped };
+}
+
+/**
+ * Drops past the screen's own: a screen at hz shows at most hz x wall frames,
+ * so a 120 fps video on a 60 Hz screen skips half of them as smooth as it
+ * can be, and only drops beyond that count. hz null judges every frame.
+ */
+export const pastScreen = (s, hz) => Math.max(0, s.dropped - Math.max(0, s.frames - (hz > 0 ? hz * s.wall : Infinity)));
+
+/** The screen's refresh (Hz) from the frame bursts' rates: one that missed a frame reads 5/6 or less, so the mean of those within 10% of the fastest. */
+export function displayHz(rates) {
+  const m = max(rates);
+  if (m == null) return null;
+  const c = rates.filter((r) => r >= 0.9 * m);
+  return c.reduce((a, b) => a + b, 0) / c.length;
+}
+
+/**
+ * A window of steps (videoStep) against the screen: fps is decoded frames
+ * over media time (the playback-quality totals, never the presented cadence,
+ * which a slower screen caps); shown, the frames the screen could show,
+ * wall x min(fps x rate, hz); excess, the drops past the screen's; secs, the
+ * steps with one. The steps ending in the last winMs at t (30 one-second
+ * steps, never a 31st on the edge). null without steps.
+ */
+export function videoWindow(all, hz, t) {
+  const steps = all.filter((s) => s.t > t - VIDEO.winMs + 500 && s.t <= t);
+  if (!steps.length) return null;
+  const sum = (k) => steps.reduce((a, s) => a + s[k], 0);
+  const wall = sum('wall'), media = sum('media'), frames = sum('frames'), dropped = sum('dropped');
+  const shown = Math.min(frames, hz > 0 ? hz * wall : Infinity);
+  const excess = pastScreen({ wall, frames, dropped }, hz);
+  return { wallS: wall, fps: media > 0 ? frames / media : null, hz: hz > 0 ? hz : null, rate: media / wall, frames, dropped, shown, excess,
+    pct: shown > 0 ? 100 * excess / shown : 0, secs: steps.filter((s) => pastScreen(s, hz) >= 1).length };
+}
+
+/** The video-drops signal from a window: true raises, false clears, null holds (between the bands). */
+export function videoSignal(w) {
+  if (!w || !(w.wallS >= VIDEO.minS)) return false;
+  if (w.pct > VIDEO.pct && w.secs >= VIDEO.secs) return true;
+  return w.pct < VIDEO.clearPct ? false : null;
+}
+
 /** D4 thresholds (operator 2026-10-09: tens of MB never trips it). */
 export const GROWTH = { blockMin: 5, blocks: 6, riseMb: 100 };
 
@@ -408,6 +480,7 @@ export function createTracker(cb = {}) {
 export function evidenceText(e) {
   if (!e) return '';
   const r = (v) => Math.round(v) + ' ms';
+  const m = e.media;
   return [
     e.leadSendMinMs != null && 'sent ahead ' + r(e.leadSendMinMs),
     e.latMs != null && 'machine planning ' + r(e.latMs),
@@ -417,5 +490,7 @@ export function evidenceText(e) {
     e.loopLagMaxMs != null && 'loop lag ' + r(e.loopLagMaxMs),
     e.backlogMax > 0 && 'backlog ' + e.backlogMax + ' B',
     e.hidden && 'page hidden',
+    m && m.frames > 0 && ['video ' + m.w + 'x' + m.h + ' ' + Math.round(m.fps) + ' fps', m.hz && 'screen ' + Math.round(m.hz) + ' Hz',
+      'dropped ' + m.dropped + ' of ' + m.frames, m.hdr && 'HDR', m.full && 'fullscreen', m.an && 'analyzer open'].filter(Boolean).join(', '),
   ].filter(Boolean).join(' · ');
 }
