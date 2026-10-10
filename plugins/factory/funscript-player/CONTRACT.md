@@ -231,7 +231,8 @@ export function createMediaClock();   // -> MediaClock
 export function frameSource(video, onFrame, now = () => performance.now());   // -> stop()
   // onFrame(mediaMs, displayMs). requestVideoFrameCallback when present: (md.mediaTime * 1000,
   // md.expectedDisplayTime). A rAF loop reports (video.currentTime * 1000, now()) only while no
-  // rVFC frame came for FALLBACK_AFTER_MS (audio only, hidden video, glance).
+  // rVFC frame came for FALLBACK_AFTER_MS (audio only, hidden video, glance). The loop runs only
+  // while the video is not paused; the element's 'play' event starts it again.
 // Playback (ph-smvd.12):
 export const WRAP_EARLY_MS = 34;
 export function loopSpec(a, b, count = 0, durationMs = Infinity);   // -> {a, b, count} | null
