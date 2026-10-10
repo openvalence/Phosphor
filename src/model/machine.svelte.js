@@ -107,7 +107,7 @@ function blankStats() {
     // Published once a second by whatever widget owns the rAF loop, so the
     // link bar can separate a render-cadence problem (the shell's webview)
     // from an arrival-cadence one (the wire). Nulls until a loop runs.
-    render: { fps: null, delayMs: null, heldPct: null, skewMs: null },
+    render: { fps: null, delayMs: null, heldPct: null, skewMs: null, at: null },
     lastRxMs: 0,
     clockOffsetUs: null,
     clockRttUs: null,

@@ -421,7 +421,12 @@ function evaluate(t, row) {
     const p95 = quantile(vals(inWin(lags, t - 60000, t)), 0.95);
     tracker.level('busy', band('busy', p95 > 25, p95 != null && p95 < 15, p95 > 100 ? 'act' : 'warn'), t, { m: { p95Ms: p95 } });
     tracker.level('slow-display', band('slow-display', fps != null && fps < 30, fps >= 45, 'info'), t, { m: { fps } });
-  } else tracker.level('slow-display', null, t);
+    // The rail's own census (RailWidget, once a second); stale once no rail draws.
+    const rr = machine.stats.render, live1 = rr.fps != null && rr.at != null && Date.now() - rr.at < 3000;
+    const drift = live1 ? Math.abs(rr.skewMs || 0) : null;
+    tracker.level('rail-stalled', live1 ? band('rail-stalled', rr.heldPct > 10, rr.heldPct <= 5, 'warn') : null, t, live1 ? { m: { pct: rr.heldPct } } : undefined);
+    tracker.level('clock-drift', live1 ? band('clock-drift', drift > 2, drift <= 1, 'warn') : null, t, live1 ? { m: { ms: drift } } : undefined);
+  } else for (const id of ['slow-display', 'rail-stalled', 'clock-drift']) tracker.level(id, null, t);
   if (pressure === 'critical') criticalSince ??= t; else criticalSince = null;
   if (pressure === 'serious' || pressure === 'critical') seriousSince ??= t; else seriousSince = null;
   const ov = criticalSince != null && t - criticalSince >= 10000 ? 'act' : seriousSince != null && t - seriousSince >= 30000 ? 'warn' : null;
