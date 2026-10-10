@@ -238,7 +238,7 @@ const canvasSums = (page) => page.$$eval('canvas', (cs) => cs.map((c) => {
   const gap = await page.evaluate(() => document.querySelector('.tokens li').getBoundingClientRect().top
     - document.querySelector('.adv summary').getBoundingClientRect().bottom);
   ok('advanced: no blank gap under the header', gap >= 0 && gap < 8, gap.toFixed(1) + ' px');
-  const cell = (k) => page.$eval('#tp-v' + k, (el) => [el.getBoundingClientRect().height, el.scrollWidth > el.clientWidth, el.title]);
+  const cell = (k) => page.$eval('#tp-v' + k, (el) => [el.getBoundingClientRect().height, el.scrollWidth > el.clientWidth, el.dataset.tip]);
   const [glowH, cut, glowTitle] = await cell('--glow-reality');
   ok('advanced: a long value is one line, whole in its title', glowH === (await cell('--bg'))[0] && cut && glowTitle.startsWith('0 0 18px'), glowH + ' ' + glowTitle);
   await page.fill('input[aria-label="Pin --radius"]', '1px;color:red');

@@ -62,7 +62,7 @@
       {/each}
     {/if}
     {#if cur.kind}
-      <p class="look-warn" id={id + '-warn'} title={warn}>{warn}</p>
+      <p class="look-warn" id={id + '-warn'} data-tip={warn}>{warn}</p>
     {/if}
   </div>
 {/if}

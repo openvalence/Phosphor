@@ -236,7 +236,7 @@ try {
   ok('rail: the hub refuses another session\'s point move SOURCE_CONFLICT',
     await nackOf(pr.s.sendIntent(CMD.channelId, { [CMD.key]: 100 })) === 'SOURCE_CONFLICT');
   ok('rail: and a flip SOURCE_CONFLICT', await nackOf(pr.s.sendIntent(FLIP.writeChannel, { [FLIP.settingKey]: flipped0 ? 0 : 1 })) === 'SOURCE_CONFLICT');
-  ok('rail: the page grays Flip while the stream owns the rail', await until(() => flip.isDisabled()), await flip.getAttribute('title'));
+  ok('rail: the page grays Flip while the stream owns the rail', await until(() => flip.isDisabled()), await flip.getAttribute('data-tip'));
   pr.s.close();
   streaming = false;
   await streamLoop;

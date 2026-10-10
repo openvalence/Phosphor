@@ -127,16 +127,6 @@
     requestAnimationFrame(check);
     return () => { ro.disconnect(); mo.disconnect(); removeEventListener('resize', retry); };
   });
-
-  /** The full text as a tooltip only while the bar ellipsizes it; a new `text` re-runs it. */
-  const fullTitle = (text) => (el) => {
-    void text;
-    const set = () => { el.title = el.scrollWidth > el.clientWidth + 0.5 ? el.textContent : ''; };
-    const ro = new ResizeObserver(set);
-    ro.observe(el);
-    set();
-    return () => ro.disconnect();
-  };
 </script>
 
 <!-- "deep": empty bar space drags the undecorated shell window; buttons and
@@ -145,13 +135,13 @@
   <div class="header-left">
     <!-- The phone menu (DESIGN §10.12): the sidebar as a drawer, buckets 1 and 2. -->
     {#if phoneMenu.shown}
-      <button type="button" class="menu-btn" aria-label="Menu" title="Menu" aria-expanded={phoneMenu.open}
+      <button type="button" class="menu-btn" aria-label="Menu" data-tip="Menu" aria-expanded={phoneMenu.open}
               onclick={() => (phoneMenu.open = !phoneMenu.open)}>
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11" /></svg>
       </button>
     {/if}
     <ChannelHeat onopen={onheat} />
-    <span class="wordmark" {@attach fullTitle(title)}>{title}</span>
+    <span class="wordmark" data-tip={title}>{title}</span>
   </div>
 
   <!-- ONE flat row of equal chips (OG). Phase and tier lead it and never
@@ -173,9 +163,9 @@
       <span class="mono rx-age">{rxAge}</span>
     </span>
     <span class="render-warn chip-opt">
-      {#if renderWarn}<span class="chip tone-warn" title={renderTip}><span class="mono">{renderWarn}</span></span>{/if}
+      {#if renderWarn}<span class="chip tone-warn" data-tip={renderTip}><span class="mono">{renderWarn}</span></span>{/if}
     </span>
-    <span class="chip chip-opt tone-{fpsTone}" title={renderTip}>
+    <span class="chip chip-opt tone-{fpsTone}" data-tip={renderTip}>
       <span class="mono fps">{render.fps == null ? '-- fps' : render.fps + ' fps'}</span>
     </span>
   </div>

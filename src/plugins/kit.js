@@ -73,7 +73,7 @@ function h(tag, attrs = {}, ...kids) {
     if (v == null || v === false) continue;
     if (k === 'class') e.className = v;
     else if (k === 'text') e.textContent = v;
-    else e.setAttribute(k, v === true ? '' : String(v));
+    else e.setAttribute(k === 'title' ? 'data-tip' : k, v === true ? '' : String(v));   // `title` is the tooltip: ui/tip.js draws data-tip
   }
   e.append(...kids.flat().filter((x) => x != null && x !== false && x !== ''));
   return e;
@@ -284,12 +284,15 @@ export function outside(el, onOutside, except = []) {
 // ---- controls ---------------------------------------------------------------------
 
 export function button(o = {}) {
-  check('button', o, ['label', 'icon', 'title', 'tone', 'pressed', 'disabled', 'onClick']);
+  check('button', o, ['label', 'icon', 'title', 'tip', 'tone', 'pressed', 'disabled', 'onClick']);
   if (o.tone != null && !['primary', 'danger'].includes(o.tone)) throw new Error('ui.button: tone is "primary" or "danger"');
   const b = h('button', { type: 'button', class: cls('og-btn sm ui-btn' + (o.tone ? ' ' + o.tone : ''), o) });
-  let ic = null, lb = null, name = null;
-  // An icon-only button is named by its title.
-  const sync = () => { if (lb) b.removeAttribute('aria-label'); else attr(b, 'aria-label', b.getAttribute('title') || null); };
+  let ic = null, lb = null, name = null, ti = '', tp = '';
+  // An icon-only button is named by its title; its tooltip is `tip`, else the title (ui/tip.js drops one that repeats the label).
+  const sync = () => {
+    attr(b, 'data-tip', tp || ti || null);
+    if (lb) b.removeAttribute('aria-label'); else attr(b, 'aria-label', ti || tp || null);
+  };
   def(b, {
     label: {
       get: () => (lb ? lb.textContent : ''),
@@ -302,7 +305,8 @@ export function button(o = {}) {
       get: () => name,
       set(v) { name = v || null; if (!v) { if (ic) ic.remove(); ic = null; } else if (!ic) b.prepend(ic = icon(v)); else setIcon(ic, v); },
     },
-    title: { get: () => b.getAttribute('title') || '', set(v) { attr(b, 'title', v || null); sync(); } },
+    title: { get: () => ti, set(v) { ti = v || ''; sync(); } },
+    tip: { get: () => tp, set(v) { tp = v || ''; sync(); } },
     pressed: {
       get: () => (b.hasAttribute('aria-pressed') ? b.getAttribute('aria-pressed') === 'true' : null),
       set(v) { attr(b, 'aria-pressed', v == null ? null : String(!!v)); b.classList.toggle('on', !!v); },
@@ -311,6 +315,7 @@ export function button(o = {}) {
   b.icon = o.icon;
   b.label = o.label;
   b.title = o.title;
+  b.tip = o.tip;
   b.pressed = o.pressed;
   b.disabled = !!o.disabled;
   // A toggle flips before onClick, so onClick reads the new state.
@@ -327,7 +332,7 @@ export function files(o = {}) {
 }
 
 export function segmented(o = {}) {
-  check('segmented', o, ['options', 'value', 'tabs', 'disabled', 'onChange']);
+  check('segmented', o, ['options', 'value', 'tabs', 'disabled', 'onChange']);   // an option: {value, label, icon, title, tip}
   const tabs = !!o.tabs;
   const el = h('div', { class: cls('og-seg ui-seg', o), role: tabs ? 'tablist' : 'radiogroup' });
   let value = o.value, btns = [], off = false;
@@ -344,7 +349,7 @@ export function segmented(o = {}) {
   const pick = (v, e) => { if (v === value) return; value = v; draw(); if (o.onChange) o.onChange(v, e); };
   const build = (list) => {
     btns = (list || []).map((x) => {
-      const b = h('button', { type: 'button', role: tabs ? 'tab' : 'radio', title: x.title || null }, x.icon ? icon(x.icon) : null,
+      const b = h('button', { type: 'button', role: tabs ? 'tab' : 'radio', title: x.tip || x.title || null }, x.icon ? icon(x.icon) : null,
         x.label ? h('span', { text: x.label }) : null);
       if (!x.label && x.title) b.setAttribute('aria-label', x.title);
       b._v = x.value;
@@ -383,7 +388,7 @@ function switchCtl(o = {}) {
   def(el, {
     value: { get: () => input.checked, set(v) { input.checked = !!v; } },
     disabled: { get: () => input.disabled, set(v) { input.disabled = !!v; el.classList.toggle('is-disabled', !!v); } },
-    label: { get: () => lab.textContent, set(v) { setText(lab, v); attr(input, 'aria-label', v ? null : el.title || null); } },
+    label: { get: () => lab.textContent, set(v) { setText(lab, v); attr(input, 'aria-label', v ? null : el.getAttribute('data-tip')); } },
     input: { value: input },
   });
   el.value = o.value;
@@ -952,7 +957,7 @@ export function status(o = {}) {
     el.toggleAttribute('data-routed', routed);
     setText(txt, cur.text);
     attr(el, 'data-tone', cur.tone || null);
-    attr(el, 'title', cur.title || cur.text || null);
+    attr(el, 'data-tip', cur.title || cur.text || null);
     if (!routed) { sent = ''; return; }
     const k = cur.text + '\n' + cur.tone + '\n' + cur.title;
     if (k === sent) return;

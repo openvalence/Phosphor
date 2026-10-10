@@ -71,7 +71,7 @@
           <span class="st" data-state={rowState[r.id]}>{WORD[rowState[r.id]] || (r.issueUrl ? 'Sent' : '')}</span>
           <span class="acts">
             <button type="button" class="og-btn sm" aria-expanded={viewing === r.id} onclick={() => (viewing = viewing === r.id ? null : r.id)}>View</button>
-            <button type="button" class="og-btn sm" disabled={!r.issueUrl || rowState[r.id] === 'removed'} title={r.issueUrl ? 'Copies /remove, opens the issue' : 'Issue not found yet'}
+            <button type="button" class="og-btn sm" disabled={!r.issueUrl || rowState[r.id] === 'removed'} data-tip={r.issueUrl ? 'Copies /remove, opens the issue' : 'Issue not found yet'}
                     onclick={() => remove(r)}>Request removal</button>
             <button type="button" class="og-btn sm" onclick={() => dropSent(r.id)}>Forget</button>
           </span>

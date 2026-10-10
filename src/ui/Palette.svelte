@@ -91,7 +91,7 @@
           <li data-key={e.id} draggable={canAdd(e)} ondragstart={(ev) => dragStart(ev, e)} class:grabbable={canAdd(e)}>
             <span class="palette-title">{e.title}</span>
             {#if e.kind === 'safety'}
-              <span class="palette-tag" title="A grid copy of a strip control">
+              <span class="palette-tag" data-tip="A grid copy of a strip control">
                 {target ? 'Strip and top level only' : 'Also in the strip'}</span>
             {/if}
             {#if placed.has(e.id)}

@@ -283,10 +283,10 @@
     <div class="row">
       <button type="button" class="og-btn" class:primary={!isConfigure} disabled={isConfigure || claiming || machine.link.phase !== 'live'}
               onclick={startClaim}>{claiming ? 'Waiting for an answer' : 'Pair this client'}</button>
-      <button type="button" class="og-btn" disabled={!setupCat} title={setupCat ? '' : 'No setup settings on this hub'}
+      <button type="button" class="og-btn" disabled={!setupCat} data-tip={setupCat ? '' : 'No setup settings on this hub'}
               onclick={() => (setupOpen = true)}>Set up this machine</button>
     </div>
-    <p class="pane-status" role="status" data-phase={claimLadder.phase} title={claimLadder.text}>{claimLadder.text}</p>
+    <p class="pane-status" role="status" data-phase={claimLadder.phase} data-tip={claimLadder.text}>{claimLadder.text}</p>
     <details class="howto">
       <summary>Open a pairing window at the machine</summary>
       <ol>
@@ -311,7 +311,7 @@
         {:else}
           <li data-shadow={adminBusy && lastOp?.who === k.name ? adminStatus : null}>
             <span class="slot mono">{k.slot}</span>
-            <span class="who" title={k.name + ', ' + k.how + ', expires in ' + k.left + ' s'}><span class="name">{k.name}</span><span class="meta">{k.how}, expires in {k.left} s</span></span>
+            <span class="who" data-tip={k.name + ', ' + k.how + ', expires in ' + k.left + ' s'}><span class="name">{k.name}</span><span class="meta">{k.how}, expires in {k.left} s</span></span>
             <span class="acts">
               <button type="button" class="og-btn sm" disabled={adminBusy || !canAdminister} onclick={() => decide(k, false)}>Deny</button>
               <button type="button" class="og-btn sm primary" disabled={adminBusy || !canAdminister} onclick={() => decide(k, true)}>Approve</button>
@@ -320,7 +320,7 @@
         {/if}
       {/each}
     </ul>
-    <p class="pane-status" role="status" data-phase={knockLadder.phase} title={knockLadder.text}>{knockLadder.text}</p>
+    <p class="pane-status" role="status" data-phase={knockLadder.phase} data-tip={knockLadder.text}>{knockLadder.text}</p>
   </section>
 
   <section class="pane-sec og-panel" aria-labelledby="pp-ledger">
@@ -352,13 +352,13 @@
               </span>
               <span class="acts">
                 <button type="button" class="og-btn sm" disabled={!o.owner || !canAdminister || adminBusy}
-                        title={!canAdminister ? 'Needs configure' : ''} onclick={() => evict(o.owner)}>Evict</button>
+                        data-tip={!canAdminister ? 'Needs configure' : ''} onclick={() => evict(o.owner)}>Evict</button>
               </span>
             </li>
           {/each}
         </ul>
       {/if}
-      <p class="pane-status" role="status" data-phase={evictLadder.phase} title={evictLadder.text}>{evictLadder.text}</p>
+      <p class="pane-status" role="status" data-phase={evictLadder.phase} data-tip={evictLadder.text}>{evictLadder.text}</p>
     </section>
   {/if}
 </div>

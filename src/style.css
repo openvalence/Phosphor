@@ -1297,3 +1297,26 @@ html.still .ui-stage-center[data-flash] { animation-duration: 1ms; }
 .ui-list[data-form='rows'] .ui-tile-act { position: static; }
 .ui-tile[data-drag] { opacity: .6; cursor: grabbing; }
 .ui-tile[data-over] { box-shadow: 0 -2px 0 var(--highlight); }
+
+/* The one tooltip (ui/tip.js): a top-layer popover at the pointer or under the focused element.
+   Field.svelte's .tip recipe; it never takes the pointer, so it cannot move what it describes. */
+#ph-tip {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: max-content;
+  max-width: min(260px, calc(100vw - 8px));
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--bg-card);
+  color: var(--tx);
+  border: 1px solid var(--line-1);
+  outline: 1px solid var(--line-0);
+  outline-offset: 2px;
+  border-radius: var(--r-s);
+  font-size: .72rem;
+  line-height: 1.5;
+  text-align: left;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}

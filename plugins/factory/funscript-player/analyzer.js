@@ -250,7 +250,7 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
   let note = '', lagAt = -Infinity, lagText = '', model = null, rows = [], cap = false;
   let roleIt = new Map(), roleF = {}, roleV = {}, inputs = null;
   let chans = [], seen = NaN, pend = false, wasShown = false, unwatch = () => {};
-  const btn = (text, tip) => h('button', { type: 'button', class: 'og-btn sm', text, title: tip });
+  const btn = (text, tip) => h('button', { type: 'button', class: 'og-btn sm', text, 'data-tip': tip });
   const bLive = btn(COPY.live, COPY.liveTip);
   const bPrev = btn(COPY.preview, COPY.previewTip);
   const bApply = btn(COPY.apply, COPY.applyTip);
@@ -422,7 +422,7 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
     setText(it.v, fmtValue(it.f, it.draft != null ? it.draft : it.val));
     it.r.toggleAttribute('data-draft', it.draft != null);
     setAttr(it.r, 'data-st', it.st);
-    if (it.r.title !== it.tip) it.r.title = it.tip;
+    if (it.r.dataset.tip !== it.tip) it.r.dataset.tip = it.tip;
     for (const i of it.inputs) if (i.disabled !== !!it.gate) i.disabled = !!it.gate;
   }
 
@@ -441,7 +441,7 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
     press(bLive, mode === 'live');
     press(bPrev, mode === 'preview');
     bPrev.disabled = !cap;
-    bPrev.title = cap ? COPY.previewTip : COPY.noTrial;
+    bPrev.dataset.tip = cap ? COPY.previewTip : COPY.noTrial;
     bApply.disabled = bDiscard.disabled = !cap || !pend;
     if (fresh) for (const it of rows) paint(it);
     const now = performance.now();
@@ -457,7 +457,7 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
     setText(kinEl, kinText(kinState, kinR));
     const tip = kinR && kinR.anomalies ? [version, Math.round(kinR.ms) + ' ms', ...[...kinR.anomalies].map((n, b) => (n && ANOMALIES[b] ? ANOMALIES[b] + ' ' + n : ''))
       .filter(Boolean)].join('\n') : version;
-    if (kinEl.title !== tip) kinEl.title = tip;
+    if (kinEl.dataset.tip !== tip) kinEl.dataset.tip = tip;
   }
 
   frame();

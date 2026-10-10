@@ -271,7 +271,7 @@ function measure({ phone, coarse = phone }) {
     if (!/(hidden|clip)/.test(cs.overflowX) && cs.textOverflow !== 'ellipsis') continue;
     // Fixed-height chrome (ph-e82.17) ellipsizes on purpose; its full form
     // must then be one hover away, in its own or an ancestor's title.
-    const full = el.closest('[title]')?.title || '';
+    const full = el.closest('[data-tip]')?.dataset.tip || '';
     if (full.includes(el.textContent.trim())) continue;
     if (el.scrollWidth > el.clientWidth + 1) fails.push(['clip', name(el) + ' ' + el.scrollWidth + '>' + el.clientWidth]);
   }
@@ -486,7 +486,7 @@ const editClick = async (page) => {
   // The phone menu (DESIGN §10.12): the wrench rides the drawer's Dash row; the hamburger closes it again.
   const menu = await page.locator('.menu-btn').isVisible().catch(() => false);
   if (menu) await page.click('.menu-btn');
-  await page.locator('button[title="Edit layout"]:visible').first().click();
+  await page.locator('button[data-tip="Edit layout"]:visible').first().click();
   if (menu) await page.click('.menu-btn');
 };
 /** [{id, label}] of every tab in sidebar order, whichever nav draws them (nav.mjs opens the drawer). */
@@ -494,7 +494,7 @@ async function navList(page) {
   const ids = await tabIds(page);
   const menu = await page.locator('.menu-btn').isVisible().catch(() => false);
   if (menu) await page.click('.menu-btn');
-  const labels = await page.$$eval('[role=tab][data-tab-id]', (els) => Object.fromEntries(els.map((e) => [e.dataset.tabId, e.getAttribute('title') || e.textContent.trim()])));
+  const labels = await page.$$eval('[role=tab][data-tab-id]', (els) => Object.fromEntries(els.map((e) => [e.dataset.tabId, e.getAttribute('data-tip') || e.textContent.trim()])));
   if (menu) await page.click('.menu-btn');
   return ids.map((id) => ({ id, label: labels[id] || id }));
 }
@@ -502,7 +502,7 @@ async function navList(page) {
 async function selectedLabel(page) {
   const menu = await page.locator('.menu-btn').isVisible().catch(() => false);
   if (menu) await page.click('.menu-btn');
-  const t = await page.$eval('[role=tab][aria-selected=true]', (e) => e.getAttribute('title') || e.textContent.trim()).catch(() => '');
+  const t = await page.$eval('[role=tab][aria-selected=true]', (e) => e.getAttribute('data-tip') || e.textContent.trim()).catch(() => '');
   if (menu) await page.click('.menu-btn');
   return t;
 }
@@ -631,7 +631,7 @@ if (!ONLY || ONLY === 'bar') {
       const shown = (e) => !!e && e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden';
       const fps = document.querySelector('.linkbar .fps');
       return { labels: [...document.querySelectorAll('.linkbar .chip-lbl')].filter(shown).map((e) => e.textContent.trim().toLowerCase()),
-        text: document.querySelector('.linkbar').innerText, fps: shown(fps) ? fps.textContent.trim() : null, tip: fps?.closest('.chip').title || '',
+        text: document.querySelector('.linkbar').innerText, fps: shown(fps) ? fps.textContent.trim() : null, tip: fps?.closest('.chip').dataset.tip || '',
         rx: (() => { const o = document.querySelector('.linkbar .chips.opt').getBoundingClientRect(), x = document.querySelector('.linkbar .chip-opt-last').getBoundingClientRect();
           return x.top >= o.bottom - 0.5 ? 'shed' : x.left >= o.left - 0.5 && x.right <= o.right + 0.5 ? 'whole' : 'cut'; })() };
     });
@@ -646,7 +646,7 @@ if (!ONLY || ONLY === 'bar') {
     const r0 = await rects();
     await page.evaluate(() => { const now = Date.now.bind(Date); Date.now = () => now() - 40; });
     const warned = await page.waitForFunction(() => /skew -?\d+ ms/.test(document.querySelector('.linkbar .render-warn')?.textContent || ''), null, { timeout: 5000 }).then(() => true, () => false);
-    const warn = await page.evaluate(() => { const c = document.querySelector('.linkbar .render-warn .chip'); return c ? { shown: c.getClientRects().length > 0, warn: c.classList.contains('tone-warn'), tip: c.title } : null; });
+    const warn = await page.evaluate(() => { const c = document.querySelector('.linkbar .render-warn .chip'); return c ? { shown: c.getClientRects().length > 0, warn: c.classList.contains('tone-warn'), tip: c.dataset.tip } : null; });
     if (wide) scen(w + 'x' + h + ': a clock skew over 2 ms shows inline in the warn tone', warned && !!warn && warn.shown && warn.warn && /Frame clock/.test(warn.tip), JSON.stringify(warn));
     scen(w + 'x' + h + ': the render warning arriving moves nothing in the bar', r0 === await rects(), r0 + ' -> ' + await rects());
     if (SHOTS) await page.screenshot({ path: join(OUT, 'bar-' + w + 'x' + h + '.png'), clip: { x: 0, y: 0, width: w, height: 80 } });
@@ -730,7 +730,7 @@ if (!ONLY || ONLY === 'class') {
   for (let i = 1; i < await railTabs.count(); i++) {
     await railTabs.nth(i).click();
     await page.waitForTimeout(250);
-    if (await page.$('.content input[type=range]:not(:disabled)')) { label = (await railTabs.nth(i).getAttribute('title')) || ''; break; }
+    if (await page.$('.content input[type=range]:not(:disabled)')) { label = (await railTabs.nth(i).getAttribute('data-tip')) || ''; break; }
   }
   scen('found a category with a range control', !!label, label);
   const inFlight = () => page.$$eval('[data-shadow]', (els) => els.filter((e) => e.getAttribute('data-shadow') !== 'confirmed').length);

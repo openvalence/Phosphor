@@ -282,7 +282,7 @@ console.log('\n--- the status slot ---');
   const slot = () => o.page.evaluate(() => {
     const s = document.querySelector('.topstrip .status');
     const b = s && s.querySelector('.st-dismiss');
-    return { kind: s && s.dataset.kind, text: s ? s.textContent.trim() : '', title: b ? b.title : '' };
+    return { kind: s && s.dataset.kind, text: s ? s.textContent.trim() : '', title: b ? b.dataset.tip || '' : '' };
   });
   const pause = o.page.locator('.topstrip .btn-pause');
   const waitKind = async (kind, ms = 4000) => {

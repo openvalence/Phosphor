@@ -698,7 +698,7 @@
           data-armed={kwire && kwire.id === id && kwire.side === side && kwire.port === port ? '' : null}
           style:--sy={sy + 'px'}
           aria-label={(side === 'in' ? 'Input' : 'Output') + ' socket, ' + title + ', ' + vt}
-          title={(side === 'in' ? 'Input: ' : 'Output: ') + title + ' (' + vt + ')'}
+          data-tip={(side === 'in' ? 'Input: ' : 'Output: ') + title + ' (' + vt + ')'}
           onclick={(e) => sockClick(e, id, side, port)} onfocus={() => sockFocus(id, side, port)}></button>
 {/snippet}
 
@@ -715,21 +715,21 @@
   <span class="ghead">
     <svg class="gicon" viewBox="0 0 16 16" aria-hidden="true">{@html ICON[bp ? 'toy' : 'field']}</svg>
     <span class="gtitle">
-      {#if nf.card}<span class="gcard" title={nf.path}>{nf.card}</span>{/if}
+      {#if nf.card}<span class="gcard" data-tip={nf.path}>{nf.card}</span>{/if}
       <span class="gname">{nf.name}</span>
     </span>
     {#if run}
-      <span class="gbadge" data-home={run.home} data-runs title={run.why}>{run.home}</span>
+      <span class="gbadge" data-home={run.home} data-runs data-tip={run.why}>{run.home}</span>
     {:else}
       <span class="gbadge" data-home={bp ? 'client' : 'hub'}
-            title={bp ? 'Buttplug device: edges run in Phosphor' : 'Catalog field on the hub'}>{bp ? 'client' : 'hub'}</span>
+            data-tip={bp ? 'Buttplug device: edges run in Phosphor' : 'Catalog field on the hub'}>{bp ? 'client' : 'hub'}</span>
     {/if}
   </span>
-  {#if nf.desc}<p class="gline gdesc" title={nf.desc}>{nf.desc}</p>{/if}
+  {#if nf.desc}<p class="gline gdesc" data-tip={nf.desc}>{nf.desc}</p>{/if}
   {#if nf.spec}<p class="gline gspec">{nf.spec}</p>{/if}
   {#if nf.ports.out}
     {@const v = (void beat, R.value(n.ref))}
-    <p class="gline" data-stale={stale ? '' : null} title={stale || null}>
+    <p class="gline" data-stale={stale ? '' : null} data-tip={stale || null}>
       <span class="gnum">{fmt(v) || 'no value yet'}</span> {fmt(v) ? nf.unit : ''}{stale ? ' (' + stale + ')' : ''}
     </p>
   {/if}
@@ -756,7 +756,7 @@
   <span class="ghead">
     <svg class="gicon" viewBox="0 0 16 16" aria-hidden="true">{@html ICON[spec.cat]}</svg>
     <span class="gname">{cap(R.opLabel(o))}</span>
-    <span class="gnum gout" title="Output this tick">{fmtT(v, ot)}</span>
+    <span class="gnum gout" data-tip="Output this tick">{fmtT(v, ot)}</span>
   </span>
   {#if hasOpt(o)}
     <div class="grow">
@@ -798,7 +798,7 @@
   <span class="ghead">
     <svg class="gicon" viewBox="0 0 16 16" aria-hidden="true">{@html ICON.map}</svg>
     <span class="gname">{r.name}</span>
-    <span class="gbadge" data-home={isRel ? r.home : 'draft'} title={why}>{isRel ? r.home : 'draft'}</span>
+    <span class="gbadge" data-home={isRel ? r.home : 'draft'} data-tip={why}>{isRel ? r.home : 'draft'}</span>
   </span>
   {#if isRel}
     {@const st = ladder(r)}
@@ -841,20 +841,20 @@
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div class="graph" class:full role="application" aria-label="Node graph editor" onkeydown={key}>
   <div class="gtool" role="toolbar" aria-label="Graph tools">
-    <button type="button" class="og-btn" onclick={() => openPalette()} title="Add node (Shift+A), search (F3)">+ Add</button>
-    <button type="button" class="og-btn" onclick={fit} title="Frame the nodes">Fit</button>
+    <button type="button" class="og-btn" onclick={() => openPalette()} data-tip="Add node (Shift+A), search (F3)">+ Add</button>
+    <button type="button" class="og-btn" onclick={fit} data-tip="Frame the nodes">Fit</button>
     <button type="button" class="og-btn gmore-btn" aria-expanded={more} onclick={() => { more = !more; }}>More</button>
     <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
     <div class="gmore" data-open={more ? '' : null} onclick={() => { more = false; }}>
-      <button type="button" class="og-btn" onclick={() => R.undo()} disabled={(void gen, !R.canUndo)} title="Undo (Ctrl+Z)">Undo</button>
-      <button type="button" class="og-btn" onclick={() => R.redo()} disabled={(void gen, !R.canRedo)} title="Redo (Ctrl+Shift+Z)">Redo</button>
-      <button type="button" class="og-btn" onclick={dup} disabled={!sel.size} title="Duplicate selected maps (Ctrl+D)">Duplicate</button>
-      <button type="button" class="og-btn" onclick={() => del()} disabled={!sel.size && !selWire} title="Delete selection (Delete)">Delete</button>
-      <button type="button" class="og-btn" aria-pressed={boxMode} onclick={() => { boxMode = !boxMode; }} title="Drag to box-select (Shift+drag)">Box select</button>
+      <button type="button" class="og-btn" onclick={() => R.undo()} disabled={(void gen, !R.canUndo)} data-tip="Undo (Ctrl+Z)">Undo</button>
+      <button type="button" class="og-btn" onclick={() => R.redo()} disabled={(void gen, !R.canRedo)} data-tip="Redo (Ctrl+Shift+Z)">Redo</button>
+      <button type="button" class="og-btn" onclick={dup} disabled={!sel.size} data-tip="Duplicate selected maps (Ctrl+D)">Duplicate</button>
+      <button type="button" class="og-btn" onclick={() => del()} disabled={!sel.size && !selWire} data-tip="Delete selection (Delete)">Delete</button>
+      <button type="button" class="og-btn" aria-pressed={boxMode} onclick={() => { boxMode = !boxMode; }} data-tip="Drag to box-select (Shift+drag)">Box select</button>
       <button type="button" class="og-btn" onclick={reset}>Reset view</button>
       <button type="button" class="og-btn" onclick={() => zoomBy(1.25)} aria-label="Zoom in">+</button>
       <button type="button" class="og-btn" onclick={() => zoomBy(0.8)} aria-label="Zoom out">−</button>
-      <button type="button" class="og-btn" aria-pressed={full} onclick={() => { full = !full; }} title="Fill the window (Escape exits)">Full size</button>
+      <button type="button" class="og-btn" aria-pressed={full} onclick={() => { full = !full; }} data-tip="Fill the window (Escape exits)">Full size</button>
     </div>
   </div>
   <p class="gnote">
@@ -883,9 +883,8 @@
             <path class="gwire-hit" {d} role="presentation"
                   onpointerdown={(e) => { e.stopPropagation(); selWire = w.id; sel = new Set(); vp.focus({ preventScroll: true }); }} />
             {#if w.conv}
-              <circle class="gconv" data-conv={w.id} r="3.5" cx={(p1[0] + p2[0]) / 2} cy={(p1[1] + p2[1]) / 2}>
-                <title>{typeAt(w.a, 'out') + ' to ' + typeAt(w.b, 'in', w.port)}</title>
-              </circle>
+              <circle class="gconv" data-conv={w.id} r="3.5" cx={(p1[0] + p2[0]) / 2} cy={(p1[1] + p2[1]) / 2}
+                data-tip={typeAt(w.a, 'out') + ' to ' + typeAt(w.b, 'in', w.port)} />
             {/if}
             {#if typeof v === 'number' || v === SAFE}
               <text class="gval" x={(p1[0] + p2[0]) / 2} y={(p1[1] + p2[1]) / 2 - 6} text-anchor="middle">{w.link ? fmtT(v, typeAt(w.a, 'out')) : fmt(v)}</text>

@@ -331,7 +331,7 @@ node editor) prevents the event first, and the shell stays out.
   it at the focused element's corner, so a time or place "here" should be
   the plugin's own cursor), called at each open. An item is `{label, run,
   disabled, title, checked}`: `label` 1 to 40 characters, `disabled` '' or
-  the reason, shown as its title; an item without a label or a run is left
+  the reason, shown as its tip; an item without a label or a run is left
   out. One row each, never a submenu. The items function and every `run`
   run under the plugin's guard: a throw is recorded on the plugin and lists
   nothing or does nothing, never reaching the shell; a disabled plugin's
@@ -526,6 +526,19 @@ in the top layer); one never appended is borrowed into `<body>` while open.
   a state change swaps text, never a box.
 - Targets: 40 px on a coarse pointer (law 12); a `bar` row is the tap height
   there.
+- Tooltips: the shell draws one tooltip, from an element's `data-tip`
+  (`src/ui/tip.js`); a native `title` tooltip never shows. A kit control
+  takes the text as its `tip` option (`title` on a `button` or a `segmented`
+  option is its name and its tip). Plugin markup that sets `title` anyway is
+  converted at the first hover or focus: the text moves to `data-tip`, the
+  attribute is removed, and where it was the element's only name it becomes
+  the `aria-label`. A tip that repeats the element is dropped: equal to its
+  visible text, or to its `aria-label` while it has visible text (case,
+  spacing and a trailing shortcut such as `(Ctrl+S)` or `, F11` do not
+  count). An icon-only element keeps its tip, its only visible name, and so
+  does text the element clips (the tip is the full text). Give a tip only
+  what the element does not say: a shortcut, a value, a reason, a disabled
+  reason. While shown, the tip is the element's `aria-describedby`.
 - Touch never adjusts by accident (`ph-5u0g` peeve 14): a slider, a scrub
   and a number's drag take a touch drag only after horizontal intent (8 px,
   more across than down) or a 400 ms hold; a tap never changes them and a
@@ -557,9 +570,9 @@ returns the `<svg>`; an `icon` option takes a name or a stroke path `d`.
 
 | factory | options | handle |
 |---|---|---|
-| `button` | `label`, `icon`, `title` (an icon-only button's name), `tone` (`'primary'`, `'danger'`), `pressed` (a boolean makes it a toggle: `aria-pressed` and the shell's on look; it flips before `onClick`), `onClick` | `label`, `icon`, `title`, `pressed`, `disabled` |
+| `button` | `label`, `icon`, `title` (an icon-only button's name, and its tip), `tip` (the tooltip when it is more than the name), `tone` (`'primary'`, `'danger'`), `pressed` (a boolean makes it a toggle: `aria-pressed` and the shell's on look; it flips before `onClick`), `onClick` | `label`, `icon`, `title`, `tip`, `pressed`, `disabled` |
 | `files` | `accept`, `multiple`, `onFiles(files)` (an array) | a hidden file input: `open()` shows the picker; append it anywhere in the mount |
-| `segmented` | `options: [{value, label, icon, title}]`, `value`, `tabs` (a tab list: `role=tab`, the open tab in `--highlight`), `onChange` | `value`, `disabled`, `options` (settable: the buttons are rebuilt) |
+| `segmented` | `options: [{value, label, icon, title, tip}]`, `value`, `tabs` (a tab list: `role=tab`, the open tab in `--highlight`), `onChange` | `value`, `disabled`, `options` (settable: the buttons are rebuilt) |
 | `switch` | `label` (beside the track), `value`, `onChange` | `value`, `disabled` |
 | `slider` | `min`, `max`, `step`, `value`, `label` (accessible name), `format(v)` (its value chip, `el.chip`, as wide as its widest reading), `onInput` (live), `onChange` (on release) | `value`, `disabled`, `chip`, `input` |
 | `stepper` | `min`, `max`, `step`, `value`, `unit`, `label`, `buttons` (default true: minus, number, plus with hold-repeat; false: the number box alone), `drag` (the box drags sideways, one step per 4 px; a press without a drag types), `onChange` | `value`, `disabled`, `input` |

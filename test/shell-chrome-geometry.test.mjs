@@ -160,7 +160,7 @@ for (const [fw, fh] of [[390, 844], [1280, 800], [1440, 900], [1920, 1080]]) {
 // Compact forms, exact value in the title; UI build and catalog etag are one cell.
 await page.setViewportSize({ width: 1440, height: 900 });
 const cells = await page.evaluate(() => [...document.querySelectorAll('.footstrip .fact')].map((c) =>
-  ({ k: c.querySelector('.k').textContent, v: c.querySelector('.v').textContent, t: c.title })));
+  ({ k: c.querySelector('.k').textContent, v: c.querySelector('.v').textContent, t: c.dataset.tip })));
 const cell = (k) => cells.find((c) => c.k === k);
 const pushes = cell('state pushes');
 ok('footstrip: counters are compact with the exact count on hover', cell('reconnects').v === '0' && cell('reconnects').t === '0 reconnects'
@@ -360,7 +360,7 @@ const heroClip = (p) => p.evaluate(() => {
   for (const el of document.querySelectorAll('.topstrip .strip *, .hero-strip *')) {
     if (!el.getClientRects().length || !el.textContent.trim()) continue;
     const cs = getComputedStyle(el);
-    if (cs.visibility === 'hidden' || !/(hidden|clip|auto|scroll)/.test(cs.overflowY) || cs.webkitLineClamp !== 'none' && el.closest('[title]')) continue;
+    if (cs.visibility === 'hidden' || !/(hidden|clip|auto|scroll)/.test(cs.overflowY) || cs.webkitLineClamp !== 'none' && el.closest('[data-tip]')) continue;
     if (el.scrollHeight > el.clientHeight + 1) out.push(el.className + ' ' + el.scrollHeight + '>' + el.clientHeight);
   }
   const nums = document.querySelector('.topstrip .nums')?.getBoundingClientRect();
@@ -415,7 +415,7 @@ for (const [w, h] of [[1440, 900], [390, 844], [420, 860], [860, 420]]) {
       .map((v) => getComputedStyle(v).fontFamily)));
     const word = document.querySelector('.linkbar .wordmark');
     return { faces: [...faces], real: cs.filter((c) => getComputedStyle(c).color === real).map((c) => c.textContent.trim().split(/\s+/)[0]),
-      word: word.title === word.textContent, titles: cs.map((c) => c.title).filter(Boolean),
+      word: word.dataset.tip === word.textContent, titles: cs.map((c) => c.dataset.tip).filter(Boolean),
       labels: [...document.querySelectorAll('.linkbar .chip-lbl')].filter((e) => e.getClientRects().length).map((e) => e.textContent.trim().toLowerCase()) };
   });
   // Operator 2026-10-10: the address, firmware and control list are the Health view's, not the bar's.
@@ -423,7 +423,7 @@ for (const [w, h] of [[1440, 900], [390, 844], [420, 860], [860, 420]]) {
   ok(tag + ': chip values share one face; reality only on liveness chips; no repeated tooltip', chips.faces.length === 1
     && chips.real.every((t) => /^(live|rx)$/i.test(t)) && chips.word && !chips.titles.some((t) => /firmware|0\.0\.0-fixture/.test(t)),
     JSON.stringify(chips));
-  ok(tag + ': the tape carries the jog hint as its tooltip', await hp.locator('.rail-tape-track[title*="scrub"]').count() === 1);
+  ok(tag + ': the tape carries the jog hint as its tooltip', await hp.locator('.rail-tape-track[data-tip*="scrub"]').count() === 1);
 
   // ph-e82.21: nothing moves for 30 frames across each safety and pattern
   // edge. The sampler starts first, then the edge fires, so the press, its

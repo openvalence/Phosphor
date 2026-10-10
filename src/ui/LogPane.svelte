@@ -274,14 +274,14 @@
   <div class="tools">
     <label class="tool">
       <span>Level</span>
-      <select bind:value={minLevel} disabled={tab !== 'log'} title={tab !== 'log' ? 'Log feed only' : ''}>
+      <select bind:value={minLevel} disabled={tab !== 'log'} data-tip={tab !== 'log' ? 'Log feed only' : ''}>
         <option value={-1}>all levels</option>
         {#each LEVELS as l (l.n)}<option value={l.n}>{l.name} and above</option>{/each}
       </select>
     </label>
     <label class="tool">
       <span>Tag</span>
-      <select bind:value={tagFilter} disabled={tab !== 'log'} title={tab !== 'log' ? 'Log feed only' : ''}>
+      <select bind:value={tagFilter} disabled={tab !== 'log'} data-tip={tab !== 'log' ? 'Log feed only' : ''}>
         <option value="">all tags</option>
         {#each tags as t (t)}<option value={t}>{t}</option>{/each}
       </select>
@@ -290,10 +290,10 @@
       {feeds[tab].follow ? 'Following' : 'Follow'}
     </button>
     <button type="button" class="og-btn sm" disabled={tab === 'changes' || tab === 'health' || !shown[tab].length} onclick={copyFeed}>Copy</button>
-    <button type="button" class="og-btn sm" disabled={!history.baselined || history.busy} title="Return settings to how they were when you connected"
+    <button type="button" class="og-btn sm" disabled={!history.baselined || history.busy} data-tip="Return settings to how they were when you connected"
             onclick={revert}>Revert changes</button>
   </div>
-  <p class="pane-status" role="status" data-phase={flash ? 'settled' : null} title={status}>{status}</p>
+  <p class="pane-status" role="status" data-phase={flash ? 'settled' : null} data-tip={status}>{status}</p>
 
   {#if tab === 'health'}<div id="lp-feed-health" role="tabpanel" aria-labelledby="lp-tab-health"><HealthPane /></div>{/if}
   <div class="stack" class:gone={tab === 'health'}>

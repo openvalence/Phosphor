@@ -405,7 +405,7 @@
   <!-- The top strip's readback (ph-ryi7), one line. The style rides its
        own label, so a style named "idle" never reads as the run state
        (ph-kts). -->
-  <div class="plan-rb" title={bent.length ? bent.join(', ') : undefined}>
+  <div class="plan-rb" data-tip={bent.length ? bent.join(', ') : undefined}>
     <span class="plan-mode">{#if owner}<span class="plan-owner">{owner}</span>{:else}plan{/if}{#if by}{' · owned by '}<span class="plan-owner">{by}</span>{/if}{#if fields.style}{' · ' + labelFor(fields.style) + ' ' + optionLabel(fields.style, styleVal)}{/if}</span>
     <span class="plan-meta mono">
       {#if fields.velocity}

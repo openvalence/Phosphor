@@ -1230,7 +1230,7 @@ export function createPlayer(api) {
     const saveAudio = () => writePref(api, 'audio', { vol: video.volume, muted: video.muted });
     const vol = ui.slider({ min: 0, max: 1, step: 0.05, label: COPY.volume, class: 'fsp-vol',
       onInput: (x) => { video.volume = clamp(x, 0, 1); if (video.volume > 0) video.muted = false; }, onChange: () => saveAudio() });
-    vol.title = COPY.volume;
+    vol.dataset.tip = COPY.volume;
     const rate = ui.button({ label: '1x', title: COPY.rate, class: 'fsp-rate',
       onClick: () => { video.defaultPlaybackRate = video.playbackRate = RATES[(RATES.indexOf(video.playbackRate) + 1) % RATES.length]; render(); } });
     rate.setAttribute('aria-label', COPY.rate);
@@ -1259,14 +1259,14 @@ export function createPlayer(api) {
     // Offset: the kit's number box, typed, arrowed (5 ms, Ctrl the 100 ms decade) or dragged sideways (5 ms per 4 px).
     const offN = ui.stepper({ min: -OFFSET_MAX, max: OFFSET_MAX, step: OFFSET_STEP, buttons: false, drag: true, unit: COPY.offsetUnit, label: COPY.offset,
       value: st.T.offsetMs, onChange: (v) => { if (clampOffset(v) !== st.T.offsetMs) ctl.setT({ offsetMs: clampOffset(v) }); } });
-    offN.input.title = COPY.offsetTip;
-    const offK = h('span', { class: 'field-label fsp-offk', text: COPY.offset, title: COPY.offsetTip });
+    offN.input.dataset.tip = COPY.offsetTip;
+    const offK = h('span', { class: 'field-label fsp-offk', text: COPY.offset, 'data-tip': COPY.offsetTip });
     const off = h('label', { class: 'fsp-off', 'data-search-key': 'offset' }, offK, offN);
     const inv = ui.button({ label: COPY.invert, pressed: st.T.invert, class: 'fsp-inv', onClick: () => ctl.setT({ invert: inv.pressed }) });
     inv.setAttribute('data-search-key', 'invert');
     const speedBar = h('i');
     const speedTxt = h('span');
-    const speed = h('div', { class: 'fsp-speed', title: COPY.speed }, speedBar, speedTxt);
+    const speed = h('div', { class: 'fsp-speed', 'data-tip': COPY.speed }, speedBar, speedTxt);
     const setMuted = (m) => { video.muted = m; saveAudio(); render(); };
     // The bar's Fullscreen and Settings are the page's (the dash card's hero has neither).
     const fullB = ui.button({ icon: 'full', title: COPY.full, class: 'fsp-full', onClick: () => fullscreen() });
@@ -1514,7 +1514,7 @@ export function createPlayer(api) {
         const ht = !libTab ? COPY.player : st.view === 'queue' ? QCOPY.queue : COPY.library;
         setText(head, ht);
         // A narrow phone head ellipsizes it (ph-5u0g.15): the whole word stays one hover away.
-        attr(head, 'title', ht);
+        attr(head, 'data-tip', ht);
       }
       stage.empty.hidden = !!st.scene;
       mo.hidden = !noVid;
@@ -1550,7 +1550,7 @@ export function createPlayer(api) {
         setText(speedTxt, Math.round(sp2.v) + ' ' + sp2.unit);
         speedBar.style.width = cap ? clamp(sp2.v / cap, 0, 1) * 100 + '%' : '0';
         speed.toggleAttribute('data-over', !!cap && sp2.v > cap);
-        speed.title = cap && sp2.v > cap ? COPY.speedOver : COPY.speed;
+        speed.dataset.tip = cap && sp2.v > cap ? COPY.speedOver : COPY.speed;
         const at = tickAt(applyT(posAt(st.shaped || st.script, m), st.T));
         for (const t of [tickI, moI]) { t.hidden = false; t.style.left = at; }
       } else {

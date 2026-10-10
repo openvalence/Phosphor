@@ -90,7 +90,7 @@
   <div class="field-head">
     {#if !titled}<span class="field-label">{labelFor(action)}</span>{/if}
     <span class="state" class:why={!statusText} role="status"
-          title={statusText || reasons.join('; ') || undefined}>{statusText || reasons.join('; ')}</span>
+          data-tip={statusText || reasons.join('; ') || undefined}>{statusText || reasons.join('; ')}</span>
   </div>
   {#if action.desc}<p class="hint">{action.desc}</p>{/if}
 
@@ -120,7 +120,7 @@
   <div class="ops">
     {#each ops as op (op.value)}
       <button type="button" class="og-btn" disabled={!!reasonFor(op.value)}
-              title={reasonFor(op.value) || undefined} onclick={() => press(op.value)}>{op.label}</button>
+              data-tip={reasonFor(op.value) || undefined} onclick={() => press(op.value)}>{op.label}</button>
     {/each}
   </div>
 </div>

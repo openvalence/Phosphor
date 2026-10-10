@@ -166,7 +166,7 @@
 <div class="safety-op field" data-shadow={phase === 'confirmed' || !phase ? 'confirmed' : phase} data-glow={glow || undefined}
      onanimationend={glowEnd}>
   <button type="button" class="btn {pair.cls}" class:latched class:holding
-          disabled={!!why} title={status && status !== hint ? status : tip || undefined} aria-pressed={latched}
+          disabled={!!why} data-tip={status && status !== hint ? status : tip || undefined} aria-pressed={latched}
           {onclick} {onkeydown} {onkeyup}
           onpointerdown={pressStart} onpointerup={holdEnd} onpointerleave={holdEnd} onpointercancel={holdEnd}
           oncontextmenu={(e) => { if (isEstop && latched) e.preventDefault(); }}>

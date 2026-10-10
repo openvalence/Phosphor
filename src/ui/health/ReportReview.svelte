@@ -126,7 +126,7 @@
                 use:hold={{ ms: 1500, onfire: send, key: id }}>Hold to send</button>
         <button type="button" class="og-btn" onclick={save}>Save report</button>
       </div>
-      <p class="pane-status" role="status" data-phase={note ? 'settled' : null} title={note}>{note}</p>
+      <p class="pane-status" role="status" data-phase={note ? 'settled' : null} data-tip={note}>{note}</p>
     </section>
   {/if}
 </div>

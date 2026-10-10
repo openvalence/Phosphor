@@ -15,7 +15,7 @@
   let { open = false, onclick } = $props();
 </script>
 
-<button type="button" class="og-btn sm quick-rail" data-quick-rail-toggle aria-expanded={open} aria-label="Rail" title="Rail" {onclick}>
+<button type="button" class="og-btn sm quick-rail" data-quick-rail-toggle aria-expanded={open} aria-label="Rail" data-tip="Rail" {onclick}>
   <svg viewBox="0 0 16 16" aria-hidden="true"><path d={NAV_ICONS.quickRail} /></svg>
 </button>
 

@@ -115,24 +115,24 @@
         {#if taken}<span class="sub-hint" role="alert">Name taken</span>{/if}
       {:else}
         <button type="button" class="rail-tab sub-layout" class:on data-layout={n}
-                aria-current={on ? 'page' : undefined} title={n} onclick={() => onpick(n)}
+                aria-current={on ? 'page' : undefined} data-tip={n} onclick={() => onpick(n)}
                 ondblclick={() => startRename(n)}
                 onkeydown={(e) => { rowKey(e, n); if (e.key === 'F2') { e.preventDefault(); startRename(n); } }}>
           <span class="rail-name">{n}</span>
         </button>
       {/if}
       {#if n !== 'Default'}
-        <span class="sub-grip" aria-hidden="true" title="Drag to reorder, Alt+Up or Down" onpointerdown={(e) => gripDown(e, n)}>
+        <span class="sub-grip" aria-hidden="true" data-tip="Drag to reorder, Alt+Up or Down" onpointerdown={(e) => gripDown(e, n)}>
           <svg viewBox="0 0 8 12"><circle cx="2" cy="2" r="1"/><circle cx="6" cy="2" r="1"/><circle cx="2" cy="6" r="1"/><circle cx="6" cy="6" r="1"/><circle cx="2" cy="10" r="1"/><circle cx="6" cy="10" r="1"/></svg>
         </span>
         <button type="button" class="sub-x" class:withwrench={on} aria-label={'Delete ' + n + ', hold 1 s'}
-                title="Hold 1 s to delete" use:hold={{ ms: 1000, onfire: () => remove(n), key: n }}>
+                data-tip="Hold 1 s to delete" use:hold={{ ms: 1000, onfire: () => remove(n), key: n }}>
           <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2l6 6M8 2L2 8"/></svg>
         </button>
       {/if}
       {#if on}
         <button type="button" class="rail-wrench" aria-pressed={dashEdit.on} disabled={dashEdit.on && !!redHint()}
-                title={dashEdit.on ? redHint() || 'Done editing' : 'Edit layout'} aria-label={dashEdit.on ? 'Done editing' : 'Edit layout'}
+                data-tip={dashEdit.on ? redHint() || 'Done editing' : 'Edit layout'} aria-label={dashEdit.on ? 'Done editing' : 'Edit layout'}
                 onclick={() => (dashEdit.on = !dashEdit.on)}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 1.5a4 4 0 0 0-4.6 5.2L1.5 11.1a1.5 1.5 0 0 0 2.1 2.1l4.4-4.4A4 4 0 0 0 13.3 4.2L11 6.5 9.5 5l2.3-2.3a4 4 0 0 0-1.3-1.2z"/></svg>
         </button>

@@ -72,8 +72,8 @@ import { buildSettingsModel, placeableControls, minCells, WIDGET } from '../src/
 import { STORE_KEY, RESIZE_FLOOR } from '../src/model/grid.js';
 
 // The sidebar wrench drives edit mode (dashEdit); a layout is picked from the sidebar sub-items.
-const editBtn = (page) => page.locator('button[title="Edit layout"]:visible').first();
-const doneBtn = (page) => page.locator('button[title="Done editing"]:visible').first();
+const editBtn = (page) => page.locator('button[data-tip="Edit layout"]:visible').first();
+const doneBtn = (page) => page.locator('button[data-tip="Done editing"]:visible').first();
 const pickLayout = (page, name) => page.locator('nav.rail .sub-layout[data-layout="' + name + '"]').click();
 let fails = 0;
 const ok = (name, cond, extra) => {
@@ -170,7 +170,7 @@ async function drag(page, loc, dx, dy, during = null) {
 /** Red state: per key the card's fault tooltip (null when valid), the footer hint and Done. */
 const redState = async (page, keys) => ({
   faults: Object.fromEntries(await Promise.all(keys.map(async (k) => [k, await page.locator('.home .dash-cell[data-id="' + k + '"] > .dash-item')
-    .evaluate((el) => (el.classList.contains('fault') ? el.getAttribute('title') : null)).catch(() => 'missing')]))),
+    .evaluate((el) => (el.classList.contains('fault') ? el.getAttribute('data-tip') : null)).catch(() => 'missing')]))),
   hint: await page.locator('.home .dash-toolbar .dash-hint.red').textContent().catch(() => null),
   done: await page.locator('button[aria-label="Done editing"]:visible').first().isDisabled().catch(() => null),
 });
@@ -446,7 +446,7 @@ console.log('red');
   ok('red is the warn token: border and a tinted plate', paint.border === paint.warn && /gradient/.test(paint.plate), paint);
   ok('the store keeps the last valid layout', JSON.stringify(await stored()) === s0);
   ok('the edit footer names the count; Done is disabled and says why', r.hint === '2 cards red, not saved' && r.done === true
-     && await page.locator('button[aria-label="Done editing"]:visible').first().getAttribute('title') === '2 cards red, not saved', r);
+     && await page.locator('button[aria-label="Done editing"]:visible').first().getAttribute('data-tip') === '2 cards red, not saved', r);
   await drag(page, card(F2).locator('.handle.grab'), 14 * cell, 0);
   r = await redState(page, [F1, F2]);
   ok('resolving clears the red at once and Done returns', r.faults[F1] === null && r.faults[F2] === null && r.hint === null && r.done === false, r);

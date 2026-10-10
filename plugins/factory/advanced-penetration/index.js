@@ -561,7 +561,7 @@ const s = (tag, attrs = {}) => {
 };
 /** A plus that spawns a hold: a touch-sized button around an 18 px dot, the dot a label keeps off. */
 function plusBtn(label, spawn) {
-  const b = h('button', { type: 'button', class: 'ap-plus', 'aria-label': label, title: label }, h('i', { text: '+', 'aria-hidden': 'true' }));
+  const b = h('button', { type: 'button', class: 'ap-plus', 'aria-label': label, 'data-tip': label }, h('i', { text: '+', 'aria-hidden': 'true' }));
   b.addEventListener('pointerdown', (e) => e.stopPropagation());
   b.addEventListener('click', spawn);
   return b;
@@ -570,7 +570,7 @@ const on = (v) => v === true || Number(v) === 1;
 const num = (v) => String(+Number(v).toFixed(2));
 /** A one-line note slot: the gate, else the words (the ladder's by default), styled by its state. */
 function say(note, gate, st, words = LADDER[st]) {
-  note.textContent = note.title = gate || words || '';
+  note.textContent = note.dataset.tip = gate || words || '';
   note.dataset.slot = gate ? 'gate' : words ? st : '';
 }
 const cpath = (c) => 'M' + c[0] + ' ' + c[1] + ' C' + c.slice(2).join(' ');
@@ -810,7 +810,7 @@ function mountCard(api, el, fields) {
     updaters.push(() => {
       const st = draft.has(f.uid) ? 'draft' : api.status(f), gate = api.gate(f);
       box.dataset.status = st;
-      box.title = gate || LADDER[st] || '';
+      box.dataset.tip = gate || LADDER[st] || '';
       input.disabled = !!gate;
       if (document.activeElement !== input) input.value = num(val(f));
     });
@@ -830,7 +830,7 @@ function mountCard(api, el, fields) {
       const [lo, hi] = linkSpan(period(), F.speedOut.min, F.speedOut.max);
       const room = hi > Math.max(lo, F.speedIn.min);
       const m = Number(api.value(F.master));
-      btn.title = !linked ? 'Link: shift the peak, keep the period'
+      btn.dataset.tip = !linked ? 'Link: shift the peak, keep the period'
         : room ? 'Linked: the peak shifts, the period holds'
           : m >= F.master.max ? 'Lower master to shift the peak' : m > 0 ? 'Relink to make room' : 'Set master, then relink';
     };
@@ -859,7 +859,7 @@ function mountCard(api, el, fields) {
     btn.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1 8s2.5-4.5 7-4.5S15 8 15 8s-2.5 4.5-7 4.5S1 8 1 8z"/><circle cx="8" cy="8" r="2"/></svg>';
     const draw = () => {
       btn.setAttribute('aria-pressed', String(inputs));
-      btn.title = inputs ? 'Hide inputs' : 'Show inputs';
+      btn.dataset.tip = inputs ? 'Hide inputs' : 'Show inputs';
       for (const r of numRows) r.hidden = !inputs;
     };
     btn.addEventListener('click', () => {
@@ -1036,7 +1036,7 @@ function mountCard(api, el, fields) {
         update();
       });
       // Reset: all six to the catalog defaults, one tick, one intent; a preset recovers it.
-      const trash = h('button', { type: 'button', class: 'ap-mtrash', 'aria-label': 'Reset ' + name + ' modifier', title: 'Reset to defaults' });
+      const trash = h('button', { type: 'button', class: 'ap-mtrash', 'aria-label': 'Reset ' + name + ' modifier', 'data-tip': 'Reset to defaults' });
       trash.innerHTML = TRASH;
       trash.addEventListener('click', () => { for (const [k] of MOD) if (m[k].dflt != null) api.write(m[k], Number(m[k].dflt)); });
       tabs.append(h('div', { class: 'ap-mtab', role: 'presentation' }, sw, btn, trash));
@@ -1102,7 +1102,7 @@ function mountCard(api, el, fields) {
         const a = Number(api.value(m.amount)), gate = api.gate(m.amount);
         btn.dataset.on = String(a > 0);
         cb.checked = a > 0;
-        sw.title = a > 0 ? 'Modifier on' : 'Modifier off';
+        sw.dataset.tip = a > 0 ? 'Modifier on' : 'Modifier off';
         cb.disabled = !!gate;
         const dirty = MOD.some(([k]) => m[k].dflt != null && val(m[k]) !== Number(m[k].dflt));
         trash.style.visibility = dirty ? '' : 'hidden';
@@ -1134,9 +1134,9 @@ function mountCard(api, el, fields) {
     const planSvg = s('svg', { viewBox: '0 0 1000 100', preserveAspectRatio: 'none', 'aria-hidden': 'true' });
     planSvg.append(planGrid, planPath);
     const planBox = h('div', { class: 'ap-ed ap-planbox' }, planSvg);
-    const winOut = h('output', { title: 'Window, seconds' });
+    const winOut = h('output', { 'data-tip': 'Window, seconds' });
     const winBtn = (dir, label, d) => {
-      const b = h('button', { type: 'button', class: 'og-btn ap-tool', 'aria-label': label, title: label });
+      const b = h('button', { type: 'button', class: 'og-btn ap-tool', 'aria-label': label, 'data-tip': label });
       b.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="' + d + '"/></svg>';
       b.addEventListener('click', () => {
         const step = dir > 0 ? (winS < 10 ? 1 : winS < 30 ? 5 : 10) : (winS <= 10 ? 1 : winS <= 30 ? 5 : 10);

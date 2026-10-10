@@ -73,7 +73,7 @@
 
 <div class="hero pattern-hero">
   <div class="pattern-topline">
-    <span class="pattern-state" data-shadow={statusOf(running)} title={headReason || undefined}>{headReason || patternStateText}</span>
+    <span class="pattern-state" data-shadow={statusOf(running)} data-tip={headReason || undefined}>{headReason || patternStateText}</span>
   </div>
 
   <div class="pattern-head">

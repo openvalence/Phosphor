@@ -90,7 +90,7 @@
   {:else}
     {@render list(shown)}
     {#if shown.length < slots.length}
-      <button type="button" class="og-btn more" aria-haspopup="dialog" title="Every slot" onclick={showAll}>{slots.length - shown.length} more</button>
+      <button type="button" class="og-btn more" aria-haspopup="dialog" data-tip="Every slot" onclick={showAll}>{slots.length - shown.length} more</button>
     {/if}
     {#if all}<div class="roster all" use:intoPane>{@render list(slots)}</div>{/if}
   {/if}

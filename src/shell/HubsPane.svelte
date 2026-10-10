@@ -76,10 +76,10 @@
       <button type="button" class="og-btn" disabled={idle} onclick={disconnect}>Disconnect</button>
       <button type="button" class="og-btn" disabled={link.phase !== 'retrying' && link.phase !== 'failed'} onclick={retryNow}>Retry now</button>
       <button type="button" class="og-btn" disabled={!hubs.target}
-              title={hubs.target ? '' : 'No WiFi endpoint known'}
+              data-tip={hubs.target ? '' : 'No WiFi endpoint known'}
               onclick={upgrade}>Upgrade to WiFi{hubs.target ? ' (' + hubs.target.host + ':' + hubs.target.port + ')' : ''}</button>
     </div>
-    <p class="pane-status" role="status" data-phase={ladder.phase} title={ladder.text}>{ladder.text}</p>
+    <p class="pane-status" role="status" data-phase={ladder.phase} data-tip={ladder.text}>{ladder.text}</p>
   </section>
 
   <section class="pane-sec og-panel" aria-labelledby="hp-saved">
@@ -96,13 +96,13 @@
                 <input type="text" use:nameInput value={h.nickname} placeholder={h.name || 'Nickname'} maxlength="40"
                        onchange={(e) => renameHub(h.id, e.currentTarget.value)} />
               </label>
-              <span class="meta mono" title={h.host + ':' + h.port}>{h.host}:{h.port}{h.name && h.nickname ? ' · ' + h.name : ''}</span>
+              <span class="meta mono" data-tip={h.host + ':' + h.port}>{h.host}:{h.port}{h.name && h.nickname ? ' · ' + h.name : ''}</span>
             </span>
             <span class="seen mono">{dialedWs(h.host, h.port) ? 'connected' : onVirtual(h.id) ? 'virtual' : 'seen ' + ago(h.lastSeen, now)}</span>
             <span class="acts">
               <button type="button" class="og-btn sm" disabled={dialedWs(h.host, h.port)} onclick={() => connectWs(h.host, h.port)}>Connect</button>
               <button type="button" class="og-btn sm" disabled={onVirtual(h.id) || !hasMachine(h.id)}
-                      title={hasMachine(h.id) ? 'Virtual, from its last catalog' : 'No cached catalog'}
+                      data-tip={hasMachine(h.id) ? 'Virtual, from its last catalog' : 'No cached catalog'}
                       aria-label={'Sim ' + hubLabel(h)} onclick={() => openVirtual(h.id, hubLabel(h))}>Sim</button>
               <button type="button" class="og-btn sm" onclick={() => forgetHub(h.id)} aria-label={'Forget ' + hubLabel(h)}>Forget</button>
             </span>
@@ -111,7 +111,7 @@
         <li class="virtual">
           <span class="who">
             <span class="name">{BUILTIN_MACHINE_NAME}<span class="mark virt">{BUILTIN_MACHINE_BADGE}</span></span>
-            <span class="meta mono" title={builtinMeta}>{builtinMeta}</span>
+            <span class="meta mono" data-tip={builtinMeta}>{builtinMeta}</span>
           </span>
           <span class="seen mono">{onSim() ? 'connected' : 'built in'}</span>
           <span class="acts">
@@ -128,13 +128,13 @@
   <section class="pane-sec og-panel" aria-labelledby="hp-find">
     <div class="pane-head"><h2 id="hp-find">Find a hub</h2></div>
     <div class="row">
-      <button type="button" class="og-btn" disabled={hubs.finding || hubs.scanning} title="LAN first, then Bluetooth" onclick={() => scanHubs()}>Scan</button>
+      <button type="button" class="og-btn" disabled={hubs.finding || hubs.scanning} data-tip="LAN first, then Bluetooth" onclick={() => scanHubs()}>Scan</button>
       <button type="button" class="og-btn" class:on={hubs.scanning} aria-pressed={hubs.scanning} onclick={scan}>
         {hubs.scanning ? 'Stop Bluetooth scan' : 'Scan Bluetooth'}
       </button>
     </div>
     <HostEntry value={hubs.manualHost} onpick={connectWs} recent={false} />
-    <p class="pane-status" role="status" data-phase={hubs.finding || hubs.scanning ? 'pending' : null} title={discoveryText}>{discoveryText}</p>
+    <p class="pane-status" role="status" data-phase={hubs.finding || hubs.scanning ? 'pending' : null} data-tip={discoveryText}>{discoveryText}</p>
 
     {#if !hubs.found.length}
       <p class="pane-empty">None found yet</p>
@@ -147,9 +147,9 @@
             <span class="who">
               <span class="name">{f.lan?.hub_name || f.ble?.name || 'hub'}{#each foundVia(f) as v (v)}<span class="mark via">{v}</span>{/each}{#if adv?.configMode}<span class="mark setup">needs setup</span>{/if}{#if f.lan?.pairing_window_open || adv?.pairing}<span class="mark">pairing open</span>{/if}</span>
               {#if f.lan}
-                <span class="meta mono" title={f.lan.ip + ':' + f.lan.ws_port}>{f.lan.ip}:{f.lan.ws_port} · fw {f.lan.fw_version || '?'}{f.lan.hub_instance_id ? ' · id ' + f.lan.hub_instance_id : ''}</span>
+                <span class="meta mono" data-tip={f.lan.ip + ':' + f.lan.ws_port}>{f.lan.ip}:{f.lan.ws_port} · fw {f.lan.fw_version || '?'}{f.lan.hub_instance_id ? ' · id ' + f.lan.hub_instance_id : ''}</span>
               {:else}
-                <span class="meta mono" title={f.ble.address}>{f.ble.address}{f.ble.rssi ? ' · ' + f.ble.rssi + ' dBm' : ''}{adv?.ws ? ' · WiFi offered' : ''}</span>
+                <span class="meta mono" data-tip={f.ble.address}>{f.ble.address}{f.ble.rssi ? ' · ' + f.ble.rssi + ' dBm' : ''}{adv?.ws ? ' · WiFi offered' : ''}</span>
               {/if}
             </span>
             <span class="seen mono">{live ? 'connected' : 'seen ' + ago(f.seenAt, now)}</span>

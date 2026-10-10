@@ -95,7 +95,7 @@
       </button>
       <button type="button" class="og-btn" disabled={!confirming} onclick={cancel}>Cancel</button>
     </div>
-    <p class="pane-status" role="status" data-phase={phase} title={status}>{status}</p>
+    <p class="pane-status" role="status" data-phase={phase} data-tip={status}>{status}</p>
   </section>
 </div>
 
