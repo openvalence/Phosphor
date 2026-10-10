@@ -698,7 +698,7 @@
       {:else if current.id === 'pairing'}
         <PairingPane />
       {:else if current.id === 'valence'}
-        <ValencePane />
+        <ValencePane onopenlog={() => selectTab('log')} />
       {:else if current.id === 'log'}
         <LogPane />
       {:else if current.id === 'display'}
