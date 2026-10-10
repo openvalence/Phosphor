@@ -11,6 +11,8 @@
  *   RFC-046): the SPEC 13.8 probe runs and lists every reply; only an empty
  *   LAN result runs the BLE scan. No mDNS (RFC-072 ruling, 2026-10-01). The
  *   launch probe is LAN only: it never raises a Bluetooth permission prompt.
+ * - This PC's own Virtual, Open to LAN (lan.svelte.js), is never a LAN row:
+ *   dialing it would stop the Virtual it reaches.
  * - A LAN reply carrying a saved hub's hub_instance_id moves that saved
  *   endpoint, port included. Discovery never adds a saved hub: a hub is saved
  *   once it is live over WiFi (settings-pane.js).
@@ -32,6 +34,7 @@ import { savedHubs } from '../model/prefs.js';
 import { makeBleWebSocket, BLE_SERVICE, MTU_FLOOR, bleStats, holdForMigration, releaseHeld } from './ble-ws.js';
 import { upgradeTarget, advFlags } from './ble-adv.js';
 import { mergeFound, learnBleId } from './found.js';
+import { lan } from './lan.svelte.js';
 
 const stored = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const store = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* private mode */ } };
@@ -116,6 +119,8 @@ export async function scanHubs({ ble = true } = {}) {
   let got = [];
   let failed = null;
   try { got = await invoke('discover_hubs', { timeoutMs: LAN_SCAN_MS }); } catch (e) { failed = e; }
+  const own = lan.port && machine.link.hubIdentity && machine.link.hubIdentity.hub_instance_id;
+  got = got.filter((h) => !own || h.hub_instance_id !== own);
   hubs.finding = false;
   if (got.length) {
     hubs.found = mergeFound(hubs.found, got, 'LAN', { bleIds });
