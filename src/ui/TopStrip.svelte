@@ -769,7 +769,7 @@
   /* Bare: out of flow at the window's top right, the pair alone, its corner
      on the screen corner's diagonal clear of the arc (.3 R > R(1 - 1/√2)). */
   .topstrip.bare { position: fixed; top: calc(var(--corner-tr, 0px) * .3); right: calc(var(--corner-tr, 0px) * .3); margin: 0; background: none; border: 0; }
-  .topstrip.bare :global(.linkbar), .bare :is(.nums, .status, .ops, .home-menu, .ovr) { display: none; }
+  .topstrip.bare :global(.linkbar), .bare :is(.nums, .readback, .status, .ops, .home-menu, .ovr) { display: none; }
   .topstrip.bare .strip { display: flex; height: auto; padding: var(--sp-2); }
   .bare .pair { opacity: .5; background: var(--bg-raised); border-radius: var(--r-s); transition: opacity var(--t-quick); }
   .bare .pair:is(:hover, :focus-within), .woke .pair { opacity: 1; }

@@ -396,7 +396,8 @@ if (UNIT || fails) {
 //   hover      the bar over the video shows on a move and hides on idle and
 //              leave; its play, pause, seek and the keys act only through
 //              the controller; volume and mute persist; media fullscreen is
-//              page fullscreen bare with the stage alone, Escape returns; the
+//              page fullscreen bare with the stage alone, Escape returns; at
+//              rest nothing but the stop pair over the playing video; the
 //              analyzer column at 1280 and 1920 ([--shots <dir>])
 // Stash live (--stash-live <file.json>, a local {base, apiKey}, never
 // committed): only the stash section, against that real Stash, read-only,
@@ -3486,6 +3487,25 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-stage video').paused, C, { timeout: 3000 }).catch(() => {});
   await page.waitForTimeout(1500);
   ok('hover play: the video plays after the preroll, started by the controller', await video(page, (v) => !v.paused) && await vids('play') === 1);
+  // ph-9t5l.7: at rest over the playing fullscreen video nothing of the page is laid out but the bare top strip (the
+  // stop pair, never hidden: RENDERING 8.4 row 11); the hover bar is display: none, never a transparent layer.
+  await page.mouse.move(2, 400);
+  await page.waitForTimeout(400);
+  const over = await page.evaluate((c) => {
+    const v = document.querySelector(c + ' .fsp-stage video'), r = v.getBoundingClientRect();
+    const st = document.head.appendChild(document.createElement('style'));
+    st.textContent = '* { pointer-events: auto !important; }';
+    const found = new Set();
+    for (let i = 0; i <= 12; i++) for (let j = 0; j <= 12; j++) {
+      const s = document.elementsFromPoint(r.left + (r.width - 1) * i / 12, r.top + (r.height - 1) * j / 12), k = s.indexOf(v);
+      if (k < 0) found.add('video not hit');
+      for (const e of s.slice(0, Math.max(0, k))) if (!e.contains(v) && !e.closest('.topstrip')) found.add(e.className || e.tagName);
+    }
+    st.remove();
+    return { found: [...found], bar: getComputedStyle(document.querySelector(c + ' .ui-stage-overlay')).display, playing: !v.paused };
+  }, C);
+  ok('fullscreen at rest: nothing over the playing video but the stop pair, the hover bar display: none (ph-9t5l.7)',
+    over.playing && !over.found.length && over.bar === 'none', over);
   await overVideo(-10);
   await page.click(C + ' .fsp-hb .fsp-play');
   await page.waitForTimeout(200);
