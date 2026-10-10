@@ -756,7 +756,7 @@
 {/snippet}
 
 <div class="app">
-  <TopStrip {shell} bare={isFull && full.bare} compact={!!current?.page?.compactHero && view.bucket <= 2} page={statusSlot} onopenlog={() => selectTab('log')} />
+  <TopStrip {shell} bare={isFull && full.bare} compact={!!current?.page?.compactHero && view.bucket <= 2} page={statusSlot} onopenlog={() => selectTab('log')} onopenlink={() => selectTab('valence')} />
 
   <!-- Only INSTRUMENT-zone heroes (heroes.js) render here, pinned above every
        view's PANE and never inside one: losing sight of the carriage because

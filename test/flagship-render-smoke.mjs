@@ -251,29 +251,10 @@ if (ringStates) {
   ok('no state moves the box', new Set(ringStates.boxes).size === 1, ringStates.boxes.join(' '));
 }
 
-// ---- activity heatmap keeps its scroll history -----------------------------
-// A reactive read made SYNCHRONOUSLY inside LinkBar's $effect becomes that
-// effect's dependency, so a telemetry frame re-runs the body and refills the
-// history buffer with zeros ~25x a second: the grid still scrolls, with
-// nothing in it. Signature of that bug is every column but the newest sitting
-// at the v=0 baseline alpha, so that is what this counts.
-await page.waitForTimeout(3600);            // ~16 ticks at 220ms
-const staleCols = await page.$eval('canvas.act-grid', (c) => {
-  const ctx = c.getContext('2d');
-  const d = ctx.getImageData(0, 0, c.width, c.height).data;
-  const dpr = c.width / parseFloat(c.style.width);
-  const cols = 14, cell = 4, gap = 1;
-  const rows = Math.round(parseFloat(c.style.height) / (cell + gap + 1));
-  const y = Math.round(((rows - 1) * (cell + gap + 1) + 1) * dpr);   // link-activity row
-  let atBaseline = 0;
-  for (let col = 0; col < cols; col++) {
-    const x = Math.round((col * (cell + gap) + 1) * dpr);
-    if (d[(y * c.width + x) * 4 + 3] <= 16) atBaseline++;            // alpha of v=0
-  }
-  return atBaseline;
-});
-ok('activity grid retains scroll history', staleCols <= 2,
-   staleCols + '/14 columns at the empty baseline');
+// ---- the channel heatmap lights what arrives (ph-8yga) -----------------------
+await page.waitForTimeout(1500);
+const lit = await page.$$eval('.linkbar .heat .blk', (bs) => bs.filter((b) => parseFloat(b.style.getPropertyValue('--lv')) > 0).length);
+ok('the channel heatmap lights the channels that arrive', lit > 0, lit + ' blocks lit');
 
 await tab('Dash').click();                             // back to the Dash for the shot
 await page.evaluate(() => window.scrollTo(0, 0));

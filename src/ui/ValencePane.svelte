@@ -24,6 +24,7 @@
   import { NACK_FAMILY, NACK_MEANING, CHANNEL_RANGES } from '../model/registry-tables.js';
   import { bytes, since, hexId } from '../model/format.js';
   import { logView } from './logview.svelte.js';
+  import { linkView, selectChannel } from './linkview.svelte.js';
   import ChannelMap from './ChannelMap.svelte';
   import './pane.css';
 
@@ -113,13 +114,18 @@
   }
   const toRefusals = () => document.getElementById('vp-refusals')?.scrollIntoView({ block: 'start' });
 
-  // ---- the map selects a list row -----------------------------------------------
-  let selected = $state(null);
-  async function select(id) {
-    selected = id;
-    await tick();
-    document.querySelector('.chan-list tr[data-chan="' + id + '"]')?.scrollIntoView({ block: 'nearest' });
-  }
+  // ---- the map and the top bar's heatmap select a list row (linkview.svelte.js) -----
+  // A selection made before this page mounted (a heatmap click elsewhere) centers its row; one made here scrolls least.
+  const selected = $derived(linkView.selected);
+  let arrived = false;
+  $effect(() => {
+    void linkView.reveal;
+    const id = linkView.selected, block = arrived ? 'nearest' : 'center';
+    arrived = true;
+    if (id == null) return;
+    tick().then(() => document.querySelector('.chan-list tr[data-chan="' + id + '"]')?.scrollIntoView({ block }));
+  });
+  $effect(() => () => { linkView.selected = null; });
 </script>
 
 <div class="link-page">
@@ -191,7 +197,7 @@
     <div class="pane-head"><h2 id="vp-channels">Channels and map</h2></div>
     <div class="chan-cols">
       <div class="chan-side">
-        <ChannelMap entries={machine.catalog.entries} grants={machine.grants} {selected} onselect={select} />
+        <ChannelMap entries={machine.catalog.entries} grants={machine.grants} {selected} onselect={selectChannel} />
         <dl class="pane-facts">
           <dt>Catalog</dt><dd>{machine.catalog.ready ? 'ready' : 'not loaded'}</dd>
           <dt>Etag</dt><dd class="mono">{etagHex}</dd>

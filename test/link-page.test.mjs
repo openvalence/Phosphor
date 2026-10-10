@@ -6,15 +6,16 @@
  *             the last time, the causing channel or range, the hub's detail;
  *             safety refusals render distinctly (amber, never red); Log opens
  *             the Log page on that code's refusal rows (ph-s5mu.1); the Link
- *             health row counts them and jumps there. Channel 0's refusal is
- *             FRAME_TOO_LARGE: a SPEC 8.6 CHUNK_UNAVAILABLE is a restart in the
- *             Session feed, never a refusal (ph-2tjo)
+ *             health row counts them and jumps there
  *   map       every registry range is a band in its own token color, every
  *             catalog channel a cell in its class color, the occupancy numbers
  *             are the fixture's, the device grid holds the device-range cells
  *   select    hovering a channel reads id, name, class, rate and subscribed;
  *             hovering a free id reads its range; a click selects the list row
- *             and scrolls it into view; arrows and Enter do the same
+ *             and scrolls it into view; arrows and Enter do the same; a top bar
+ *             heatmap block opens the page on its channel the same way, the
+ *             page opened from the nav starts with none, and the heatmap's
+ *             Health block opens the Health view
  *   fit       at 1428x900, 1024x768 and 420x860: no horizontal overflow, no
  *             scroller inside the page, nothing moves on hover or a view
  *             switch, every button 44 px under a coarse pointer
@@ -86,7 +87,8 @@ function fakeHub(ws) {
     }
   });
 }
-const nack = (ch, code, detail) => wire.send(FRAME.NACK, ch, cbMap([[K.code, cbUint(code)], ...(detail ? [[K.detail, cbTstr(detail)]] : [])]));
+const nack = (ch, code, detail, seq) => wire.send(FRAME.NACK, ch, cbMap([[K.code, cbUint(code)], ...(detail ? [[K.detail, cbTstr(detail)]] : []),
+  ...(seq ? [[K.intent_seq, cbUint(seq)]] : [])]));
 
 const browser = await chromium.launch();
 async function boot(viewport, { theme = null, touch = false } = {}) {
@@ -131,7 +133,8 @@ const docTop = (page, sel) => page.$eval(sel, (el) => Math.round(el.getBoundingC
   const chTop0 = await docTop(page, '#vp-channels');
   const INTENT_CH = ENTRIES.find((e) => e.clsName === 'INTENT' && e.id >= 0x100).id;
   const HOME_CH = ENTRIES.filter((e) => e.clsName === 'INTENT' && e.id >= 0x100)[1].id;
-  for (let i = 0; i < 70; i++) nack(0, NACK.FRAME_TOO_LARGE);
+  // A store fetch's refusal (intent_seq 1); at seq 0 it is a catalog transfer restart, never a refusal (machine.svelte.js).
+  for (let i = 0; i < 70; i++) nack(0, NACK.CHUNK_UNAVAILABLE, null, 1);
   await page.waitForTimeout(1100);
   nack(HOME_CH, NACK.NOT_HOMED);
   await page.waitForTimeout(1100);
@@ -145,7 +148,7 @@ const docTop = (page, sel) => page.$eval(sel, (el) => Math.round(el.getBoundingC
     fam: l.querySelector('.r-fam').textContent.trim(), mean: l.querySelector('.r-mean').textContent.replace(/\s+/g, ' ').trim(),
     cause: l.querySelector('.r-cause').textContent.replace(/\s+/g, ' ').trim(), distinct: l.classList.contains('distinct'),
     border: getComputedStyle(l).borderTopColor, ink: getComputedStyle(l.querySelector('.r-head b')).color })));
-  ok('refusals: one row per code, newest first', groups.map((g) => g.code).join() === [NACK.INVALID_VALUE, NACK.NOT_HOMED, NACK.FRAME_TOO_LARGE].join(), groups.map((g) => g.name));
+  ok('refusals: one row per code, newest first', groups.map((g) => g.code).join() === [NACK.INVALID_VALUE, NACK.NOT_HOMED, NACK.CHUNK_UNAVAILABLE].join(), groups.map((g) => g.name));
   ok('refusals: names are the registry\'s', groups.every((g) => g.name === NACK_NAME[g.code]), groups.map((g) => g.name));
   ok('refusals: each reads its family and the registry meaning',
     groups.every((g) => g.fam === NACK_FAMILY[g.code >> 8].name && g.mean === g.fam + ' ' + NACK_MEANING[g.code] && NACK_MEANING[g.code].length > 8), groups.map((g) => g.mean));
@@ -267,6 +270,25 @@ const docTop = (page, sel) => page.$eval(sel, (el) => Math.round(el.getBoundingC
   await goTab(page, 'log');
   await page.waitForSelector('.logpane');
   ok('refusals: the next visit to the Log starts with no search', await page.inputValue('.logpane .q') === '');
+
+  // ---- the top bar's channel heatmap opens this page on a channel (ph-8yga.1) ----
+  const far = ENTRIES.filter((e) => e.clsName === 'INTENT').at(-1);
+  await page.click('.linkbar .heat .blk[aria-label^="' + far.name + ', INTENT"]');
+  await page.waitForSelector('.link-page tr.sel', { timeout: 5000 });
+  await page.waitForTimeout(300);
+  const hrow = await page.$eval('tr[data-chan="' + far.id + '"]', (tr) => {
+    const r = tr.getBoundingClientRect(), c = tr.closest('.content')?.getBoundingClientRect() || { top: 0, bottom: innerHeight };
+    return { sel: tr.classList.contains('sel'), seen: r.top >= c.top && r.bottom <= c.bottom, n: document.querySelectorAll('tr.sel').length };
+  });
+  ok('heatmap: a block opens this page with its channel selected and in view', hrow.sel && hrow.seen && hrow.n === 1, hrow);
+  ok('heatmap: the map rings it', await page.$$eval('.cmap rect.ring.sel', (r) => r.length) === 1);
+  await goTab(page, 'machine');
+  await goTab(page, 'valence');
+  await page.waitForSelector('.link-page .chan-list', { timeout: 5000 });
+  ok('heatmap: opened from the nav, the page starts with no selection', await page.$$eval('tr.sel', (r) => r.length) === 0);
+  await page.click('.linkbar .heat .blk[aria-label^="Health, link"]');
+  await page.waitForSelector('#lp-feed-health', { timeout: 5000 }).catch(() => {});
+  ok('heatmap: the Health block opens the Health view', await page.$('#lp-feed-health') !== null && await page.$('.link-page') === null);
   ok('no page errors', errors.length === 0, errors.slice(0, 3));
   await ctx.close();
 }
@@ -280,7 +302,7 @@ for (const [w, h] of [[1428, 900], [1024, 768], [420, 860], [1300, 900], [1360, 
     const { ctx, page, errors } = await boot({ width: w, height: h }, { theme });
     nack(ENTRIES.find((e) => e.clsName === 'INTENT' && e.id >= 0x100).id, NACK.INVALID_VALUE, 'key 3 out of range');
     nack(ENTRIES.find((e) => e.clsName === 'INTENT' && e.id >= 0x100).id, NACK.NOT_HOMED);
-    nack(0, NACK.FRAME_TOO_LARGE);
+    nack(0, NACK.CHUNK_UNAVAILABLE, null, 1);
     await page.waitForTimeout(300);
     const fit = await page.evaluate(() => {
       const lp = document.querySelector('.link-page'), pr = lp.getBoundingClientRect();
@@ -305,7 +327,7 @@ for (const [w, h] of [[1428, 900], [1024, 768], [420, 860], [1300, 900], [1360, 
   console.log('\n--- coarse pointer 420x860 ---');
   const { ctx, page } = await boot({ width: 420, height: 860 }, { touch: true });
   const top0 = await docTop(page, '#vp-channels');
-  nack(0, NACK.FRAME_TOO_LARGE);
+  nack(0, NACK.CHUNK_UNAVAILABLE, null, 1);
   await page.waitForTimeout(300);
   ok('coarse: the first refusal moves nothing below it', await docTop(page, '#vp-channels') === top0, [top0, await docTop(page, '#vp-channels')]);
   const small = await page.$$eval('.link-page button', (bs) => bs.filter((b) => b.getBoundingClientRect().height > 0 && b.getBoundingClientRect().height < 44)

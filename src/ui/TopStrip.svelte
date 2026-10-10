@@ -57,6 +57,7 @@
   import { askConfirm } from './confirm.svelte.js';
   import { SAFETY_EVENT_KIND_NAME } from '../../../Valence/clients/js/generated/registry_vocab.js';
   import { logView } from './logview.svelte.js';
+  import { selectChannel } from './linkview.svelte.js';
   import { health } from '../model/health/health.svelte.js';
   import LinkBar from './LinkBar.svelte';
   import SafetyOp from './widgets/SafetyOp.svelte';
@@ -75,7 +76,8 @@
   // compact: App's compactHero page in buckets 1 and 2 (DESIGN §10.3): one row,
   // the numeral without its label line, the mini, all five strip buttons.
   // page: the page on screen's status {text, tone, title}, or null.
-  let { onopenlog = null, shell = null, bare = false, compact = false, page = null } = $props();
+  // onopenlink: App switches nav to the Link page (a heatmap block's click).
+  let { onopenlog = null, onopenlink = null, shell = null, bare = false, compact = false, page = null } = $props();
 
   let woke = $state(false);
   // Latched or paused: the pair never dims (RENDERING §8.4 row 11).
@@ -172,6 +174,12 @@
     health.review = null;
     logView.tab = 'health';
     if (onopenlog) onopenlog();
+  }
+  /** A heatmap block: Health opens the Health view; a channel opens the Link page on it; the rest the Link page. */
+  function openHeat(key) {
+    if (key === 'health') { openHealth(); return; }
+    if (typeof key === 'number') selectChannel(key);
+    if (onopenlink) onopenlink();
   }
 
   // The hero budget (DESIGN §10.12): link bar + strip + rail fit a share of
@@ -480,7 +488,7 @@
 <svelte:document onclick={onDocClick} onpointerdown={onPopupAway} />
 
 <div class="topstrip" style:--hb={heroBar.budget ? (heroBar.budget - (railHidden ? 0 : heroBar.railH)) + 'px' : null} class:bare class:woke={woke || held} bind:offsetHeight={stripH}>
-  <LinkBar {shell} />
+  <LinkBar {shell} onheat={openHeat} />
   <div class="strip" class:stacked class:compact={cmp} class:spread={cmp && spread} class:small-nums={smallNums} role="group" aria-label="Safety controls" bind:this={stripEl}>
     <div class="measure" aria-hidden="true" inert bind:this={measureEl}>
       {#each ops as op (op.key)}<span class="btn" data-k="op"><span class="lbl">{displayLabel(op.label)}</span></span>{/each}
