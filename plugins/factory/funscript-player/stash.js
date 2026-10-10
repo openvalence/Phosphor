@@ -26,8 +26,8 @@ export const COPY = Object.freeze({
   untitled: 'Scene ',
 });
 
-// ASSUMPTION A8: these sort keys exist on findScenes; direction is ASC or DESC (duration and play_count not yet
-// checked live: `node test/funscript-stash.test.mjs --live` sorts by every key both ways).
+// ASSUMPTION A8: these sort keys exist on findScenes; direction is ASC or DESC (duration and play_count are in the
+// v0.31.1 source, not yet checked live: `node test/funscript-stash.test.mjs --live` sorts by every key both ways).
 export const SORTS = Object.freeze([['date', 'Date'], ['created_at', 'Added'], ['title', 'Title'], ['duration', 'Duration'],
   ['play_count', 'Plays'], ['rating', 'Rating'], ['interactive_speed', 'Speed']].map((p) => Object.freeze(p)));
 

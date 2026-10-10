@@ -436,6 +436,23 @@ console.log('\n--- desktop 1428x900 dark ---');
   const fm = await k(page, async () => { const l = window.__k.list, per0 = l.perPage; l.form = 'rows'; await new Promise((r) => setTimeout(r, 50));
     const r = { form: l.dataset.form, per: l.perPage, rows: l.querySelectorAll('.ui-tile').length }; l.form = 'grid'; await new Promise((x) => setTimeout(x, 50)); return { ...r, per0, back: l.perPage }; });
   ok('list: the form switches live (grid to rows and back), the page refitted', fm.form === 'rows' && fm.per > 0 && fm.per !== fm.per0 && fm.rows === fm.per && fm.back === fm.per0, fm);
+  // A form switch or a refit on a later page keeps its first item in view: the page index follows it, never stays put.
+  const fk = await k(page, async () => {
+    const l = window.__k.list, wait = () => new Promise((r) => setTimeout(r, 50));
+    const shown = () => [...l.querySelectorAll('.ui-tile-t')].map((t) => +t.textContent.replace('Item ', ''));
+    while (!l.querySelector('.ui-list-next').disabled) { l.querySelector('.ui-list-next').click(); await wait(); }
+    const first = shown()[0], p0 = l.page;
+    l.form = 'rows'; await wait();
+    const rows = shown();
+    l.refit(); await wait();
+    const refit = shown();
+    l.form = 'grid'; await wait();
+    const back = shown();
+    while (!l.querySelector('.ui-list-prev').disabled) { l.querySelector('.ui-list-prev').click(); await wait(); }
+    return { first, p0, rows, refit, back };
+  });
+  ok('list: a form switch and a refit keep the first item in view (no jump to another page)', fk.p0 > 1
+    && fk.rows.includes(fk.first) && fk.refit.includes(fk.rows[0]) && fk.back.includes(fk.refit[0]), fk);
 
   // the slot form: a card in the plugin's slot on the desktop, in flow, no shadow, never in the top layer
   await clearLog(page);

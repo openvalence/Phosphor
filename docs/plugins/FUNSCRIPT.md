@@ -1080,8 +1080,11 @@ GET), 188 interactive scenes: `node test/funscript-stash.test.mjs --live
   interactive_heatmap caption`).
 - **A8** verified. All five keys sort both ways; an unknown key is refused
   (`invalid sort`), so a pass is meaningful. Duration (`duration`) and
-  Plays (`play_count`), added 2026-10-10, are not yet checked live; the
-  `--live` loop sorts by every key.
+  Plays (`play_count`), added 2026-10-10, are in v0.31.1's
+  `sceneSortOptions` (`pkg/sqlite/scene.go`, read 2026-10-10) but not yet
+  checked live; the `--live` loop sorts by every key. Every sort ends on
+  `COALESCE(scenes.title, scenes.id)` and groups by scene id, so pages
+  never repeat or skip a scene where the sort key ties.
 - **A9** verified. `{ version { version } }` answers `v0.31.1`.
 
 Out of v1: transcodes, HLS and `sceneStreams` (a transcode restarts
@@ -1407,7 +1410,8 @@ Decisions (veto-able):
   900, 1024 x 768, 844 x 390, 412 x 915, 390 x 844 and 360 x 780: at least
   six scenes in view in the library view and the fullscreen drawer, no
   scroller, no row spilling, nothing sideways, no box moving while the
-  first page loads, 44 px targets under a coarse pointer; on the desktop
+  first page loads, 44 px targets under a coarse pointer, the drawer's
+  columns following a Look change; on the desktop
   column and the phone's tab Next in place, Search, Sort Duration both
   ways and Plays, Scripted only, and the Queued, Loaded, Playing, V8 V9 and
   Script badges (`--library` runs (L) alone; `--shots <dir>` adds dark and

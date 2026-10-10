@@ -968,6 +968,21 @@ if (!LIVE && !STASH_LIVE && !OSC_ONLY) {
       const d = await inView(page);
       COUNTS.push([at, 'fullscreen drawer', d]);
       ok('library ' + at + ': the fullscreen drawer shows at least ' + LIB_MIN + ' scenes', d.n >= LIB_MIN, d);
+      if (at === '1428x900') {
+        // A Look change while open: the columns follow the new rem (row.min is 14rem as drawn, not as mounted).
+        await page.evaluate(() => document.documentElement.style.setProperty('--s', '0.8'));
+        await page.waitForTimeout(600);
+        await settle(page);
+        const lk = await inView(page), want = await page.evaluate((c) => {
+          const items = document.querySelector(c + ' .fsp-lib .ui-list-items'), W = items.parentElement.clientWidth;
+          const rem = parseFloat(getComputedStyle(document.documentElement).fontSize), cg = parseFloat(getComputedStyle(items).columnGap);
+          return Math.max(1, Math.floor((W + cg) / (14 * rem + cg)));
+        }, C);
+        ok('library 1428x900: at Look 0.8 the drawer columns follow the new 14rem', lk.cols === want && want !== d.cols && lk.spill <= 0, { want, lk, d });
+        await page.evaluate(() => document.documentElement.style.removeProperty('--s'));
+        await page.waitForTimeout(600);
+        await settle(page);
+      }
       await shotsOf('dark')(page, 'drawer-' + at);
       ok('library ' + at + ': no page error', errors.length === 0, errors.slice(0, 3));
     });

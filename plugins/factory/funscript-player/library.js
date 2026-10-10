@@ -137,7 +137,8 @@ export function mountLibrary(el, { ui, getStash, prefs, onPick, fetch: netFetch 
   const only = ui.button({ icon: 'script', title: COPY.scripted, pressed: lib.scripted !== false, class: 'fsp-only',
     onClick: () => { lib.scripted = only.pressed; requery(); } });
   const rem = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-  const grid = ui.list({ form: 'rows', row: { min: ROW_MIN_REM * rem() }, class: 'fsp-lib', count: (n) => n + (n === 1 ? COPY.scene : COPY.scenes),
+  // row.min is read at each fit: a Look change moves the rem.
+  const grid = ui.list({ form: 'rows', row: { get min() { return ROW_MIN_REM * rem(); } }, class: 'fsp-lib', count: (n) => n + (n === 1 ? COPY.scene : COPY.scenes),
     onPage: () => load() });
   const next = grid.querySelector('.ui-list-next'), prev = grid.querySelector('.ui-list-prev');
   const body = grid.querySelector('.ui-list-body');

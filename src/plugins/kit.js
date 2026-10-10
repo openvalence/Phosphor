@@ -1035,7 +1035,8 @@ export function list(o = {}) {
     setText(countOut, o.count ? o.count(total) : '');
     return pages;
   };
-  const fit = () => {
+  // force: ask again even when the page size holds (a form switch, a refit); the first item stays in view either way.
+  const fit = (force) => {
     if (!paged) return;
     const W = body.clientWidth, H = body.clientHeight;
     if (!W || !H) return;
@@ -1053,7 +1054,7 @@ export function list(o = {}) {
       f = { cols, perPage: n * cols };
     } else f = fitGrid(W, H, gap, (o.tile && o.tile.min) || 150, (o.tile && o.tile.max) || 300, TILE_TEXT_REM * rem);
     items.style.gridTemplateColumns = 'repeat(' + f.cols + ', minmax(0, 1fr))';
-    if (f.perPage === per) return;
+    if (f.perPage === per && !force) return;
     const first = (page - 1) * (per || f.perPage);
     per = f.perPage;
     page = Math.floor(first / per) + 1;
@@ -1117,13 +1118,10 @@ export function list(o = {}) {
         el.dataset.form = v;
         if (!paged) return;
         if (v === 'rows') items.style.gridTemplateColumns = '';
-        const was = per;
-        per = 0;
-        fit();
-        if (per === 0) per = was;
+        fit(true);
       },
     },
-    refit: { value: () => { per = 0; fit(); } },
+    refit: { value: () => fit(true) },
   });
 }
 
