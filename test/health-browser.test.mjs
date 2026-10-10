@@ -225,8 +225,8 @@ else {
 await goTab(page, 'log');
 await page.click('[data-feed="log"]');
 const lines = await logLines(page);
-ok('Log: a health line per cause, plain words first', lines.some((l) => /Motion paused .* · this device fell behind/.test(l))
-  && lines.some((l) => /Motion paused .* · WiFi delay \(likely\)/.test(l)), lines);
+ok('Log: a health line per cause, the pause and its measured cause', lines.some((l) => /Motion paused .* · this device stalled \d+ ms/.test(l))
+  && lines.some((l) => /Motion paused .* · (WiFi delay|no updates for) \d+ ms \(likely\)/.test(l)), lines);
 
 ok('no page error', errors.length === 0, errors);
 // ---- 2. the report ------------------------------------------------------------
@@ -272,7 +272,8 @@ console.log('\n--- the status slot ---');
   const o = await open();
   const slot = () => o.page.evaluate(() => {
     const s = document.querySelector('.topstrip .status');
-    return { kind: s && s.dataset.kind, text: s ? s.textContent.trim() : '' };
+    const b = s && s.querySelector('.st-dismiss');
+    return { kind: s && s.dataset.kind, text: s ? s.textContent.trim() : '', title: b ? b.title : '' };
   });
   const pause = o.page.locator('.topstrip .btn-pause');
   const waitKind = async (kind, ms = 4000) => {
@@ -299,7 +300,10 @@ console.log('\n--- the status slot ---');
   await o.page.waitForTimeout(11000);
   await stall();
   const act = await waitKind('health');
-  ok('slot: the third cutout in 60 s is act and takes the slot over the edge', act.kind === 'health' && /this device fell behind/.test(act.text), act);
+  ok('slot: the third cutout in 60 s is act and takes the slot over the edge', act.kind === 'health' && /this device stalled \d+ ms/.test(act.text), act);
+  const tip = act.title.split('\n');
+  ok('slot: the tooltip is the detail, never the line: measured, since, threshold, action, the click', tip.length >= 4 && !tip.includes(act.text)
+    && /^Measured: /.test(tip[0]) && /^Since /.test(tip[1]) && tip[tip.length - 1] === 'Click to open this incident', act.title);
   await pause.click();
   const over = await waitKind('notice');
   ok('slot: a latch notice still outranks an act health condition', over.kind === 'notice' && /Paused/.test(over.text), over);
@@ -308,6 +312,8 @@ console.log('\n--- the status slot ---');
   await o.page.click('.topstrip .status[data-kind="health"] .st-dismiss');
   ok('slot: the health line opens the Log page on its Health view', await o.page.waitForSelector('.health', { timeout: 5000 }).then(() => true, () => false)
     && await o.page.getAttribute('[data-feed="health"]', 'aria-selected') === 'true');
+  ok('slot: ...with its incident open', await o.page.evaluate(() => [...document.querySelectorAll('.incs > li')]
+    .filter((li) => li.querySelector('details').open).map((li) => li.dataset.cond).join() === 'cutout-client'));
   await o.ctx.close();
 }
 

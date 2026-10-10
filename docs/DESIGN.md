@@ -1150,9 +1150,16 @@ its own: no continuous telemetry, ever.
 - Three areas: Link, This device, Machine. The 26 conditions, their
   thresholds, holds and words are one table, `CONDITIONS` in
   `src/model/health/core.js`; the design survey is the `ph-9t5l` note. A
-  condition shows a short line (COPY.md), then one plain sentence for an
-  average DIYer and one action. Jargon (milliseconds, RTT) lives only in the
-  evidence line under it.
+  condition's line is a measured fact with the number that raised it
+  ("Memory up 140 MB in 35 min", "Motion paused 420 ms · WiFi delay 300 ms
+  (likely)"), never a verdict about Phosphor; its tooltip and its incident
+  say what was measured, since when, the threshold and one action, never the
+  line again (COPY.md rule 11), with one plain sentence for an average DIYer
+  in the incident. Jargon (RTT, loop lag) lives only in the evidence line.
+- Growth (D4) is a leak, never a GC sawtooth: each 5-minute block's lowest
+  memory reading higher than the block before for 30 minutes or more, and
+  100 MB up over the run; it holds while the floor stays 50 MB up. Workers
+  piling up (D6) are their own condition with their own count.
 - The flagship case is a stream cutout, classified by cause, first match
   wins: CLIENT (a move left after the hub's last one ended, or with less lead
   than the hub needs; or the hub ran dry right after this page stalled or
@@ -1176,7 +1183,8 @@ its own: no continuous telemetry, ever.
   list; the top strip's status slot takes act and warn, below link fault,
   unattended, refusal, the jog note, the history message and the latch
   notices, act above the safety edge, warn below it, a 5 s minimum dwell
-  (`health.slot`, drawn by TopStrip); the slot's line opens the Health view.
+  (`health.slot`, drawn by TopStrip); the slot's line opens its incident on
+  the Health view.
 - Local only: a 10-minute ring at 1 Hz, 10 Hz for the last 2 minutes of the
   stream signals; an incident keeps a snapshot of -60 to +30 s, the last 20
   in memory and the last 5 in `localStorage` so a reload keeps them.
@@ -1293,3 +1301,4 @@ issue the user submits under their own account; Phosphor sends nothing.
 | 2026-10-09 | §10.3, plugins | A page's status moves from the phone footer's slot and the desktop card's last row into the strip's status slot on every class: no row, no reserved height; a warn status ranks under an act health condition and over the safety edge, any other under a warn health condition; informational states the page already shows are not sent (the funscript player drops `No scene loaded`, `Motion only`, `Positioning`, `Buffering`). The compact row's fit counts an overflow into the strip's end padding (a live numeral at 420x860 had pushed the stop pair 9 px into the gutter) and keeps its decisions while a condition hides the numeral, so a condition moves no control. Supersedes the 2026-10-08 §10.3 footer status slot and FUNSCRIPT.md PR14 (`ph-5u0g` peeve 19, `ph-5u0g.16`). | operator ("the status line takes its own row: remove it or move it somewhere that costs no space"; restated 2026-10-09 on the desktop card's last row: "I thought we were removing this?". The warn status above the safety edge (the edge stands for the whole session and the compact hero hides it, so below it a warning would never show), the quiet tier for notes, and `No script for this video` kept as a note because it explains a grayed Play, are the agent's, veto-able) |
 | 2026-10-09 | §10.3, plugins | A plugin card's status (a hero on the Dash or a category page) goes to the strip's status slot too: the card draws no status row (the funscript player's Dash card drops its row), its status is that page's, ranked like a page's status; one source shows per page, the newest warn or bad, else the newest other. The kit-demo example sends a warning, never an informational status. Extends the row above (`ph-5u0g` peeve 19, `ph-5u0g.17`). | operator's peeve 19 as extended by Fable's ruling ("warnings and refusals go to the shell's status slot; one source at a time per page, the newest warning wins"). The newest note showing when no source warns, category-page cards counting as Dash cards, and a card unmounted on screen keeping its status until that page's next status or a page switch, are the agent's, veto-able) |
 | 2026-10-09 | §10.13 | The node editor's F3 searches every node source on the shell's matcher (Enter adds at the pointer, Shift+Enter or a show button finds the placed node); the add menu groups as the pages do (hub, category, section, card, then plugin modules, ButtplugIO, the node families); a field or toy node names its card, desc, range, socket roles and live state, one accent per card (`ph-5wo6`). | operator ("this is 0 info"; F3 and categorization by card and module). The device after the card in a node's label, the accent order, a flat list naming each source once under its card (modules browse in the tree only), Enter on a placed field showing it, the hub's Other for fields no page draws and Ctrl+F staying the shell's are the agent's, veto-able |
+| 2026-10-09 | §10.14 | Health lines are measured facts with their number and the tooltip is the detail (measured, since, threshold, one action, the click), never a repeat (COPY.md rule 11); the slot opens its incident. D4 growth judged on the 5-minute floors of the memory sawtooth, rising every block for 30 min and 100 MB up, the loop-lag arm gone; D6 workers its own condition. A report's least, typical and worst values are over its stated window (`evidence.from_ms`, `to_ms`), a growth report carries what grew, from, to, over and how fast, an event's kind is its condition, and a condition with no classifier reports where it was measured as its cause (`ph-9t5l`). | operator ("the worst error/anomaly message of ALL time": vague, no number, no cause, no action, a tooltip repeating it); the coordinator's read of report KMCBXOPP (a GC sawtooth, 28 to 49 MB, raised growth; maxima that were point samples). The 5-minute blocks, the 100 MB and 50 MB figures, the run a plateau breaks, the area-to-cause map, the stall measured from the overdue tick and the uplink delay counted up to a starvation's classification are the agent's, veto-able |

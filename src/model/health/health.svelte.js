@@ -24,7 +24,7 @@ import { ROLE } from '../roles.js';
 import { labelFor, formatWithUnit } from '../format.js';
 import { reportedValue } from '../settings.js';
 import {
-  CONDITIONS, CUTOUT, CAUSE_WORD, SEV_RANK, LAG_HEALTHY_MS, TICK_MS, classify, createTracker, growth, quantile, max, min,
+  CONDITIONS, CUTOUT, GROWTH, SEV_RANK, LAG_HEALTHY_MS, TICK_MS, classify, createTracker, growth, lineOf, tipLines, quantile, max, min,
 } from './core.js';
 import { reportId, loadSent, saveSent } from './report.js';
 import { CORE_CHANNEL, LOG_LEVEL_NAME, CHANNEL_ROLE } from '../../../../Valence/clients/js/generated/registry_vocab.js';
@@ -38,8 +38,10 @@ const now = () => performance.now();
 export const health = $state({
   /** Newest first: {id, cond, sev, cause, confidence, why, count, durationMs, wallAt, closed, evidence, settings}. */
   incidents: [],
-  /** The top strip's line: {id, sev, text} or null (warn and act only). */
+  /** The top strip's line: {id, sev, text, title} or null (warn and act only). */
   slot: null,
+  /** The incident the slot opened: the Health view expands it. */
+  focus: null,
   link: {}, device: {}, machine: {},
   /** The Link card's 2-minute strip, 1 Hz: {s (seconds ago), rtt, lead, cut (cause|null)}. */
   strip: [],
@@ -60,7 +62,6 @@ const reconnectsAt = [];
 const ring = [];      // 1 Hz rows
 const fine = [];      // 10 Hz rows
 const floors = [];    // heap floor MB per minute
-const lagMins = [];   // lag p95 per minute
 const workerMins = [];
 const snaps = new Map(); // incident id -> {rows, fine, t0}
 const trim = (a, age, t) => { while (a.length && t - a[0].t > age) a.shift(); };
@@ -232,6 +233,8 @@ function lateArrivalCheck(t, owd) {
 
 function evidenceAt(t) {
   const W = [t - 1000, t];
+  // A stall still in progress: the 100 ms tick overdue now (lags hold only the ticks that ran).
+  const overdue = visible() && t - wokeAt > 2000 && t - lastTickAt - 100 > 0 ? t - lastTickAt - 100 : null;
   const rtt60 = vals(inWin(rtts, t - 60000, t));
   const pg = vals(inWin(posGaps, ...W));
   const rate = posRate();
@@ -241,10 +244,11 @@ function evidenceAt(t) {
     rttP50Ms: quantile(rtt60, 0.5),
     rttMaxMs: max(vals(inWin(rtts, t - 10000, t))),
     owdUpMaxMs: max(vals(inWin(owds, t - 1500, t + 500))),
-    owdRecentMaxMs: max(vals(inWin(owds, t - 5000, t + 500))),
+    // A starvation is classified 600 ms after its run ends: every delay landed by then counts.
+    owdRecentMaxMs: max(vals(inWin(owds, t - 5000, Math.max(t + 500, now())))),
     posGapMaxMs: max(pg),
     periodMs: rate > 0 ? 1000 / rate : null,
-    loopLagMaxMs: max(vals(inWin(lags, ...W))),
+    loopLagMaxMs: max([...vals(inWin(lags, ...W)), overdue]),
     backlogMax: max(vals(inWin(backlogs, ...W))),
     hidden: !visible(),
     hubWarn: inWin(hubLogs, t - 5000, t).length,
@@ -257,7 +261,7 @@ function evidenceAt(t) {
 function cutout(t, { overlap, ...extra }, sizeMs) {
   const ev = { ...evidenceAt(t), ...extra };
   const c = classify(ev);
-  tracker.event(CUTOUT[c.cause], t, { sizeMs: Math.max(0, sizeMs), overlap, cause: c.cause, confidence: c.confidence, why: c.why, evidence: ev });
+  tracker.event(CUTOUT[c.cause], t, { sizeMs: Math.max(0, sizeMs), overlap, cause: c.cause, confidence: c.confidence, why: c.why, fact: c.fact, evidence: ev });
 }
 
 /** One RTT or uplink sample over 4x the median and 100 ms: a Log-only spike. */
@@ -270,22 +274,11 @@ function spikeCheck(t, rtt, owd) {
 // ---- incidents: Log lines, the list, snapshots ----------------------------------
 const logRefs = new Map(); // incident id -> its Log ring record
 
-function words(inc) {
-  const d = CONDITIONS[inc.cond];
-  const n = inc.count > 1 ? ' ×' + inc.count : '';
-  const dur = inc.durationMs >= 50 ? ' ' + secs(inc.durationMs) : '';
-  if (d.cause) return 'Motion paused' + dur + ' · ' + CAUSE_WORD[d.cause] + (inc.confidence === 'likely' && d.cause !== 'unknown' ? ' (likely)' : '') + n;
-  if (inc.cond === 'delay-spike') return d.short + ' ' + inc.peakMs + ' ms' + n;
-  if (inc.cond === 'freeze') return d.short + ' ' + secs(inc.peakMs) + n;
-  return d.short + n + (inc.closedAt != null && inc.durationMs >= 1000 ? ' · ' + secs(inc.durationMs) : '');
-}
-export const secs = (ms) => (ms < 10000 ? (ms / 1000).toFixed(1) : Math.round(ms / 1000)) + ' s';
-
 function view(inc) {
   return {
     id: inc.id, cond: inc.cond, sev: inc.sev, cause: inc.cause || CONDITIONS[inc.cond].cause || null,
     confidence: inc.confidence || null, why: inc.why || '', count: inc.count, durationMs: Math.round(inc.durationMs),
-    wallAt: inc.wallAt, closed: inc.closedAt != null, text: words(inc), evidence: inc.evidence || null,
+    wallAt: inc.wallAt, closed: inc.closedAt != null, text: lineOf(inc), tip: tipLines(inc), m: inc.m || null, evidence: inc.evidence || null,
     settings: { horizonMs: lastHorizon, latMs: lastLat },
     episodes: inc.episodes.map((e) => e - inc.t0), t0: inc.t0,
   };
@@ -311,7 +304,7 @@ const tracker = createTracker({
     publish(inc);
     const ring = machine.events.log;
     ring.push({ channel: null, channelName: 'client', at: inc.wallAt, health: inc.id,
-      body: { level: inc.sev === 'info' ? LEVEL.info : LEVEL.warn, tag: 'health', message: words(inc) } });
+      body: { level: inc.sev === 'info' ? LEVEL.info : LEVEL.warn, tag: 'health', message: lineOf(inc) } });
     logRefs.set(inc.id, ring[ring.length - 1]);
     if (ring.length > 400) ring.splice(0, ring.length - 400);
     const id = inc.id, t0 = inc.t0;
@@ -359,13 +352,19 @@ function restore() {
 // ---- the status slot: act and warn, a 5 s minimum dwell --------------------------
 let slotAt = 0;
 function updateSlot(t) {
+  // An open incident's numbers move while its signal holds: its row and Log line follow.
+  for (const i of Object.values(tracker.incidents)) {
+    const v = i.closedAt == null && health.incidents.find((x) => x.id === i.id);
+    if (v && v.text !== lineOf(i)) publish(i);
+  }
   const open = Object.values(tracker.incidents).filter((i) => i.closedAt == null && SEV_RANK[i.sev] >= 1 && !CONDITIONS[i.cond].logOnly)
     .sort((a, b) => SEV_RANK[b.sev] - SEV_RANK[a.sev] || b.lastAt - a.lastAt);
   const top = open[0];
   const cur = health.slot;
   if (cur && (!top || top.id !== cur.id) && t - slotAt < 5000 && !(top && SEV_RANK[top.sev] > SEV_RANK[cur.sev])) return;
-  const next = top ? { id: top.id, sev: top.sev, text: CONDITIONS[top.cond].short } : null;
-  if ((next && next.id) !== (cur && cur.id) || (next && cur && next.sev !== cur.sev)) { health.slot = next; slotAt = t; }
+  const next = top ? { id: top.id, sev: top.sev, text: lineOf(top), title: [...tipLines(top), 'Click to open this incident'].join('\n') } : null;
+  if ((next && next.id) !== (cur && cur.id) || (next && cur && next.sev !== cur.sev)) slotAt = t;
+  if (JSON.stringify(next) !== JSON.stringify(cur)) health.slot = next;
 }
 
 // ---- level conditions, once a second ---------------------------------------------
@@ -385,52 +384,65 @@ function evaluate(t, row) {
   // send-margin: least lead under a quarter of the horizon for 5 s, clear at a third.
   const H = lastHorizon || 250;
   const lead1 = row.lead;
-  tracker.level('send-margin', streaming(t) ? band('send-margin', lead1 != null && lead1 < H / 4, lead1 != null && lead1 >= H / 3, 'info') : null, t);
+  tracker.level('send-margin', streaming(t) ? band('send-margin', lead1 != null && lead1 < H / 4, lead1 != null && lead1 >= H / 3, 'info') : null, t,
+    lead1 != null ? { m: { leadMs: lead1, onMs: H / 4 } } : undefined);
   // slow-link: RTT p50 and jitter over the last minute.
   const r = vals(inWin(rtts, t - 60000, t));
   if (r.length >= 3) {
     const p50 = quantile(r, 0.5), jit = quantile(r, 0.95) - p50;
-    tracker.level('slow-link', band('slow-link', p50 > 50 || jit > 30, p50 < 30 && jit < 15, 'warn'), t);
+    tracker.level('slow-link', band('slow-link', p50 > 50 || jit > 30, p50 < 30 && jit < 15, 'warn'), t, { m: { p50Ms: p50, p95Ms: p50 + jit } });
   } else tracker.level('slow-link', isOpen('slow-link') ? 'warn' : null, t);
   // updates-stalled: no inbound frame for 500 ms on a live link while this page ran.
   const gap = Date.now() - machine.stats.lastRxMs;
   tracker.level('updates-stalled', live && gap >= 500 && (row.lag || 0) < LAG_HEALTHY_MS ? 'warn' : null, t, { peakMs: Math.round(gap) });
-  tracker.level('backlog', live && row.backlog > 0 ? 'act' : null, t);
-  tracker.level('throttled', live && throttled.size ? 'info' : null, t);
+  tracker.level('backlog', live && row.backlog > 0 ? 'act' : null, t, { m: { bytes: row.backlog } });
+  tracker.level('throttled', live && throttled.size ? 'info' : null, t, { m: { channels: throttled.size } });
   const rc = reconnectsAt.filter((x) => t - x < 300000).length;
-  tracker.level('drops', band('drops', rc >= 2, !reconnectsAt.some((x) => t - x < 600000), 'warn'), t);
+  tracker.level('drops', band('drops', rc >= 2, !reconnectsAt.some((x) => t - x < 600000), 'warn'), t, { m: { n: rc } });
 
   // This device.
   if (visible() && t - wokeAt > 2000) {
     const p95 = quantile(vals(inWin(lags, t - 60000, t)), 0.95);
-    tracker.level('busy', band('busy', p95 > 25, p95 != null && p95 < 15, p95 > 100 ? 'act' : 'warn'), t);
-    tracker.level('slow-display', band('slow-display', fps != null && fps < 30, fps >= 45, 'info'), t);
+    tracker.level('busy', band('busy', p95 > 25, p95 != null && p95 < 15, p95 > 100 ? 'act' : 'warn'), t, { m: { p95Ms: p95 } });
+    tracker.level('slow-display', band('slow-display', fps != null && fps < 30, fps >= 45, 'info'), t, { m: { fps } });
   } else tracker.level('slow-display', null, t);
   if (pressure === 'critical') criticalSince ??= t; else criticalSince = null;
   if (pressure === 'serious' || pressure === 'critical') seriousSince ??= t; else seriousSince = null;
   const ov = criticalSince != null && t - criticalSince >= 10000 ? 'act' : seriousSince != null && t - seriousSince >= 30000 ? 'warn' : null;
-  tracker.level('overloaded', ov || (pressure === 'nominal' || pressure === 'fair' ? null : isOpen('overloaded') ? 'warn' : null), t);
+  const pFor = criticalSince != null ? t - criticalSince : seriousSince != null ? t - seriousSince : null;
+  tracker.level('overloaded', ov || (pressure === 'nominal' || pressure === 'fair' ? null : isOpen('overloaded') ? 'warn' : null), t,
+    { m: { state: pressure, forMs: pFor } });
   evaluateBackground();
 
   // The machine, by role.
-  const temps = tempFields();
-  tracker.level('hot', temps.some((x) => x.hot) ? 'warn' : null, t);
+  const hot = tempFields().find((x) => x.hot);
+  tracker.level('hot', hot ? 'warn' : null, t, hot && { m: { label: hot.label, text: hot.text, max: hot.max } });
   tracker.tick(t);
 }
 
 function perMinute(t) {
-  minuteRows.push({ heap: heapMb(), lag: quantile(vals(inWin(lags, t - 60000, t)), 0.95), workers });
+  minuteRows.push({ heap: heapMb(), workers });
   if (minuteRows.length < 60) return;
   // A minute is 60 one-second rows; on the 60th, fold it.
   const m = minuteRows.splice(0);
   const f = min(m.map((x) => x.heap));
   if (f != null) floors.push(f);
-  lagMins.push(max(m.map((x) => x.lag)) || 0);
   workerMins.push(max(m.map((x) => x.workers)) || 0);
-  if (floors.length > 120) { floors.shift(); lagMins.shift(); workerMins.shift(); }
+  if (floors.length > 120) floors.shift();
+  if (workerMins.length > 120) workerMins.shift();
+  // D4: once raised it holds, from the same base, while the floor stays half the alarm's rise above it.
+  const g = growth(floors);
+  const was = isOpen('growth') ? tracker.incidents.growth.m : null;
+  const nowMb = min(floors.slice(-GROWTH.blockMin));
+  const gm = was && nowMb - was.baseMb >= GROWTH.riseMb / 2
+    ? { ...was, nowMb, minutes: Math.round((t - was.from) / 60000), slopeMbPerMin: (nowMb - was.baseMb) / ((t - was.from) / 60000) }
+    : g && { ...g, from: t - g.minutes * 60000 };
+  tracker.level('growth', gm ? 'warn' : null, t, gm && { m: gm, durationMs: gm.minutes * 60000 });
+  // D6: workers past the session's first minutes + 2, for 5 minutes.
   const base = workerMins.length >= 6 ? quantile(workerMins.slice(1, 6), 0.5) : null;
-  const extra = base != null && workerMins.slice(-5).length === 5 && workerMins.slice(-5).every((w) => w > base + 2);
-  if (growth(floors, lagMins) || extra) tracker.level('growth', 'warn', t);
+  const last = workerMins.slice(-5);
+  const extra = base != null && last.length === 5 && last.every((w) => w > base + 2);
+  tracker.level('workers', extra ? 'warn' : null, t, extra && { m: { base, now: last[4] } });
 }
 
 function tempFields() {
@@ -520,7 +532,7 @@ function cards(t) {
   const gaps = vals(inWin(posGaps, t - 120000, t)).filter((g) => g >= gapFloor);
   const worst = (area) => Object.values(tracker.incidents).filter((i) => i.closedAt == null && CONDITIONS[i.cond].area === area && !CONDITIONS[i.cond].logOnly)
     .sort((a, b) => SEV_RANK[b.sev] - SEV_RANK[a.sev] || b.lastAt - a.lastAt)[0];
-  const status = (area) => { const w = worst(area); return w ? { sev: w.sev, text: CONDITIONS[w.cond].short } : { sev: null, text: 'Good' }; };
+  const status = (area) => { const w = worst(area); return w ? { sev: w.sev, text: lineOf(w) } : { sev: null, text: 'Good' }; };
   const io = machine.stats;
   const perS = prevIo && io.framesIn >= prevIo.in ? { in: io.framesIn - prevIo.in, out: io.framesOut - prevIo.out } : {};
   prevIo = { in: io.framesIn, out: io.framesOut };
@@ -536,7 +548,7 @@ function cards(t) {
     status: status('device'),
     lagP95Ms: quantile(vals(inWin(lags, t - 60000, t)), 0.95), fps, heapMb: heapMb(),
     heapTrendMb: m10.length >= 60 ? m10[m10.length - 1] - m10[0] : null, pressure, workers,
-    growth: isOpen('growth'), visible: visible(),
+    growth: isOpen('growth') ? lineOf(tracker.incidents.growth) : null, visible: visible(),
   };
   const model = machine.catalog.model;
   const bus = ((model && model.byRole.get(ROLE.telemetryPowerBus)) || []).map((f) => {

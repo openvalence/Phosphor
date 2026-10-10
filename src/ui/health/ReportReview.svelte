@@ -34,7 +34,7 @@
   // The bundle as the issue and its file carry it (attachment named when over the budget).
   const bundle = $derived(out ? JSON.parse(out.full) : null);
   const SECTION = { schema: 'Report', id: 'Report', app: 'This app', machine: 'Machine', incident: 'Problem', settings: 'Settings',
-    evidence: 'Measurements', window: 'History', events: 'Events', hub_log: 'Machine log', attachment: 'Attachment' };
+    measure: 'What raised it', evidence: 'Measurements', window: 'History', events: 'Events', hub_log: 'Machine log', attachment: 'Attachment' };
   const groups = $derived.by(() => {
     const g = [];
     for (const f of FIELDS) {
@@ -90,8 +90,8 @@
     <p class="pane-empty">This incident is no longer kept</p>
   {:else}
     <section class="pane-sec og-screen" aria-labelledby="rr-what">
-      <div class="pane-head"><h2 id="rr-what">{CONDITIONS[inc.cond].short}</h2></div>
-      <p class="lead">{CONDITIONS[inc.cond].detail || inc.text}</p>
+      <div class="pane-head"><h2 id="rr-what">{inc.text}</h2></div>
+      {#if CONDITIONS[inc.cond].detail}<p class="lead">{CONDITIONS[inc.cond].detail}</p>{/if}
       <p class="size mono" data-over={out?.attach || null}>{out ? out.full.length + ' characters' : '--'} · {out?.attach
         ? 'too long for the link: Send saves ' + fileName(id) + ' to attach on GitHub'
         : 'fits the link (' + URL_BUDGET + ' max)'}</p>

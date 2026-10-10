@@ -18,7 +18,7 @@
  *   the page.
  */
 
-import { CONDITIONS } from './core.js';
+import { CONDITIONS, quantile } from './core.js';
 
 export const REPO = 'openvalence/Phosphor';
 export const SCHEMA = 'phosphor.health-report/1';
@@ -57,23 +57,30 @@ export const FIELDS = [
   { path: 'incident.severity', name: 'Severity', what: 'How serious Phosphor rated it', why: 'Sorts reports', type: 'enum', values: ['info', 'warn', 'act'] },
   { path: 'incident.count', name: 'Times', what: 'How many times it happened in this incident', why: 'Once is a hiccup, often is a pattern', type: 'int' },
   { path: 'incident.lasted_ms', name: 'Duration', what: 'How long it lasted in total', why: 'Sizes the problem', type: 'int', unit: ms },
+  { path: 'measure.metric', name: 'What grew', what: 'The reading that raised a growth problem', why: 'Says what to look at', type: 'enum', values: ['heap_floor_mb', 'workers'] },
+  { path: 'measure.baseline', name: 'Started at', what: 'That reading where the growth began', why: 'Sizes the growth', type: n },
+  { path: 'measure.current', name: 'Now at', what: 'That reading when the problem was raised or last updated', why: 'Sizes the growth', type: n },
+  { path: 'measure.window_ms', name: 'Over', what: 'How long it grew', why: 'A fast leak and a slow one differ', type: 'int', unit: ms },
+  { path: 'measure.slope_per_min', name: 'Growth rate', what: 'How much it grew per minute', why: 'Points at what leaks', type: n },
   { path: 'settings.stream_buffer_ms', name: 'Look-ahead window', what: 'How far ahead the machine accepts moves', why: 'A longer window rides out delays', type: 'int', unit: ms },
   { path: 'settings.schedule_latency_us', name: 'Machine planning time', what: 'How long the machine says it needs to plan a move', why: 'Sets the deadline moves must meet', type: 'int', unit: 'us' },
   { path: 'settings.lookahead_ms', name: 'Send-ahead time', what: 'How far ahead Phosphor sends moves', why: 'The margin against delays', type: 'int', unit: ms },
-  { path: 'evidence.lead_send_ms_min', name: 'Sent ahead (least)', what: 'The least time a move left before it was due', why: 'Low means this device sent late', type: n, unit: ms },
-  { path: 'evidence.arrival_lead_ms_min', name: 'Arrived ahead (least)', what: 'The least time a move reached the machine before it was due', why: 'Low means the network delivered late', type: n, unit: ms },
-  { path: 'evidence.rtt_ms_p50', name: 'Round trip (typical)', what: 'The usual time for a message to reach the machine and come back', why: 'High means a slow link', type: n, unit: ms },
-  { path: 'evidence.rtt_ms_max', name: 'Round trip (worst)', what: 'The slowest round trip around the problem', why: 'Spikes point at WiFi', type: n, unit: ms },
-  { path: 'evidence.owd_up_ms_max', name: 'Delay to the machine (worst)', what: 'The slowest one-way trip from this device to the machine', why: 'The direction moves travel', type: n, unit: ms },
-  { path: 'evidence.downlink_gap_ms_max', name: 'Update gap (longest)', what: 'The longest pause in position updates from the machine', why: 'Gaps point at WiFi', type: n, unit: ms },
-  { path: 'evidence.loop_lag_ms_max', name: 'This device stalled (longest)', what: 'The longest time Phosphor waited on this computer', why: 'High means this device was busy', type: n, unit: ms },
-  { path: 'evidence.backlog_bytes_max', name: 'Data waiting (most)', what: 'The most data waiting for the network to take it', why: 'A jammed link shows here', type: 'int', unit: 'bytes' },
+  { path: 'evidence.from_ms', name: 'Measured from', what: 'Where the least, typical and worst values below start, from the problem', why: 'Every one is over this same window', type: 'int', unit: ms },
+  { path: 'evidence.to_ms', name: 'Measured to', what: 'Where they end, from the problem', why: 'Every one is over this same window', type: 'int', unit: ms },
+  { path: 'evidence.lead_send_ms_min', name: 'Sent ahead (least)', what: 'The least time a move left before it was due, in the window', why: 'Low means this device sent late', type: n, unit: ms },
+  { path: 'evidence.arrival_lead_ms_min', name: 'Arrived ahead (least)', what: 'The least time a move reached the machine before it was due, in the window', why: 'Low means the network delivered late', type: n, unit: ms },
+  { path: 'evidence.rtt_ms_p50', name: 'Round trip (typical)', what: 'The median of the per-second slowest round trips in the window', why: 'High means a slow link', type: n, unit: ms },
+  { path: 'evidence.rtt_ms_max', name: 'Round trip (worst)', what: 'The slowest round trip in the window', why: 'Spikes point at WiFi', type: n, unit: ms },
+  { path: 'evidence.owd_up_ms_max', name: 'Delay to the machine (worst)', what: 'The slowest one-way trip from this device to the machine, in the window', why: 'The direction moves travel', type: n, unit: ms },
+  { path: 'evidence.downlink_gap_ms_max', name: 'Update gap (longest)', what: 'The longest pause in position updates from the machine, in the window', why: 'Gaps point at WiFi', type: n, unit: ms },
+  { path: 'evidence.loop_lag_ms_max', name: 'This device stalled (longest)', what: 'The longest time Phosphor waited on this computer, in the window', why: 'High means this device was busy', type: n, unit: ms },
+  { path: 'evidence.backlog_bytes_max', name: 'Data waiting (most)', what: 'The most data waiting for the network to take it, in the window', why: 'A jammed link shows here', type: 'int', unit: 'bytes' },
   { path: 'evidence.rssi_dbm', name: 'Machine signal', what: 'How strongly the machine hears the router', why: 'A weak signal causes delays', type: n, unit: 'dBm' },
   { path: 'evidence.wifi_drops', name: 'Machine WiFi drops', what: 'How often the machine lost WiFi', why: 'Drops pause everything', type: 'int' },
   { path: 'evidence.late_plans_per_min', name: 'Late plans', what: 'Moves the machine planned late, per minute', why: 'Points at the machine', type: n },
   { path: 'evidence.reconnects', name: 'Reconnects', what: 'How often the link to the machine broke this session', why: 'Drops point at the network', type: 'int' },
-  { path: 'evidence.heap_mb', name: 'Memory in use', what: "Phosphor's memory use on this device", why: 'Growth means a leak', type: n, unit: 'MB' },
-  { path: 'evidence.fps', name: 'Frame rate', what: 'Screen updates per second', why: 'Low means this device was busy', type: n },
+  { path: 'evidence.heap_mb', name: 'Memory in use', what: "Phosphor's memory use on this device at the problem", why: 'One reading; the history shows the trend', type: n, unit: 'MB' },
+  { path: 'evidence.fps', name: 'Frame rate', what: 'Screen updates per second at the problem', why: 'Low means this device was busy', type: n },
   { path: 'window.from_ms', name: 'Window start', what: 'Where the history below starts, from the problem', why: 'Places the series in time', type: 'int', unit: ms },
   { path: 'window.to_ms', name: 'Window end', what: 'Where the history ends, from the problem', why: 'Places the series in time', type: 'int', unit: ms },
   { path: 'window.step_ms', name: 'Window step', what: 'Time between history points', why: 'Places the series in time', type: 'int', unit: ms },
@@ -110,7 +117,7 @@ export const PRIVACY = 'Send report opens a new public issue on github.com/openv
   + 'No GitHub account? Save report keeps it as a file you can share any way you like.';
 
 const round = (v, dp = 0) => (Number.isFinite(v) ? Math.round(v * 10 ** dp) / 10 ** dp : null);
-const EVENT_KINDS = new Set(['cutout', 'freeze', 'spike', 'stall', 'drop', 'busy', 'other']);
+const EVENT_KINDS = new Set(CONDITION_VALUES);
 
 function clean(f, v) {
   switch (f.type) {
@@ -121,7 +128,7 @@ function clean(f, v) {
     case 'num': return round(v, 1);
     case 'series': return Array.isArray(v) ? v.slice(0, 120).map((x) => round(x, 1)) : [];
     case 'events': return Array.isArray(v) ? v.slice(0, 40).map((e) => ({
-      t_ms: round(e && e.t_ms), kind: EVENT_KINDS.has(e && e.kind) ? e.kind : 'other',
+      t_ms: round(e && e.t_ms), kind: EVENT_KINDS.has(e && e.kind) ? e.kind : null,
       cause: ['client', 'network', 'hub', 'unknown'].includes(e && e.cause) ? e.cause : null })) : [];
     default: return null;
   }
@@ -253,10 +260,17 @@ export async function saveFile(name, text) {
 
 // ---- the bundle's source, from an incident and its snapshot -------------------
 
-const KIND = { 'delay-spike': 'spike', freeze: 'freeze', 'updates-stalled': 'stall', drops: 'drop', busy: 'busy' };
-const kindOf = (cond) => (cond.startsWith('cutout-') ? 'cutout' : KIND[cond] || 'other');
+/** A condition as the bundle names it: the cutouts are one condition with a cause. */
+export const kindOf = (cond) => (cond.startsWith('cutout-') ? 'cutout' : cond);
 const maxOf = (a) => (a.length ? Math.max(...a) : null);
 const minOf = (a) => (a.length ? Math.min(...a) : null);
+/** A condition without a classifier: where it was measured, and whether that pins it. */
+const AREA_CAUSE = { device: ['client', 'decisive'], link: ['network', 'likely'], machine: ['hub', 'decisive'] };
+/** A growth incident's own numbers (m) as [metric, baseline, current, window ms, slope per minute]. */
+const MEASURE = {
+  growth: (m) => ['heap_floor_mb', m.baseMb, m.nowMb, m.minutes * 60000, m.slopeMbPerMin],
+  workers: (m) => ['workers', m.base, m.now, 300000, null],
+};
 
 /** rows ({t relative ms, ...}) bucketed from..to by step, `key` folded by agg; null where none. */
 export function series(rows, key, agg, from, to, step) {
@@ -280,6 +294,12 @@ export function reportSource({ inc, snap, ctx, hubLog = null, protocol = null, o
   const rows = (snap && snap.rows) || [];
   const fine = (snap && snap.fine) || [];
   const W = [-60000, 30000, 2000], F = [-2000, 500, 100];
+  // Every least, typical and worst value is over W, from the rows the series below are made of.
+  const inW = rows.filter((r) => r.t >= W[0] - W[2] / 2 && r.t < W[1] + W[2] / 2);
+  const col = (k) => inW.map((r) => r[k]).filter(Number.isFinite);
+  const d = CONDITIONS[inc.cond] || {};
+  const [cause, confidence] = d.cause ? [inc.cause, inc.confidence] : AREA_CAUSE[d.area] || [null, null];
+  const [metric, baseline, current, windowMs, slope] = MEASURE[inc.cond] && inc.m ? MEASURE[inc.cond](inc.m) : [];
   const events = [];
   for (const o of [inc, ...others]) {
     if (o.t0 == null || inc.t0 == null) continue;
@@ -295,15 +315,18 @@ export function reportSource({ inc, snap, ctx, hubLog = null, protocol = null, o
     'app.engine': ctx.app && ctx.app.engine, 'app.shell': ctx.app && ctx.app.shell,
     'machine.firmware': ctx.machine && ctx.machine.firmware, 'machine.protocol': protocol,
     'machine.transport': ctx.machine && ctx.machine.transport,
-    'incident.condition': kindOf(inc.cond) === 'cutout' ? 'cutout' : inc.cond, 'incident.cause': inc.cause,
-    'incident.confidence': inc.confidence, 'incident.severity': inc.sev, 'incident.count': inc.count,
+    'incident.condition': kindOf(inc.cond), 'incident.cause': cause,
+    'incident.confidence': confidence, 'incident.severity': inc.sev, 'incident.count': inc.count,
     'incident.lasted_ms': inc.durationMs,
+    'measure.metric': metric, 'measure.baseline': baseline, 'measure.current': current, 'measure.window_ms': windowMs,
+    'measure.slope_per_min': slope,
     'settings.stream_buffer_ms': st.horizonMs, 'settings.schedule_latency_us': st.latMs != null ? st.latMs * 1000 : null,
     'settings.lookahead_ms': st.horizonMs != null ? st.horizonMs / 2 : null,
-    'evidence.lead_send_ms_min': e.leadSendMinMs, 'evidence.arrival_lead_ms_min': null,
-    'evidence.rtt_ms_p50': e.rttP50Ms, 'evidence.rtt_ms_max': e.rttMaxMs, 'evidence.owd_up_ms_max': e.owdUpMaxMs,
-    'evidence.downlink_gap_ms_max': e.posGapMaxMs, 'evidence.loop_lag_ms_max': e.loopLagMaxMs,
-    'evidence.backlog_bytes_max': e.backlogMax, 'evidence.rssi_dbm': null, 'evidence.wifi_drops': null,
+    'evidence.from_ms': W[0], 'evidence.to_ms': W[1],
+    'evidence.lead_send_ms_min': minOf(col('lead')), 'evidence.arrival_lead_ms_min': minOf(col('arr')),
+    'evidence.rtt_ms_p50': quantile(col('rtt'), 0.5), 'evidence.rtt_ms_max': maxOf(col('rtt')), 'evidence.owd_up_ms_max': maxOf(col('owd')),
+    'evidence.downlink_gap_ms_max': maxOf(col('gap')), 'evidence.loop_lag_ms_max': maxOf(col('lag')),
+    'evidence.backlog_bytes_max': maxOf(col('backlog')), 'evidence.rssi_dbm': null, 'evidence.wifi_drops': null,
     'evidence.late_plans_per_min': null, 'evidence.reconnects': e.reconnects, 'evidence.heap_mb': e.heapMb, 'evidence.fps': e.fps,
     'window.from_ms': W[0], 'window.to_ms': W[1], 'window.step_ms': W[2],
     'window.series.rtt_ms': series(rows, 'rtt', maxOf, ...W),
