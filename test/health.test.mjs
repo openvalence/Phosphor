@@ -188,5 +188,18 @@ ok('a 2 MB a minute leak fires once it is 100 MB up, about 55 min in', leak2.len
 ok('a leak that stops rising breaks the run: no new fire after it levels off', !replay((s) => sawAt(s) + Math.min(s, 2400) / 12, 240).filter((f) => f.m > 50).length);
 ok('quantile', quantile([5, 1, 3, null, 4, 2], 0.5) === 3 && quantile([], 0.5) === null);
 
+console.log('\n--- the Machine card power readings (RFC-109) ---');
+{
+  const { reportedReading } = await import('../src/model/settings.js');
+  const { PACKED } = await import('../../Valence/clients/js/index.js');
+  const bus = { name: 'bus_mV', role: 'telemetry.power.bus', type: PACKED.u16, scale: 1000 };
+  const draw = { name: 'draw_w10', role: 'telemetry.power.draw', type: PACKED.u16, scale: 10 };
+  ok('a reading reads as itself, 0 W included', reportedReading(bus, { bus_mV: 36.012 }) === 36.012 && reportedReading(draw, { draw_w10: 0 }) === 0);
+  ok('65535 on the wire is no reading, never 65.535 V or 6553.5 W', reportedReading(bus, { bus_mV: 65.535 }) === null && reportedReading(draw, { draw_w10: 6553.5 }) === null);
+  ok('the saturated top is a reading', reportedReading(bus, { bus_mV: 65.534 }) === 65.534);
+  ok('a field of another role keeps its top', reportedReading({ ...bus, role: 'telemetry.position' }, { bus_mV: 65.535 }) === 65.535);
+  ok('no sample is no reading', reportedReading(bus, undefined) === null);
+}
+
 console.log('\n' + (fails ? 'FAIL -- ' + fails : 'PASS -- health core'));
 process.exit(fails ? 1 : 0);

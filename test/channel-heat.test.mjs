@@ -114,7 +114,7 @@ try {
     await page.hover('.heat .blk');
     const tip = await page.$eval('.heat [role=tooltip]', (t) => t.innerText);
     ok(tag + ': hover shows the tip', compact
-      ? /^STATE\n25 channels\nbusiest: /.test(tip) && /refused: NOT_HOMED/.test(tip)
+      ? /^STATE\n26 channels\nbusiest: /.test(tip) && /refused: NOT_HOMED/.test(tip)
       : new RegExp('^' + first.name + '\\nSTATE · 0x[0-9A-F]{4}\\nrx [0-9.]+/s · [0-9.]+ [KM]?B/s\\ntx --\\nseen \\d+s ago\\nrefused: NOT_HOMED$').test(tip), tip);
     ok(tag + ': the tip moves nothing', JSON.stringify(await box()) === JSON.stringify(busy));
 

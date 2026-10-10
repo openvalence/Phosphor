@@ -25,7 +25,7 @@ import { machine, getSession, currentSocket } from '../machine.svelte.js';
 import { latchWords } from '../motion.js';
 import { ROLE } from '../roles.js';
 import { labelFor, formatWithUnit } from '../format.js';
-import { reportedValue } from '../settings.js';
+import { reportedValue, reportedReading } from '../settings.js';
 import {
   CONDITIONS, CUTOUT, GROWTH, SEV_RANK, LAG_HEALTHY_MS, TICK_MS, classify, createTracker, growth, lineOf, tipLines, quantile, max, min,
 } from './core.js';
@@ -526,7 +526,7 @@ function tick() {
   const sec = (a) => inWin(a, t - 1000, t);
   const row = {
     t, rtt: max(vals(sec(rtts))), lead: min(sec(sends).map((x) => x.lead)), arr: null,
-    gap: max(vals(sec(posGaps))), lag: fineAcc.lag, fps, heap: heapMb(), rssi: null, late: null,
+    gap: max(vals(sec(posGaps))), lag: fineAcc.lag, fps, heap: heapMb(), rssi: machine.stats.link?.machine?.rssiDbm ?? null, late: null,
     owd: max(vals(sec(owds))), backlog: fineAcc.bl,
   };
   fineAcc = null;
@@ -573,8 +573,8 @@ function cards(t) {
   };
   const model = machine.catalog.model;
   const bus = [ROLE.telemetryPowerBus, ROLE.telemetryPowerDraw].flatMap((r) => (model && model.byRole.get(r)) || []).map((f) => {
-    const v = reportedValue(f, machine.samples[f.channelId]);
-    return { label: labelFor(f), text: Number.isFinite(v) ? formatWithUnit(f, v) : null };
+    const v = reportedReading(f, machine.samples[f.channelId]);
+    return { label: labelFor(f), text: v != null ? formatWithUnit(f, v) : null };
   });
   health.machine = {
     status: status('machine'),

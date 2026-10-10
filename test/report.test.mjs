@@ -157,5 +157,12 @@ if (existsSync(flow)) {
   void runs;
 }
 
+console.log('\n--- the machine signal (link.rssi) ---');
+const rssiRows = rows.map((r, k) => ({ ...r, rssi: k % 2 ? -61 - (k % 5) : null }));
+const rs = reportSource({ inc, snap: { rows: rssiRows, fine }, ctx, protocol: 1, others });
+ok('evidence.rssi_dbm is the weakest signal in the window, the series carries it', rs['evidence.rssi_dbm'] === -65
+  && rs['window.series.rssi_dbm'].some((v) => v != null), rs['evidence.rssi_dbm']);
+ok('no rssi in the window: no reading', src['evidence.rssi_dbm'] === null);
+
 console.log('\n' + (fails ? 'FAIL -- ' + fails : 'PASS -- health report'));
 process.exit(fails ? 1 : 0);

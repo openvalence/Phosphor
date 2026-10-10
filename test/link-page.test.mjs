@@ -220,7 +220,8 @@ const docTop = (page, sel) => page.$eval(sel, (el) => Math.round(el.getBoundingC
   await page.waitForTimeout(300);
   const row = await page.$eval('tr[data-chan="' + target.id + '"]', (tr) => {
     const r = tr.getBoundingClientRect(), c = tr.closest('.content')?.getBoundingClientRect() || { top: 0, bottom: innerHeight };
-    return { sel: tr.classList.contains('sel'), seen: r.top >= c.top && r.bottom <= c.bottom, n: document.querySelectorAll('tr.sel').length };
+    // A pixel of slack: scrolling lands on whole pixels, row edges on fractions.
+    return { sel: tr.classList.contains('sel'), seen: r.top >= c.top - 1 && r.bottom <= c.bottom + 1, n: document.querySelectorAll('tr.sel').length };
   });
   ok('select: a click selects the list row and brings it into view', row.sel && row.seen && row.n === 1, row);
   ok('select: the map rings the selection', await page.$$eval('.cmap rect.ring.sel', (r) => r.length) === 1);
