@@ -55,6 +55,9 @@ async-trait = "0.1"
 futures = "0.3"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+# Open to LAN (src/lan.rs): the Virtual's WebSocket listener. Already in the
+# tree through the buttplug websocket transport.
+tokio-tungstenite = "0.30"
 buttplug_server_hwmgr_serial = { path = "../../ButtplugIO/crates/buttplug_server_hwmgr_serial" }
 buttplug_server_hwmgr_hid = { path = "../../ButtplugIO/crates/buttplug_server_hwmgr_hid" }
 

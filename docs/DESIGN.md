@@ -1010,13 +1010,33 @@ connected, then merge the setting changes onto the machine, ticked per item.
   `connect()` and a token provider that mints at its `/uitoken`. It is a full
   hub: patterns, Kinetic, telemetry, and it moves. It boots homed and with the
   pairing window open (the twin's stand-in for the PAIR button tap), so the
-  shell's knock lands as push-to-pair. It opens no socket, so it never
-  broadcasts. Its state (settings, presets, pairings, `hub_instance_id`)
+  shell's knock lands as push-to-pair; with Open to LAN on it boots with the
+  window closed. It opens no socket, so it never broadcasts. Its state (settings, presets, pairings, `hub_instance_id`)
   persists as one blob in `phosphor.builtin.state`. The session is not marked
   virtual and is recorded in the vault like any hub; only its host
   (`builtin`) sets it apart: never saved, never the reconnect target, no
   RFC-053 datagram. Any disconnect stops it (the worker is terminated). Its
   log lines land in the Log tab under its name. The exe is standalone.
+- **Open to LAN** (operator rulings 2026-10-10, `ph-li30`): a desktop shell
+  setting, off by default (Settings, `openToLan`, port `lanPort` 82). While it
+  is on and Virtual runs, `src-tauri/src/lan.rs` listens for WebSocket on every
+  IPv4 interface and answers the SPEC 13.8 UDP port; `src/shell/lan.svelte.js`
+  carries each remote's frames and each datagram to the worker over one ordered
+  Channel and back by batched invoke. Every remote is one more session of the
+  same hub (`integral_connect`), so tiers, the trust ledger, pairing and
+  ownership are the hub's own; the hub also builds the discovery reply and
+  latches an RFC-053 ESTOP datagram (`integral_datagram`, the board's
+  responder). Nothing serves `/uitoken` on the LAN: a remote starts at
+  `watch` and pairs. Opened to the LAN, Virtual boots with its pairing window
+  closed; the section's Pairing window button is the twin's PAIR press
+  (`integral_pair_press`). A taken port falls back to one the OS assigns, and
+  discovery advertises the bound one. Off, a port change, Virtual stopping or
+  Phosphor exiting sends every remote GOODBYE `NORMAL_CLOSURE` and closes it;
+  while the hub lives on, each remote's session also gets that GOODBYE so the
+  hub releases what it owned. The status line reads `Open to LAN · <address>:<port>
+  · <n> connected`; this PC's own Virtual never appears among its LAN scan
+  results. Windows asks about the firewall the first time; the shell never
+  edits firewall rules.
 - **Picker**: the Hubs pane lists Virtual last, always, badged `ν virtual`;
   the subline reads `The hub as software`, then `Nucleus <version>` with a
   Stop while it runs; Connect boots it.
@@ -1474,3 +1494,4 @@ issue the user submits under their own account; Phosphor sends nothing.
 | 2026-10-10 | §10.3, §10.13, plugins | The right dock's toggle leaves the top bar for the bottom status row's right end, beside the UI scale, in a slot held from the start so its arrival moves nothing; the top bar's under-560 px rx hide for it goes. The phone class drops quick access: no toggle, no drawer, no Pin item (the host leaves out `needsDock` menu items where it has no dock); pins stay stored and the plugin installed. One open state for the dock, the toggle and the stored pref; withdrawing the last dock closes it (the last unpin left the toggle reading open and the next pin reopened the dock, behind a teardown crash in the plugin slot) (`ph-6ydd`). | operator ("perhaps at the bottom, and fwiw, unlikely to be used with mobile, have to cut some things for space"; the unpin bug report. The toggle at the very end right of the scale, the build cell giving the held slot its room, the drawer kept for the non-phone handheld classes and now persisted with the column, and `needsDock` as the menu flag are the agent's, veto-able) |
 | 2026-10-10 | §10.3, §10.10, §10.14 | The top bar keeps what someone looks at when something goes wrong: heatmap, hub name, phase, tier, rx, fps. The catalog chip and the hub chip (address, firmware) move to the Health view's Link and Machine cards. Render reads `N fps`, its tooltip the smoothing delay, the held share and the clock skew in words; held over 10 % and skew over 2 ms show inline, warn toned, in a held slot; the fps and rx values hold fixed widths (`ph-6ydd`). | operator ("most of those indicators on the top can be condensed ... the fps keep"; the audit is the agent's, veto-able: the heatmap stays (activity at a glance, sheds first on handhelds), tier stays (why a control will not drive), the hub chip moves (the name says which machine; the address and firmware are for support), and the slot sits left of the fps with rx last so rx sheds whole) |
 | 2026-10-10 | §10.3, §10.13, plugins | Quick access docks per connected hub: the toggle exists while that hub has pins, and the last unpin there withdraws and closes the dock whatever other hubs hold (`api.onHub` re-checks on a hub change; with no hub yet the dock stays as it is). The top bar orders rx, the warning slot, fps, so fps sheds before rx; the fps chip wears the warn tone with either warning. Phones keep no fps: measured at 420 px the freed room holds rx and leaves about 64 px, short of the fps chip's 69 beside a five-letter hub name (`ph-6ydd`). | coordinator picks, veto-able: emptying closes per connected hub, keep the drawer on narrow windows and tablets; fps on phones was picked and not applied (it would need the hub name to yield on phones, or a narrower tier chip), the operator's to rule |
+| 2026-10-10 | §10.10 | Open to LAN: the desktop shell shares the running Virtual on the LAN as more sessions of the same hub, with discovery, a Pairing window button and GOODBYE on every ending; Windows' first-run firewall prompt is the only firewall step (`ph-li30`, Nucleus `val-0o5`). | operator (the name; the Rust listener, the page relay, the ABI additions, the port fallback, booting with the window closed when opened to the LAN, no `/uitoken` on the LAN and the hub-side GOODBYE teardown are the agent's, veto-able) |
