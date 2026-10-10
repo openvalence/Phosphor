@@ -32,8 +32,10 @@
    *   numerals cell clips at the strip box, not at its own.
    * - The status slot shows ONE thing, by priority: link fault, unattended
    *   (RENDERING §10.1 rule 3), refusal, the typed jog's clamp note, latch
-   *   notice, an act health condition, latest safety edge, a warn health
-   *   condition (DESIGN §10.14), virtual hub.
+   *   notice, an act health condition, the page's warn or bad status,
+   *   latest safety edge, a warn health condition (DESIGN §10.14), the
+   *   page's other status, virtual hub. `page` is App's: the page on
+   *   screen's latest phosphor-page-status (docs/PLUGINS.md, Pages, `status`).
    *   The refusal is shadow.svelte.js's `lastRefusal`, written by all three
    *   write paths, so a refusal is visible after its control has scrolled
    *   off or unmounted.
@@ -72,7 +74,8 @@
   // served page.
   // compact: App's compactHero page in buckets 1 and 2 (DESIGN §10.3): one row,
   // the numeral without its label line, the mini, all five strip buttons.
-  let { onopenlog = null, shell = null, bare = false, compact = false } = $props();
+  // page: the page on screen's status {text, tone, title}, or null.
+  let { onopenlog = null, shell = null, bare = false, compact = false, page = null } = $props();
 
   let woke = $state(false);
   // Latched or paused: the pair never dims (RENDERING §8.4 row 11).
@@ -230,8 +233,12 @@
     if (latch && latch.override) return { kind: 'notice', text: 'Override: full-travel jog' };
     if (latch && latch.paused) return { kind: 'notice', text: latch.homeRequired ? 'Paused: home required' : 'Paused' };
     if (health.slot && health.slot.sev === 'act') return { kind: 'health', text: health.slot.text };
+    // A page's warn or bad status is a condition; any other (a note) only fills an otherwise quiet slot.
+    const cond = page && page.text && (page.tone === 'warn' || page.tone === 'bad');
+    if (cond) return { kind: 'page', text: page.text, title: page.title };
     if (latestSafety) return { kind: 'edge' };
     if (health.slot) return { kind: 'health', text: health.slot.text };
+    if (page && page.text) return { kind: 'note', text: page.text, title: page.title };
     if (link.virtual) return { kind: 'virtual', text: 'Virtual: nothing moves' };
     return { kind: 'idle' };
   });
@@ -316,13 +323,16 @@
   let menuOpen = $state(false);
   let menuEl = $state(null);
   let flipW = 0, ovrW = 0;   // kept from when each was last inline (the popover unmounts them)
+  let shownNum = null;       // the numeral's widths as last shown (a compact condition hides it)
   function measure() {
     if (!stripEl || !measureEl || bare) return;
     const cs = getComputedStyle(stripEl);
     const content = stripEl.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-    const prim = stripEl.querySelector('.hn-primary')?.offsetWidth || 0;
+    // A condition in the compact numeral's place hides it: decide from the numeral as last shown, so nothing moves.
+    const hidden = getComputedStyle(stripEl.querySelector('.nums')).display === 'none';
+    let prim = stripEl.querySelector('.hn-primary')?.offsetWidth || 0;
     // The secondaries need three 11 px rows (num-h >= 3.4 x 11 + 20); short of that they go (ph-kl5u).
-    smallNums = (stripEl.querySelector('.nums')?.offsetHeight || 999) < 58;
+    if (!hidden) smallNums = (stripEl.querySelector('.nums')?.offsetHeight || 999) < 58;
     padV = parseFloat(cs.paddingTop) || padV;
     gapV = parseFloat(cs.rowGap) || gapV;
     chromeH = (stripEl.parentElement?.offsetHeight || 0) - stripEl.offsetHeight;
@@ -332,10 +342,9 @@
     const W = innerWidth, F = W >= 1024 ? Math.min(80, Math.max(54, W * .062)) : Math.min(54, Math.max(42, W * .085));
     const valEl = stripEl.querySelector('.hn-primary .hn-val');
     const curF = valEl ? parseFloat(getComputedStyle(valEl).fontSize) : 0;
-    const primD = valEl && curF ? Math.max(stripEl.querySelector('.hn-primary .hn-label')?.offsetWidth || 0, valEl.offsetWidth * F / curF) : 3.5 * F;
+    let primD = valEl && curF ? Math.max(stripEl.querySelector('.hn-primary .hn-label')?.offsetWidth || 0, valEl.offsetWidth * F / curF) : 3.5 * F;
     const dCol = Math.min(21.6, (F * .95) / 3.4), colEl = stripEl.querySelector('.hn-col .hn-val');
     const cCol = colEl ? parseFloat(getComputedStyle(colEl).fontSize) : 0;
-    stripEl.style.setProperty('--prim-w', prim + 'px');
     const w = (k) => [...measureEl.querySelectorAll('[data-k=' + k + ']')].reduce((a, el) => a + el.offsetWidth + GAP, 0);
     const GAP = 6;
     const fEl = ovrEl && ovrEl.querySelector('.rw-flip'), oEl = ovrEl && ovrEl.querySelector('.safety-op');
@@ -350,7 +359,10 @@
     const iconW = ops.length ? w('icon') : slot;
     const needs = [pair + ovr + fl + homeW, pair + ovr + iconW, pair + iconW];
     const colW = stripEl.querySelector('.hn-col')?.offsetWidth;
-    const colD = colW && cCol ? colW * dCol / cCol : 11 * dCol + 40;
+    let colD = colW && cCol ? colW * dCol / cCol : 11 * dCol + 40;
+    if (hidden && shownNum) ({ prim, primD, colD } = shownNum);
+    else if (!hidden) shownNum = { prim, primD, colD };
+    stripEl.style.setProperty('--prim-w', prim + 'px');
     const oneRow = content - primD - colD - 18 - Math.min(240, content * 0.25) - 24;
     stacked = !needs.slice(0, 2).some((n) => n <= oneRow);
     const budget = stacked ? content : oneRow;
@@ -363,10 +375,12 @@
       // streams too, and Home, Flip and Override count before the hub offers
       // them (ph-t4ge), so neither a live value nor the link flips the form;
       // past that the full hero stands until the next resize.
-      const over = stripEl.scrollWidth - stripEl.clientWidth;
+      // Past the content box: a row overfull into the strip's end padding never reaches scrollWidth.
+      const over = Math.max(stripEl.scrollWidth - stripEl.clientWidth, pairEl
+        ? pairEl.getBoundingClientRect().right - stripEl.getBoundingClientRect().right + parseFloat(cs.paddingRight) : 0);
       const st = stripEl.querySelector('.status');
       let fits = over <= 1;
-      if (st) {
+      if (st && !hidden) {
         const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
         const spare = st.offsetWidth - (parseFloat(getComputedStyle(st).minWidth) || 0) - Math.max(0, over);
         const nw = valEl?.offsetWidth || 0;
@@ -515,7 +529,7 @@
         </button>
       {:else if slot.text}
         <span class="st-text" class:unattended={slot.kind === 'unattended'}
-              role={slot.kind === 'notice' ? 'status' : 'alert'} title={slot.text}>{slot.text}</span>
+              role={['notice', 'page', 'note'].includes(slot.kind) ? 'status' : 'alert'} title={slot.title || slot.text}>{slot.text}</span>
         {#if slot.kind === 'fault' && (machine.link.phase === 'retrying' || machine.link.phase === 'failed')}
           <button type="button" class="btn" onclick={retryNow}>Retry</button>
         {/if}
@@ -677,7 +691,8 @@
   /* Compact (DESIGN §10.3): one row at the tap height. The numeral loses its
      label line and the planned stack; a current condition takes the
      numeral's place (the watch-size rule), so the mini and the controls never
-     move; the safety-edge history stays in the Log. */
+     move; the virtual mark and a page's note sit beside it; the safety-edge
+     history stays in the Log. */
   /* Buttons at the 40 px floor (law 12); the padding and the gaps are the
      full hero's at the same width (ph-5u0g peeve 27): tight where it would
      stack, its one-row group gaps where it would not. A wider gap costs the
@@ -692,7 +707,7 @@
   .compact .nums :global(.hn-primary .hn-val) { font-size: var(--cnum, 1.35rem); }
   .compact .status { min-width: calc(64px + var(--sp-3)); }
   .compact .status[data-kind=edge] .evline { display: none; }
-  .compact:has(.status:not([data-kind=idle], [data-kind=edge], [data-kind=virtual])) .nums { display: none; }
+  .compact:has(.status:not([data-kind=idle], [data-kind=edge], [data-kind=virtual], [data-kind=note])) .nums { display: none; }
 
   .status {
     flex: 1 1 0;
@@ -718,7 +733,8 @@
     color: var(--ink-dim);
   }
   [data-kind='fault'] .st-text, .recovery .st-text,
-  [data-kind='unattended'] .st-text, [data-kind='notice'] .st-text, [data-kind='virtual'] .st-text, [data-kind='health'] .st-text { color: var(--warn-ink, var(--warn)); }
+  [data-kind='unattended'] .st-text, [data-kind='notice'] .st-text, [data-kind='virtual'] .st-text, [data-kind='health'] .st-text,
+  [data-kind='page'] .st-text { color: var(--warn-ink, var(--warn)); }
 
   .recovery {
     display: flex;

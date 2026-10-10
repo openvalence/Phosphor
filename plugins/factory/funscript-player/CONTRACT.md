@@ -622,11 +622,14 @@ or a fatal refusal pauses and sends no hold (the rail is not the player's
 to command then). While preroll waits for its segment's end, each tick
 calls `submit([])` so the preroll bundle's NACK (`refused: rail owned by
 <label>`) ends it before the video starts; Play re-enables, nothing
-retries. The status slot reads, first that applies: a fatal
-refusal or media error, the gate, Positioning, Buffering, a transient
+retries. The status carries conditions only, first that applies: a fatal
+refusal or media error, the gate, the trial notice, a transient
 refusal, `overLimit` (warn: the script's peak chord, scaled by the range,
-past `limit.input.speed`), then the first parse note or extra-axes note with
-` (+N more)`; `status.notes` holds them all, the slot's tooltip one per line. The
+past `limit.input.speed`), then the first load note (no script, a parse
+note, extra axes) with ` (+N more)`; else empty (never the empty card,
+motion only, preroll or buffering: the card shows those). `status.notes`
+holds them all, the slot's tooltip one per line. On the page it is the top
+strip's slot (`phosphor-page-status`), on a Dash card its last row. The
 library is mounted with `prefs` as `{get, set}` over `readPrefs` and
 `writePref`, and `fetch: api.net.fetch`. Probe:
 `window.__funscriptProbe` (a ring of 5000: sent segments, clock

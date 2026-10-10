@@ -155,6 +155,7 @@ const real = (sent) => sent.filter((l) => l.length);
 
 {
   const r = rig();
+  ok('empty: no status, the empty card says it (ph-5u0g peeve 19)', r.ctl.state.status.text === '', r.ctl.state.status);
   r.ctl.load({ key: 'stash:1', title: 'One', stream: 'http://x/1' }, script, COPY.noScriptScene);
   ok('load: ready, Play waits for the script', r.ctl.state.phase === 'ready' && !r.ctl.canPlay());
   await flush();
@@ -166,7 +167,7 @@ const real = (sent) => sent.filter((l) => l.length);
   const pre = real(r.sent);
   ok('Play: one preroll segment, video still paused', r.ctl.state.phase === 'preroll' && pre.length === 1 && pre[0].length === 1
     && near(pre[0][0].durationMs, 400 + 1200 * 0.5) && pre[0][0].norm === 0 && r.video.paused, pre);
-  ok('preroll: status says Positioning', r.ctl.state.status.text === COPY.positioning);
+  ok('preroll: no status (conditions only, ph-5u0g peeve 19)', r.ctl.state.status.text === '', r.ctl.state.status);
   r.frame(500);
   ok('preroll: nothing more before its end', real(r.sent).length === 1 && r.video.paused);
   r.frame(600);
@@ -229,7 +230,7 @@ const real = (sent) => sent.filter((l) => l.length);
   for (let i = 0; i < 5; i++) r.frame();
   const w = real(r.sent).length;
   r.video.emit('waiting');
-  ok('waiting: one hold, Buffering', real(r.sent).length === w + 1 && r.ctl.state.status.text === COPY.buffering);
+  ok('waiting: one hold, no status', real(r.sent).length === w + 1 && r.ctl.state.status.text === '', r.ctl.state.status);
   for (let i = 0; i < 5; i++) { r.set(r.now() + 16); r.ctl.tick(); }
   ok('waiting: nothing sent while stalled', real(r.sent).length === w + 1);
   r.video.emit('playing');

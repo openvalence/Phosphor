@@ -130,17 +130,22 @@ Plugins`, its page region the plugin's to fill full width.
   takes the numeral's place. At least 40 px return to the page at 420x860
   and 860x420. Other
   buckets draw the hero as usual.
-- **`status: true`** (experimental, `ph-5u0g.3`). On the phone class
-  (buckets 1 and 2) the page gets a footer with one status slot, even with no
-  page controls. The page dispatches `phosphor-page-status` from inside its
-  element (bubbles, `detail: {text, tone, title?}`, `tone` one of `null`,
-  `'ok'`, `'warn'`, `'bad'`); the shell keeps the latest per page and draws it
-  while the page is on screen: one line, a 3 px tone bar at its left edge, the
-  text in `--tx` whatever the tone, ellipsized with `title` (else the text) on
-  hover, its width reserved so a change moves nothing. Outside buckets 1 and 2
-  the shell draws nothing for it: the page reads `<html data-bucket>` and
-  draws its own status row there. A status sent from the page's card on the
-  Dash is ignored. Seam: `src/App.svelte`.
+- **`status: true`** (experimental, `ph-5u0g.3`, `ph-5u0g.16`). The page's
+  status shows in the top strip's status slot on every class; the page
+  draws no status row and gets no footer for it. The page dispatches
+  `phosphor-page-status` from inside its element (bubbles, `detail: {text,
+  tone, title?}`, `tone` one of `null`, `'ok'`, `'warn'`, `'bad'`); the shell
+  keeps the latest per page and shows it while the page is on screen, in the
+  slot's fixed box (at most two lines, `title`, else the text, on hover), so
+  a change moves nothing. One slot, by priority (DESIGN §10.3): a `'warn'` or
+  `'bad'` status ranks under an act health condition and over the latest
+  safety edge, in the warn ink; any other status ranks under a warn health
+  condition and over the virtual mark, in the slot's quiet ink, and in the
+  compact hero sits beside the numeral instead of taking its place. Send
+  conditions only (a refusal, an error, a limit, a standing note); never what
+  the page already shows (empty, playing, paused). An empty `text` clears it.
+  A status sent from the page's card on the Dash is ignored. Seams:
+  `src/App.svelte` (per page), `src/ui/TopStrip.svelte` (the slot).
 - **The quick rail** (experimental, `ph-5u0g.5`; DESIGN §10.3). The hero's
   own rail opened from the page's bar: on the phone class the vertical pop-up
   on the right edge (in the page and in page fullscreen), on the desktop the
@@ -414,7 +419,7 @@ returns the `<svg>`; an `icon` option takes a name or a stroke path `d`.
 | `scrub` | `max`, `value`, `buffered`, `step` (the arrows' step, default 1 % of `max`), `label`, `format(v)` (the hover readout and `aria-valuetext`), `onSeek(v, phase)` (`'start'`, `'move'`, `'end'`) | `value` (ignored mid-drag), `max`, `buffered`, `track` (paint a background here, e.g. a heat map) |
 | `split` | `min`, `max`, `value` (px of the region after the bar, or null), `size()` (that region's height while `value` is null), `label`, `onChange(px, commit)` | a horizontal resize bar: drag, arrows (8 px, Shift 1), a double-click asks for null |
 | `sheet` | `title`, `index`, `form` (`'auto'`, `'sheet'`, `'drawer'`, `'popover'`, `'slot'`), `slot` (an element of the plugin's: the slot form is a card there), `anchor` (its toggle: a popover opens under it, a tap on it is no outside tap; settable later), `onClose` (a user's close) | `body`, `open` (get/set), `form`, `anchor`; `data-open` while open. Auto: the right drawer in page fullscreen, the bottom sheet on a phone upright, else the slot when one is given, else the drawer; it follows a turn or a fullscreen while open, its content moving with it. The sheet drags down to close; the slot card closes on its close button. |
-| `status` | none | `set({text, tone, title})`, `tone` null, `'ok'`, `'warn'` or `'intent'`. On the phone class it is the page footer's slot (the page registers `status`) and draws nothing in place; elsewhere it is a one-line row where the plugin placed it. |
+| `status` | none | `set({text, tone, title})`, `tone` null, `'ok'`, `'warn'` or `'intent'` (sent as null). Inside a page, on every class, it is the top strip's status slot (the page registers `status`; Pages, above) and draws nothing in place; elsewhere (a card on the Dash) it is a one-line row where the plugin placed it. |
 | `quickRail` | none | the Rail button: it opens and closes the quick rail; `shown` (default true): it is hidden (the `hidden` attribute, so the shell counts it out and shows the footer's own icon) while the host offers no rail or `shown` is false |
 | `list` | `form` (`'grid'`, `'rows'`), `paged` (default true: as many whole items as fit, and a page foot; false: it scrolls with the shell's recess shades and asks for everything once), `tile: {min, max}` (grid tile widths in px), `count(total)` (the foot's count words), `onPage(page, perPage)` (show that page: call `show`), `onMove(from, to)` (rows drag to reorder: a mouse at once, a touch after a hold; the drag is no pick) | `show(items, total)`, `note(text, tone)` (loading, empty or an error, over the body), `busy`, `page`, `perPage`, `form` (settable: the page refits), `refit()` (measure the page size again) |
 | `tile` | `image`, `title`, `meta`, `current`, `actions` (kit buttons over the shot, or at a row's end), `onClick` | `current`, `button` (the tile's own button); the parent `list`'s form draws it as a tile or a row |

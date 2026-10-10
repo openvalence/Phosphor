@@ -599,12 +599,20 @@ question in §10.8).
   the viewport's bottom edge: fixed, one height that never grows as the page
   scrolls, the scroll ending above them, the footer owning the bottom
   safe-area inset as everywhere (the status row sits directly above it, and
-  owns the inset itself on a page with no footer). A page registered `status` (docs/PLUGINS.md,
-  Pages) gets one status slot in its footer there, so that page has a footer
-  even with no page controls: one line, the 3 px tone bar at its left edge,
-  the text in `--tx` and never `--warn` (law 13), ellipsized with the full
-  text in `title`, its width reserved up front. The footer stays 48 px on
+  owns the inset itself on a page with no footer). The footer stays 48 px on
   every page (the redesign mockup's 40 px is not adopted: one footer height).
+- A page's status (operator ruling 2026-10-09, `ph-5u0g` peeve 19,
+  superseding the 2026-10-08 footer slot): a page registered `status`
+  (docs/PLUGINS.md, Pages) shows it in the strip's status slot on every
+  class and draws no status row, so it costs no space and gets no footer
+  for it. The slot keeps its priority: link fault, unattended, refusal,
+  the jog note, the history message, the latch notices, an act health
+  condition, the page's warn or bad status, the latest safety edge, a warn
+  health condition (§10.14), the page's other status, the virtual mark. A
+  page's warn status reads in the warn ink like the strip's other
+  conditions and in the compact hero takes the numeral's place; its other
+  status reads quiet and sits beside the numeral. A page sends conditions
+  only, never what it already shows (empty, playing, paused).
 - The page frame (operator ruling 2026-10-05, `ph-p43h`): the window has no
   side margin. The top bar, the hero bar and the bottom status row are full
   bleed; the sidebar sits flush on the window's left edge, and the frame
@@ -1273,3 +1281,4 @@ issue the user submits under their own account; Phosphor sends nothing.
 | 2026-10-09 | §10.3 | The screen's shape: the activity pushes the rounded corners and the top cutout into the page; edge rows clear the corners, the top bar rises into the cutout's band and lays out either side of it (`ph-5u0g` peeves 12, 20, 23). Side cutouts stay open (`ph-5u0g.12`). | operator (the radius-less-distance inset, the evaluateJavascript plus document-start push and `--corner-r` as the largest radius are the agent's, veto-able) |
 | 2026-10-09 | §10.12 | The phone menu's drawer is compact: one narrow width, as tall as its rows, rows at the compact tap height, the Phosphor section in flow (`ph-5u0g` peeve 13). | operator (12 rem, the 40 px floor scaled as the tap, no shading on the drawer's Phosphor section, are the agent's, veto-able) |
 | 2026-10-09 | §10.14 | Health: three areas (Link, This device, Machine), 26 conditions in plain words with one action each, the stream cutout classified CLIENT / NETWORK / HUB / UNKNOWN, hysteresis, Log lines, the Health view and the status slot; a local ring and incident snapshots, no telemetry; reports as public GitHub issues the user submits, reviewed field by field, Hold to send, Save report, Sent reports with removal by `/remove` (`ph-9t5l`, `ph-9t5l.1`). | operator (no continuous telemetry; plain language with one action; nothing degrades silently; the GitHub issue flow, ruled 2026-10-09. The Health view as a Log page tab until it gets its own row, the 1 s ramp-in exemption, CLIENT likely on a starvation after a page stall, the 5 s uplink look-back and saving to Downloads without a dialog are the agent's, veto-able) |
+| 2026-10-09 | §10.3, plugins | A page's status moves from the phone footer's slot and the desktop card's last row into the strip's status slot on every class: no row, no reserved height; a warn status ranks under an act health condition and over the safety edge, any other under a warn health condition; informational states the page already shows are not sent (the funscript player drops `No scene loaded`, `Motion only`, `Positioning`, `Buffering`). The compact row's fit counts an overflow into the strip's end padding (a live numeral at 420x860 had pushed the stop pair 9 px into the gutter) and keeps its decisions while a condition hides the numeral, so a condition moves no control. Supersedes the 2026-10-08 §10.3 footer status slot and FUNSCRIPT.md PR14 (`ph-5u0g` peeve 19, `ph-5u0g.16`). | operator ("the status line takes its own row: remove it or move it somewhere that costs no space"; restated 2026-10-09 on the desktop card's last row: "I thought we were removing this?". The warn status above the safety edge (the edge stands for the whole session and the compact hero hides it, so below it a warning would never show), the quiet tier for notes, and `No script for this video` kept as a note because it explains a grayed Play, are the agent's, veto-able) |
