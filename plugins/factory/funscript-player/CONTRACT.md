@@ -173,24 +173,27 @@ export async function withAxes(main, files, read);   // main: Script | Promise<S
   // axis); a file that fails is the note '<id> file dropped: <words>', never a failed load
 
 // osc.js
-export const OSC_ROLE = 'osc.drive', OSC_LEAD_MS = 100, NO_STREAM = 'NO_STREAM';
+export const OSC_ROLE = 'osc.drive', OSC_FLOOR_MS = 20, OSC_MARGIN_MS = 70, OSC_CAP_MS = 230, NO_STREAM = 'NO_STREAM';
 export function hasOsc(script);   // -> boolean: script.axes has V8 or V9
 export function oscSamples(axes, fromMs, stepMs, untilMs, mediaAt);   // -> [{atMs, values: [amplitude, frequency]}]
   // every stepMs over [fromMs, untilMs] (wall ms, inclusive), each axis by posAt at mediaAt(atMs); an absent axis 0;
   // stops at the first mediaAt that is not finite
 export function createOsc({ submit, now });   // submit(list) = api.submitSamples(OSC_ROLE, list) -> Osc
 // Osc = { tick(script, mediaAt | null), absent (get) }
-//   tick, once per controller tick: nothing without hasOsc(script) (absent false). Else submit([]) (the grant and
-//   the role's presence: absent = reason NO_STREAM) and, with mediaAt and a rateHz, the samples from
-//   max(now, the cursor) to now + OSC_LEAD_MS at 1000 / rateHz, submitted until a call sends nothing; the cursor
-//   advances by `sent` only. With mediaAt and the cursor past now + OSC_LEAD_MS / 2, no call at all.
+//   tick, once per controller tick: nothing without hasOsc(script) (absent false). Else submit([]) (the grant, its
+//   latencyMs and the role's presence: absent = reason NO_STREAM) and, with mediaAt and a rateHz, the samples from
+//   max(now + lat + OSC_FLOOR_MS, the cursor) to now + max(lat + OSC_FLOOR_MS, min(lat + OSC_MARGIN_MS, OSC_CAP_MS))
+//   at 1000 / rateHz, submitted until a call sends nothing; the cursor advances by `sent` only. Each atMs is the
+//   instant the point describes (RFC-110 item 4: the send-ahead is the one lead). Never a write: osc.enabled and
+//   every other oscillator field stay the hub's and the card's (RFC-110 items 1, 2).
 ```
 
 The controller (ui.js createControl, deps gain `osc`, null without) calls
 `osc.tick(state.script, mediaAt)` every tick, `mediaAt` only while
 playing with Motion on, the clock ready, not buffering and not seeking:
-`(w) => fold(clock.mediaAt(w - T.offsetMs + scheduler.compMs))`, the
-trace's own map. `osc.absent` puts `COPY.noOsc` ('This machine has no
+`(w) => fold(clock.mediaAt(w - T.offsetMs))`: the display map with the
+user's offset only, never compMs or the grant's latency (no double lead).
+`osc.absent` puts `COPY.noOsc` ('This machine has no
 oscillator input') first in the status notes. Open script takes several
 files (pairFiles; the V8/V9 siblings by oscFiles); Open video and a queued
 file entry pass theirs the same way. `createPlayer` builds the Osc on
@@ -434,13 +437,17 @@ other reason passes through.
 `samples(role, list)`, in order: `deps.halted()` words; `roleStream`
 none: `'NO_STREAM'`; no session: `'not connected'`; the grant through the
 same `grantFor` (wish `[ch, entry.maxRateHz || 50]`); an empty list
-`{ok: true, sent: 0, rateHz}`; an item without finite `atMs`, with more
-`values` than the layout has fields, a non-finite value, or a stamp not
-above the previous: `'bad sample'`. Stamp `S = hubNow + (atMs - p) * 1000 -
-schedule_latency_us` (atMs is the instant the sample describes, SPEC
-Â§5.4); one bundle of the leading items within `bundle_max_span_ms` of
-`S0`, at most `bundle_max_samples` and one `min_transport_payload`; values
-fill the layout in order, a missing tail at `unspecified`.
+`{ok: true, sent: 0, rateHz, latencyMs}` (`latencyMs` the grant's
+`schedule_latency_us` / 1000, on every result past the grant); an item
+without finite `atMs`, with more `values` than the layout has fields, a
+non-finite value, or a stamp not above the previous: `'bad sample'`. Stamp
+`S = hubNow + (atMs - p) * 1000`, the instant the sample describes, never
+less the latency (RFC-110 item 4: least notice; the caller's send-ahead is
+the lead). One bundle of the leading items within `bundle_max_span_ms` of
+`S0` and within `max_future_schedule_ms` of hub now (a later item waits,
+`sent` 0 when none fits), at most `bundle_max_samples` and one
+`min_transport_payload`; values fill the layout in order, a missing tail at
+`unspecified`.
 `s.publishSamples(ch, recs, {anchor: S0 >>> 0, offsetsUs})`. A
 `PublishError`: its code. Never a fallback, never logged, no producer
 lock: the role is not motion input.
