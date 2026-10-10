@@ -92,7 +92,11 @@ it picked.
 Blender's flow (`src/ui/graph/GraphPalette.svelte`):
 
 - Right click on the canvas, or Shift+A with the pointer over it, opens the
-  menu at the pointer. `+ Add` and Shift+F10 open it in the canvas.
+  menu at the pointer. `+ Add` and Shift+F10, and Shift+A or F3 with the
+  pointer off the canvas, open it in the canvas; what they place drops one
+  node head lower until its head row clears every node already there, the
+  view following it past the bottom, so repeated adds never stack
+  (`ph-qwh3`).
 - Groups nest as the pages draw them (DESIGN 10.11; Valence decides
   membership and order): the hub, by name, open, holding its categories in
   tier then registry order, each holding its cards with no section, then its
