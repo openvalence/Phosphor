@@ -120,6 +120,9 @@ html:root[data-style="mica"][data-variant="mica-alt"] [data-part="bar"] > :first
   background-color: var(--m-layer);
   box-shadow: 0 -1px 0 0 var(--line-1), -1px 0 0 0 var(--line-1), 1px 0 0 0 var(--line-1);
 }
+@media (max-width: 700px) {
+  html:root[data-style="mica"][data-variant="mica-alt"] [data-part="bar"] > :first-child { padding: 0 4px; margin-left: 0; }
+}
 html:root[data-style="mica"][data-material][data-variant="mica-alt"] body,
 html:root[data-style="mica"][data-material][data-variant="mica-alt"] [data-part="bar"],
 html:root[data-style="mica"][data-material][data-variant="mica-alt"] [data-part="strip"],
@@ -171,6 +174,16 @@ html:root[data-style="mica"] .og-panel { outline: none; border-radius: 8px; back
 html:root[data-style="mica"] .pane-head h2 { font-family: var(--font-head); font-weight: 600; text-transform: none; letter-spacing: 0; font-size: 1.25rem; }
 html:root[data-style="mica"] .field-label { text-transform: none; letter-spacing: 0; font-size: .8125rem; font-weight: 400; color: var(--tx); }
 html:root[data-style="mica"] .field-value { border-radius: 4px; }
+/* Sentence case everywhere: no tracked capitals. */
+html:root[data-style="mica"] .pane-head h3 { font-family: var(--font-head); font-size: .9rem; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--tx-hi); }
+html:root[data-style="mica"] [data-part="status-row"] .k,
+html:root[data-style="mica"] [data-part="bar"] .chip-lbl,
+html:root[data-style="mica"] [data-part="pane"] .drill-title,
+html:root[data-style="mica"] .dash-section,
+html:root[data-style="mica"] [data-style-id] .name,
+html:root[data-style="mica"] [data-theme-id] .name { text-transform: none; letter-spacing: 0; }
+html:root[data-style="mica"] [data-part="bar"] .chip-lbl { font-size: .7rem; }
+html:root[data-style="mica"] .dash-section { font-family: var(--font-head); font-weight: 600; font-size: .875rem; }
 html:root[data-style="mica"] .og-screen { border-radius: 4px; border-color: var(--m-edge); }
 
 /* ---- buttons: a translucent fill, a stroke lighter on top, a lift on hover, a sink on press ---- */
@@ -241,6 +254,9 @@ html:root[data-style="mica"] select { padding-right: 32px; background-image: var
 
 /* ---- the switch: a hollow track with a small dot; the accent fills it when on ---- */
 html:root[data-style="mica"] .og-switch .track { border-radius: 10px; background-color: transparent; }
+/* The off track wears the strong stroke; inside a field the ladder owns the border. */
+html:root[data-style="mica"] .og-switch .track:not(.field *) { border-color: var(--m-strong); }
+html:root[data-style="mica"] .og-switch input:checked + .track:not(.field *) { border-color: var(--reality); }
 html:root[data-style="mica"] .og-switch input:checked + .track { background-color: var(--reality); }
 html:root[data-style="mica"] .og-switch .track::after { top: 4px; left: 4px; width: 12px; height: 12px; border-radius: 50%; background: var(--tx-mut); box-shadow: none; transform-origin: left center; }
 html:root[data-style="mica"] .og-switch:hover .track::after { transform: scale(1.18); }
@@ -318,6 +334,11 @@ html:root[data-style="mica"] .ui-sheet { border: 1px solid var(--line-2); border
 html:root[data-style="mica"] .ui-sheet[data-form='drawer'] { border-radius: 8px 0 0 8px; border-right: 0; }
 html:root[data-style="mica"] .ui-sheet[data-form='sheet'] { border-radius: 8px 8px 0 0; border-bottom: 0; }
 html:root[data-style="mica"] .ui-sheet[data-form='slot'] { border-radius: 8px; box-shadow: none; }
+
+/* Acrylic: a flyout blurs what is behind it, only while the window has its material. */
+html:root[data-style="mica"][data-material] #ph-tip,
+html:root[data-style="mica"][data-material] .ui-menu,
+html:root[data-style="mica"][data-material] .ui-sheet { backdrop-filter: blur(24px) saturate(1.3); }
 
 /* ---- the status bar ---- */
 html:root[data-style="mica"] [data-part="status-row"],
