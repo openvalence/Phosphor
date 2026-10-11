@@ -1,0 +1,4 @@
+TempleSys.woff2 and ../glyphs.js are built by build.py from TempleOS Kernel/FontStd.HC.
+TempleOS is public domain. Its Doc/Credits.DD says of FontStd.HC: "is taken from FreeDOS.
+It's public domain." No rights are claimed on the bitmaps; the woff2 wrapping is likewise
+dedicated to the public domain.

@@ -22,3 +22,4 @@ export { default as contrast } from './contrast/manifest.js';
 export { default as mica } from './mica/manifest.js';
 export { default as glass } from './glass/manifest.js';
 export { default as material } from './material/manifest.js';
+export { default as temple } from './temple/manifest.js';

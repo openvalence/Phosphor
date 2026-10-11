@@ -31,7 +31,7 @@
   import { untrack } from 'svelte';
   import {
     KNOBS, TOKENS, LOCKED, SAFETY, DEFAULT_THEME,
-    applyTheme, currentTheme, editTheme, onTheme, deriveTokens, shownPresets, themeMeta, variantsOf, STYLES,
+    applyTheme, currentTheme, editTheme, onTheme, deriveTokens, shownPresets, themeMeta, variantsOf, pickableStyles,
     saveAsPreset, deletePreset, exportTheme, importTheme, validOverride,
   } from '../model/theme.js';
   import { setPref, MOTION } from '../model/prefs.js';
@@ -48,7 +48,7 @@
   const d = $derived(deriveTokens(theme));
   // Themes first (a whole style each, its swatch from its manifest), then the active Theme's
   // Variants (palettes: the chassis and two accents), then the saved presets.
-  const styles = $derived(STYLES.map((s) => ({ s, first: variantsOf(s.id)[0], tip: s.pitch + (s.note ? '. ' + s.note : '') })));
+  const styles = $derived(pickableStyles(theme).map((s) => ({ s, first: variantsOf(s.id)[0], tip: s.pitch + (s.note ? '. ' + s.note : '') })));
   const variants = $derived(presets.filter((p) => !p.id.startsWith('user-')).map((p) => ({ p, bg: deriveTokens(p).base['--bg'] })));
   const saved = $derived(presets.filter((p) => p.id.startsWith('user-')).map((p) => ({ p, bg: deriveTokens(p).base['--bg'] })));
 

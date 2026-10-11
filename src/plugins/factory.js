@@ -7,6 +7,8 @@ import * as advancedPenetration from '../../plugins/factory/advanced-penetration
 import advancedPenetrationManifest from '../../plugins/factory/advanced-penetration/manifest.json' with { type: 'json' };
 import * as funscriptPlayer from '../../plugins/factory/funscript-player/index.js';
 import funscriptPlayerManifest from '../../plugins/factory/funscript-player/manifest.json' with { type: 'json' };
+import * as arcade from '../../plugins/factory/arcade/index.js';
+import arcadeManifest from '../../plugins/factory/arcade/manifest.json' with { type: 'json' };
 import * as quickAccess from '../../plugins/factory/quick-access/index.js';
 import quickAccessManifest from '../../plugins/factory/quick-access/manifest.json' with { type: 'json' };
 
@@ -14,4 +16,5 @@ export const FACTORY = [
   { manifest: advancedPenetrationManifest, module: advancedPenetration },
   { manifest: funscriptPlayerManifest, module: funscriptPlayer },
   { manifest: quickAccessManifest, module: quickAccess },
+  { manifest: arcadeManifest, module: arcade },
 ];

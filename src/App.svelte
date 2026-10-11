@@ -62,7 +62,7 @@
   import { hold } from './shell/hold.js';
   import { resetNeedsModal } from './shell/resetGate.js';
   import { settingsEntries } from './shell/settingsSearch.js';
-  import { shownPresets, currentTheme, STYLES } from './model/theme.js';
+  import { shownPresets, currentTheme, pickableStyles } from './model/theme.js';
   import { registerSearch } from './ui/searchIndex.js';
   import { layouts, orderedLayoutNames, switchLayout, addLayout, dashEdit, redHint } from './model/dashboard.svelte.js';
   import './ui/select.css';
@@ -359,7 +359,7 @@
   $effect(() => { if (active !== 'machine') dashEdit.on = false; });
   // F3 lists every Display and Settings entry and lands on its row.
   const settingsTab = $derived(tabs.find((t) => t.id === 'shell:settings') || tabs.find((t) => t.id === 'display'));
-  $effect(() => registerSearch('settings', () => (settingsTab ? settingsEntries(shownPresets(currentTheme()), STYLES)
+  $effect(() => registerSearch('settings', () => (settingsTab ? settingsEntries(shownPresets(currentTheme()), pickableStyles())
     .filter((e) => !e.shell || settingsTab.id === 'shell:settings')
     .map((e) => ({ label: e.label, path: settingsTab.id === 'display' ? 'Display' : 'Phosphor › Settings', go: async () => {
       selectTab(settingsTab.id);

@@ -200,6 +200,22 @@ export const DEFAULT_THEME = THEMES[0];
 const STYLE_BY_ID = new Map(THEME_LIST.map((s) => [s.id, s]));
 /** The registered Themes, the default first: id, name, pitch, swatch, note, variants. */
 export const STYLES = THEME_LIST;
+/** Where an unlocked hidden Theme's id is kept (docs/THEMES.md, Hidden themes). */
+export const UNLOCK_KEY = 'phosphor.theme.unlocked';
+/** Ids of the hidden Themes this browser has unlocked. */
+export function unlockedThemes(st = globalThis.localStorage) {
+  try { const a = JSON.parse(st.getItem(UNLOCK_KEY)); return Array.isArray(a) ? a : []; } catch (e) { return []; }
+}
+/** Records a hidden Theme as found, so the picker and F3 list it from now on. */
+export function unlockTheme(id, st = globalThis.localStorage) {
+  const a = unlockedThemes(st);
+  if (!a.includes(id)) try { st.setItem(UNLOCK_KEY, JSON.stringify([...a, id])); } catch (e) { /* in-memory only: found for this session */ }
+}
+/** The Themes the picker lists: a `hidden` one only once unlocked, or while it is the one applied. */
+export function pickableStyles(t = current) {
+  const open = unlockedThemes();
+  return STYLES.filter((s) => !s.hidden || open.includes(s.id) || t.style === s.id);
+}
 /** The Theme manifest for an id, or null. */
 export function themeMeta(id) { return STYLE_BY_ID.get(id) || null; }
 /** The (theme, variant) objects of one Theme, its own palette first. */

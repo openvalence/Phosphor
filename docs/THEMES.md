@@ -206,7 +206,41 @@ What a Theme dresses besides the controls:
   in a keyframe named `theme-<id>-<name>`, under `:not(.still)` (and `:not(.hivis)` where it
   would distract). `html.still` is the user's, the OS's and the motion knob's "hold still".
 
-## Fonts
+## Behavior
+
+A Theme is CSS. One Theme, Temple, was granted more by the operator (2026-10-10): JavaScript, an
+animated overlay, key bindings of its own and sound behind a toggle. The hook it uses is generic:
+
+- **`src/themes/<id>/boot.js`.** `src/main.js` imports every theme folder's `boot.js` once at startup
+  (`import.meta.glob('./themes/*/boot.js', { eager: true })`), whatever Theme is applied. It holds
+  listeners only: no timer, no frame. It may `onTheme` and load the rest of its code while its Theme
+  is applied, and must undo all of it when another is.
+- **What behavior may never do.** Cover, move, delay or restyle the stop pair; take a safety key
+  (Enter and Space on a focused safety op) or swallow Escape; write to the machine; request a frame
+  while the page is hidden, under `html.still` or on a fullscreen page (a static frame stands in
+  under still); read layout per frame. An overlay is `pointer-events: none` and sits under the top
+  strip (z 30), drawn only below it and below the rail scope.
+
+Temple's own (`src/themes/temple/`): `boot.js` (the unlock and the escape hatch), `behavior.js` (the
+sprite canvas, the title bar readout `--temple-wm`, the oracle on F7 and its square-wave beeps, off
+until its toggle), `glyphs.js` and `fonts/` (the 8 x 8 system face, public domain, built by
+`fonts/build.py`). Its keys live only while it is applied and are documented in its own marquee,
+not in `src/model/keys.js`, so F1 does not give the secret away. `test/theme-temple.test.mjs` checks
+the unlock, the escape, the stop pair under 50 sprite placements, no frames while hidden or still,
+and the oracle.
+
+The arcade (`plugins/factory/arcade/`, docs/PLUGINS.md) registers its page only while Temple is
+applied; while that page is open the overlay steps aside.
+
+## Hidden themes
+
+A manifest with `hidden: true` is left out of the picker and F3 until it is found: `theme.js`
+`pickableStyles()` lists it once its id is in `phosphor.theme.unlocked` (written by `unlockTheme(id)`),
+or while it is the one applied. Everything else about it is an ordinary Theme: the registry line, the
+kit, the variants. The find is the Theme's own business (its `boot.js`); Temple's is typing `temple`
+into F3's box. A hidden Theme gives a way out that needs no menu (Temple: Escape three times within
+1.5 s puts back the theme from before), and Settings › Theme always lists it while it is applied.
+
 
 System stacks need nothing. Three OFL faces are bundled for any Theme to name: VT323
 (`'VT323'`), Silkscreen (400 and 700) and Orbitron (a variable face, 400 to 900), subset to
@@ -506,6 +540,7 @@ Warm ink (hue 60; its reality left the safety amber for jade, `#66D5BA`) and Pap
 | `mica` | one | Fluent on Windows 11 Mica (Materials) |
 | `glass` | one | Liquid Glass (Materials) |
 | `material` | one | Material 3 and Material You (Materials) |
+| `temple` | Temple, Document | hidden (Hidden themes): the 8 x 8 face, VGA sixteen, DolDoc link buttons, [X] windows, a squirming overlay, the oracle on F7 (Behavior) |
 
 **The light chassis (Paper).** Shipped because it holds the measurable bar:
 text clears 4.5:1 by the guard, its accents (darker than the dark presets'
@@ -522,6 +557,8 @@ instead of lightening.
 |---|---|
 | `phosphor.theme` | the active theme object; a shipped Variant's id loads that Variant as this build ships it, with its stored look |
 | `phosphor.theme.presets` | saved presets (with their `style`) |
+| `phosphor.theme.unlocked` | the hidden Themes this browser has found (Hidden themes) |
+| `phosphor.temple.prev`, `phosphor.temple.sound` | Temple's way back (the theme before it) and its beep toggle |
 | `sd32.theme`, `sd32.theme.customColors` | legacy: read once to migrate when `phosphor.theme` is absent, never written or deleted |
 
 An old preference maps without a rewrite: a stored `id` that is a Variant (`slate`, `ember`,
