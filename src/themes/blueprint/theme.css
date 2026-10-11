@@ -107,6 +107,8 @@ html:root[data-style="blueprint"] .linkdot::before {
   box-shadow: inset 0 0 0 1px currentColor;
 }
 html:root[data-style="blueprint"] .heat .blk { border-radius: 0; }
+@keyframes theme-blueprint-sweep { to { transform: rotate(360deg); } }
+html:root[data-style="blueprint"]:not(.still) .linkdot::before { animation: theme-blueprint-sweep 30s linear infinite; }
 
 /* ---- caption buttons: drafting symbols in title-block cells, hatch on hover, a solid cell pressed ---- */
 html:root[data-style="blueprint"] [data-part="caption-btn"] { position: relative; color: var(--tx-hi); background-color: transparent; border-radius: 0; border-left: 1px solid var(--line-2); }
@@ -253,6 +255,10 @@ html:root[data-style="blueprint"] .og-seg button.active { background-image: var(
 html:root[data-style="blueprint"] .og-btn:focus-visible,
 html:root[data-style="blueprint"] .og-seg button:focus-visible,
 html:root[data-style="blueprint"] .stepper button:focus-visible { outline-style: dashed; outline-offset: 3px; }
+html:root[data-style="blueprint"] .og-btn:disabled,
+html:root[data-style="blueprint"] .og-btn[aria-disabled="true"],
+html:root[data-style="blueprint"] .og-seg button:disabled,
+html:root[data-style="blueprint"] .stepper button:disabled { background-image: var(--bp-hatch); border-style: dashed; }
 html:root[data-style="blueprint"] [role="tab"]:not([data-part="rail-tab"]) { border-radius: 0; }
 html:root[data-style="blueprint"] [role="tab"][aria-selected="true"]:not([data-part="rail-tab"]),
 html:root[data-style="blueprint"] .tabs button.on { background-image: var(--bp-hatch); box-shadow: inset 0 2px 0 var(--reality); }
@@ -288,19 +294,16 @@ html:root[data-style="blueprint"] input[type="checkbox"]:not([role="switch"]):ch
   -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2012%2012'%3E%3Cpath%20d='M2%207l3.2%203.2L11.5%203'%20fill='none'%20stroke='%23000'%20stroke-width='1.7'/%3E%3C/svg%3E") center / 11px no-repeat;
   mask: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2012%2012'%3E%3Cpath%20d='M2%207l3.2%203.2L11.5%203'%20fill='none'%20stroke='%23000'%20stroke-width='1.7'/%3E%3C/svg%3E") center / 11px no-repeat;
 }
-html:root[data-style="blueprint"] [role="radio"]:not(.og-seg button)::before {
-  content: '';
-  display: inline-block;
-  box-sizing: border-box;
-  width: 11px;
-  height: 11px;
-  margin-right: 6px;
-  vertical-align: -2px;
-  border-radius: 50%;
+html:root[data-style="blueprint"] input[type="radio"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 15px;
+  height: 15px;
   border: 1px solid var(--tx-val);
-  background: var(--bg-sunken);
+  border-radius: 50%;
+  background-color: var(--bg-sunken);
 }
-html:root[data-style="blueprint"] [role="radio"][aria-checked="true"]:not(.og-seg button)::before { border-color: var(--reality); background: radial-gradient(circle, var(--reality) 0 2px, var(--bg-sunken) 2.5px); }
+html:root[data-style="blueprint"] input[type="radio"]:checked { border-color: var(--reality); background-image: radial-gradient(circle, var(--reality) 0 3px, transparent 3.5px); }
 
 /* ---- the switch is an SPST knife: two terminals, a blade that closes the circuit ---- */
 html:root[data-style="blueprint"] .og-switch .track { background-color: var(--bg-sunken); border-radius: 0; }
