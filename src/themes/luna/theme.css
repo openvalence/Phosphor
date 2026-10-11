@@ -1,56 +1,191 @@
-/* Luna: the chrome and the common controls of a 2001 desktop, in your own drawing.
-   A blue title bar with rounded top corners and three caption buttons; beige window
-   surfaces on a sky and a green hill; buttons with a light face, a blue-gray edge and an
-   orange glow under the pointer; white boxes with a green check; a trackbar; a dropdown with
-   its blue arrow; tabs with an orange top line; cards as group boxes with the caption on the
-   line; wide blue scrollbars with grips; green blocks for progress.
+/* Luna: the chrome and the common controls of a 2001 desktop, drawn from scratch.
+   A window on a rolling-hill sky: a blue title bar with rounded top corners and three caption
+   buttons, a blue frame, a task pane for a rail, group boxes, 3 px buttons with an orange glow,
+   white boxes with green checks, a trackbar, scroll bars with arrow buttons and grips, green
+   progress blocks, a menu with a blue selection, a yellow tip, and a taskbar for the status row.
 
-   Light chassis; every surface under text is a chassis token, so the contrast guard holds.
-   The blues carry white text of their own (4.5:1 on the darkest stop). The orange glow and
-   the orange tab line are decoration on plain controls only: they are never put on a control
-   in a state (:not() names the states; nothing here styles one). */
+   Light chassis; every surface under text is a chassis token or a pale solid that clears AA,
+   and the blues carry white text of their own. The orange glow and the orange tab line are
+   decoration on plain controls only: :not() names the states, and nothing here styles one.
+   The write ladder's line and border on a field (.og-num, an active segment, a switch track, a
+   range) are the engine's: this sheet never sets their border-color or background-image.
+
+   Variants (html[data-variant]) set the --xp-* palette below; a Custom theme keeps the blue. */
 html:root[data-style="luna"] {
   --font: Tahoma, 'Segoe UI', Verdana, 'DejaVu Sans', sans-serif;
   --font-head: 'Trebuchet MS', Tahoma, 'Segoe UI', Verdana, 'DejaVu Sans', sans-serif;
   --mono: 'Lucida Console', 'Cascadia Mono', Consolas, 'DejaVu Sans Mono', monospace;
   --frame-w: 1px;
-  /* The sky, two hills and a soft cloud band; fixed, so the window moves over it. */
+  /* The desktop behind the window: a sky, clouds and two hills; fixed, so the window moves over it. */
   --tex-page:
-    radial-gradient(ellipse 70% 38% at 18% 104%, #6DBE45 0 62%, transparent 63%),
-    radial-gradient(ellipse 85% 34% at 78% 108%, #4FA634 0 60%, transparent 61%),
-    radial-gradient(ellipse 28% 5% at 26% 50%, rgba(255, 255, 255, .55), transparent),
-    radial-gradient(ellipse 22% 4% at 72% 38%, rgba(255, 255, 255, .5), transparent),
-    linear-gradient(180deg, #2E6FD8 0%, #5B9BEA 46%, #A9CDF6 78%, #CFE3F8 100%);
+    radial-gradient(ellipse 80% 70% at 18% 136%, #2E7A1B 0, #3B9024 52%, #58AE33 78%, #83C945 94%, #A9DD64 99%, transparent 100.6%),
+    radial-gradient(ellipse 75% 60% at 92% 130%, #2A7418 0, #388C22 50%, #52A52F 78%, #74BF3C 95%, #92D14F 99.2%, transparent 100.6%),
+    radial-gradient(ellipse 9% 3% at 21% 33%, rgba(255, 255, 255, .85), transparent 72%),
+    radial-gradient(ellipse 14% 4.4% at 26% 35.4%, rgba(255, 255, 255, .8), transparent 72%),
+    radial-gradient(ellipse 8% 2.8% at 33% 34%, rgba(255, 255, 255, .7), transparent 72%),
+    radial-gradient(ellipse 12% 3.6% at 71% 27%, rgba(255, 255, 255, .7), transparent 72%),
+    radial-gradient(ellipse 8% 2.6% at 77% 28.6%, rgba(255, 255, 255, .6), transparent 72%),
+    linear-gradient(180deg, #1B58C8 0%, #3A7FE0 26%, #6CAAEE 48%, #A9D1F6 64%, #DCEEFB 76%);
   --tex-page-size: 100% 100%;
-  --xp-face: linear-gradient(180deg, #FFFFFF 0, var(--bg-card) 8%, var(--bg-raised) 88%, var(--bg) 100%);
-  --xp-title: linear-gradient(180deg, #4C8FF2 0, #2563DC 14%, #1A56CC 55%, #2A6AE0 88%, #1A4DB8 100%);
-  --xp-edge: #5F7FAE;
+  --xp-face: linear-gradient(180deg, #FFFFFF 0, var(--bg-card) 6%, var(--bg-raised) 82%, var(--bg-sunken) 100%);
   --xp-orange: #F2A23A;
+  --xp-edge: #003C74;
+  --xp-field: #7F9DB9;
+  --xp-sel: #316AC5;
+  /* the blue scheme: title bar, frame, caption faces, task pane, taskbar */
+  --xp-title-bg: #0A5AE8;
+  --xp-title: linear-gradient(180deg, #4C9BFF 0, #0A5AE8 9%, #0054E3 32%, #0A5FEA 72%, #1E6CF2 90%, #0B47C7 100%);
+  --xp-ink: #fff;
+  --xp-ink-sh: #0A2A80;
+  --xp-frame: #0831D9;
+  --xp-frame-in: #3F86F2;
+  --xp-cap-a: #7DA6F4;
+  --xp-cap-b: #3470E0;
+  --xp-cap-c: #1E4FC4;
+  --xp-th-a: #E4EDFF;
+  --xp-th-b: #BFD3F8;
+  --xp-th-c: #8FB0F0;
+  --xp-th-edge: #7B9EE5;
+  --xp-grip: rgba(40, 80, 170, .6);
+  --xp-task-a: #7BA2E7;
+  --xp-task-b: #6375D6;
+  --xp-head-b: #C6D3F7;
+  --xp-head-ink: #123E96;
+  --xp-body: #D6DFF7;
+  --xp-link: #123E96;
+  --xp-grp: #0046D5;
+  --xp-tb-hi: #3F8CF3;
+  --xp-tb: #245EDC;
+  --xp-tb-lo: #1941A5;
+  --xp-tb-ink: #fff;
+  --xp-tb-ink2: #DDE9FF;
+  --xp-tray-a: #0E6FD8;
+  --xp-tray-b: #0A58BC;
+  --xp-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 17 17'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23C5D6FA'/%3E%3Cstop offset='.5' stop-color='%23799CEA'/%3E%3Cstop offset='1' stop-color='%234F78DA'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='.5' y='.5' width='16' height='16' rx='2.5' fill='url(%23g)' stroke='%23fff'/%3E%3Cpath d='M4.5 6.5l4 4 4-4' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
+/* Olive Green: an olive title bar and frame, a sage task pane, an olive taskbar. */
+html:root[data-style="luna"][data-variant="luna-olive"] {
+  --xp-edge: #3E4F17;
+  --xp-sel: #5F7F25;
+  --xp-title-bg: #587723;
+  --xp-title: linear-gradient(180deg, #B5CB7B 0, #6A8A30 9%, #587723 32%, #5C7C27 72%, #6F8F36 90%, #4A6418 100%);
+  --xp-frame: #4A6418;
+  --xp-frame-in: #8EAA52;
+  --xp-cap-a: #BCD085;
+  --xp-cap-b: #7C9C38;
+  --xp-cap-c: #56721F;
+  --xp-th-a: #EEF3D6;
+  --xp-th-b: #D0DCA6;
+  --xp-th-c: #A8BC72;
+  --xp-th-edge: #94A85C;
+  --xp-grip: rgba(60, 85, 20, .6);
+  --xp-task-a: #B4C58A;
+  --xp-task-b: #93A667;
+  --xp-head-b: #D6E0B4;
+  --xp-head-ink: #2B3A0C;
+  --xp-body: #E4E9D2;
+  --xp-link: #2B3A0C;
+  --xp-grp: #3B5A0A;
+  --xp-tb-hi: #8FAA4C;
+  --xp-tb: #5F7F25;
+  --xp-tb-lo: #3E5714;
+  --xp-tray-a: #4F6D1C;
+  --xp-tray-b: #3E5714;
+  --xp-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 17 17'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23D3E2A0'/%3E%3Cstop offset='.5' stop-color='%238CAA48'/%3E%3Cstop offset='1' stop-color='%23607C26'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='.5' y='.5' width='16' height='16' rx='2.5' fill='url(%23g)' stroke='%23fff'/%3E%3Cpath d='M4.5 6.5l4 4 4-4' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+/* Silver: a pale steel title bar with dark type, a gray-lilac task pane and taskbar. */
+html:root[data-style="luna"][data-variant="luna-silver"] {
+  --xp-edge: #54587F;
+  --xp-sel: #5B5F8C;
+  --xp-title-bg: #C9CBE0;
+  --xp-title: linear-gradient(180deg, #F6F6FC 0, #D9DBEC 12%, #C9CBE0 45%, #BFC1DA 80%, #A9ACCB 100%);
+  --xp-ink: #1B1B3A;
+  --xp-ink-sh: rgba(255, 255, 255, .8);
+  --xp-frame: #8E91B4;
+  --xp-frame-in: #D4D6E8;
+  --xp-cap-a: #D3D5EA;
+  --xp-cap-b: #9EA2C8;
+  --xp-cap-c: #6D7198;
+  --xp-th-a: #F4F4FA;
+  --xp-th-b: #D6D7E6;
+  --xp-th-c: #B3B5D0;
+  --xp-th-edge: #8E91B4;
+  --xp-grip: rgba(70, 75, 120, .55);
+  --xp-task-a: #C7C9DE;
+  --xp-task-b: #A9ACCB;
+  --xp-head-b: #DDDEEC;
+  --xp-head-ink: #2E2E55;
+  --xp-body: #ECECF4;
+  --xp-link: #2E2E55;
+  --xp-grp: #3C4380;
+  --xp-tb-hi: #E7E8F3;
+  --xp-tb: #C9CBE0;
+  --xp-tb-lo: #A9ACCB;
+  --xp-tb-ink: #1B1B3A;
+  --xp-tb-ink2: #2E2E55;
+  --xp-tray-a: #B8BAD6;
+  --xp-tray-b: #A0A3C4;
+  --xp-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 17 17'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23DADCEE'/%3E%3Cstop offset='.5' stop-color='%23A2A6CB'/%3E%3Cstop offset='1' stop-color='%237176A0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='.5' y='.5' width='16' height='16' rx='2.5' fill='url(%23g)' stroke='%23fff'/%3E%3Cpath d='M4.5 6.5l4 4 4-4' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+html:root[data-style="luna"] ::selection { background: var(--xp-sel); color: #fff; }
 
-/* ---- the title bar: the top bar, with rounded top corners and the caption buttons ---- */
-html:root[data-style="luna"] [data-part="top"] { background-color: transparent; border-bottom-color: #1A4DB8; }
+/* ---- the desktop: two clouds drift across the sky, a pixel or so a second; the window hides most of them ---- */
+@keyframes theme-luna-drift { from { transform: translate3d(-12%, 0, 0); } to { transform: translate3d(12%, 0, 0); } }
+html:root[data-style="luna"]::before {
+  content: '';
+  position: fixed;
+  inset: 0 -20%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 7% 2.6% at 40% 31%, rgba(255, 255, 255, .8), transparent 72%),
+    radial-gradient(ellipse 11% 3.6% at 44% 32.6%, rgba(255, 255, 255, .75), transparent 72%),
+    radial-gradient(ellipse 9% 3% at 84% 41%, rgba(255, 255, 255, .6), transparent 72%),
+    radial-gradient(ellipse 5% 2% at 88% 42.4%, rgba(255, 255, 255, .55), transparent 72%);
+}
+html:root[data-style="luna"]:not(.still):not(.hivis)::before { animation: theme-luna-drift 160s ease-in-out infinite alternate; }
+html:root[data-style="luna"].hivis::before { display: none; }
+
+/* ---- the window frame: a blue edge down both sides and along the bottom, above the taskbar ---- */
+html:root[data-style="luna"]::after {
+  content: '';
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: calc(var(--foot-strip-h, 34px) + var(--page-foot-reserve, 0px));
+  z-index: 40;
+  pointer-events: none;
+  border: solid var(--xp-frame);
+  border-width: 0 3px 3px;
+  border-radius: 8px 8px 0 0;
+  box-shadow: inset 0 0 0 1px var(--xp-frame-in);
+}
+html:root[data-style="luna"][data-page-full]::after { display: none; }
+
+/* ---- the title bar: the top bar, rounded at the top, with the caption buttons ---- */
+html:root[data-style="luna"] [data-part="top"] { background-color: transparent; border-bottom-color: var(--xp-frame); }
 html:root[data-style="luna"] [data-part="bar"] {
-  background-color: #1A56CC;
+  background-color: var(--xp-title-bg);
   background-image: var(--xp-title);
   border-radius: 8px 8px 0 0;
-  box-shadow: inset 0 -1px 0 #0F3C94, inset 0 1px 0 rgba(255, 255, 255, .4);
-  color: #fff;
+  box-shadow: inset 0 -1px 0 var(--xp-frame), inset 0 1px 0 rgba(255, 255, 255, .45), inset 1px 0 0 rgba(255, 255, 255, .25), inset -1px 0 0 rgba(255, 255, 255, .25);
+  color: var(--xp-ink);
 }
 html:root[data-style="luna"] [data-part="bar"] .wordmark {
-  color: #fff;
+  color: var(--xp-ink);
   font-family: var(--font-head);
   font-weight: 700;
-  font-style: italic;
-  text-shadow: 1px 1px 0 #0B2F7A;
+  text-shadow: 1px 1px 0 var(--xp-ink-sh);
 }
 html:root[data-style="luna"] [data-part="bar"] .chip {
   border-radius: 3px;
-  border-color: #0F3C94;
+  border-color: var(--xp-frame);
   background-color: var(--bg-card);
   background-image: linear-gradient(180deg, var(--bg-card), var(--bg-raised));
+  box-shadow: inset 1px 1px 1px rgba(30, 60, 120, .18);
 }
-/* The caption buttons: a 21 px rounded blue square with a white edge in a 30 px hit box. */
+/* The caption buttons: a 21 px rounded square with a white edge and a diagonal sheen, in a 30 px hit box. */
 html:root[data-style="luna"] [data-part="caption-btn"] { position: relative; width: 30px; color: #fff; background: transparent; }
 html:root[data-style="luna"] [data-part="caption-btn"]::before {
   content: '';
@@ -60,32 +195,38 @@ html:root[data-style="luna"] [data-part="caption-btn"]::before {
   width: 21px;
   height: 21px;
   margin: -10.5px 0 0 -10.5px;
-  border-radius: 3px;
+  border-radius: 4px;
   border: 1px solid #fff;
-  background: linear-gradient(135deg, #7DA6F4 0%, #3470E0 42%, #1E4FC4 100%);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .22), 0 1px 1px rgba(0, 20, 80, .45);
+  background: radial-gradient(ellipse 90% 60% at 30% 12%, rgba(255, 255, 255, .55), transparent 70%), linear-gradient(135deg, var(--xp-cap-a) 0%, var(--xp-cap-b) 45%, var(--xp-cap-c) 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .22), inset 0 -3px 4px -2px rgba(0, 20, 90, .5), 0 1px 1px rgba(0, 20, 80, .5);
 }
-html:root[data-style="luna"] [data-part="caption-btn"][data-cap="close"]::before { background: linear-gradient(135deg, #F2A68A 0%, #DA5A32 42%, #B53A1A 100%); }
-html:root[data-style="luna"] [data-part="caption-btn"] svg { position: relative; width: 11px; height: 11px; stroke-width: 1.9; }
+html:root[data-style="luna"] [data-part="caption-btn"][data-cap="close"]::before {
+  background: radial-gradient(ellipse 90% 60% at 30% 12%, rgba(255, 255, 255, .55), transparent 70%), linear-gradient(135deg, #F4B08E 0%, #E0592F 45%, #B63C1B 100%);
+}
+html:root[data-style="luna"] [data-part="caption-btn"] svg { position: relative; width: 11px; height: 11px; stroke-width: 2; filter: drop-shadow(0 1px 0 rgba(0, 20, 90, .55)); }
 html:root[data-style="luna"] [data-part="caption-btn"]:hover { background: transparent; color: #fff; }
-html:root[data-style="luna"] [data-part="caption-btn"]:hover::before { background: linear-gradient(135deg, #A3C2FA 0%, #5A8CEC 42%, #3A6CD8 100%); }
-html:root[data-style="luna"] [data-part="caption-btn"][data-cap="close"]:hover::before { background: linear-gradient(135deg, #FAC2AE 0%, #EC7A52 42%, #CE4A28 100%); }
+html:root[data-style="luna"] [data-part="caption-btn"]:hover::before { filter: brightness(1.16) saturate(1.05); }
 html:root[data-style="luna"] [data-part="caption-btn"]:active::before,
-html:root[data-style="luna"] [data-part="caption-btn"][aria-expanded="true"]::before { background: linear-gradient(135deg, #1A44A8 0%, #2A5CCC 100%); box-shadow: inset 1px 1px 3px rgba(0, 10, 60, .6); }
-html:root[data-style="luna"] [data-part="caption-btn"][data-cap="close"]:active::before,
-html:root[data-style="luna"] [data-part="caption-btn"][data-cap="close"][aria-expanded="true"]::before { background: linear-gradient(135deg, #A8341A 0%, #C84824 100%); }
+html:root[data-style="luna"] [data-part="caption-btn"][aria-expanded="true"]::before { filter: brightness(.82); box-shadow: inset 1px 1px 3px rgba(0, 10, 60, .65); }
 
-/* ---- the toolbar: the strip under it, and the hero scope ---- */
+/* ---- the toolbar under it, and the scope band ---- */
 html:root[data-style="luna"] [data-part="strip"] { background-image: linear-gradient(180deg, var(--bg-card), var(--bg-raised) 70%, var(--bg)); }
-html:root[data-style="luna"] [data-part="hero"] { background-image: linear-gradient(180deg, var(--bg-raised), var(--bg)); border-bottom-color: #7F9DB9; }
-html:root[data-style="luna"] [data-part="stop-frame"] { outline: 1px solid var(--xp-edge); outline-offset: 4px; border-radius: 4px; background-color: var(--bg-sunken); }
+html:root[data-style="luna"] [data-part="hero"] { background-image: linear-gradient(180deg, var(--bg-raised), var(--bg)); border-bottom-color: var(--xp-field); }
+html:root[data-style="luna"] [data-part="stop-frame"] { outline: 1px solid var(--xp-field); outline-offset: 4px; border-radius: 4px; background-color: var(--bg-sunken); }
 
-/* ---- the task pane: the rail ---- */
+/* ---- the task pane: the rail, a blue ground with rounded sections ---- */
 html:root[data-style="luna"] [data-part="rail"] {
-  background-color: var(--bg);
-  background-image: linear-gradient(180deg, var(--bg-card), var(--bg) 40%);
-  border-color: #7F9DB9;
+  background-color: var(--xp-task-a);
+  background-image: linear-gradient(180deg, var(--xp-task-a), var(--xp-task-b));
+  border-color: var(--xp-frame);
   border-radius: 0 6px 6px 0;
+}
+html:root[data-style="luna"] [data-part="rail"] .rail-collapse, html:root[data-style="luna"] [data-part="rail"] .rail-collapse span { color: var(--tx-hi); border-radius: 3px; }
+html:root[data-style="luna"] [data-part="rail-sec"] {
+  background-color: var(--xp-body);
+  border-color: #fff;
+  border-radius: 6px 6px 3px 3px;
+  box-shadow: 0 1px 2px rgba(10, 30, 90, .3);
 }
 html:root[data-style="luna"] [data-part="rail-label"] {
   font-family: var(--font-head);
@@ -93,22 +234,23 @@ html:root[data-style="luna"] [data-part="rail-label"] {
   text-transform: none;
   letter-spacing: 0;
   font-size: 12px;
-  color: #123E96;
-  margin: 2px 4px 2px;
-  padding: 3px 8px;
+  color: var(--xp-head-ink);
+  margin: 0;
+  padding: 3px 9px;
   border-radius: 5px 5px 0 0;
-  background-color: #D7E3FA;
-  background-image: linear-gradient(90deg, #FFFFFF, #C6D8F8);
+  background-color: var(--xp-head-b);
+  background-image: linear-gradient(90deg, #FFFFFF, var(--xp-head-b));
 }
-html:root[data-style="luna"] [data-part="rail-tab"] { border-radius: 3px; font-size: .82rem; }
-html:root[data-style="luna"] [data-part="rail-tab"]:hover { text-decoration: underline; background: transparent; color: #0B3FAA; }
+html:root[data-style="luna"] [data-part="rail-tab"] { border-radius: 3px; font-size: .82rem; color: var(--xp-link); }
+html:root[data-style="luna"] [data-part="rail-tab"]:hover { text-decoration: underline; background: transparent; color: var(--xp-link); }
 html:root[data-style="luna"] [data-part="rail-tab"].on {
-  background-color: var(--bg-card);
+  background-color: #fff;
   background-image: linear-gradient(180deg, #FFFFFF, var(--bg-card));
-  border-color: #7F9DB9;
+  border-color: var(--xp-field);
   text-decoration: none;
+  font-weight: 700;
 }
-html:root[data-style="luna"] .rail-sec.shell { border-radius: 4px; }
+html:root[data-style="luna"] .rail-sec.shell { border-radius: 6px 6px 3px 3px; }
 
 /* ---- group boxes: a thin rounded line, the caption sitting on it ---- */
 html:root[data-style="luna"] [data-part="card"],
@@ -116,7 +258,7 @@ html:root[data-style="luna"] [data-part="nest"] {
   border-color: #D0D0BF;
   border-radius: 5px;
   padding-top: calc(var(--dash-body-pad, var(--gap)) + 10px);
-  box-shadow: 1px 1px 0 rgba(255, 255, 255, .8), 2px 3px 6px rgba(10, 40, 100, .22);
+  box-shadow: 1px 1px 0 rgba(255, 255, 255, .8), 1px 2px 5px rgba(10, 40, 100, .2);
 }
 html:root[data-style="luna"] [data-part="card-head"]:not(.over) { position: relative; z-index: 2; margin-bottom: -10px; padding: 0 0 0 12px; }
 html:root[data-style="luna"] [data-part="card-head"]:not(.over) .dash-title {
@@ -127,67 +269,83 @@ html:root[data-style="luna"] [data-part="card-head"]:not(.over) .dash-title {
   margin-top: 3px;
   padding: 0 5px;
   background-color: var(--bg-card);
-  color: #0046D5;
+  color: var(--xp-grp);
   font-weight: 700;
   text-transform: none;
   letter-spacing: 0;
   font-size: .78rem;
 }
-html:root[data-style="luna"] [data-part="card-head"]:not(.over) .dash-title::before { color: #6D8FBF; }
-html:root[data-style="luna"] [data-part="panel"] { border-color: #D0D0BF; border-radius: 5px; box-shadow: 1px 1px 0 rgba(255, 255, 255, .8), 2px 3px 6px rgba(10, 40, 100, .22); }
-html:root[data-style="luna"] [data-part="panel-bar"] :is(.dash-title, .ui-caret) { color: #0046D5; font-weight: 700; text-transform: none; letter-spacing: 0; }
+html:root[data-style="luna"] [data-part="card-head"]:not(.over) .dash-title::before { color: var(--xp-th-edge); }
+html:root[data-style="luna"] [data-part="panel"] { border-color: #D0D0BF; border-radius: 5px; box-shadow: 1px 1px 0 rgba(255, 255, 255, .8), 1px 2px 5px rgba(10, 40, 100, .2); }
+html:root[data-style="luna"] [data-part="panel-bar"] :is(.dash-title, .ui-caret) { color: var(--xp-grp); font-weight: 700; text-transform: none; letter-spacing: 0; }
 html:root[data-style="luna"] .og-panel { outline: none; border-color: #D0D0BF; border-radius: 5px; background-image: none; }
-html:root[data-style="luna"] .pane-head h2 { font-family: var(--font-head); font-weight: 700; color: #0046D5; text-transform: none; letter-spacing: 0; }
+html:root[data-style="luna"] .dash-title { font-family: var(--font-head); font-weight: 700; color: var(--xp-grp); text-transform: none; letter-spacing: 0; }
+html:root[data-style="luna"] .pane-head h2 { font-family: var(--font-head); font-weight: 700; color: var(--xp-grp); text-transform: none; letter-spacing: 0; }
 
-/* ---- buttons: a light face, a blue-gray edge, an orange glow under the pointer, an inset when pressed ---- */
-html:root[data-style="luna"] .og-btn,
-html:root[data-style="luna"] .og-seg button,
+/* ---- buttons: a light face with a dark blue edge, an orange glow under the pointer, an inset when pressed, a dotted focus ---- */
+html:root[data-style="luna"] .og-btn:not(.on):not(.primary):not(.running):not(.danger),
+html:root[data-style="luna"] .og-seg button:not(.active),
 html:root[data-style="luna"] .stepper button {
+  border-color: var(--xp-edge);
   border-radius: 3px;
   background-color: var(--bg-card);
   background-image: var(--xp-face);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .85);
 }
 html:root[data-style="luna"] .og-btn:not(.on):not(.primary):not(.running):not(.danger):hover:not(:disabled),
 html:root[data-style="luna"] .og-seg button:not(.active):hover:not(:disabled),
-html:root[data-style="luna"] .stepper button:hover:not(:disabled) { box-shadow: inset 0 0 0 1px #FFF3D6, inset 0 0 0 2px var(--xp-orange), inset 0 -3px 3px -1px rgba(242, 162, 58, .55); }
+html:root[data-style="luna"] .stepper button:hover:not(:disabled) { box-shadow: inset 0 0 0 1px #FFF3D6, inset 0 0 0 2px var(--xp-orange), inset 0 -3px 3px -1px rgba(242, 162, 58, .6); }
 html:root[data-style="luna"] .og-btn:not(.on):not(.primary):not(.running):not(.danger):active:not(:disabled),
 html:root[data-style="luna"] .og-seg button:not(.active):active:not(:disabled),
-html:root[data-style="luna"] .stepper button:active:not(:disabled) { background-image: linear-gradient(180deg, var(--bg-sunken), var(--bg-raised) 40%, var(--bg-card)); box-shadow: inset 1px 1px 3px rgba(40, 60, 100, .4); }
-/* Toggled on: the pressed face, as a toolbar toggle. */
-html:root[data-style="luna"] .og-seg button.active { background-image: linear-gradient(180deg, var(--bg-sunken), var(--bg-raised) 40%, var(--bg-card)); }
-
-/* ---- text boxes, the dropdown with its blue arrow ---- */
-html:root[data-style="luna"] .og-num,
-html:root[data-style="luna"] .value-input {
-  border-radius: 2px;
-  border-color: #7F9DB9;
-  background-color: var(--bg-card);
-  box-shadow: inset 1px 1px 1px rgba(40, 60, 100, .12);
+html:root[data-style="luna"] .stepper button:active:not(:disabled) { background-image: linear-gradient(180deg, var(--bg-sunken), var(--bg-raised) 40%, var(--bg-card)); box-shadow: inset 1px 1px 3px rgba(40, 60, 100, .45); }
+html:root[data-style="luna"] .og-btn:not(.on):not(.primary):not(.running):not(.danger):disabled,
+html:root[data-style="luna"] .og-seg button:not(.active):disabled,
+html:root[data-style="luna"] .stepper button:disabled { background-image: none; background-color: var(--bg-raised); border-color: var(--line-2); box-shadow: none; }
+html:root[data-style="luna"] :is(.og-btn, .og-seg button, .stepper button):not(.on):not(.primary):not(.running):not(.danger):focus-visible {
+  outline: 1px dotted var(--tx-hi);
+  outline-offset: -4px;
+  box-shadow: inset 0 0 0 1px #fff, inset 0 0 0 3px #A8C4F4;
 }
+/* A segment that is on is pressed in, as a toolbar toggle; its color and ladder line stay the engine's. */
+html:root[data-style="luna"] .og-seg button.active { border-radius: 3px; box-shadow: inset 1px 1px 3px rgba(40, 60, 100, .35); }
+
+/* ---- text boxes and the dropdown with its blue arrow ---- */
+html:root[data-style="luna"] input:is([type="text"], [type="search"], [type="number"], [type="password"], [type="url"], [type="email"], :not([type])):not(.og-num):not(.field input),
+html:root[data-style="luna"] textarea {
+  border-radius: 2px;
+  border-color: var(--xp-field);
+  background-color: var(--bg-card);
+  box-shadow: inset 1px 1px 1px rgba(40, 60, 100, .14);
+}
+html:root[data-style="luna"] .og-num { border-radius: 2px; background-color: var(--bg-card); box-shadow: inset 1px 1px 1px rgba(40, 60, 100, .14); }
+html:root[data-style="luna"] .value-input:not(.field *) { border-radius: 2px; border-color: var(--xp-field); background-color: var(--bg-card); box-shadow: inset 1px 1px 1px rgba(40, 60, 100, .14); }
 html:root[data-style="luna"] select {
   border-radius: 2px;
-  border-color: #7F9DB9;
+  border-color: var(--xp-field);
   background-color: var(--bg-card);
   padding-right: 24px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 17 17'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23C5D6FA'/%3E%3Cstop offset='.5' stop-color='%23799CEA'/%3E%3Cstop offset='1' stop-color='%234F78DA'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='.5' y='.5' width='16' height='16' rx='2.5' fill='url(%23g)' stroke='%23fff'/%3E%3Cpath d='M4.5 6.5l4 4 4-4' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-image: var(--xp-arrow);
   background-repeat: no-repeat;
   background-position: right 1px center;
   background-size: 17px 17px;
 }
+html:root[data-style="luna"] select:hover:not(:disabled) { box-shadow: inset 0 0 0 1px #FFF3D6; border-color: var(--xp-orange); }
 
-/* ---- check boxes, option dots, the trackbar, progress ---- */
+/* ---- check boxes, option dots, switches ---- */
 html:root[data-style="luna"] input[type="checkbox"]:not([role="switch"]) {
   appearance: none;
   -webkit-appearance: none;
   background-color: var(--bg-card);
+  background-image: linear-gradient(135deg, var(--bg-sunken), var(--bg-card) 60%);
   border: 1px solid #1C5180;
   border-radius: 2px;
   background-repeat: no-repeat;
   background-position: center;
   background-size: 11px 11px;
 }
+html:root[data-style="luna"] input[type="checkbox"]:not([role="switch"]):hover:not(:disabled) { box-shadow: inset 0 0 0 1px #FFF3D6, inset 0 0 0 2px var(--xp-orange); }
 html:root[data-style="luna"] input[type="checkbox"]:not([role="switch"]):checked {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11'%3E%3Cpath d='M1.8 5.6l2.6 2.6 5-5.4' fill='none' stroke='%232F8F1A' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11'%3E%3Cpath d='M1.8 5.6l2.6 2.6 5-5.4' fill='none' stroke='%232F8F1A' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 html:root[data-style="luna"] [role="radio"]::before {
   content: '';
@@ -198,13 +356,35 @@ html:root[data-style="luna"] [role="radio"]::before {
   vertical-align: -2px;
   border-radius: 50%;
   border: 1px solid #1C5180;
-  background: var(--bg-card);
+  background: radial-gradient(circle at 35% 30%, var(--bg-card), var(--bg-sunken));
 }
-html:root[data-style="luna"] [role="radio"][aria-checked="true"]::before { background: radial-gradient(circle, #3E9A24 0 38%, var(--bg-card) 42%); }
-html:root[data-style="luna"] .og-switch .track { border-radius: 9px; background-color: var(--bg-sunken); border-color: #7F9DB9; }
-html:root[data-style="luna"] .og-switch .track::after { border-radius: 50%; }
-html:root[data-style="luna"] input[type="range"]::-webkit-slider-thumb { border-radius: 3px 3px 7px 7px; background-color: var(--bg-card); background-image: linear-gradient(180deg, #FFFFFF, #DDE8D0); }
-html:root[data-style="luna"] input[type="range"]::-moz-range-thumb { border-radius: 3px 3px 7px 7px; background-color: var(--bg-card); background-image: linear-gradient(180deg, #FFFFFF, #DDE8D0); }
+html:root[data-style="luna"] [role="radio"]:hover::before { box-shadow: inset 0 0 0 1px #FFF3D6, inset 0 0 0 2px var(--xp-orange); }
+html:root[data-style="luna"] [role="radio"][aria-checked="true"]::before { background: radial-gradient(circle, #3E9A24 0 36%, var(--bg-card) 42%); }
+html:root[data-style="luna"] .og-switch .track { border-radius: 9px; background-color: var(--bg-sunken); box-shadow: inset 1px 1px 2px rgba(30, 60, 120, .3); }
+html:root[data-style="luna"] .og-switch .track::after { border-radius: 50%; background-image: linear-gradient(180deg, rgba(255, 255, 255, .6), rgba(255, 255, 255, 0) 65%); box-shadow: 0 1px 1px rgba(0, 20, 80, .4); }
+
+/* ---- the trackbar: a groove, and a thumb that points down ---- */
+html:root[data-style="luna"] input[type="range"]::-webkit-slider-thumb {
+  border-radius: 2px 2px 0 0;
+  clip-path: polygon(0 0, 100% 0, 100% 62%, 50% 100%, 0 62%);
+  background-color: var(--bg-card);
+  background-image:
+    linear-gradient(to top right, transparent calc(50% - 1px), var(--tx-val) calc(50% - 1px) calc(50% + .5px), transparent calc(50% + .5px)),
+    linear-gradient(to top left, transparent calc(50% - 1px), var(--tx-val) calc(50% - 1px) calc(50% + .5px), transparent calc(50% + .5px)),
+    linear-gradient(180deg, #FFFFFF, var(--xp-th-b));
+  background-size: 50% 38%, 50% 38%, 100% 100%;
+  background-position: left bottom, right bottom, 0 0;
+  background-repeat: no-repeat;
+}
+html:root[data-style="luna"] input[type="range"]::-moz-range-thumb { border-radius: 2px 2px 7px 7px; background-color: var(--bg-card); background-image: linear-gradient(180deg, #FFFFFF, var(--xp-th-b)); }
+html:root[data-style="luna"] input[type="range"]:hover::-webkit-slider-thumb {
+  background-image:
+    linear-gradient(to top right, transparent calc(50% - 1px), var(--tx-val) calc(50% - 1px) calc(50% + .5px), transparent calc(50% + .5px)),
+    linear-gradient(to top left, transparent calc(50% - 1px), var(--tx-val) calc(50% - 1px) calc(50% + .5px), transparent calc(50% + .5px)),
+    linear-gradient(180deg, #FFF3D6, #F9CE86);
+}
+
+/* ---- progress: green blocks in a sunken trough (a plugin's own <progress>, and the player's seek bar) ---- */
 html:root[data-style="luna"] progress {
   appearance: none;
   -webkit-appearance: none;
@@ -217,35 +397,143 @@ html:root[data-style="luna"] progress {
 html:root[data-style="luna"] progress::-webkit-progress-bar { background: var(--bg-card); }
 html:root[data-style="luna"] progress::-webkit-progress-value { background-image: repeating-linear-gradient(90deg, #3EC21E 0 7px, transparent 7px 9px); background-color: transparent; border-radius: 2px; }
 html:root[data-style="luna"] progress::-moz-progress-bar { background-image: repeating-linear-gradient(90deg, #3EC21E 0 7px, transparent 7px 9px); background-color: transparent; }
-html:root[data-style="luna"] .og-screen { border-radius: 2px; border-color: #7F9DB9; }
+html:root[data-style="luna"] .ui-scrub-track,
+html:root[data-style="luna"] .ui-scrub:is(:hover, [data-drag]) .ui-scrub-track {
+  height: 10px;
+  border-radius: 3px;
+  border: 1px solid #686868;
+  background: var(--bg-card);
+  box-shadow: inset 1px 1px 1px rgba(30, 60, 120, .2);
+}
+html:root[data-style="luna"] .ui-scrub-buf { background: repeating-linear-gradient(90deg, #BFD3F8 0 7px, transparent 7px 9px); }
+html:root[data-style="luna"] .ui-scrub-played { background: repeating-linear-gradient(90deg, #3EC21E 0 7px, transparent 7px 9px); }
+html:root[data-style="luna"] .ui-scrub-played::after {
+  right: -5px;
+  width: 9px;
+  height: 18px;
+  translate: 0 -9px;
+  border-radius: 2px;
+  background-color: var(--bg-card);
+  background-image: linear-gradient(180deg, #FFFFFF, var(--xp-th-b));
+  box-shadow: inset 0 0 0 1px var(--xp-th-edge);
+}
+html:root[data-style="luna"] .og-screen { border-radius: 2px; border-color: var(--xp-field); }
 
 /* ---- tabs: rounded tops, an orange line on the one in front ---- */
 html:root[data-style="luna"] [role="tab"]:not([data-part="rail-tab"]) { border-radius: 3px 3px 0 0; }
 html:root[data-style="luna"] [role="tab"][aria-selected="true"]:not([data-part="rail-tab"]),
 html:root[data-style="luna"] .tabs button.on { background-image: linear-gradient(var(--xp-orange), var(--xp-orange)), var(--xp-face); background-size: 100% 2px, 100% 100%; background-position: top, center; background-repeat: no-repeat; }
 
-/* ---- the status bar ---- */
-html:root[data-style="luna"] [data-part="status-row"],
+/* ---- menus and tips: a white menu with a blue title and a blue selection, a pale yellow tip ---- */
+html:root[data-style="luna"] .ui-menu {
+  background-color: var(--bg-card);
+  border: 1px solid var(--xp-edge);
+  border-radius: 3px;
+  box-shadow: 3px 3px 5px rgba(0, 0, 0, .35);
+}
+html:root[data-style="luna"] .ui-menu-h { background-color: var(--xp-title-bg); background-image: var(--xp-title); border-bottom: 1px solid var(--xp-frame); margin-top: calc(var(--sp-2) * -1); padding-top: var(--sp-2); }
+html:root[data-style="luna"] .ui-menu-t { color: var(--xp-ink); font-weight: 700; font-family: var(--font-head); text-shadow: 1px 1px 0 var(--xp-ink-sh); }
+html:root[data-style="luna"] .ui-menu-d { color: var(--xp-ink); opacity: .9; }
+html:root[data-style="luna"] .ui-menu-sec { color: var(--xp-grp); border-top-color: var(--line-2); font-weight: 700; letter-spacing: .04em; }
+html:root[data-style="luna"] .ui-menu-i:hover:not(:disabled),
+html:root[data-style="luna"] .ui-menu-i:focus-visible,
+html:root[data-style="luna"] .ui-menu-i[aria-expanded="true"] { background-color: var(--xp-sel); color: #fff; }
+html:root[data-style="luna"] .ui-menu-i:hover:not(:disabled)::after,
+html:root[data-style="luna"] .ui-menu-i:focus-visible::after { color: #fff; }
+html:root[data-style="luna"] .ui-menu-i:focus-visible { outline: 1px dotted #fff; outline-offset: -3px; }
+html:root[data-style="luna"] .ui-sheet:popover-open,
+html:root[data-style="luna"] .ui-sheet[data-form="drawer"] { border-color: var(--xp-edge); box-shadow: 3px 3px 6px rgba(0, 0, 0, .35); }
+html:root[data-style="luna"] #ph-tip {
+  background-color: #FFFFE1;
+  color: #000;
+  border: 1px solid #000;
+  outline: none;
+  border-radius: 4px;
+  box-shadow: 2px 2px 3px rgba(0, 0, 0, .35);
+}
+
+/* ---- the window's status bar ---- */
 html:root[data-style="luna"] [data-part="page-foot"] {
   background-color: var(--bg-raised);
   background-image: linear-gradient(180deg, var(--bg-raised), var(--bg));
-  border-top: 1px solid #7F9DB9;
+  border-top: 1px solid var(--xp-field);
 }
 
-/* ---- scrollbars: the wide pale track, the blue thumb with its grip ---- */
+/* ---- the taskbar: the link status row. The label is the green start pill, the right end is the tray. ---- */
+html:root[data-style="luna"] [data-part="status-row"] {
+  color: var(--xp-tb-ink);
+  background-color: var(--xp-tb);
+  background-image:
+    linear-gradient(90deg, var(--xp-tb-lo) 0, var(--xp-tb-lo) 1px, transparent 1px) right / 172px 100% no-repeat,
+    linear-gradient(180deg, var(--xp-tray-a), var(--xp-tray-b)) right / 172px 100% no-repeat,
+    linear-gradient(180deg, var(--xp-tb-hi) 0, var(--xp-tb) 12%, var(--xp-tb) 80%, var(--xp-tb-lo) 100%);
+  border-top: 1px solid var(--xp-tb-lo);
+}
+html:root[data-style="luna"] [data-part="status-row"] .k { color: var(--xp-tb-ink2); }
+html:root[data-style="luna"] [data-part="status-row"] .v { color: var(--xp-tb-ink); }
+html:root[data-style="luna"] [data-part="status-row"] .fact-btn:hover .v { text-decoration: underline; color: var(--xp-tb-ink); }
+html:root[data-style="luna"] [data-part="status-row"] > .fs-label {
+  align-self: stretch;
+  line-height: 33px;
+  margin: calc(-.727em - 1px) -4px calc(-.727em) calc(-1.09em);
+  padding: 0 14px 0 16px;
+  color: #fff;
+  font-family: var(--font-head);
+  font-style: italic;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0;
+  text-transform: lowercase;
+  text-shadow: 1px 1px 1px #1B4F1B;
+  border-radius: 0 12px 12px 0;
+  background-color: #2C842C;
+  background-image: radial-gradient(ellipse 100% 55% at 40% 4%, rgba(255, 255, 255, .45), transparent 70%), linear-gradient(180deg, #5BBE5B 0, #35963A 18%, #2C842C 60%, #26762A 100%);
+  box-shadow: inset -1px 0 0 rgba(0, 40, 0, .5), 1px 0 2px rgba(0, 0, 0, .4);
+}
+html:root[data-style="luna"] [data-part="status-row"] .foot-end { padding-left: 4px; }
+html:root[data-style="luna"] [data-part="status-row"] .foot-scale output { color: var(--xp-tb-ink); }
+
+/* ---- scrollbars: a pale track, arrow buttons, a blue thumb with its grip ---- */
 html:root[data-style="luna"] * { scrollbar-width: auto; scrollbar-color: auto; }
-html:root[data-style="luna"] ::-webkit-scrollbar { width: 16px; height: 16px; }
-html:root[data-style="luna"] ::-webkit-scrollbar-track { background: var(--bg-sunken); border-left: 1px solid #D5DBEA; }
+html:root[data-style="luna"] ::-webkit-scrollbar { width: 17px; height: 17px; }
+html:root[data-style="luna"] ::-webkit-scrollbar-track { background: linear-gradient(90deg, var(--bg-raised), var(--bg-card) 50%, var(--bg-raised)); border-left: 1px solid var(--line-1); }
+html:root[data-style="luna"] ::-webkit-scrollbar-track:horizontal { background: linear-gradient(180deg, var(--bg-raised), var(--bg-card) 50%, var(--bg-raised)); border-left: 0; border-top: 1px solid var(--line-1); }
+html:root[data-style="luna"] ::-webkit-scrollbar-corner { background: var(--bg-raised); }
 html:root[data-style="luna"] ::-webkit-scrollbar-thumb {
   border-radius: 3px;
-  border: 1px solid #7B9EE5;
-  background-color: #C8DAFB;
-  background-image:
-    repeating-linear-gradient(0deg, transparent 0 2px, rgba(60, 100, 190, .55) 2px 3px) center / 7px 9px no-repeat,
-    linear-gradient(90deg, #E4EDFF, #BFD3F8 50%, #9FBAF0);
+  border: 1px solid var(--xp-th-edge);
+  background-color: var(--xp-th-b);
+  background-image: repeating-linear-gradient(0deg, transparent 0 2px, var(--xp-grip) 2px 3px), linear-gradient(90deg, var(--xp-th-a), var(--xp-th-b) 50%, var(--xp-th-c));
+  background-size: 9px 11px, 100% 100%;
+  background-position: center, 0 0;
+  background-repeat: no-repeat;
 }
 html:root[data-style="luna"] ::-webkit-scrollbar-thumb:horizontal {
-  background-image:
-    repeating-linear-gradient(90deg, transparent 0 2px, rgba(60, 100, 190, .55) 2px 3px) center / 9px 7px no-repeat,
-    linear-gradient(180deg, #E4EDFF, #BFD3F8 50%, #9FBAF0);
+  background-image: repeating-linear-gradient(90deg, transparent 0 2px, var(--xp-grip) 2px 3px), linear-gradient(180deg, var(--xp-th-a), var(--xp-th-b) 50%, var(--xp-th-c));
+  background-size: 11px 9px, 100% 100%;
+}
+html:root[data-style="luna"] ::-webkit-scrollbar-thumb:hover { filter: brightness(1.06); }
+html:root[data-style="luna"] ::-webkit-scrollbar-button:single-button {
+  width: 17px;
+  height: 17px;
+  box-sizing: border-box;
+  border: 1px solid #fff;
+  border-radius: 3px;
+  background-color: var(--xp-cap-b);
+  background-repeat: no-repeat;
+  background-position: center, 0 0;
+  background-size: 9px 9px, 100% 100%;
+}
+html:root[data-style="luna"] ::-webkit-scrollbar-button:single-button:hover { border-color: #FFF3D6; box-shadow: inset 0 0 0 1px var(--xp-orange); }
+html:root[data-style="luna"] ::-webkit-scrollbar-button:single-button:vertical:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 9'%3E%3Cpath d='M1.5 6l3-3 3 3' fill='none' stroke='%23fff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"), linear-gradient(135deg, var(--xp-cap-a), var(--xp-cap-b) 50%, var(--xp-cap-c));
+}
+html:root[data-style="luna"] ::-webkit-scrollbar-button:single-button:vertical:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 9'%3E%3Cpath d='M1.5 3l3 3 3-3' fill='none' stroke='%23fff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"), linear-gradient(135deg, var(--xp-cap-a), var(--xp-cap-b) 50%, var(--xp-cap-c));
+}
+html:root[data-style="luna"] ::-webkit-scrollbar-button:single-button:horizontal:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 9'%3E%3Cpath d='M6 1.5l-3 3 3 3' fill='none' stroke='%23fff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"), linear-gradient(135deg, var(--xp-cap-a), var(--xp-cap-b) 50%, var(--xp-cap-c));
+}
+html:root[data-style="luna"] ::-webkit-scrollbar-button:single-button:horizontal:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 9'%3E%3Cpath d='M3 1.5l3 3-3 3' fill='none' stroke='%23fff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"), linear-gradient(135deg, var(--xp-cap-a), var(--xp-cap-b) 50%, var(--xp-cap-c));
 }
