@@ -64,7 +64,7 @@ html:root[data-style="notebook"] {
   --nb-rule2: rgba(60, 100, 170, .12);
   --nb-margin: rgba(212, 118, 124, .5);
   --nb-mx: 194px;
-  --nb-tape: rgba(232, 214, 166, .78);
+  --nb-tape: rgba(224, 198, 130, .9);
   --nb-tape-edge: rgba(140, 116, 64, .4);
   --nb-sticky: #FFF3A6;
   --nb-sticky2: #BFE9D2;
@@ -369,6 +369,8 @@ html:root[data-style="notebook"] .rail-glyph { transform: rotate(-4deg); }
 html:root[data-style="notebook"] :is([data-part="card"], [data-part="nest"], [data-part="panel"], .og-panel.pane-sec) { position: relative; }
 html:root[data-style="notebook"] :is([data-part="card"], [data-part="nest"], [data-part="panel"], .og-panel.pane-sec, .surface-card:not(.ui-sheet), .surface-nest) { border-radius: var(--nb-rc); }
 html:root[data-style="notebook"] :is([data-part="card"], .surface-card:not(.ui-sheet)) { box-shadow: 2px 3px 0 var(--nb-shadow); }
+/* The pen outline is a masked overlay: an engine without mask-box-image keeps the plain border. */
+@supports (-webkit-mask-box-image: none) {
 html:root[data-style="notebook"] :is([data-part="card"], [data-part="nest"], [data-part="panel"], .og-panel.pane-sec)::after {
   content: '';
   position: absolute;
@@ -379,13 +381,14 @@ html:root[data-style="notebook"] :is([data-part="card"], [data-part="nest"], [da
   opacity: .88;
 }
 html:root[data-style="notebook"] [data-part="nest"]::after { -webkit-mask-box-image: var(--nb-box-dash) 20 / 6px / 0 round; opacity: .6; }
+}
 html:root[data-style="notebook"] [data-part="card"]::before {
   content: '';
   position: absolute;
-  left: -19px;
-  bottom: -7px;
-  width: 38px;
-  height: 14px;
+  left: -11px;
+  bottom: -1px;
+  width: 32px;
+  height: 12px;
   transform: rotate(45deg);
   pointer-events: none;
   background-color: var(--nb-tape);
@@ -394,10 +397,10 @@ html:root[data-style="notebook"] [data-part="card"]::before {
   clip-path: polygon(0 0, 100% 0, 96% 25%, 100% 50%, 96% 75%, 100% 100%, 0 100%, 4% 75%, 0 50%, 4% 25%);
   z-index: 3;
 }
-html:root[data-style="notebook"] .dash-item:nth-child(even) > [data-part="card"]::before { left: auto; right: -19px; transform: rotate(-45deg); }
-html:root[data-style="notebook"] .dash-item:nth-child(3n) > [data-part="card"] { background-color: color-mix(in srgb, var(--bg-card) 78%, var(--nb-sticky)); }
-html:root[data-style="notebook"] .dash-item:nth-child(3n + 1):not(:first-child) > [data-part="card"] { background-color: color-mix(in srgb, var(--bg-card) 84%, var(--nb-sticky2)); }
-html:root[data-style="notebook"] .dash-item:nth-child(3n) > [data-part="card"]::before {
+html:root[data-style="notebook"] .dash-cell:nth-child(even) > .dash-item > [data-part="card"]::before { left: auto; right: -11px; transform: rotate(-45deg); }
+html:root[data-style="notebook"] .dash-cell:nth-child(3n) > .dash-item > [data-part="card"] { background-color: color-mix(in srgb, var(--bg-card) 78%, var(--nb-sticky)); }
+html:root[data-style="notebook"] .dash-cell:nth-child(3n + 1):not(:first-child) > .dash-item > [data-part="card"] { background-color: color-mix(in srgb, var(--bg-card) 84%, var(--nb-sticky2)); }
+html:root[data-style="notebook"] .dash-cell:nth-child(3n) > .dash-item > [data-part="card"]::before {
   left: auto;
   right: 0;
   bottom: 0;
@@ -647,8 +650,10 @@ html:root[data-style="notebook"] ::-webkit-scrollbar-thumb:horizontal { border-r
   50% { transform: translate(.7px, -.6px) rotate(.08deg); }
   100% { transform: translate(0, 0) rotate(0deg); }
 }
-html:root[data-style="notebook"]:not(.still):not(.hivis) :is([data-part="card"], [data-part="nest"], [data-part="panel"], .og-panel.pane-sec)::after {
-  animation: theme-notebook-boil 1.6s steps(1, end) infinite;
+@supports (-webkit-mask-box-image: none) {
+  html:root[data-style="notebook"]:not(.still):not(.hivis) :is([data-part="card"], [data-part="nest"], [data-part="panel"], .og-panel.pane-sec)::after {
+    animation: theme-notebook-boil 1.6s steps(1, end) infinite;
+  }
 }
 html:root[data-style="notebook"]:not(.still):not(.hivis) [data-part="rail-tab"].on::after {
   animation: theme-notebook-boil 1.3s steps(1, end) infinite;
