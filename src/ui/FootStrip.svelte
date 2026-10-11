@@ -41,6 +41,7 @@
    *   arrival with the first pin moves nothing; the phone class has no dock
    *   and no slot (DESIGN §10.13).
    */
+  import { untrack } from 'svelte';
   import { machine } from '../model/machine.svelte.js';
   import { since, clock, compact, seconds } from '../model/format.js';
   import ScaleControl from './ScaleControl.svelte';
@@ -73,7 +74,9 @@
   const offsetUs = $derived(machine.stats.clockOffsetUs);
   const rttUs = $derived(machine.stats.clockRttUs);
   const usTitle = (us) => (us != null ? us + ' µs' : undefined);
-  const rxAge = $derived(ageLabel(machine.stats.lastRxMs, nowTick));
+  // Per-frame counters read on the tick: a write per STATE push is a style pass per push.
+  const rxAge = $derived(ageLabel(untrack(() => machine.stats.lastRxMs), nowTick));
+  const pushes = $derived((void nowTick, untrack(() => machine.stats.statePushes)));
 
   // Session age off machine.link.since, which the link sets when the phase
   // last changed. Milliseconds are behind a click: the digit changes 1000x a
@@ -96,7 +99,7 @@
 
   <div class="facts">
     <span data-part="status-fact" class="fact d6" data-tip="{machine.stats.reconnects} reconnects"><span class="k">reconnects</span><span class="v mono" style="--w: 3ch">{compact(machine.stats.reconnects)}</span></span>
-    <span data-part="status-fact" class="fact d4" data-tip="{machine.stats.statePushes} state pushes"><span class="k">state pushes</span><span class="v mono" style="--w: 5ch">{compact(machine.stats.statePushes)}</span></span>
+    <span data-part="status-fact" class="fact d4" data-tip="{pushes} state pushes"><span class="k">state pushes</span><span class="v mono" style="--w: 5ch">{compact(pushes)}</span></span>
     <span data-part="status-fact" class="fact d1" data-tip={usTitle(offsetUs)}><span class="k">clock offset</span><span class="v mono" style="--w: 11ch">{offsetUs != null ? seconds(offsetUs) : '--'}</span></span>
     <span data-part="status-fact" class="fact d2" data-tip={usTitle(rttUs)}><span class="k">clock rtt</span><span class="v mono" style="--w: 7ch">{rttUs != null ? seconds(rttUs) : '--'}</span></span>
     <span data-part="status-fact" class="fact d3" data-tip={deadmanMs ? deadmanMs + ' ms' : undefined}><span class="k">deadman</span><span class="v mono" style="--w: 5ch">{deadman}</span></span>

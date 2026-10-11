@@ -12,7 +12,7 @@
  * - Staging takes only what the virtual hub ECHOed (merge.js).
  * - The built-in machine is the Nucleus twin compiled to wasm (integral.worker.js), on every platform. It
  *   is a full hub joined by the normal connect over an in-page socket; only its host marks it (onSim). It
- *   stops on any disconnect; its state blob persists in localStorage under STATE_KEY.
+ *   stops on any disconnect, never on a hidden page; its state blob persists in localStorage under STATE_KEY.
  * - Open to LAN (lan.svelte.js) shares this hub while it runs. Opened to the LAN, it boots with its pairing
  *   window closed: the Pairing window button is the gesture, never a stranger's race to the boot window.
  */
@@ -22,7 +22,7 @@ import IntegralWorker from '../model/integral.worker.js?worker&inline';
 import { WASM } from '../model/integral/bytes.js';
 import { bridgeIntegral } from '../model/integral-bridge.js';
 import { BUILTIN_MACHINE_NAME } from '../model/builtin.js';
-import { connect, disconnect, machine } from '../model/machine.svelte.js';
+import { connect, disconnect, getSession, machine } from '../model/machine.svelte.js';
 import { loadMachine, hubOptions, catalogStoreFor } from '../model/vault.js';
 import { loadStaging, saveStaging, stageEcho } from '../model/merge.js';
 import { hubs } from './hubs.svelte.js';
@@ -51,7 +51,8 @@ function stopSim() {
 $effect.root(() => {
   $effect(() => {
     const l = machine.link;
-    if (sim.info && (l.phase === 'idle' || l.host !== HOST)) untrack(stopSim);
+    // A hidden page's idle keeps its session (machine.svelte.js, the alt-tab problem) and comes back to this machine.
+    if (sim.info && (l.host !== HOST || (l.phase === 'idle' && !getSession()))) untrack(stopSim);
   });
 });
 
