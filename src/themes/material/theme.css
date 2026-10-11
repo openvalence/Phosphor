@@ -163,7 +163,7 @@ html:root[data-style="material"] [data-part="caption-btn"][aria-expanded="true"]
 html:root[data-style="material"] [data-part="rail"] { background-color: var(--md-s1); border-radius: 0 var(--md-r-nav) var(--md-r-nav) 0; border-color: var(--md-hairline); }
 html:root[data-style="material"] [data-part="rail"] .rail-sec + .rail-sec { border-top-color: var(--md-hairline); }
 html:root[data-style="material"] [data-part="rail-label"] { font-family: var(--font-head); font-weight: 500; text-transform: none; letter-spacing: .03em; font-size: .78rem; color: var(--tx-val); padding-left: 16px; }
-html:root[data-style="material"] [data-part="rail-tab"] { border-radius: 999px; min-height: 38px; padding-inline: 16px; gap: 12px; font-weight: 500; letter-spacing: .01em; border-color: transparent; transition: background-color var(--t-move) var(--md-spring), color var(--t-quick) var(--ease-out); }
+html:root[data-style="material"] [data-part="rail-tab"] { border-radius: 999px; min-height: 38px; padding-inline: 16px; gap: 12px; font-weight: 500; letter-spacing: .01em; border-color: transparent; transition: background-color var(--t-move) var(--md-spring); }
 html:root[data-style="material"] [data-part="rail-tab"]:hover { background-color: transparent; color: var(--tx-hi); }
 html:root[data-style="material"] [data-part="rail-tab"].on { background-color: var(--md-sc); border-color: transparent; color: var(--md-on-sc); }
 html:root[data-style="material"] [data-part="rail-tab"].sub { font-weight: 400; }
@@ -192,7 +192,7 @@ html:root[data-style="material"] [data-part="panel-bar"] .dash-title { font-weig
 
 /* ---- buttons: tonal by default, outlined when small, filled for the primary action,
    the extended FAB for a big primary; state layers do the hover and the press ---- */
-html:root[data-style="material"] :is(.og-btn, .og-seg button, .stepper button) { border-radius: var(--md-r-btn); font-weight: 500; letter-spacing: .01em; font-family: var(--font); transition: background-color var(--t-quick) var(--ease-out), box-shadow var(--t-move) var(--ease-out), border-radius var(--t-move) var(--md-spring), color var(--t-quick) var(--ease-out); }
+html:root[data-style="material"] :is(.og-btn, .og-seg button, .stepper button) { border-radius: var(--md-r-btn); font-weight: 500; letter-spacing: .01em; font-family: var(--font); transition: box-shadow var(--t-move) var(--ease-out), border-radius var(--t-move) var(--md-spring); }
 html:root[data-style="material"] .og-btn:not(.on):not(.primary):not(.running):not(.danger) { background-color: var(--md-sc); color: var(--md-on-sc); border-color: transparent; }
 html:root[data-style="material"] .og-btn.sm:not(.on):not(.primary):not(.running):not(.danger) { background-color: transparent; color: var(--reality); border-color: var(--md-outline); }
 html:root[data-style="material"] .og-btn.on:not(.primary):not(.running):not(.danger) { background-color: var(--md-pc); color: var(--md-on-pc); border-color: transparent; box-shadow: none; }
