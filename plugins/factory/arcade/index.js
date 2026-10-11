@@ -26,7 +26,7 @@ const CSS = `
 .arc-page .arc-warn { margin: 0; color: var(--tx-mut); font-size: .82rem; }
 .arc-page .arc-note { margin: 0; min-height: 1.4em; color: var(--tx); font-size: .82rem; }
 .arc-page .arc-map { margin: 0; color: var(--tx-mut); font-size: .82rem; }
-.arc-page canvas { display: block; width: min(100%, max(320px, calc((100dvh - 480px) * 4 / 3))); aspect-ratio: 4 / 3;
+.arc-page canvas { display: block; width: min(100%, max(320px, calc((100dvh - 600px) * 4 / 3))); aspect-ratio: 4 / 3;
   image-rendering: pixelated; background: #0000AA; outline: none; touch-action: none; }
 .arc-page canvas:focus-visible { outline: 2px dotted var(--highlight); outline-offset: 2px; }
 `;
