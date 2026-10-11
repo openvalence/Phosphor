@@ -1,56 +1,439 @@
-/* Blueprint: white lines on drafting blue. Grid paper under the page and the cards,
-   dashed frames, no corners, wide-set titles. The blues are pinned in the manifest. */
+/* Blueprint: an engineering drawing. Cyanotype blue under a fine grid, white pen linework,
+   dimension lines and leaders on the numerals and the fields, a title block in the status
+   row, hatched fills for hover and press, stencil capitals. Controls are drawn as schematic
+   symbols (a switch is an SPST knife, the rail an axis). Lines are visible (solid) or hidden
+   (dashed: an input is a hidden line, a slot to fill).
+
+   Variants: Cyanotype (the Theme), Whiteprint (diazo: blue ink on white) and CAD (a dark model
+   space with a dot grid and layer colors). The layer tokens --bp-gc (line ink), --bp-frame and
+   --bp-dim are per Variant; every surface under text is a chassis token, so the contrast guard
+   holds. No red or amber anywhere: the safety colors stay the shell's.
+   Fonts: Share Tech, Share Tech Mono and Allerta Stencil (OFL, ./fonts/OFL.txt). */
+@font-face { font-family: 'BP Share Tech'; src: url('./fonts/ShareTech.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'BP Share Tech Mono'; src: url('./fonts/ShareTechMono.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'BP Stencil'; src: url('./fonts/AllertaStencil.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+
 html:root[data-style="blueprint"] {
-  --font: Bahnschrift, 'DIN Alternate', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-head: 'Bahnschrift SemiBold', Bahnschrift, 'DIN Alternate', 'Arial Narrow', 'Segoe UI', sans-serif;
-  --mono: 'Cascadia Mono', Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace;
+  --font: 'BP Share Tech', Bahnschrift, 'DIN Alternate', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-head: 'BP Stencil', 'Bahnschrift SemiBold', Bahnschrift, 'Arial Narrow', 'Segoe UI', sans-serif;
+  --mono: 'BP Share Tech Mono', 'Cascadia Mono', Consolas, 'DejaVu Sans Mono', monospace;
   --frame-w: 1px;
+  font-synthesis: none;
+
+  /* The layers: line ink (rgb), frames, dimension lines. */
+  --bp-gc: 255, 255, 255;
+  --bp-frame: var(--line-3);
+  --bp-dim: var(--reality);
+  --bp-hatch: repeating-linear-gradient(135deg, rgba(var(--bp-gc), .14) 0 1px, transparent 1px 5px);
+  --bp-hatch-hi: repeating-linear-gradient(135deg, rgba(var(--bp-gc), .28) 0 1px, transparent 1px 4px);
+
+  /* A dimension line in the current color: the line, two extension lines, two arrowheads (conic wedges). */
+  --bp-dimline:
+    linear-gradient(currentColor, currentColor) 0 50% / 100% 1px no-repeat,
+    linear-gradient(currentColor, currentColor) 0 0 / 1px 100% no-repeat,
+    linear-gradient(currentColor, currentColor) 100% 0 / 1px 100% no-repeat,
+    conic-gradient(from 70deg at 0 50%, currentColor 0 38deg, transparent 40deg) 0 50% / 9px 7px no-repeat,
+    conic-gradient(from 250deg at 100% 50%, currentColor 0 38deg, transparent 40deg) 100% 50% / 9px 7px no-repeat;
+  /* The same line without extension lines, for a bar of its own. */
+  --bp-dimbar:
+    linear-gradient(currentColor, currentColor) 0 50% / 100% 1px no-repeat,
+    conic-gradient(from 70deg at 0 50%, currentColor 0 38deg, transparent 40deg) 0 50% / 9px 7px no-repeat,
+    conic-gradient(from 250deg at 100% 50%, currentColor 0 38deg, transparent 40deg) 100% 50% / 9px 7px no-repeat;
+  /* A dashed leader ending in an arrowhead that points at what it names. */
+  --bp-leader:
+    repeating-linear-gradient(90deg, currentColor 0 4px, transparent 4px 7px) 0 50% / 100% 1px no-repeat,
+    conic-gradient(from 250deg at 100% 50%, currentColor 0 38deg, transparent 40deg) 100% 50% / 8px 7px no-repeat;
+
   --tex-page:
-    linear-gradient(rgba(255, 255, 255, .07) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, .07) 1px, transparent 1px),
-    linear-gradient(rgba(255, 255, 255, .035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, .035) 1px, transparent 1px);
+    linear-gradient(rgba(var(--bp-gc), .1) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(var(--bp-gc), .1) 1px, transparent 1px),
+    linear-gradient(rgba(var(--bp-gc), .045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(var(--bp-gc), .045) 1px, transparent 1px);
   --tex-page-size: 96px 96px, 96px 96px, 16px 16px, 16px 16px;
   --tex-card:
-    linear-gradient(rgba(255, 255, 255, .04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, .04) 1px, transparent 1px);
+    linear-gradient(rgba(var(--bp-gc), .05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(var(--bp-gc), .05) 1px, transparent 1px);
   --tex-card-size: 16px 16px;
 }
+/* Whiteprint: blue ink on white, the grid a pale blue. */
+html:root[data-style="blueprint"][data-variant="blueprint-whiteprint"] {
+  --bp-gc: 20, 80, 160;
+  --tex-page:
+    linear-gradient(rgba(var(--bp-gc), .18) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(var(--bp-gc), .18) 1px, transparent 1px),
+    linear-gradient(rgba(var(--bp-gc), .08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(var(--bp-gc), .08) 1px, transparent 1px);
+  --tex-card:
+    linear-gradient(rgba(var(--bp-gc), .07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(var(--bp-gc), .07) 1px, transparent 1px);
+  --bp-frame: var(--line-4);
+  --bp-hatch: repeating-linear-gradient(135deg, rgba(var(--bp-gc), .16) 0 1px, transparent 1px 5px);
+  --bp-hatch-hi: repeating-linear-gradient(135deg, rgba(var(--bp-gc), .3) 0 1px, transparent 1px 4px);
+}
+/* CAD: model space. Dots for a grid; cyan for dimensions, green for frames. */
+html:root[data-style="blueprint"][data-variant="blueprint-cad"] {
+  --bp-gc: 51, 225, 232;
+  --bp-frame: #2FB86F;
+  --tex-page:
+    radial-gradient(circle at 0 0, rgba(var(--bp-gc), .5) 0 1.2px, transparent 1.6px),
+    radial-gradient(circle at 0 0, rgba(var(--bp-gc), .22) 0 .8px, transparent 1.2px);
+  --tex-page-size: 96px 96px, 16px 16px;
+  --tex-card: radial-gradient(circle at 0 0, rgba(var(--bp-gc), .2) 0 .8px, transparent 1.2px);
+  --tex-card-size: 16px 16px;
+}
+html:root[data-style="blueprint"] { --bp-sel: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2014%2014'%3E%3Cpath%20d='M2%203h10L7%2010z'%20fill='%23D2E6F8'/%3E%3C/svg%3E"); }
+html:root[data-style="blueprint"][data-variant="blueprint"] { --bp-sel: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2014%2014'%3E%3Cpath%20d='M2%203h10L7%2010z'%20fill='%23D2E6F8'/%3E%3C/svg%3E"); }
+html:root[data-style="blueprint"][data-variant="blueprint-whiteprint"] { --bp-sel: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2014%2014'%3E%3Cpath%20d='M2%203h10L7%2010z'%20fill='%232C5CA0'/%3E%3C/svg%3E"); }
+html:root[data-style="blueprint"][data-variant="blueprint-cad"] { --bp-sel: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2014%2014'%3E%3Cpath%20d='M2%203h10L7%2010z'%20fill='%2386A3C0'/%3E%3C/svg%3E"); }
 
-html:root[data-style="blueprint"] [data-part="bar"] { box-shadow: inset 0 -1px 0 var(--line-3), inset 0 -4px 0 var(--shell-bg), inset 0 -5px 0 var(--line-1); }
-html:root[data-style="blueprint"] [data-part="bar"] .wordmark { font-family: var(--font-head); font-weight: 600; letter-spacing: .16em; text-transform: uppercase; font-size: .85rem; }
-html:root[data-style="blueprint"] [data-part="bar"] .chip { border-radius: 0; }
-html:root[data-style="blueprint"] [data-part="strip"],
+/* ---- the title strip: the bar, a stencil name, a datum on the link dot ---- */
+html:root[data-style="blueprint"] [data-part="bar"] {
+  box-shadow: inset 0 1px 0 var(--line-1), inset 0 -1px 0 var(--line-4), inset 0 -4px 0 var(--shell-bg), inset 0 -5px 0 var(--line-2);
+}
+html:root[data-style="blueprint"] [data-part="bar"] .wordmark { font-family: var(--font-head); letter-spacing: .16em; text-transform: uppercase; font-size: .86rem; color: var(--tx-hi); }
+html:root[data-style="blueprint"] [data-part="bar"] .chip { border-radius: 0; background-color: transparent; border-color: var(--line-2); }
+html:root[data-style="blueprint"] [data-part="bar"] .chip-lbl { font-family: var(--font-head); letter-spacing: .1em; }
+html:root[data-style="blueprint"] .linkdot::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  color: var(--line-3);
+  background:
+    linear-gradient(currentColor, currentColor) 50% 0 / 1px 3px no-repeat,
+    linear-gradient(currentColor, currentColor) 50% 100% / 1px 3px no-repeat,
+    linear-gradient(currentColor, currentColor) 0 50% / 3px 1px no-repeat,
+    linear-gradient(currentColor, currentColor) 100% 50% / 3px 1px no-repeat;
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+html:root[data-style="blueprint"] .heat .blk { border-radius: 0; }
+@keyframes theme-blueprint-sweep { to { transform: rotate(360deg); } }
+html:root[data-style="blueprint"]:not(.still) .linkdot::before { animation: theme-blueprint-sweep 30s linear infinite; }
+
+/* ---- caption buttons: drafting symbols in title-block cells, hatch on hover, a solid cell pressed ---- */
+html:root[data-style="blueprint"] [data-part="caption-btn"] { position: relative; color: var(--tx-hi); background-color: transparent; border-radius: 0; border-left: 1px solid var(--line-2); }
+html:root[data-style="blueprint"] [data-part="caption-btn"] svg { display: none; }
+html:root[data-style="blueprint"] [data-part="caption-btn"]::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  background-color: currentColor;
+  -webkit-mask: var(--bp-cap) center / contain no-repeat;
+  mask: var(--bp-cap) center / contain no-repeat;
+}
+html:root[data-style="blueprint"] [data-part="caption-btn"][data-cap="min"] { --bp-cap: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2014%2014'%3E%3Cpath%20d='M7%201.5v7M3.8%205.6L7%208.8l3.2-3.2M2%2012h10'%20fill='none'%20stroke='%23000'%20stroke-width='1.4'/%3E%3C/svg%3E"); }
+html:root[data-style="blueprint"] [data-part="caption-btn"][data-cap="max"] { --bp-cap: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2014%2014'%3E%3Cpath%20d='M1.8%205V1.8H5M9%201.8h3.2V5M12.2%209v3.2H9M5%2012.2H1.8V9'%20fill='none'%20stroke='%23000'%20stroke-width='1.4'/%3E%3C/svg%3E"); }
+html:root[data-style="blueprint"] [data-part="caption-btn"][data-cap="close"] { --bp-cap: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2014%2014'%3E%3Cpath%20d='M2.6%202.6l8.8%208.8M11.4%202.6l-8.8%208.8'%20fill='none'%20stroke='%23000'%20stroke-width='1.5'/%3E%3C/svg%3E"); }
+html:root[data-style="blueprint"] [data-part="caption-btn"]:hover { background-color: transparent; background-image: var(--bp-hatch-hi); color: var(--tx-hi); }
+html:root[data-style="blueprint"] [data-part="caption-btn"]:active,
+html:root[data-style="blueprint"] [data-part="caption-btn"][aria-expanded="true"] { background-color: var(--tx-hi); background-image: none; color: var(--shell-bg); }
+
+/* ---- the strip: hero numerals with dimension lines, leaders on the side rows ---- */
+html:root[data-style="blueprint"] [data-part="strip"] { background-image: var(--tex-card); background-size: var(--tex-card-size); }
 html:root[data-style="blueprint"] [data-part="hero"] { background-image: var(--tex-card); background-size: var(--tex-card-size); }
 html:root[data-style="blueprint"] [data-part="stop-frame"] { outline: 1px dashed var(--line-3); outline-offset: 4px; }
+html:root[data-style="blueprint"] .hn-primary .hn-val { position: relative; }
+html:root[data-style="blueprint"] .hn-primary .hn-val::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -9px;
+  height: 7px;
+  color: var(--bp-dim);
+  opacity: .8;
+  background: var(--bp-dimline);
+  pointer-events: none;
+}
+html:root[data-style="blueprint"] .hn-primary .hn-label { font-family: var(--font-head); letter-spacing: .08em; }
+html:root[data-style="blueprint"] .hn-col .hn-label { font-family: var(--font-head); letter-spacing: .06em; }
+html:root[data-style="blueprint"] .hn-col .hn-label::after {
+  content: '';
+  width: 14px;
+  height: 7px;
+  margin-left: 2px;
+  color: var(--bp-dim);
+  opacity: .8;
+  background: var(--bp-leader);
+}
 
-html:root[data-style="blueprint"] [data-part="rail"] { border-right: 1px dashed var(--line-3); border-color: var(--line-1); border-radius: 0; background-image: var(--tex-card); background-size: var(--tex-card-size); }
-html:root[data-style="blueprint"] [data-part="rail-label"] { font-family: var(--font-head); letter-spacing: .2em; border-bottom: 1px dashed var(--line-2); margin: 0 6px 2px; padding-inline: var(--sp-2); }
-html:root[data-style="blueprint"] [data-part="rail-tab"] { border-radius: 0; }
-html:root[data-style="blueprint"] [data-part="rail-tab"].on { border-style: dashed; border-color: var(--line-3); background-color: transparent; }
-html:root[data-style="blueprint"] .rail-sec.shell { border-style: dashed; }
+/* ---- the rail scope: an axis with a dimension line on its top edge ---- */
+html:root[data-style="blueprint"] .spine-rail-host { border-color: var(--bp-frame); border-radius: 0; box-shadow: inset 0 0 0 3px var(--bg-sunken), inset 0 0 0 4px var(--line-1); }
+html:root[data-style="blueprint"] .spine-rail-host::before {
+  content: '';
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  top: 5px;
+  height: 7px;
+  color: var(--bp-dim);
+  opacity: .75;
+  background: var(--bp-dimline);
+  pointer-events: none;
+}
+html:root[data-style="blueprint"] .rail-tape-track { border-top-color: var(--line-2); border-bottom-color: var(--line-2); }
+html:root[data-style="blueprint"] .rail-endcap, html:root[data-style="blueprint"] .rail-ghost { font-family: var(--mono); }
 
+/* ---- the sidebar: a drawing index ---- */
+html:root[data-style="blueprint"] [data-part="rail"] { border-color: var(--line-1); border-radius: 0; box-shadow: inset -3px 0 0 var(--bg-raised), inset -4px 0 0 var(--line-1); background-image: var(--tex-card); background-size: var(--tex-card-size); }
+html:root[data-style="blueprint"] [data-part="rail-label"] { position: relative; font-family: var(--font-head); letter-spacing: .2em; font-weight: 400; padding-bottom: calc(var(--sp-2) + 5px); color: var(--tx-hi); }
+html:root[data-style="blueprint"] [data-part="rail-label"]::after {
+  content: '';
+  position: absolute;
+  left: var(--sp-2);
+  right: var(--sp-2);
+  bottom: 0;
+  height: 7px;
+  color: var(--line-3);
+  background: var(--bp-dimbar);
+  pointer-events: none;
+}
+html:root[data-style="blueprint"] [data-part="rail-tab"] { border-radius: 0; font-family: var(--font); letter-spacing: .02em; }
+html:root[data-style="blueprint"] [data-part="rail-tab"]:hover { background-color: transparent; background-image: var(--bp-hatch); border-color: var(--line-2); border-style: dashed; color: var(--tx-hi); }
+html:root[data-style="blueprint"] [data-part="rail-tab"].on { background-color: var(--bg-sunken); background-image: var(--bp-hatch); border-style: solid; border-color: var(--bp-frame); box-shadow: inset 3px 0 0 var(--reality); }
+html:root[data-style="blueprint"] .rail-sec.shell { border-style: dashed; border-color: var(--line-3); border-radius: 0; }
+html:root[data-style="blueprint"] .rail-collapse { border-radius: 0; }
+
+/* ---- cards: a double frame, a balloon for the item number, a drafted title ---- */
 html:root[data-style="blueprint"] [data-part="card"],
 html:root[data-style="blueprint"] [data-part="nest"],
-html:root[data-style="blueprint"] [data-part="panel"] { border-style: dashed; border-color: var(--line-3); border-radius: 0; }
-html:root[data-style="blueprint"] [data-part="card-head"]:not(.over) { border-bottom: 1px solid var(--line-2); margin-bottom: var(--sp-1); }
-html:root[data-style="blueprint"] .dash-title { font-family: var(--font-head); font-weight: 600; letter-spacing: .2em; font-size: .74rem; }
-html:root[data-style="blueprint"] .og-panel { border-style: dashed; border-color: var(--line-3); border-radius: 0; }
-html:root[data-style="blueprint"] .pane-head h2 { font-family: var(--font-head); letter-spacing: .18em; }
+html:root[data-style="blueprint"] [data-part="panel"] { border-color: var(--bp-frame); border-radius: 0; box-shadow: 0 0 0 3px var(--bg), 0 0 0 4px var(--line-1); }
+html:root[data-style="blueprint"] [data-part="nest"] { border-style: dashed; }
+html:root[data-style="blueprint"] [data-part="card-head"]:not(.over) { border-bottom: 1px solid var(--line-2); margin-bottom: var(--sp-2); }
+html:root[data-style="blueprint"] .dash-title { font-family: var(--font-head); font-weight: 400; letter-spacing: .18em; font-size: .78rem; color: var(--tx-hi); }
+html:root[data-style="blueprint"] .dash-title[data-pidx]::before {
+  content: attr(data-pidx);
+  display: inline-block;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  margin-right: 8px;
+  border: 1px solid var(--bp-dim);
+  border-radius: 50%;
+  vertical-align: -3px;
+  text-align: center;
+  line-height: 14px;
+  font-size: .56rem;
+  letter-spacing: 0;
+  color: var(--bp-dim);
+}
+html:root[data-style="blueprint"] .dash-title:not([data-pidx])::before { color: var(--bp-dim); }
+html:root[data-style="blueprint"] .card-sub { font-family: var(--font-head); font-weight: 400; letter-spacing: .14em; }
+html:root[data-style="blueprint"] .og-panel { border-style: solid; border-color: var(--bp-frame); border-radius: 0; outline: 1px dashed var(--line-2); outline-offset: 3px; }
+html:root[data-style="blueprint"] .og-screen { border-radius: 0; border-color: var(--bp-frame); box-shadow: inset 0 0 0 3px var(--bg-sunken), inset 0 0 0 4px var(--line-1); }
+html:root[data-style="blueprint"] .pane-head h2 { font-family: var(--font-head); font-weight: 400; letter-spacing: .2em; }
+html:root[data-style="blueprint"] .field-label { font-family: var(--font); }
+html:root[data-style="blueprint"] .field-label-group::after {
+  content: '';
+  flex: 1 1 8px;
+  min-width: 6px;
+  height: 7px;
+  margin-left: 4px;
+  color: var(--bp-dim);
+  opacity: .7;
+  background: var(--bp-leader);
+}
+html:root[data-style="blueprint"] .field-value { border-radius: 0; }
 
+/* ---- buttons: a drawn box; hatch on hover, a filled cell pressed ---- */
 html:root[data-style="blueprint"] .og-btn,
 html:root[data-style="blueprint"] .og-seg button,
-html:root[data-style="blueprint"] .stepper button { border-radius: 0; }
-html:root[data-style="blueprint"] .og-btn:hover,
-html:root[data-style="blueprint"] .og-seg button:hover { background-color: rgba(255, 255, 255, .09); }
+html:root[data-style="blueprint"] .stepper button { border-radius: 0; font-family: var(--font); letter-spacing: .04em; }
+html:root[data-style="blueprint"] .og-btn:not(.on):not(.primary):not(.running):not(.danger):hover:not(:disabled),
+html:root[data-style="blueprint"] .og-seg button:not(.active):hover:not(:disabled),
+html:root[data-style="blueprint"] .stepper button:hover:not(:disabled) { background-image: var(--bp-hatch); border-color: var(--line-4); }
+html:root[data-style="blueprint"] .og-btn:not(.on):not(.primary):not(.running):not(.danger):active:not(:disabled),
+html:root[data-style="blueprint"] .og-seg button:not(.active):active:not(:disabled),
+html:root[data-style="blueprint"] .stepper button:active:not(:disabled) { background-image: var(--bp-hatch-hi); }
+html:root[data-style="blueprint"] .og-btn.primary:not(:disabled):hover { background-image: var(--bp-hatch); }
+html:root[data-style="blueprint"] .og-btn.on,
+html:root[data-style="blueprint"] .og-seg button.active { background-image: var(--bp-hatch); }
+html:root[data-style="blueprint"] .og-btn:focus-visible,
+html:root[data-style="blueprint"] .og-seg button:focus-visible,
+html:root[data-style="blueprint"] .stepper button:focus-visible { outline-style: dashed; outline-offset: 3px; }
+html:root[data-style="blueprint"] .og-btn:disabled,
+html:root[data-style="blueprint"] .og-btn[aria-disabled="true"],
+html:root[data-style="blueprint"] .og-seg button:disabled,
+html:root[data-style="blueprint"] .stepper button:disabled { background-image: var(--bp-hatch); border-style: dashed; }
+html:root[data-style="blueprint"] [role="tab"]:not([data-part="rail-tab"]) { border-radius: 0; }
+html:root[data-style="blueprint"] [role="tab"][aria-selected="true"]:not([data-part="rail-tab"]),
+html:root[data-style="blueprint"] .tabs button.on { background-image: var(--bp-hatch); box-shadow: inset 0 2px 0 var(--reality); }
+
+/* ---- fields: dashed boxes (hidden lines); a solid line when you are in one ---- */
 html:root[data-style="blueprint"] .og-num,
 html:root[data-style="blueprint"] .value-input,
-html:root[data-style="blueprint"] select { border-radius: 0; border-style: dashed; box-shadow: none; }
-html:root[data-style="blueprint"] .og-switch .track,
-html:root[data-style="blueprint"] .og-switch .track::after { border-radius: 0; }
-html:root[data-style="blueprint"] [data-part="status-row"],
+html:root[data-style="blueprint"] select { border-radius: 0; border-style: dashed; box-shadow: none; background-color: var(--bg-sunken); }
+html:root[data-style="blueprint"] .og-num:focus,
+html:root[data-style="blueprint"] .value-input:focus,
+html:root[data-style="blueprint"] select:focus { border-style: solid; }
+html:root[data-style="blueprint"] select {
+  background-image: var(--bp-sel);
+  background-position: right 7px center;
+  background-size: 11px;
+}
+html:root[data-style="blueprint"] input[type="checkbox"]:not([role="switch"]) {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  width: 15px;
+  height: 15px;
+  border: 1px solid var(--tx-val);
+  border-radius: 0;
+  background-color: var(--bg-sunken);
+}
+html:root[data-style="blueprint"] input[type="checkbox"]:not([role="switch"]):checked { border-color: var(--reality); background-image: var(--bp-hatch); }
+html:root[data-style="blueprint"] input[type="checkbox"]:not([role="switch"]):checked::before {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  background-color: var(--reality);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2012%2012'%3E%3Cpath%20d='M2%207l3.2%203.2L11.5%203'%20fill='none'%20stroke='%23000'%20stroke-width='1.7'/%3E%3C/svg%3E") center / 11px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2012%2012'%3E%3Cpath%20d='M2%207l3.2%203.2L11.5%203'%20fill='none'%20stroke='%23000'%20stroke-width='1.7'/%3E%3C/svg%3E") center / 11px no-repeat;
+}
+html:root[data-style="blueprint"] input[type="radio"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 15px;
+  height: 15px;
+  border: 1px solid var(--tx-val);
+  border-radius: 50%;
+  background-color: var(--bg-sunken);
+}
+html:root[data-style="blueprint"] input[type="radio"]:checked { border-color: var(--reality); background-image: radial-gradient(circle, var(--reality) 0 3px, transparent 3.5px); }
+
+/* ---- the switch is an SPST knife: two terminals, a blade that closes the circuit ---- */
+html:root[data-style="blueprint"] .og-switch .track { background-color: var(--bg-sunken); border-radius: 0; }
+html:root[data-style="blueprint"] .og-switch .track::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  color: var(--tx-val);
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 6px 50%, var(--bg-sunken) 0 1.7px, currentColor 2.1px 3.3px, transparent 3.7px),
+    radial-gradient(circle at 32px 50%, var(--bg-sunken) 0 1.7px, currentColor 2.1px 3.3px, transparent 3.7px),
+    linear-gradient(currentColor, currentColor) 0 50% / 3px 1px no-repeat,
+    linear-gradient(currentColor, currentColor) 100% 50% / 3px 1px no-repeat;
+}
+html:root[data-style="blueprint"] .og-switch .track::after {
+  top: calc(50% - 1px);
+  left: 6px;
+  width: 26px;
+  height: 2px;
+  border-radius: 0;
+  background: var(--tx-mut);
+  box-shadow: none;
+  transform-origin: 0 50%;
+  transform: rotate(-19deg);
+}
+html:root[data-style="blueprint"] .og-switch input:checked + .track::after { transform: rotate(0deg); background: var(--reality); box-shadow: none; }
+
+/* ---- the slider: a vernier thumb (a cursor line through it) ---- */
+html:root[data-style="blueprint"] input[type="range"]::-webkit-slider-thumb {
+  border-radius: 0;
+  background-color: var(--bg);
+  background-image: linear-gradient(var(--tx-hi), var(--tx-hi));
+  background-size: 1px 100%;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+html:root[data-style="blueprint"] input[type="range"]::-moz-range-thumb {
+  border-radius: 0;
+  background-color: var(--bg);
+  background-image: linear-gradient(var(--tx-hi), var(--tx-hi));
+  background-size: 1px 100%;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+/* ---- the progress bar: a hatched fill ---- */
+html:root[data-style="blueprint"] progress { appearance: none; -webkit-appearance: none; height: 10px; border: 1px solid var(--bp-frame); border-radius: 0; background-color: var(--bg-sunken); overflow: hidden; }
+html:root[data-style="blueprint"] progress::-webkit-progress-bar { background: var(--bg-sunken); }
+html:root[data-style="blueprint"] progress::-webkit-progress-value { background-color: transparent; background-image: var(--bp-hatch-hi); box-shadow: inset 0 0 0 1px var(--reality); }
+html:root[data-style="blueprint"] progress::-moz-progress-bar { background-color: transparent; background-image: var(--bp-hatch-hi); }
+
+/* ---- the context menu and the tooltip: a drawing note ---- */
+html:root[data-style="blueprint"] .ui-menu { border-color: var(--bp-frame); border-radius: 0; box-shadow: 0 0 0 3px var(--bg), 0 0 0 4px var(--line-1), 7px 7px 0 rgba(0, 0, 0, .3); }
+html:root[data-style="blueprint"] .ui-menu-h { border-bottom-style: dashed; }
+html:root[data-style="blueprint"] .ui-menu-t { font-family: var(--font-head); letter-spacing: .12em; text-transform: uppercase; }
+html:root[data-style="blueprint"] .ui-menu-sec { font-family: var(--font-head); letter-spacing: .18em; border-top-style: dashed; }
+html:root[data-style="blueprint"] .ui-menu-i:hover:not(:disabled),
+html:root[data-style="blueprint"] .ui-menu-i:focus-visible,
+html:root[data-style="blueprint"] .ui-menu-i[aria-expanded="true"] { background-color: transparent; background-image: var(--bp-hatch); box-shadow: inset 3px 0 0 var(--reality); }
+html:root[data-style="blueprint"] #ph-tip { border-color: var(--bp-frame); outline-style: dashed; outline-color: var(--line-2); border-radius: 0; }
+html:root[data-style="blueprint"] #ph-tip::before {
+  content: 'NOTE';
+  display: block;
+  margin-bottom: 2px;
+  padding-bottom: 1px;
+  border-bottom: 1px solid var(--line-1);
+  font-family: var(--font-head);
+  font-size: .56rem;
+  letter-spacing: .24em;
+  color: var(--tx-mut);
+}
+
+/* ---- the status row: a title block at the right (part number, scale, revision) ---- */
+html:root[data-style="blueprint"] [data-part="status-row"]:not(.pinned) { position: relative; }
+html:root[data-style="blueprint"] [data-part="status-row"] { border-top: 1px solid var(--line-4); box-shadow: inset 0 3px 0 var(--bg-raised), inset 0 4px 0 var(--line-1); background-image: var(--tex-card); background-size: var(--tex-card-size); }
 html:root[data-style="blueprint"] [data-part="page-foot"] { border-top: 1px dashed var(--line-3); background-image: var(--tex-card); background-size: var(--tex-card-size); }
-html:root[data-style="blueprint"] * { scrollbar-width: thin; scrollbar-color: var(--line-3) var(--bg-sunken); }
+html:root[data-style="blueprint"] .fs-label { font-family: var(--font-head); }
+@media (min-width: 1400px) {
+  html:root[data-style="blueprint"] [data-part="status-row"]::after {
+    content: 'DWG OV-FLAGSHIP   SCALE 1:1   REV A';
+    content: 'DWG OV-FLAGSHIP   SCALE 1:1   REV A' / '';
+    position: absolute;
+    right: 172px;
+    top: 4px;
+    bottom: 4px;
+    box-sizing: border-box;
+    width: calc(35ch + 14px);
+    padding: 0 7px;
+    display: flex;
+    align-items: center;
+    white-space: pre;
+    font: 9px/1 var(--mono);
+    letter-spacing: 0;
+    color: var(--tx-hi);
+    border: 1px solid var(--bp-frame);
+    background:
+      linear-gradient(var(--line-3), var(--line-3)) calc(7px + 16.5ch) 0 / 1px 100% no-repeat,
+      linear-gradient(var(--line-3), var(--line-3)) calc(7px + 28.5ch) 0 / 1px 100% no-repeat,
+      var(--bg-sunken);
+    pointer-events: none;
+  }
+  html:root[data-style="blueprint"][data-variant="blueprint-whiteprint"] [data-part="status-row"]::after { content: 'DWG OV-FLAGSHIP   SCALE 1:1   REV B'; content: 'DWG OV-FLAGSHIP   SCALE 1:1   REV B' / ''; }
+  html:root[data-style="blueprint"][data-variant="blueprint-cad"] [data-part="status-row"]::after { content: 'DWG OV-FLAGSHIP   SCALE 1:1   REV C'; content: 'DWG OV-FLAGSHIP   SCALE 1:1   REV C' / ''; }
+}
+
+/* ---- scrollbars: a ruler track, a hatched thumb ---- */
+html:root[data-style="blueprint"] * { scrollbar-width: auto; scrollbar-color: auto; }
+html:root[data-style="blueprint"] ::-webkit-scrollbar { width: 13px; height: 13px; }
+html:root[data-style="blueprint"] ::-webkit-scrollbar-track {
+  background-color: var(--bg-sunken);
+  background-image: repeating-linear-gradient(180deg, var(--line-3) 0 1px, transparent 1px 8px);
+  background-size: 4px 100%;
+  background-repeat: no-repeat;
+  border-left: 1px solid var(--line-1);
+}
+html:root[data-style="blueprint"] ::-webkit-scrollbar-track:horizontal {
+  background-image: repeating-linear-gradient(90deg, var(--line-3) 0 1px, transparent 1px 8px);
+  background-size: 100% 4px;
+  border-left: 0;
+  border-top: 1px solid var(--line-1);
+}
+html:root[data-style="blueprint"] ::-webkit-scrollbar-thumb {
+  border: 1px solid var(--line-4);
+  border-radius: 0;
+  background-color: var(--bg-card);
+  background-image: var(--bp-hatch-hi);
+}
+html:root[data-style="blueprint"] ::-webkit-scrollbar-corner { background: var(--bg-sunken); }
+
 @media (max-width: 560px) {
   html:root[data-style="blueprint"] [data-part="bar"] .wordmark { letter-spacing: .06em; }
 }
