@@ -205,6 +205,13 @@ What a Theme dresses besides the controls:
   layer under the page (a scanline band, a falling grid). Animate `transform` and `opacity` only,
   in a keyframe named `theme-<id>-<name>`, under `:not(.still)` (and `:not(.hivis)` where it
   would distract). `html.still` is the user's, the OS's and the motion knob's "hold still".
+- **The rail's comet.** The carriage on the hero rail is drawn on a canvas in three colors,
+  each a custom property read when the Theme applies: `--comet-head` (the dot; default the
+  reality core, a lighter reality on a dark chassis), `--comet-tail` (the recent path and the
+  head's glow; default `--reality`) and `--comet-ghost` (the plan's end, ahead of the head;
+  default `--intent`). Set them on `:root` or `.rail-canvas` under your prefix, as any CSS
+  color. The shapes, their alphas and the glow's size are not themeable: the tail's length is
+  the carriage's speed and the ghost stays dimmer than the head, whatever the colors.
 
 ## Behavior
 
