@@ -12,16 +12,15 @@
  * snap-and-hold shows alternating ~0 and large spikes (the "jitter").
  *
  * Also carries deterministic pass/fail assertions (below the simulation) for
- * sampleAt()'s cubic-Hermite interpolation: velocity continuity across a
- * shared sample boundary, the linear fallback for a tangent-less first span,
- * the overshoot clamp on a bad velocity estimate, and — under clumped arrivals
- * — that the stored tangent is measured against the RECONSTRUCTED schedule
- * rather than arrival time (webui.md T18). Exits nonzero on any assertion
+ * sampleAt()'s monotone cubic (through every sample, no overshoot, slope-
+ * continuous), the plan-bounded extrapolation, the comet's tail (sampleTail),
+ * and — under clumped arrivals — that the extrapolation slope is measured
+ * against the RECONSTRUCTED schedule rather than arrival time (webui.md T18). Exits nonzero on any assertion
  * failure.
  *
  * Run: node test/telebuf-sim.mjs
  */
-import { createTelebuf, createRenderClock, chartPath } from '../src/ui/hero/telebuf.js';
+import { createTelebuf, createRenderClock, chartPath, sampleTail } from '../src/ui/hero/telebuf.js';
 
 const TRUE_VEL_MM_S = 10;
 const SIM_MS = 8000;
@@ -67,8 +66,7 @@ function simulate(useDelay, frameGap, arrivalGap) {
     // Advance real pushes up to current sim time.
     while (nextPushAt <= simT) {
       pos = TRUE_VEL_MM_S * (nextPushAt / 1000);
-      tele.push(pos, nextPushAt);
-      clock.noteArrival(nextPushAt);
+      clock.noteLate(tele.push(pos, nextPushAt));
       nextPushAt += arriveOf(rng);
     }
 
@@ -108,16 +106,11 @@ analyze('BEFORE (raw "now", no render delay)', simulate(false));
 analyze('AFTER  (adaptive render-delay clock)', simulate(true));
 
 // ---------------------------------------------------------------------------
-// Deterministic assertions — Hermite continuity and overshoot clamping.
-//
-// sampleAt() Hermite-interpolates between bracketing samples using a
-// per-sample tangent stored at push time (bufVel). Reusing the SAME stored
-// tangent as both a span's outgoing derivative and the next span's incoming
-// derivative is supposed to make the curve's velocity match exactly at the
-// shared sample boundary, regardless of the two spans having different
-// lengths. These checks prove that property numerically rather than trusting
-// the algebra, and prove the overshoot clamp actually bites on a bad
-// velocity estimate rather than only on paper.
+// Deterministic assertions — the monotone cubic (src/model/interp.js) and the
+// comet's tail (sampleTail). The curve passes through every sample, never
+// leaves the range of a span's two samples, and is slope-continuous at a
+// sample; the tail is the same curve, so it ends at the head, its length
+// follows speed and it collapses at rest.
 // ---------------------------------------------------------------------------
 
 // The deterministic fixtures below hand-craft TRUSTED timestamps to probe the
@@ -129,56 +122,83 @@ const ok = (name, cond, extra) => {
   if (!cond) fails++;
 };
 
-console.log('\ntelebuf.js — Hermite continuity and clamp assertions\n');
+console.log('\ntelebuf.js — monotone cubic and tail assertions\n');
 
-// ---- claim: velocity is continuous across a shared sample boundary --------
+// ---- claim: slope is continuous across a shared sample boundary -----------
 {
   const tele = createTelebuf({ reschedule: false });
-  // Three real samples with uneven spans (40ms then 50ms) and different
-  // implied velocities either side of B, so a naive per-span tangent would
-  // show a visible kink at B if continuity did not hold.
   tele.push(0, 0);     // A
-  tele.push(10, 40);   // B: v_B = 10/40 = 0.25 units/ms
-  tele.push(15, 90);   // C: v_C = 5/50  = 0.10 units/ms
-
-  const d = 0.5; // ms, small enough to approximate the instantaneous slope
+  tele.push(10, 40);   // B
+  tele.push(15, 90);   // C
+  tele.push(17, 130);  // D
+  const d = 0.05;
   const leftSlope = (tele.sampleAt(40).value - tele.sampleAt(40 - d).value) / d;
   const rightSlope = (tele.sampleAt(40 + d).value - tele.sampleAt(40).value) / d;
-  const slopeDiff = Math.abs(leftSlope - rightSlope);
-  ok('Hermite slope matches across the shared A-B/B-C boundary',
-     slopeDiff < 0.01,
-     `left=${leftSlope.toFixed(4)} right=${rightSlope.toFixed(4)} diff=${slopeDiff.toFixed(5)}`);
+  ok('slope matches across the shared A-B/B-C boundary', Math.abs(leftSlope - rightSlope) < 0.01,
+     `left=${leftSlope.toFixed(4)} right=${rightSlope.toFixed(4)}`);
 }
 
-// ---- claim: linear fallback still applies to the first (tangent-less) span ----
+// ---- claim: two samples draw a straight line -------------------------------
 {
   const tele = createTelebuf({ reschedule: false });
-  tele.push(0, 0);    // A: no prior sample -> bufVel[A] is NaN
-  tele.push(10, 40);  // B
-  const mid = tele.sampleAt(20).value; // exact midpoint of a straight 0->10 run
-  ok('first span (no stored tangent) falls back to linear', Math.abs(mid - 5) < 1e-9,
-     `mid=${mid}`);
+  tele.push(0, 0);
+  tele.push(10, 40);
+  const mid = tele.sampleAt(20).value;
+  ok('two samples interpolate linearly', Math.abs(mid - 5) < 1e-9, `mid=${mid}`);
 }
 
-// ---- claim: a bad velocity estimate cannot fling the marker past the clamp ----
+// ---- claim: through every sample, never past a span's two samples ----------
 {
   const tele = createTelebuf({ reschedule: false });
-  tele.push(0, 0);      // A
-  tele.push(1000, 10);  // B: v_B = 100 units/ms — an absurd jump
-  tele.push(1001, 20);  // C: v_C = 0.1 units/ms
+  // A stroke with a reversal, a dwell, an absurd jump and uneven spacing.
+  const pts = [[0, 0], [20, 3], [45, 12], [60, 30], [80, 31], [100, 31], [130, 10], [140, 1000], [150, 1001], [190, 5], [200, 4]];
+  for (const [t, v] of pts) tele.push(v, t);
+  let through = true, inside = true, worst = 0;
+  for (let i = 0; i < pts.length; i++) {
+    if (Math.abs(tele.sampleAt(pts[i][0]).value - pts[i][1]) > 1e-9) through = false;
+    if (i === 0) continue;
+    const [t0, v0] = pts[i - 1], [t1, v1] = pts[i];
+    for (let t = t0; t <= t1; t += 0.25) {
+      const v = tele.sampleAt(t).value;
+      const out = Math.max(Math.min(v0, v1) - v, v - Math.max(v0, v1), 0);
+      if (out > 1e-9) { inside = false; worst = Math.max(worst, out); }
+    }
+  }
+  ok('the curve passes through every sample', through);
+  ok('the curve never overshoots a span (reversal, dwell, absurd jump)', inside, 'worst=' + worst);
+}
 
-  const overshoot = 0.15 * Math.abs(1001 - 1000); // = 0.15, per sampleAt()'s own rule
-  const lo = Math.min(1000, 1001) - overshoot;
-  const hi = Math.max(1000, 1001) + overshoot;
-  const mid = tele.sampleAt(15).value; // midpoint of the B-C span, where B's huge tangent dominates
-  ok('overshoot from an absurd velocity estimate is clamped',
-     mid >= lo - 1e-9 && mid <= hi + 1e-9,
-     `value=${mid.toFixed(4)} bound=[${lo.toFixed(4)}, ${hi.toFixed(4)}]`);
-  // B's huge incoming tangent pushes the raw (unclamped) curve above `hi`
-  // for this fixture — confirm the clamp actually saturated at the ceiling
-  // rather than the fixture happening to land inside the bound on its own.
-  ok('the clamp actually engaged (value pinned to the ceiling)',
-     Math.abs(mid - hi) < 1e-9, `value=${mid.toFixed(4)} hi=${hi.toFixed(4)}`);
+// ---- claim: extrapolation stops at the plan's end --------------------------
+{
+  const tele = createTelebuf({ reschedule: false });
+  tele.push(0, 0);
+  tele.push(10, 10);   // 1 unit/ms toward the plan's end at 15
+  ok('extrapolation never passes the limit', tele.sampleAt(40, {}, 15).value === 15);
+  ok('extrapolation away from the limit holds at the newest sample', tele.sampleAt(40, {}, 5).value === 10);
+  ok('without a limit it runs on the last secant', tele.sampleAt(40).value === 40);
+}
+
+// ---- claim: the tail is the recent path; length follows speed; rest collapses
+{
+  const out = new Float64Array(33);
+  const tailLen = (vel, until) => {
+    const tele = createTelebuf({ reschedule: false });
+    for (let t = 0; t <= 1000; t += 20) tele.push(t < until ? vel * t : vel * until, t);
+    const n = sampleTail(tele, 990, 150, out);
+    let lo = Infinity, hi = -Infinity;
+    for (let k = 0; k < n; k++) { lo = Math.min(lo, out[k]); hi = Math.max(hi, out[k]); }
+    return { span: hi - lo, n, head: out[0], at: tele.sampleAt(990).value };
+  };
+  const slow = tailLen(0.1, 2000), fast = tailLen(0.3, 2000), rest = tailLen(0.3, 500);
+  ok('the tail ends at the head', slow.head === slow.at);
+  ok('the tail covers the last 150 ms of path', Math.abs(slow.span - 15) < 1e-6 && slow.n === 33, 'span=' + slow.span);
+  ok('its length scales with speed', Math.abs(fast.span / slow.span - 3) < 1e-6, slow.span + ' -> ' + fast.span);
+  ok('at rest it collapses to the head', rest.span === 0, 'span=' + rest.span);
+
+  const tele = createTelebuf({ reschedule: false });
+  tele.push(0, 0); tele.push(10, 20); tele.push(50, 420); tele.push(60, 440);
+  const n = sampleTail(tele, 440, 150, out, null, 250);
+  ok('the tail stops at a dropout, never a guessed curve across it', n > 0 && n < 33 && out[n - 1] >= 50, 'points=' + n);
 }
 
 // ---------------------------------------------------------------------------
@@ -205,8 +225,7 @@ console.log('\ntelebuf.js — Hermite continuity and clamp assertions\n');
       const arrive = nextBurst;        // all three share ONE arrival stamp
       for (let k = PER_BURST - 1; k >= 0; k--) {
         const sampledAt = arrive - k * (BURST_EVERY / PER_BURST); // hub's even sampling instants
-        tele.push(VEL * sampledAt, arrive);
-        clock.noteArrival(arrive);
+        clock.noteLate(tele.push(VEL * sampledAt, arrive));
         pushed++;
       }
       nextBurst += BURST_EVERY;
@@ -231,6 +250,8 @@ console.log('\ntelebuf.js — Hermite continuity and clamp assertions\n');
      'held=' + holds + '/' + vels.length);
   ok('burst replay mean implied velocity tracks truth', Math.abs(mean - 10) < 1,
      'mean=' + mean.toFixed(2) + 'mm/s');
+  ok('burst replay: the delay buffers the clumps, not their 90 ms gaps', clock.getDelayMs() < 50,
+     'delay=' + clock.getDelayMs().toFixed(1) + ' ms');
 }
 
 // ---------------------------------------------------------------------------
@@ -246,7 +267,7 @@ console.log('\ntelebuf.js — Hermite continuity and clamp assertions\n');
   const clock = createRenderClock();
   const VEL = 20 / 1000; // mm per ms while moving
   let t = 0, pos = 0;
-  const push = (p2, at) => { tele.push(p2, at); clock.noteArrival(at); };
+  const push = (p2, at) => clock.noteLate(tele.push(p2, at));
 
   // Phase 1: steady streaming, 30ms cadence, 2s.
   for (; t < 2000; t += 30) { pos = VEL * t; push(pos, t); }
@@ -380,8 +401,8 @@ console.log('\ntelebuf.js — Hermite continuity and clamp assertions\n');
 // ---------------------------------------------------------------------------
 // Display latency on an even stream (ph-6vh). Arrivals every 35-45 ms with a
 // few ms of jitter, the P4 hub's measured cadence at a 25 Hz grant. Lag is
-// how far the rendered position trails the true one, in ms. The render delay
-// alone is ~80 ms here; the schedule's lead on arrival is the rest. With the
+// how far the rendered position trails the true one, in ms: the render delay
+// (the p95 lateness) plus the schedule's lead on arrival. With the
 // period untrimmed, EMA noise ratchets the lead up to SCHEDULE_MAX_LEAD_MS and
 // it never comes back, which is the failure this guards.
 // ---------------------------------------------------------------------------
@@ -393,7 +414,7 @@ console.log('\ntelebuf.js — Hermite continuity and clamp assertions\n');
     .sort((a, b) => a - b);
   const p95 = lags[Math.floor(lags.length * 0.95)];
   console.log('\neven-stream display lag p95: ' + p95.toFixed(0) + ' ms');
-  ok('the schedule does not ratchet ahead of arrival', p95 < 110, p95.toFixed(0) + ' ms');
+  ok('the schedule does not ratchet ahead of arrival', p95 < 70, p95.toFixed(0) + ' ms');
 }
 
 // ---------------------------------------------------------------------------

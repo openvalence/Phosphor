@@ -63,7 +63,7 @@
    *    not ported.
    *
    * Everything else is a real port: the ruler, the hazard keep-out ribbons,
-   * the draggable/resizable band, the tapered-gradient comet trail, and the
+   * the draggable/resizable band, and the
    * hero numerals' exact typographic treatment (huge clamp() numeral, reticle
    * glyph, reality glow) all come straight off the original, generalized to
    * work off whatever `[lo, hi]` and unit the catalog reports instead of an
@@ -78,9 +78,10 @@
   import { formatValue, unitOf, labelFor } from '../../model/format.js';
   import { heroBar } from './heroBar.svelte.js';
   import { still, isStill } from '../still.svelte.js';
-  import { ACCENT, ac, onTheme } from '../../model/theme.js';
+  import { ACCENT, onTheme } from '../../model/theme.js';
   import { norm, travelBounds } from '../../model/bounds.js';
-  import { createTelebuf, createTrail, createRenderClock } from './telebuf.js';
+  import { createTelebuf, createRenderClock, sampleTail } from './telebuf.js';
+  import { ROLE, claimRoles } from '../../model/roles.js';
   import { deferring } from '../defer.js';
   import { modStep, dragGain, snap as modSnap } from '../../model/nudge.js';
   import PlanStrip from '../widgets/PlanStrip.svelte';
@@ -386,7 +387,7 @@
     if (ts && s) {
       const v = displayValue(f, s);
       if (typeof v === 'number' && isFinite(v)) {
-        posTele.push(v, ts); renderClock.noteArrival(ts);
+        renderClock.noteLate(posTele.push(v, ts));
         if (v !== posLast) { posLast = v; wake(); }
         // Latency probe (test/latency-probe.mjs): [state write, this push, value]. Unset costs nothing.
         if (window.__railArrivals) window.__railArrivals.push([ts, performance.timeOrigin + performance.now(), v]);
@@ -476,20 +477,50 @@
   // below, which reads this on every frame.
   const reducedMotion = $derived(still.on);
 
+  // The plan's end (plan.*, RFC-035) in rail units, while a source owns the
+  // rail: where the carriage is about to go. The comet draws it as a ghost and
+  // never extrapolates past it. Share of the window as PlanStrip reads it.
+  const planEnd = $derived.by(() => {
+    const byRole = machine.catalog.model && machine.catalog.model.byRole;
+    return byRole ? claimRoles(byRole, { optional: { end: ROLE.planEnd } }).end : null;
+  });
+  const planEndV = $derived.by(() => {
+    const f = planEnd, s = f ? machine.samples[f.channelId] : null;
+    const v = s ? s[f.name] : null;
+    if (!sourceOwns || v == null || !isFinite(v) || !haveWindow) return null;
+    const share = f.min != null && f.max != null && f.max > f.min ? (v - f.min) / (f.max - f.min) : v;
+    return minVal + share * (maxVal - minVal);
+  });
+  // A plan this old no longer says where the carriage goes next.
+  const PLAN_FRESH_MS = 500;
+
   // The rest of what a frame reads: the value-to-screen map, the motion
   // preference and the model's freshness (derived, so only a flip wakes).
   const posLive = $derived(!!pos && freshness(pos.channelId)?.stale === false);
   const targetLive = $derived(!!target && freshness(target.channelId)?.stale === false);
   $effect(() => {
-    void lo; void hi; void flipped; void span; void reducedMotion; void posLive; void targetLive;
+    void lo; void hi; void flipped; void span; void reducedMotion; void posLive; void targetLive; void planEndV;
     wake();
   });
 
   // ON DEMAND (ph-3w4u): a frame runs on wake() and asks for the next only
   // while something it shows still changes; SETTLE_MS of stillness (past the
-  // comet's 850 ms fade) puts the loop to sleep. Never draw every display
-  // refresh while nothing moves.
+  // tail's collapse) puts the loop to sleep. Never draw every display refresh
+  // while nothing moves.
   const SETTLE_MS = 1000;
+
+  // THE COMET, a long exposure of the carriage:
+  // - the tail is the true recent path, TAIL_MS of the same monotone curve the
+  //   head rides, fading with age, so its length is the speed and it collapses
+  //   to the head at rest;
+  // - the head is a crisp dot whose glow grows with speed;
+  // - the ghost is the plan's end, dimmer than both.
+  // Colors are the theme hooks --comet-head, --comet-tail, --comet-ghost
+  // (docs/THEMES.md). Still: a TAIL_STILL_MS tail, the glow fixed at rest.
+  // No allocation and no shadowBlur per frame: the glow is a sprite drawn once
+  // per theme or scale.
+  const TAIL_MS = 150, TAIL_STILL_MS = 60, TAIL_N = 32;
+  const HEAD_R = 2.75, TAIL_HALF = 2.4, GLOW_REST = 7, GLOW_FAST = 17;
 
   $effect(() => {
     if (!hostEl || !canvasEl) return;
@@ -501,11 +532,9 @@
     let frameDt = 16.667;
     let resumed = true;
     let settleUntil = 0;
-    let pPos = null, pTarget = null, pSpeed = null, pFresh = false, pTargetFresh = false;
+    let pPos = null, pTarget = null, pSpeed = null, pFresh = false, pTargetFresh = false, pTail = 0, pGhost = null;
     let lastMoveAt = 0;
     let speedEma = 0;
-    let velSmoothPxPerMs = 0;
-    let prevPx = null;
     // Render-health census, published to machine.stats.render once a second.
     // A high held percentage at a healthy frame rate (framerate.svelte.js)
     // means ARRIVALS outran the buffer. One second is a T27 rate limit, not a
@@ -513,9 +542,32 @@
     let censusStart = 0;
     let censusFrames = 0;
     let censusHeld = 0;
-    const trail = createTrail();
-    const cometX = new Float64Array(320);
-    const cometW = new Float64Array(320);
+    const rPos = {}, rVel = {}, rTgt = {};
+    const tailV = new Float64Array(TAIL_N + 1);
+    let cHead = '', cTail = '', cGhost = '';
+    let glow = null, glowDpr = 0;
+
+    function readColors() {
+      const cs = getComputedStyle(canvasEl);
+      cHead = cs.getPropertyValue('--comet-head').trim() || ACCENT.core;
+      cTail = cs.getPropertyValue('--comet-tail').trim() || ACCENT.reality;
+      cGhost = cs.getPropertyValue('--comet-ghost').trim() || ACCENT.intent;
+      glowDpr = 0;
+    }
+    function buildGlow() {
+      const px = Math.ceil(2 * GLOW_FAST * dpr);
+      glow = glow || document.createElement('canvas');
+      glow.width = glow.height = px;
+      const g = glow.getContext('2d');
+      const grad = g.createRadialGradient(px / 2, px / 2, 0, px / 2, px / 2, px / 2);
+      grad.addColorStop(0, cTail);
+      grad.addColorStop(0.25, `color-mix(in srgb, ${cTail} 45%, transparent)`);
+      grad.addColorStop(0.6, `color-mix(in srgb, ${cTail} 10%, transparent)`);
+      grad.addColorStop(1, 'transparent');
+      g.fillStyle = grad;
+      g.fillRect(0, 0, px, px);
+      glowDpr = dpr;
+    }
 
     function sizeCanvas() {
       const w = hostEl.clientWidth, h = hostEl.clientHeight;
@@ -525,77 +577,41 @@
       rectW = w; rectH = h;
     }
 
-    function flushRibbon(ctx2, pts, startI, endI, midY) {
-      const nPts = endI - startI + 1;
-      if (nPts < 2) return;
-      const headX = pts.x[startI], tailX = pts.x[endI];
-      const g = ctx2.createLinearGradient(headX, 0, tailX, 0);
-      g.addColorStop(0, ac('r', 0.55));
-      g.addColorStop(1, ac('r', 0));
-      ctx2.fillStyle = g;
-      ctx2.beginPath();
-      ctx2.moveTo(pts.x[startI], midY - pts.w[startI]);
-      for (let i = startI + 1; i <= endI; i++) ctx2.lineTo(pts.x[i], midY - pts.w[i]);
-      for (let j = endI; j >= startI; j--) ctx2.lineTo(pts.x[j], midY + pts.w[j]);
-      ctx2.closePath();
-      ctx2.fill();
-    }
-
-    function drawComet(nowMs, midY, headHalf, glowActive) {
-      const capacity = 320;
-      const px = cometX;
-      const pw = cometW;
-      let m = 0, runStart = 0, runDir = 0;
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.setLineDash([]);
-      ctx.shadowColor = ac('r', 0.6);
-      ctx.shadowBlur = glowActive ? 8 : 5;
-
-      trail.forEachRecent(nowMs, 850, (x, t, age) => {
-        if (m >= capacity) return;
-        const f = Math.max(0, 1 - age / 850);
-        const taper = f * f;
-        if (m > 0) {
-          const dx = x - px[m - 1];
-          const dir = dx > 0.001 ? 1 : (dx < -0.001 ? -1 : runDir);
-          if (runDir !== 0 && dir !== 0 && dir !== runDir) {
-            flushRibbon(ctx, { x: px, w: pw }, runStart, m - 1, midY);
-            runStart = m - 1;
-            runDir = dir;
-          } else if (runDir === 0) {
-            runDir = dir;
-          }
-        }
-        px[m] = x;
-        pw[m] = Math.max(headHalf * taper, 0.15);
-        m++;
-      });
-      if (m - 1 > runStart) flushRibbon(ctx, { x: px, w: pw }, runStart, m - 1, midY);
-      ctx.shadowBlur = 0;
-      ctx.globalAlpha = 1;
-    }
-
-    function drawReducedTrail(nowMs, midY) {
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.setLineDash([]);
-      ctx.shadowBlur = 0;
-      ctx.globalAlpha = 0.4;
-      ctx.strokeStyle = ACCENT.reality;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      let started = false;
-      trail.forEachRecent(nowMs, 850, (x) => {
-        if (!started) { ctx.moveTo(x, midY); started = true; }
-        else ctx.lineTo(x, midY);
-      });
-      ctx.stroke();
-      ctx.globalAlpha = 1;
-    }
-
     const isFresh = (f) => { const fr = freshness(f.channelId); return !!fr && !fr.stale; };
+    const xOf = (v) => pct(v) * rectW;
+    // Device-pixel edges: abutting tail pieces share an exact edge, so no seam.
+    const snapX = (x) => Math.round(x * dpr) / dpr;
+
+    function quad(x0, w0, x1, w1, midY) {
+      ctx.beginPath();
+      ctx.moveTo(x0, midY - w0);
+      ctx.lineTo(x1, midY - w1);
+      ctx.lineTo(x1, midY + w1);
+      ctx.lineTo(x0, midY + w0);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    /** The tail, newest first; returns its extent in px. `bloom` widens and dims it. */
+    function drawTail(n, midY, half, alpha) {
+      let x0 = snapX(xOf(tailV[0])), lo = x0, hi = x0;
+      for (let k = 0; k < n - 1; k++) {
+        const x1 = snapX(xOf(tailV[k + 1]));
+        lo = Math.min(lo, x1); hi = Math.max(hi, x1);
+        if (x1 !== x0) {
+          const a0 = 1 - k / TAIL_N, a1 = 1 - (k + 1) / TAIL_N, am = (a0 + a1) / 2;
+          ctx.globalAlpha = alpha * am * am;
+          quad(x0, Math.max(0.3, half * a0), x1, Math.max(0.3, half * a1), midY);
+        }
+        x0 = x1;
+      }
+      ctx.globalAlpha = 1;
+      return hi - lo;
+    }
 
     function draw(nowMs) {
       rafId = 0;
+      const t0 = performance.now();
       // The first frame after a sleep takes the last real frame time: the
       // sleep is not a frame, and must not reach the render clock or the census.
       let dtMs = nowMs - lastFrameTs;
@@ -614,16 +630,11 @@
       // and always returns the OLDEST entry still in the ring).
       const nowEpochMs = performance.timeOrigin + nowMs;
 
-      // Render at nowEpochMs MINUS an adaptively-slewed delay (telebuf.js's
-      // createRenderClock), not raw "now" — see telebuf.js's header for why
-      // sampling at raw "now" against ~20-30 Hz, irregularly-spaced STATE
-      // pushes produces exactly the freeze-then-snap stutter this widget was
-      // reported buggy for. update() must run every frame (it slews toward
-      // the target delay), even on a frame with no fresh pos field.
+      // Render a measured delay behind now (telebuf.js's header, the render
+      // delay). update() must run every frame, even with no fresh pos field.
       renderClock.update(dtMs);
       const tRender = renderClock.stableRenderTime(nowEpochMs);
 
-      // Pull ground truth through the telebufs at THIS instant.
       censusFrames++;
       if (!censusStart) censusStart = nowMs;
       if (nowMs - censusStart >= 1000) {
@@ -640,16 +651,21 @@
         censusStart = nowMs; censusFrames = 0; censusHeld = 0;
       }
 
+      // The plan's end bounds extrapolation and draws the ghost; without a
+      // plan the setpoint bounds it (the carriage chases it, never passes it).
+      const planOn = planEndV != null && nowEpochMs - (machine.sampleTs[planEnd.channelId] || 0) < PLAN_FRESH_MS;
+      const limit = planOn ? planEndV : targetNow;
+
       if (pos) {
-        const r = posTele.sampleAt(tRender);
+        const r = posTele.sampleAt(tRender, rPos, limit);
         posDisplay = r.value;
         // The model's one freshness rule, not the telebuf's own hold window:
-        // a parked machine's position is silent and still true (SPEC Â§9.1).
+        // a parked machine's position is silent and still true (SPEC §9.1).
         fresh = r.value != null && isFresh(pos);
         if (r.holding) censusHeld++;
         let speedPerSec = null;
         if (vel) {
-          const rv = velTele.sampleAt(tRender);
+          const rv = velTele.sampleAt(tRender, rVel);
           if (rv.value != null) speedPerSec = Math.abs(rv.value);
         } else if (r.value != null) {
           speedPerSec = Math.abs(r.velPerMs) * 1000;
@@ -666,82 +682,88 @@
       }
 
       if (target) {
-        const rt = targetTele.sampleAt(tRender);
+        const rt = targetTele.sampleAt(tRender, rTgt);
         targetDisplay = rt.value;
         targetFresh = rt.value != null && isFresh(target);
       } else {
         targetDisplay = null; targetFresh = false;
       }
 
-      // Jitter probe: test/rail-probe.mjs sets window.__railProbe = [] and
-      // harvests it, so marker smoothness is MEASURED per frame instead of
-      // eyeballed. Zero cost when the flag is unset (the normal case).
-      if (window.__railProbe) {
-        window.__railProbe.push([nowMs, tRender, posDisplay, targetDisplay, fresh ? 1 : 0,
-          pos && posDisplay != null && rectW > 0 ? pct(posDisplay) * rectW : null]);
-      }
-
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, rectW, rectH);
 
+      let tailPx = 0, ghostX = null, headX = null;
       if (pos && posDisplay != null && fresh && rectW > 0) {
-        const frac = pct(posDisplay);
-        const px2 = frac * rectW;
+        if (glowDpr !== dpr) buildGlow();
         const midY = rectH * 0.5;
-        trail.record(px2, nowMs);
+        headX = xOf(posDisplay);
+        const still2 = reducedMotion;
+        const tailMs = still2 ? TAIL_STILL_MS : TAIL_MS;
+        const n = sampleTail(posTele, tRender, tailMs, tailV, limit);
 
-        const instVel = prevPx != null ? Math.abs(px2 - prevPx) / Math.max(dtMs, 1) : 0;
-        velSmoothPxPerMs += 0.2 * (instVel - velSmoothPxPerMs);
+        // Speed off the drawn curve itself: the last quarter of the tail.
+        const kq = Math.min(TAIL_N / 4, n - 1);
+        const pxPerMs = kq > 0 ? Math.abs(headX - xOf(tailV[kq])) / (kq * tailMs / TAIL_N) : 0;
+        // Full travel in a second reads as fast; the root keeps slow strokes visible.
+        const s = still2 ? 0 : Math.min(1, Math.sqrt(pxPerMs / (rectW / 1000)));
 
-        const H = rectH * 0.5;
-        if (reducedMotion) {
-          drawReducedTrail(nowMs, midY);
-        } else {
-          // Reference speed: crossing the FULL span in ~2s reads as "fast".
-          // Scale/unit independent — see niceStep's comment for why this
-          // beats the original's device-specific max-speed lookup.
-          const refPxPerMs = rectW / 2000;
-          const speedNorm = Math.min(1, Math.max(0, velSmoothPxPerMs / Math.max(refPxPerMs, 1e-6)));
-          const headHalf = Math.max(1, 1 + (0.25 * H - 1) * speedNorm);
-          drawComet(nowMs, midY, headHalf, moving);
+        if (planOn) {
+          const gx = xOf(planEndV);
+          if (Math.abs(gx - headX) >= 2) {
+            ghostX = gx;
+            ctx.fillStyle = cGhost;
+            ctx.globalAlpha = 0.16;
+            ctx.fillRect(Math.min(gx, headX), midY - 0.75, Math.abs(gx - headX), 1.5);
+            ctx.globalAlpha = 0.45;
+            ctx.strokeStyle = cGhost;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(gx, midY, HEAD_R, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+          }
         }
 
-        ctx.strokeStyle = ACCENT.reality;
-        ctx.lineWidth = 1;
-        ctx.shadowColor = ac('r', 0.55);
-        ctx.shadowBlur = 4;
-        ctx.beginPath();
-        ctx.moveTo(px2, rectH * 0.22);
-        ctx.lineTo(px2, rectH * 0.72);
-        ctx.stroke();
+        ctx.fillStyle = cTail;
+        if (n > 1) {
+          if (!still2) drawTail(n, midY, TAIL_HALF * 2.6, 0.22);
+          tailPx = drawTail(n, midY, TAIL_HALF, 0.9);
+        }
 
-        ctx.shadowColor = ac('r', 0.9);
-        ctx.shadowBlur = moving ? 12 : 8;
-        ctx.fillStyle = ACCENT.core;
+        const gr = GLOW_REST + (GLOW_FAST - GLOW_REST) * s;
+        ctx.globalAlpha = 0.5 + 0.5 * s;
+        ctx.drawImage(glow, headX - gr, midY - gr, 2 * gr, 2 * gr);
+        ctx.globalAlpha = 0.7;
+        ctx.fillRect(snapX(headX) - 0.5, rectH * 0.22, 1, rectH * 0.5);
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = cHead;
         ctx.beginPath();
-        ctx.arc(px2, midY, 2.6, 0, Math.PI * 2);
+        ctx.arc(headX, midY, HEAD_R, 0, Math.PI * 2);
         ctx.fill();
-        ctx.shadowBlur = 0;
+      }
 
-        prevPx = px2;
-      } else {
-        prevPx = null;
-        velSmoothPxPerMs = 0;
+      // Jitter probe: test/rail-probe.mjs and test/meteor-live.mjs set
+      // window.__railProbe = [] and harvest it. Zero cost while unset.
+      if (window.__railProbe) {
+        window.__railProbe.push([nowMs, tRender, posDisplay, targetDisplay, fresh ? 1 : 0, headX,
+          tailPx, ghostX, performance.now() - t0]);
       }
 
       if (posDisplay !== pPos || targetDisplay !== pTarget || speedDisplay !== pSpeed || fresh !== pFresh
-        || targetFresh !== pTargetFresh || moving) settleUntil = nowMs + SETTLE_MS;
+        || targetFresh !== pTargetFresh || tailPx !== pTail || ghostX !== pGhost || moving) settleUntil = nowMs + SETTLE_MS;
       pPos = posDisplay; pTarget = targetDisplay; pSpeed = speedDisplay; pFresh = fresh; pTargetFresh = targetFresh;
+      pTail = tailPx; pGhost = ghostX;
       if (nowMs < settleUntil) rafId = requestAnimationFrame(draw);
       else resumed = true;
     }
 
     wake = () => { if (!rafId) rafId = requestAnimationFrame(draw); };
     sizeCanvas();
+    readColors();
     // A resize clears the canvas; a theme change recolors it.
     const ro = (typeof ResizeObserver !== 'undefined') ? new ResizeObserver(() => { sizeCanvas(); wake(); }) : null;
     if (ro) ro.observe(hostEl);
-    const offTheme = onTheme(() => wake());
+    const offTheme = onTheme(() => { readColors(); wake(); });
     wake();
 
     return () => {
