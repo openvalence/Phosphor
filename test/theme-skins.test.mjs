@@ -149,7 +149,7 @@ function fakeHub(ws) {
 }
 
 const browser = await chromium.launch();
-async function boot(viewport, theme, { reduce = false, material = null } = {}) {
+async function boot(viewport, theme, { reduce = false, material = null, unlocked = [] } = {}) {
   const ctx = await browser.newContext({ viewport, reducedMotion: reduce ? 'reduce' : 'no-preference' });
   await ctx.addInitScript(TAURI_STUB);
   // A shell whose Rust half has the material: window_material answers what was asked, and every call is kept.
@@ -161,17 +161,18 @@ async function boot(viewport, theme, { reduce = false, material = null } = {}) {
         ? (window.__materialCalls.push(a.kind), Promise.resolve(a.kind === 'none' ? 'none' : granted)) : inner(cmd, a));
     }, material);
   }
-  await ctx.addInitScript(([etag, bytes, theme]) => {
+  await ctx.addInitScript(([etag, bytes, theme, unlocked]) => {
     try {
       if (!sessionStorage.getItem('booted')) {
         sessionStorage.setItem('booted', '1');
         localStorage.clear();
         localStorage.setItem('phosphor.hubs', JSON.stringify([{ id: '127.0.0.1:82', host: '127.0.0.1', port: 82, name: 'skins fixture', nickname: '', lastSeen: Date.now() }]));
         localStorage.setItem('phosphor.theme', JSON.stringify(theme));
+        if (unlocked.length) localStorage.setItem('phosphor.theme.unlocked', JSON.stringify(unlocked));
       }
       localStorage.setItem('valence.catalog.127.0.0.1', JSON.stringify({ etag, bytes }));
     } catch (e) { /* no storage */ }
-  }, [ETAG, Buffer.from(CAT).toString('hex'), theme]);
+  }, [ETAG, Buffer.from(CAT).toString('hex'), theme, unlocked]);
   await ctx.routeWebSocket(/:82\//, fakeHub);
   const page = await ctx.newPage();
   const errors = [];
@@ -319,9 +320,17 @@ for (const skin of skins) {
     ok(skin.id + ' reduced: no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
     await ctx.close();
   }
-  // Picker: the Display pane lists it, with a swatch and its pitch.
-  {
+  // Picker: the Display pane lists it, with a swatch and its pitch. A hidden Theme is absent until found
+  // (docs/THEMES.md, Hidden themes), then listed like any other.
+  if (skin.hidden) {
     const { ctx, page } = await boot({ width: 1428, height: 900 }, THEMES[0]);
+    await goTab(page, 'shell:settings');
+    await page.waitForTimeout(400);
+    ok(skin.id + ': hidden, the picker leaves it out until it is found', !(await page.$('[data-style-id="' + skin.id + '"]')));
+    await ctx.close();
+  }
+  {
+    const { ctx, page } = await boot({ width: 1428, height: 900 }, THEMES[0], { unlocked: skin.hidden ? [skin.id] : [] });
     await goTab(page, 'shell:settings');
     await page.waitForTimeout(400);
     const sw = await page.$eval('[data-style-id="' + skin.id + '"]', (b) => ({ name: b.querySelector('.name').textContent.trim(), bg: getComputedStyle(b.querySelector('.chassis')).backgroundImage, tip: b.dataset.tip || '' }));

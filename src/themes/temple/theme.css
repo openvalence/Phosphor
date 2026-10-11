@@ -1,0 +1,193 @@
+/* Temple: a 640 x 480, sixteen-color shrine. One 8 x 8 face (fonts/, public domain), windows framed in
+   double lines with a centered title and a [X], every button a DolDoc link (underlined, no face),
+   checkboxes as [X] and [ ], a title bar that reads the date, time, CPU, memory and tasks (behavior.js
+   writes --temple-wm), and an overlay of things that squirm (behavior.js, under the top strip).
+   The colors are the VGA sixteen, red and brown left out: they read as the safety pair's. */
+@font-face { font-family: 'Temple Sys'; src: url('./fonts/TempleSys.woff2') format('woff2'); font-display: block; }
+
+html:root[data-style="temple"] {
+  --font: 'Temple Sys', 'Lucida Console', Consolas, monospace;
+  --font-head: 'Temple Sys', 'Lucida Console', Consolas, monospace;
+  --mono: 'Temple Sys', 'Lucida Console', Consolas, monospace;
+  --frame-w: 3px;
+  --temple-link: #55FFFF;
+  --temple-title: #FFFF55;
+  --temple-sel-bg: #FFFFFF;
+  --temple-sel-tx: #0000AA;
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http:%2F%2Fwww.w3.org%2F2000%2Fsvg' width='16' height='16' shape-rendering='crispEdges'%3E%3Cpath d='M0 0h2v1h1v1h1v1h1v1h1v1h1v1h1v1h1v1H7v1h1v2h1v2H7v-2H6v-2H5v1H4v1H3v1H2v1H1v1H0z' fill='%23000'%2F%3E%3Cpath d='M1 2h1v1h1v1h1v1h1v1h1v1h1v1H6v1h1v2h1v1H7v-2H6v-2H5v1H4v1H3v1H2v1H1z' fill='%23fff'%2F%3E%3C%2Fsvg%3E") 0 0, auto;
+  -webkit-font-smoothing: none;
+}
+html:root[data-style="temple"][data-variant="temple-doc"] {
+  --temple-link: #5555FF;
+  --temple-title: #0000AA;
+  --temple-sel-bg: #0000AA;
+  --temple-sel-tx: #FFFFFF;
+}
+html:root[data-style="temple"] body { background-color: var(--bg); }
+html:root[data-style="temple"] ::selection { background: var(--temple-sel-bg); color: var(--temple-sel-tx); }
+
+/* ---- the overlay and the oracle (behavior.js): under the top strip (z 30), clicks pass through ---- */
+html:root[data-style="temple"] .temple-fx { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 20; pointer-events: none; image-rendering: pixelated; }
+html:root[data-style="temple"][data-page-full] .temple-fx { display: none; }
+html:root[data-style="temple"] .temple-win {
+  position: fixed; left: 50%; z-index: 25; width: min(30rem, calc(100vw - 32px)); translate: -50% 0;
+  background-color: var(--bg-card); color: var(--tx); border: 4px double var(--line-4); padding: 0 12px 12px;
+  font: 16px/1.5 'Temple Sys', monospace;
+}
+html:root[data-style="temple"] .temple-tb { display: flex; justify-content: center; position: relative; margin: -14px 0 8px; }
+html:root[data-style="temple"] .temple-title { background-color: var(--bg-card); color: var(--temple-title); padding: 0 8px; }
+html:root[data-style="temple"] .temple-x { position: absolute; right: -8px; top: 0; background-color: var(--bg-card); color: var(--tx-hi); border: 0; font: inherit; padding: 0 4px; cursor: pointer; }
+html:root[data-style="temple"] .temple-words { margin: 0 0 12px; color: var(--tx-val); word-spacing: .5em; min-height: 4.5em; }
+html:root[data-style="temple"] .temple-links { display: flex; gap: 24px; }
+html:root[data-style="temple"] .temple-lk { background: none; border: 0; padding: 0; font: inherit; color: var(--temple-link); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+html:root[data-style="temple"] .temple-lk:focus-visible,
+html:root[data-style="temple"] .temple-x:focus-visible { outline: 2px dotted var(--highlight); outline-offset: 2px; }
+
+/* ---- the title bar: the task line. --temple-wm is the readout behavior.js writes once a second ---- */
+html:root[data-style="temple"] [data-part="top"] { background-color: var(--bg); border-bottom: 0; }
+html:root[data-style="temple"] [data-part="bar"] { background-color: var(--bg); box-shadow: inset 0 -3px 0 -1px var(--line-4); }
+html:root[data-style="temple"] [data-part="bar"] .header-left { order: 0; }
+html:root[data-style="temple"] [data-part="bar"] > :not(.header-left) { order: 2; }
+html:root[data-style="temple"] [data-part="bar"]::before {
+  content: var(--temple-wm, ''); order: 1; flex: 1 1 0; min-width: 0; overflow: hidden; white-space: pre;
+  text-overflow: clip; text-align: center; color: var(--temple-title); font: 16px/1 'Temple Sys', monospace;
+}
+html:root[data-style="temple"] [data-part="bar"] .wordmark { text-transform: uppercase; color: var(--tx-hi); font-size: 16px; letter-spacing: 0; font-weight: 400; }
+html:root[data-style="temple"] [data-part="bar"] .chip { border-radius: 0; border-style: dotted; background: none; font-size: 12px; }
+html:root[data-style="temple"] [data-part="caption-btn"] { color: var(--tx-hi); }
+html:root[data-style="temple"] [data-part="caption-btn"] svg { display: none; }
+html:root[data-style="temple"] [data-part="caption-btn"]::before { font: 16px/1 'Temple Sys', monospace; }
+html:root[data-style="temple"] [data-part="caption-btn"][data-cap="min"]::before { content: '[_]'; }
+html:root[data-style="temple"] [data-part="caption-btn"][data-cap="max"]::before { content: '[^]'; }
+html:root[data-style="temple"] [data-part="caption-btn"][data-cap="close"]::before { content: '[X]'; }
+html:root[data-style="temple"] [data-part="caption-btn"]:hover { background-color: var(--temple-sel-bg); color: var(--temple-sel-tx); }
+
+/* ---- the safety strip: a window of its own; the pair keeps every pixel of its own look ---- */
+html:root[data-style="temple"] [data-part="strip"] { background-color: var(--bg); border-bottom: 4px double var(--line-4); }
+html:root[data-style="temple"] [data-part="stop-frame"] { outline: 4px double var(--line-4); outline-offset: 3px; background-color: var(--bg); }
+html:root[data-style="temple"] [data-part="numerals"] .hn-val { font-family: 'Temple Sys', monospace; color: var(--tx-val); }
+html:root[data-style="temple"] [data-part="hero"] { background-color: var(--bg); border-bottom: 4px double var(--line-4); }
+
+/* ---- windows: double frame, the title on the frame, a [X] in the corner ---- */
+html:root[data-style="temple"] [data-part="card"],
+html:root[data-style="temple"] [data-part="nest"],
+html:root[data-style="temple"] [data-part="panel"],
+html:root[data-style="temple"] .og-panel { border-style: double; border-width: 4px; border-color: var(--line-4); border-radius: 0; background-image: none; box-shadow: none; outline: none; }
+html:root[data-style="temple"] [data-part="card"],
+html:root[data-style="temple"] [data-part="nest"],
+html:root[data-style="temple"] .og-panel { position: relative; }
+html:root[data-style="temple"] [data-part="card"]::after,
+html:root[data-style="temple"] [data-part="nest"]::after,
+html:root[data-style="temple"] .og-panel::after {
+  content: '[X]'; position: absolute; top: -12px; right: 6px; padding: 0 2px; pointer-events: none;
+  background-color: var(--bg-card); color: var(--tx-hi); font: 16px/1 'Temple Sys', monospace;
+}
+html:root[data-style="temple"] .dash-title,
+html:root[data-style="temple"] .pane-head h2 { color: var(--temple-title); font-family: 'Temple Sys', monospace; text-transform: none; letter-spacing: 0; font-weight: 400; }
+html:root[data-style="temple"] .card-sub { font-family: 'Temple Sys', monospace; }
+
+/* ---- links: every button is a DolDoc link. State colors stay the engine's. ---- */
+html:root[data-style="temple"] .og-btn:not(.on):not(.primary):not(.running):not(.danger),
+html:root[data-style="temple"] .og-seg button:not(.active),
+html:root[data-style="temple"] .stepper button,
+html:root[data-style="temple"] .tabs button:not(.on) {
+  background-color: transparent; background-image: none; border-color: transparent; border-radius: 0; box-shadow: none;
+  color: var(--temple-link); text-decoration: underline; text-underline-offset: 3px; text-transform: none; letter-spacing: 0;
+}
+html:root[data-style="temple"] .og-btn:not(.on):not(.primary):not(.running):not(.danger):hover:not(:disabled),
+html:root[data-style="temple"] .og-seg button:not(.active):hover:not(:disabled),
+html:root[data-style="temple"] .stepper button:hover:not(:disabled),
+html:root[data-style="temple"] .tabs button:not(.on):hover { background-color: var(--temple-sel-bg); color: var(--temple-sel-tx); }
+html:root[data-style="temple"] .og-btn:not(.on):not(.primary):not(.running):not(.danger):disabled,
+html:root[data-style="temple"] .og-seg button:not(.active):disabled,
+html:root[data-style="temple"] .stepper button:disabled { color: var(--tx-ghost); text-decoration-style: dotted; }
+html:root[data-style="temple"] .og-btn.on,
+html:root[data-style="temple"] .og-btn.primary,
+html:root[data-style="temple"] .og-seg button.active,
+html:root[data-style="temple"] .tabs button.on { border-radius: 0; text-decoration: underline; text-underline-offset: 3px; }
+html:root[data-style="temple"] .og-seg { border-radius: 0; }
+html:root[data-style="temple"] :is(.og-btn, .og-seg button, .stepper button, .tabs button, select, .og-num, .value-input):focus-visible { outline: 2px dotted var(--highlight); outline-offset: 1px; }
+
+/* ---- fields: a sunken line, no box ---- */
+html:root[data-style="temple"] .og-num,
+html:root[data-style="temple"] .value-input,
+html:root[data-style="temple"] select,
+html:root[data-style="temple"] textarea,
+html:root[data-style="temple"] input:is([type="text"], [type="search"], [type="number"], [type="url"], [type="password"]) {
+  border-radius: 0; box-shadow: none; background-color: var(--bg-sunken); border-color: var(--line-3); caret-color: var(--highlight);
+}
+
+/* ---- [X] and [ ]: switches and checkboxes are DolDoc check boxes ---- */
+html:root[data-style="temple"] .og-switch .track { width: 40px; height: 22px; border: 0; border-radius: 0; background: none; box-shadow: none; }
+html:root[data-style="temple"] .og-switch .track::after { display: none; }
+html:root[data-style="temple"] .og-switch .track::before { content: '[ ]'; position: absolute; inset: 0; display: grid; place-items: center; color: var(--tx-hi); font: 16px/1 'Temple Sys', monospace; }
+html:root[data-style="temple"] .og-switch input:checked + .track::before { content: '[X]'; color: var(--reality); }
+html:root[data-style="temple"] input[type="checkbox"]:not([role="switch"]) { appearance: none; width: 24px; height: 16px; margin: 0; border: 0; background: none; display: inline-grid; place-items: center; }
+html:root[data-style="temple"] input[type="checkbox"]:not([role="switch"])::before { content: '[ ]'; color: var(--tx-hi); font: 16px/1 'Temple Sys', monospace; }
+html:root[data-style="temple"] input[type="checkbox"]:not([role="switch"]):checked::before { content: '[X]'; color: var(--reality); }
+html:root[data-style="temple"] [role="radio"] { border-radius: 0; }
+
+/* ---- sliders: a dotted line and a block ---- */
+html:root[data-style="temple"] input[type="range"]::-webkit-slider-runnable-track { background: repeating-linear-gradient(90deg, var(--line-3) 0 2px, transparent 2px 6px); border-radius: 0; }
+html:root[data-style="temple"] input[type="range"]::-webkit-slider-thumb { border-radius: 0; background-color: var(--tx-hi); box-shadow: none; }
+html:root[data-style="temple"] input[type="range"]::-moz-range-thumb { border-radius: 0; background-color: var(--tx-hi); box-shadow: none; }
+html:root[data-style="temple"] .ui-scrub-track { border-radius: 0; }
+html:root[data-style="temple"] progress { border-radius: 0; }
+html:root[data-style="temple"] progress::-webkit-progress-bar { border-radius: 0; background-color: var(--bg-sunken); }
+html:root[data-style="temple"] progress::-webkit-progress-value { border-radius: 0; }
+
+/* ---- the sidebar: a DolDoc menu. The page in front is in reverse video ---- */
+html:root[data-style="temple"] [data-part="rail"] { background-color: var(--bg); border: 4px double var(--line-4); border-left-width: 0; border-radius: 0; }
+html:root[data-style="temple"] [data-part="rail-label"] { color: var(--temple-title); font-size: 16px; letter-spacing: 0; text-transform: none; font-weight: 400; }
+html:root[data-style="temple"] [data-part="rail-tab"] { border-radius: 0; color: var(--temple-link); text-decoration: underline; text-underline-offset: 3px; }
+html:root[data-style="temple"] [data-part="rail-tab"].on { background-color: var(--temple-sel-bg); color: var(--temple-sel-tx); border-color: var(--temple-sel-bg); text-decoration: none; }
+html:root[data-style="temple"] [data-part="rail-tab"].on .rail-glyph { color: var(--temple-sel-tx); }
+html:root[data-style="temple"] [data-part="rail-tab"]:hover:not(.on) { background-color: var(--bg-sunken); color: var(--tx-hi); }
+html:root[data-style="temple"] [role="tab"]:not([data-part="rail-tab"]) { border-radius: 0; }
+
+/* ---- the status row and the page foot ---- */
+html:root[data-style="temple"] [data-part="status-row"],
+html:root[data-style="temple"] [data-part="page-foot"] { background-color: var(--bg); border-top: 4px double var(--line-4); }
+
+/* ---- menus and tips: small windows ---- */
+html:root[data-style="temple"] .ui-menu,
+html:root[data-style="temple"] #ph-tip { border: 4px double var(--line-4); border-radius: 0; background-color: var(--bg-card); box-shadow: none; }
+html:root[data-style="temple"] .ui-menu-i:hover:not(:disabled),
+html:root[data-style="temple"] .ui-menu-i:focus-visible,
+html:root[data-style="temple"] .ui-menu-i[aria-expanded="true"] { background-color: var(--temple-sel-bg); color: var(--temple-sel-tx); }
+html:root[data-style="temple"] .ui-menu-i { color: var(--temple-link); text-decoration: underline; text-underline-offset: 3px; }
+html:root[data-style="temple"] .ui-menu-t,
+html:root[data-style="temple"] .ui-menu-sec { color: var(--temple-title); }
+html:root[data-style="temple"] .ui-sheet { border-radius: 0; }
+
+/* ---- scrollbars: a blue trough, a white block ---- */
+html:root[data-style="temple"] * { scrollbar-width: auto; scrollbar-color: auto; }
+html:root[data-style="temple"] ::-webkit-scrollbar { width: 12px; height: 12px; background-color: var(--bg); }
+html:root[data-style="temple"] ::-webkit-scrollbar-track { background: repeating-linear-gradient(0deg, var(--line-1) 0 2px, transparent 2px 4px); }
+html:root[data-style="temple"] ::-webkit-scrollbar-thumb { background-color: var(--tx-hi); border: 2px solid var(--bg); border-radius: 0; }
+html:root[data-style="temple"] ::-webkit-scrollbar-corner { background-color: var(--bg); }
+
+/* ---- squirm: titles wriggle in steps, the way the demos do (transform only, never under still) ---- */
+html:root[data-style="temple"]:not(.still) .dash-title,
+html:root[data-style="temple"]:not(.still) .pane-head h2 { display: inline-block; animation: theme-temple-squirm 1.6s steps(4) infinite; }
+html:root[data-style="temple"]:not(.still) [data-part="bar"] .wordmark { display: inline-block; animation: theme-temple-bob 2.4s steps(6) infinite; }
+@keyframes theme-temple-squirm {
+  0%, 100% { transform: skewX(0deg) translateY(0); }
+  25% { transform: skewX(-6deg) translateY(-1px); }
+  50% { transform: skewX(0deg) translateY(1px); }
+  75% { transform: skewX(6deg) translateY(0); }
+}
+@keyframes theme-temple-bob {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  33% { transform: translateY(-1px) rotate(-2deg); }
+  66% { transform: translateY(1px) rotate(2deg); }
+}
+
+/* ---- the stop pair and the ops beside it keep the shell's own face: they look the same in every theme ---- */
+html:root[data-style="temple"] [data-part="strip"] :has(> [data-part="stop-frame"]) { --font: 'Chakra Petch', system-ui, sans-serif; --mono: 'Martian Mono', ui-monospace, monospace; }
+
+/* ---- a phone's bar has no room for the task line ---- */
+@media (max-width: 760px) {
+  html:root[data-style="temple"] [data-part="bar"]::before { display: none; }
+  html:root[data-style="temple"] [data-part="bar"] .wordmark { font-size: 12px; }
+}

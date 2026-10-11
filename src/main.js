@@ -16,6 +16,9 @@ import './style.css';
 import './themes/fonts.css';
 // Each theme folder's stylesheet loads by being there (docs/THEMES.md, Adding a theme).
 import.meta.glob('./themes/*/theme.css', { eager: true });
+// A theme folder's boot.js runs once at startup, whatever is applied: it may subscribe onTheme and load
+// the theme's behavior (docs/THEMES.md, Behavior). Nothing per frame here.
+import.meta.glob('./themes/*/boot.js', { eager: true });
 import { connect, machine, parseHost, recentHubs } from './model/machine.svelte.js';
 import { applyStoredTheme } from './model/theme.js';
 import { installDynamicColor } from './model/dynamicColor.js';
