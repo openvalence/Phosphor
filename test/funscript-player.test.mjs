@@ -1019,6 +1019,20 @@ if (!LIVE && !STASH_LIVE && !OSC_ONLY && !args.includes('--library') && !args.in
     await page.waitForTimeout(300);
     ok('close: unloads the media and shows the library', (await statusText(page)) === ''
       && await page.locator(C + ' .fsp-empty').evaluate((e) => !e.hidden) && (await page.locator(C).getAttribute('data-view')) === 'library');
+    // ph-bw0o perf: a rail moving under another source (a pattern) with nothing playing costs the card no DOM write.
+    await page.locator(C + ' .fsp-tabs button', { hasText: 'Player' }).click();
+    await page.waitForTimeout(300);
+    const mover = setInterval(() => { hub.values[CH.motion + ':pos_10um'] = 20 + Math.random() * 60; }, 20);
+    await page.waitForTimeout(300);
+    const writes = await page.evaluate((c) => new Promise((done) => {
+      let n = 0;
+      const seen = [];
+      const mo = new MutationObserver((l) => { n += l.length; if (seen.length < 4) seen.push(...l.slice(0, 4).map((m) => m.type + ':' + (m.attributeName || '') + ':' + (m.target.className || m.target.nodeName))); });
+      mo.observe(document.querySelector(c), { subtree: true, attributes: true, childList: true, characterData: true });
+      setTimeout(() => { mo.disconnect(); done({ n, seen }); }, 2000);
+    }), C);
+    clearInterval(mover);
+    ok('idle: a moving rail with nothing loaded writes nothing to the card in 2 s (ph-bw0o)', writes.n === 0, writes);
   }
   ok('touch: no page error', errors.length === 0, errors.slice(0, 3));
   clearInterval(hub.timer);
