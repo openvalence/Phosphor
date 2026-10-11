@@ -246,6 +246,7 @@ export const CSS = `
 .fsp-ov, .fsp-dt { background: var(--screen); box-shadow: inset 0 2px 8px rgba(var(--shade-rgb), .7); }
 .fsp-ov { position: relative; height: 24px; flex: none; border: 1px solid var(--line); border-radius: var(--r-s); user-select: none; cursor: pointer; }
 .fsp-ov::before { content: ''; position: absolute; inset: -8px 0; }
+.fsp-ovtip { bottom: calc(100% + 6px); z-index: 2; }
 .fsp-ov svg, .fsp-dt svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .fsp-ov rect.bin.over { fill: var(--warn); }
 .fsp-ov rect.ab { fill: rgba(var(--highlight-rgb), .22); }
@@ -332,6 +333,18 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
     onMove(e) { onScrub('move', at(e)); },
     onEnd(e, ok) { if (ok) onScrub('end', at(e)); },
   });
+  // A mouse over the heat reads the time under it (the kit scrub's tip look, ph-bw0o); a touch has no hover.
+  const ovTip = h('span', { class: 'ui-scrub-tip fsp-ovtip', hidden: '' });
+  ov.append(ovTip);
+  ov.addEventListener('pointermove', (e) => {
+    if (e.pointerType !== 'mouse' || !script) return;
+    const r = ov.getBoundingClientRect();
+    ovTip.hidden = false;
+    ovTip.textContent = fmtTime(seekAt(e.clientX - r.left, r.width, dur()));
+    const w2 = ovTip.offsetWidth / 2;
+    ovTip.style.left = clamp(e.clientX - r.left, w2, r.width - w2) + 'px';
+  });
+  ov.addEventListener('pointerleave', () => { ovTip.hidden = true; });
   scrub.addEventListener('keydown', (e) => {
     if (!script) return;
     const d = SEEK_KEYS[e.key];

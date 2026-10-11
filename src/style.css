@@ -1160,13 +1160,28 @@ html[data-rc=glance] .app:has(.drill-page) nav.tabs { display: none; }
 .ui-stage-media > :is(video, img, canvas) { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .ui-stage-empty { position: absolute; inset: 0; display: flex; flex-wrap: wrap; align-content: center; align-items: center; justify-content: center; gap: var(--sp-3); padding: var(--sp-3); }
 .ui-stage-empty:empty { display: none; }
+/* The center glyph: the kit's own play or pause in the theme's ink, haloed in its ground so it reads on any picture; no plate.
+   It shows with the controls (data-show); the button form takes the tap. */
 .ui-stage-center {
   position: absolute; left: 50%; top: 50%; z-index: 1; display: none; place-items: center;
-  width: 72px; height: 72px; translate: -50% -50%; border-radius: 50%;
-  background: rgba(var(--shade-rgb), .55); color: var(--tx-hi); pointer-events: none;
+  width: 80px; height: 80px; translate: -50% -50%; margin: 0; padding: 0; border: 0; border-radius: var(--r-s);
+  background: none; color: var(--tx-hi); pointer-events: none;
 }
-.ui-stage-center > .ui-icon { width: 32px; height: 32px; }
-.ui-stage[data-center] .ui-stage-center, .ui-stage-center[data-flash] { display: grid; }
+button.ui-stage-center { pointer-events: auto; cursor: pointer; }
+button.ui-stage-center:focus-visible { outline: 2px solid var(--highlight); outline-offset: 2px; }
+.ui-stage-center > .ui-icon { width: 52px; height: 52px; filter: drop-shadow(0 0 1px var(--bg)) drop-shadow(0 1px 4px var(--bg)); }
+.ui-stage[data-center][data-show] .ui-stage-center, .ui-stage-center[data-flash], .ui-stage-center:focus-visible { display: grid; }
+/* The double-tap seek's ripple: a side third lit for a moment, its arrow and words in the middle. */
+.ui-stage-ripple {
+  position: absolute; top: 0; bottom: 0; z-index: 1; width: 36%; display: none; place-content: center; justify-items: center; gap: var(--sp-1);
+  color: var(--tx-hi); font: 600 .8rem var(--mono); pointer-events: none; background: color-mix(in srgb, var(--bg) 30%, transparent);
+}
+.ui-stage-ripple > .ui-icon { width: 28px; height: 28px; }
+.ui-stage-ripple[data-side='l'] { left: 0; border-radius: 0 50% 50% 0 / 0 50% 50% 0; }
+.ui-stage-ripple[data-side='r'] { right: 0; border-radius: 50% 0 0 50% / 50% 0 0 50%; }
+.ui-stage-ripple[data-on] { display: grid; animation: ui-ripple 600ms var(--ease-out) forwards; }
+@keyframes ui-ripple { from { opacity: 1; } 60% { opacity: 1; } to { opacity: 0; } }
+html.still .ui-stage-ripple[data-on] { animation: none; }
 @keyframes ui-flash { from { opacity: 1; scale: 1; } to { opacity: 0; scale: 1.3; } }
 .ui-stage-center[data-flash] { animation: ui-flash 500ms var(--ease-out) forwards; }
 html.still .ui-stage-center[data-flash] { animation-duration: 1ms; }
@@ -1193,7 +1208,8 @@ html.still .ui-stage-center[data-flash] { animation-duration: 1ms; }
   padding-inline: max(var(--sp-2), var(--corner-inset));
   padding-bottom: max(var(--sp-2), var(--corner-inset), env(safe-area-inset-bottom, 0px));
 }
-.ui-stage[data-full]:not([data-show]) { cursor: none; }
+/* Playing and idle, the pointer hides over the picture too (a kept stage always shows). */
+.ui-stage:not([data-show]) .ui-stage-box { cursor: none; }
 
 /* ---- scrub, split ---- */
 .ui-scrub { position: relative; display: grid; align-items: center; min-height: 16px; cursor: pointer; outline: none; }

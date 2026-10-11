@@ -30,6 +30,8 @@ export const INTENT_PX = 8;
 export const HOLD_MS = 400;
 export const DOUBLE_MS = 250;
 export const IDLE_MS = 2500;
+export const TOUCH_DOUBLE_MS = 300;   // a touch double-tap's window (Android's own)
+const RIPPLE_MS = 600;
 const REPEAT_MS = 110;            // a stepper's hold-repeat, Field.svelte's
 const SHEET_DRAG_CLOSE = 60;      // px down a sheet's head that closes it
 const TILE_TEXT_REM = 2.625;      // a tile's title and meta rows and their gaps (style.css .ui-tile-b)
@@ -688,42 +690,82 @@ export function bar(o = {}) {
 }
 
 /**
- * The media region: a letterboxed box at the content's aspect, a media slot, an
- * empty slot, the center glyph, an overlay that hides when idle, a dock shown
- * while it hides, and the shell's bare page fullscreen.
+ * The media region: a box at the content's aspect, a media slot, an empty
+ * slot, the center glyph, the controls that show and hide, a dock shown while
+ * they hide, and the shell's bare page fullscreen. A mouse click is onTap and
+ * a double-click onDouble; a touch tap shows or hides the controls and never
+ * reaches onTap; a touch double-tap on the left or right third is onSkip.
  */
 export function stage(o = {}) {
-  check('stage', o, ['aspect', 'overlay', 'rotate', 'onTap', 'onDouble', 'onFullscreen']);
+  check('stage', o, ['aspect', 'overlay', 'rotate', 'onTap', 'onDouble', 'onFullscreen', 'onCenter', 'onSkip']);
   if (o.overlay != null && !['fullscreen', 'always'].includes(o.overlay)) throw new Error('ui.stage: overlay is "fullscreen" or "always"');
   const media = h('div', { class: 'ui-stage-media' });
   const empty = h('div', { class: 'ui-stage-empty' });
-  const center = h('div', { class: 'ui-stage-center', 'aria-hidden': 'true' }, icon('play'));
+  // With onCenter the glyph is a button (named by center()); without, decoration.
+  const center = o.onCenter ? h('button', { type: 'button', class: 'ui-stage-center', 'aria-label': 'Play' }, icon('play'))
+    : h('div', { class: 'ui-stage-center', 'aria-hidden': 'true' }, icon('play'));
+  const ripple = h('div', { class: 'ui-stage-ripple', 'aria-hidden': 'true' }, icon('left'), h('span'));
   const dock = h('div', { class: 'ui-stage-dock' });
   const overlay = h('div', { class: 'ui-stage-overlay' });
-  const box = h('div', { class: 'ui-stage-box' }, media, empty, center, dock, overlay);
+  const box = h('div', { class: 'ui-stage-box' }, media, empty, center, ripple, dock, overlay);
   const el = h('div', { class: cls('ui-stage', o), 'data-overlay': o.overlay || 'fullscreen' }, box);
-  let aspect = null, full = false, idle = 0, tapShow = false;
-  const live = () => full || el.dataset.overlay === 'always';
-  // Kept while hovered, dragged or holding keyboard focus; a clicked button's focus does not keep it.
-  const hide = () => { if (!overlay.matches(':hover') && !overlay.querySelector('[data-drag], :focus-visible')) el.removeAttribute('data-show'); };
+  let aspect = null, full = false, idle = 0, keep = false, kind = 'mouse', down = null, last = null, tapT = 0, ripT = 0;
+  // The controls stay while kept (paused), hovered, dragged or holding keyboard focus; a clicked button's focus does not keep them.
+  const busy = () => keep || !!box.querySelector(':is(.ui-stage-overlay, .ui-stage-center):hover, [data-drag], :focus-visible');
+  const hide = () => { if (!busy()) el.removeAttribute('data-show'); };
   const poke = () => { el.setAttribute('data-show', ''); clearTimeout(idle); idle = setTimeout(hide, IDLE_MS); };
-  el.addEventListener('pointermove', poke);
+  const conceal = () => { clearTimeout(idle); if (!box.querySelector('[data-drag]')) el.removeAttribute('data-show'); };
+  // A touch moving over shown controls keeps them; one over hidden controls (a scroll) never shows them.
+  el.addEventListener('pointermove', (e) => { if (e.pointerType === 'mouse' || el.hasAttribute('data-show')) poke(); });
   // A hidden overlay is display: none, out of the tab order: Tab in fullscreen shows it first.
   winOn(el, 'keydown', (e) => { if (e.key === 'Tab' && full) poke(); });
-  el.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse' && !overlay.querySelector('[data-drag]')) { clearTimeout(idle); el.removeAttribute('data-show'); } });
-  // A touch on a hidden overlay only wakes it: no tap.
-  el.addEventListener('pointerdown', (e) => { tapShow = live() && e.pointerType !== 'mouse' && !el.hasAttribute('data-show'); poke(); }, true);
+  el.addEventListener('pointerleave', (e) => {
+    if (e.pointerType !== 'mouse' || box.querySelector('[data-drag]')) return;
+    clearTimeout(idle);
+    if (!keep) el.removeAttribute('data-show');
+  });
   const own = (e) => box.contains(e.target) && !overlay.contains(e.target) && !e.target.closest('button, input, select, textarea, a, [role=slider], [role=separator]');
+  el.addEventListener('pointerdown', (e) => {
+    kind = e.pointerType;
+    if (kind === 'mouse' || !own(e)) { poke(); down = null; return; }
+    down = { x: e.clientX, y: e.clientY, t: e.timeStamp };
+  }, true);
+  const third = (x) => { const r = box.getBoundingClientRect(); return x < r.left + r.width / 3 ? -1 : x > r.right - r.width / 3 ? 1 : 0; };
+  const skip = (side) => {
+    const words = o.onSkip(side);
+    ripple.dataset.side = side < 0 ? 'l' : 'r';
+    setIcon(ripple.firstChild, side < 0 ? 'left' : 'right');
+    setText(ripple.lastChild, words);
+    ripple.removeAttribute('data-on');
+    void ripple.offsetWidth;
+    ripple.setAttribute('data-on', '');
+    clearTimeout(ripT);
+    ripT = setTimeout(() => ripple.removeAttribute('data-on'), RIPPLE_MS);
+  };
+  // A touch tap toggles the controls: at once in the middle third, after the double window on a side third
+  // (a second tap there is onSkip); a long press is the menu's, a drag the page's scroll.
+  el.addEventListener('pointerup', (e) => {
+    const d = down;
+    down = null;
+    if (!d || e.pointerType === 'mouse' || !own(e) || e.timeStamp - d.t >= HOLD_MS || Math.hypot(e.clientX - d.x, e.clientY - d.y) > INTENT_PX) return;
+    const side = o.onSkip ? third(e.clientX) : 0;
+    clearTimeout(tapT);
+    if (side && last && last.side === side && e.timeStamp - last.t < TOUCH_DOUBLE_MS) { last = null; skip(side); return; }
+    last = { side, t: e.timeStamp };
+    const toggle = () => { last = null; if (el.hasAttribute('data-show')) conceal(); else poke(); };
+    if (side) tapT = setTimeout(toggle, TOUCH_DOUBLE_MS); else toggle();
+  });
   gestures(el, {
-    filter: (e) => { const ok = own(e) && !(e.type === 'click' && tapShow); if (e.type === 'click') tapShow = false; return ok; },
+    filter: (e) => kind === 'mouse' && own(e),
     tap: (e) => { if (o.onTap) o.onTap(e); },
     double: (e) => { if (o.onDouble) o.onDouble(e); else el.fullscreen = !full; },
   });
+  if (o.onCenter) center.addEventListener('click', (e) => { o.onCenter(e); poke(); });
   const setFull = (on) => {
     if (on === full) return;
     full = on;
     el.toggleAttribute('data-full', on);
-    if (!on) el.removeAttribute('data-show');
+    if (!on && !keep) el.removeAttribute('data-show');
     if (o.onFullscreen) o.onFullscreen(on);
   };
   const ask = (on) => {
@@ -756,8 +798,14 @@ export function stage(o = {}) {
       set(a) { aspect = a > 0 ? +a : null; el.toggleAttribute('data-ar', !!aspect); if (aspect) el.style.setProperty('--ui-ar', String(aspect)); else el.style.removeProperty('--ui-ar'); },
     },
     fullscreen: { get: () => full, set(v) { if (!!v !== full) ask(!!v); } },
-    // A flash in flight keeps its glyph; the resting one takes over when it ends.
-    center: { value: (x) => { el.toggleAttribute('data-center', !!x); if (x && !center.hasAttribute('data-flash')) setIcon(center.firstChild, x); } },
+    // A flash in flight keeps its glyph; the resting one takes over when it ends. `label` names the button form.
+    center: {
+      value: (x, label) => {
+        el.toggleAttribute('data-center', !!x);
+        if (x && !center.hasAttribute('data-flash')) setIcon(center.firstChild, x);
+        if (o.onCenter && label) attr(center, 'aria-label', label);
+      },
+    },
     flash: {
       value: (x) => {
         setIcon(center.firstChild, x);
@@ -767,6 +815,12 @@ export function stage(o = {}) {
       },
     },
     poke: { value: poke },
+    // Kept: the controls show and never hide on their own (a paused video); a touch tap still hides them.
+    keep: {
+      get: () => keep,
+      set(v) { if (!!v === keep) return; keep = !!v; if (keep) { clearTimeout(idle); el.setAttribute('data-show', ''); } else poke(); },
+    },
+    shown: { get: () => el.hasAttribute('data-show') },
   });
 }
 

@@ -503,6 +503,7 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   is the width over the aspect, capped by the room above the fixed rows, so
   a portrait video stands tall and a landscape one is a strip. Empty, it is
   a 120 px strip. The desktop keeps the filled stage row (`ph-yuce`).
+  *(Superseded 2026-10-11 by PP1: the video's own box, the room left at the bottom.)*
 - **PR3 Open video and Open script**, either order: on the empty stage and
   in the Player head, with Close beside them once something is loaded (on
   phones the head holds a Media menu: Open video, Open script, Close). A
@@ -591,13 +592,15 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   Settings, Exit fullscreen). The timeline toggle shows a 72 px wave over
   the video, above the scrub. Inline there is no overlay: a tap on the video
   toggles Play, a double-tap goes fullscreen. The under-130 px rule goes
-  with the inline bar.
+  with the inline bar. *(Superseded 2026-10-11 by PP2 and PP3: a touch tap shows the
+  controls, a mouse click plays.)*
 - **PR10 Stop pair** top right in fullscreen at full hit size and half
   opacity at rest, the caret above (DESIGN §10.3; RENDERING §8.4 row 11).
   Restated, unchanged. No floating collapse chevrons. *(As built
   2026-10-10, `ph-9t5l.7`: the video goes edge to edge and the caret is a
   top left corner hotspot over it, shown on pointer movement and gone at
-  rest; an open analyzer stops painting its rows behind the video.)*
+  rest; an open analyzer stops painting its rows behind the video.)* *(The caret superseded
+  2026-10-11 by PP6: a media page's fullscreen has none.)*
 - **As built, PR8 to PR10 and PR17 (`ph-1qs5.4`):** the hover bar's row is
   the player bar's own buttons, moved into it on entry and back on exit
   (one set of controls and listeners); it has no mute or volume (`m` mutes,
@@ -619,7 +622,8 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   closes it: its click is swallowed however long the tap is held (the
   guard ends at the next pointerdown, never on a timer), so it never
   reaches the stage; a tap on the top strip or the stop pair is never
-  swallowed (`ph-5wsk.3`, the kit's outside rule).
+  swallowed (`ph-5wsk.3`, the kit's outside rule). *(The center Play and the stage tap
+  superseded 2026-10-11 by PP2 to PP4; the hover bar gains mute and volume, PP3.)*
 - **PR11 Quick rail icon** on the player bar, from the host (DESIGN §10.3,
   PLUGINS.md Pages `phosphor-quick-rail`): on phones in the page and in
   fullscreen (the vertical pop-up on the right); on the desktop only in
@@ -817,6 +821,59 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
 Out of scope: the analyzer's contents (only its toggle moves), the
 scheduler, Scale math, Kinetic, Stash protocol and the keyboard map.
 
+### The player polish (operator 2026-10-11, `ph-bw0o`)
+
+The operator, on Android: the weird play button, an assumed aspect ratio
+with a dead area under the video, a tap that should show the controls
+rather than play, previous and next for videos, the removed fullscreen
+mode coming back, behave like the players people know; then the same polish
+on the desktop. Rulings, superseding PR2's stage, PR9's inline tap, the
+center Play of PR8 to PR10 as built, and the transport row's chapters:
+
+- **PP1 The stage is the video's box.** Phone portrait: the stage is the
+  video's own box at its aspect across the column (16:9 until the metadata
+  lands, then it settles once), a tall video narrower and centered, at most
+  as high as the column has room for under the head, the timeline at its
+  full height and the bar (`stageCap`, measured on a resize or a timeline
+  collapse); the timeline and the bar follow right under it and the room
+  left over sits at the bottom. Letterbox only in fullscreen. Empty or
+  motion only stays the 120 px strip. The desktop keeps its filled stage row.
+- **PP2 Touch.** A tap on the video shows or hides the controls and never
+  plays; Play and Pause are the center glyph's and the bar's. Playing, the
+  controls hide after 2.5 s; paused they stay (the kit stage's `keep`). A
+  double-tap on the left or right third skips 10 s back or ahead with a
+  brief ripple (the orchestrator's addition, the operator may veto it); the
+  middle third has no double, so its tap acts at once.
+- **PP3 Mouse.** A click on the video plays or pauses (after the 250 ms
+  double window) and a double-click toggles fullscreen. Hover shows the
+  controls (the center glyph inline, the hover bar in fullscreen); playing,
+  they and the pointer hide after 2.5 s still; paused they stay. The heat
+  bar reads the time under the pointer. A mute button sits beside the
+  volume on the desktop, inline and in the hover bar; phones keep their
+  volume keys. Keys stand (Space and K, J and L 10 s, arrows 5 s, F, M); a
+  key a focused control takes for itself (the hover seek's arrows, 5 s
+  there) is not the card's too. The stop pair's keys are its own (a
+  focused stop button never reaches the card) and Escape still leaves
+  fullscreen.
+- **PP4 The center glyph** is the kit's play or pause in the theme's ink
+  with a halo of its ground, no disc; a button (named Play or Pause) shown
+  only while the controls show.
+- **PP5 Previous and next are videos.** Next loads the queue's first
+  loadable entry, else the library's next. Previous restarts the video
+  past 3 s, else loads the video played before it (the current one goes
+  back to the queue's head), else the library's previous. A load is
+  paused: neither ever starts the machine (the agent's call, veto-able:
+  players chain a playing video on). Chapter jumps move to the stage's and
+  the timeline's menus, Previous chapter and Next chapter, shown when the
+  script has chapters or bookmarks.
+- **PP6 Fullscreen has no caret.** The removed In window mode was still
+  one tap away: the bare fullscreen's corner caret (`ph-9t5l.7`) toggled
+  the bar back, which on a media page is In window, and on Android every
+  tap woke it. A media page's fullscreen now draws no caret, and the close
+  gate's ask leaves its fullscreen instead of showing the bar. Exit
+  fullscreen, Escape, F, a double-click, Android back and the turn to
+  upright leave it, restoring the page as it was.
+
 ### The card before the redesign
 
 The rulings below stand except where marked superseded.
@@ -857,7 +914,7 @@ FULL
   checked against the input limit (the heat's stripes too). Outside media
   fullscreen the hover bar holds only Fullscreen and its mode (the row has
   the rest; `m` mutes); in media fullscreen it is the whole bar.
-  *(Superseded 2026-10-08 by PR5 (one player bar; Close to the head, Graph to the timeline head) and PR9 (the hover bar only in fullscreen).)*
+  *(Superseded 2026-10-08 by PR5 (one player bar; Close to the head, Graph to the timeline head) and PR9 (the hover bar only in fullscreen).)* *(Previous and next superseded 2026-10-11 by PP5: videos, the chapters in the menus.)*
 - **Fullscreen**: a double-click on the stage (or `f`, or the bar's button)
   asks the shell for page fullscreen with the video alone. Borderless is no
   chrome at all; In window fills the window and keeps only the hero rail

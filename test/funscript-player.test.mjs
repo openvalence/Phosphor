@@ -22,6 +22,7 @@
  *      node test/funscript-player.test.mjs --osc   (only (o), the oscillator axes)
  *      node test/funscript-player.test.mjs --library [--shots <dir>]   (only (L), the library browser)
  *      node test/funscript-player.test.mjs --menus   (only (M), the context menus)
+ *      node test/funscript-player.test.mjs --touch   (only (n), the stage on touch, previous and next, chapters)
  *      node test/funscript-player.test.mjs --live --port P --http P+7
  *      node test/funscript-player.test.mjs --stash-live <file.json>
  *      node test/funscript-player.test.mjs --live-playback --port P --http P+7 [--shots <dir>]
@@ -54,7 +55,7 @@ const CONTRACT = {
   [P + 'stash.js']: ['SCENES_QUERY', 'SORTS', 'COPY', 'normalizeBase', 'rebase', 'withKey', 'toScene', 'createStash'],
   [P + 'heat.js']: ['BUCKETS', 'CAP', 'DAY_MS', 'MAX_AGE_MS', 'LIMIT', 'HOVER_MS', 'crc32', 'heatBuckets', 'heatCss', 'memStore', 'idbStore', 'heatOf', 'createHeat'],
   [P + 'library.js']: ['CSS', 'COPY', 'formFor', 'mountLibrary', 'mountConnect'],
-  [P + 'ui.js']: ['CSS', 'COPY', 'FULL_UP', 'GLANCE_UP', 'HOVER_IDLE_MS', 'createPlayer', 'createControl', 'compositionOf', 'clampOffset',
+  [P + 'ui.js']: ['CSS', 'COPY', 'FULL_UP', 'GLANCE_UP', 'HOVER_IDLE_MS', 'RESTART_MS', 'SKIP_MS', 'createPlayer', 'createControl', 'compositionOf', 'clampOffset',
     'windowShare', 'ceilingOf', 'localScene', 'extraNote', 'PLAY_CSS', 'mountPlay', 'pageClass'],
   [P + 'timeline.js']: ['ZOOMS', 'HEAT_BINS', 'HEAT_MID_UPS', 'HEAT_TOP_UPS', 'TRACE_MS', 'MIN_SPAN', 'CSS', 'COPY', 'curvePoints', 'dotPath', 'kinPoints',
     'seekAt', 'heatColor', 'heatStops', 'traceLines', 'clampRange', 'zoomStep', 'mountTimeline', 'PINCH_STEP', 'pinchZoom'],
@@ -799,7 +800,7 @@ let clockErrUs = 0;
 const clipped = (s) => s.exec - s.arrival - clockErrUs <= LAT_US + 25000;   // CLOCK re-syncs move the error by a few ms
 
 // PR5: the bar's order. Desktop one row; phones the scrub row over the buttons. A class the bar does not show is skipped.
-const BAR_DESK = ['fsp-prev', 'fsp-play', 'fsp-next', 'fsp-el', 'fsp-ov', 'fsp-rem', 'fsp-vol', 'fsp-motion', 'fsp-rate', 'fsp-full', 'fsp-set'];
+const BAR_DESK = ['fsp-prev', 'fsp-play', 'fsp-next', 'fsp-el', 'fsp-ov', 'fsp-rem', 'fsp-mute', 'fsp-vol', 'fsp-motion', 'fsp-rate', 'fsp-full', 'fsp-set'];
 const BAR_PHONE = [['fsp-el', 'fsp-ov', 'fsp-rem'], ['fsp-prev', 'fsp-play', 'fsp-next', 'fsp-motion', 'fsp-rate', 'fsp-full', 'fsp-rail', 'fsp-set']];
 /** The bar's shown items by row (top to bottom, left to right), their names the BAR_ classes. */
 const barOrder = (page) => page.locator(C).evaluate((root, names) => {
@@ -879,6 +880,143 @@ function intended(asked, obs, rate) {
 
 const BAD_WORDS = [/\. /, /\bso that\b/i, /\ballows you\b/i, /\bsimply\b/i, /\bjust\b/i, /\bin order to\b/i];
 const copyOk = (t) => t.length <= 60 && t.split(/\s+/).filter(Boolean).length <= 8 && !BAD_WORDS.some((b) => b.test(t));
+
+// ---- (n) the stage on touch, previous and next, chapters (ph-bw0o): a phone with a real touchscreen ----
+// A tap toggles the controls and never plays; the center glyph plays and pauses; playing, the controls hide after the
+// idle; a double-tap on a side third skips 10 s with its ripple; previous and next walk videos, never playing one;
+// the chapters are the stage's menu. `--touch` runs this section alone.
+const TOUCH_ONLY = args.includes('--touch');
+if (!LIVE && !STASH_LIVE && !OSC_ONLY && !args.includes('--library') && !args.includes('--menus')) {
+  console.log('(n) touch, previous and next, chapters');
+  const cat = advgenCatalog();
+  cat.entries = decodeCatalog(cat.bytes);
+  const hub = makeHub(cat);
+  hub.values[CH.config + ':window_min'] = 0;
+  hub.values[CH.config + ':window_max'] = 100;
+  hub.values[CH.motion + ':pos_10um'] = 50;
+  const { ctx, page, errors } = await open({ cat, hub, width: 420, height: 860, coarse: true });
+  const IDLE = mods[P + 'ui.js'].HOVER_IDLE_MS;
+  const STAGE = C + ' .fsp-stage';
+  const shown = () => page.locator(STAGE).evaluate((e) => e.hasAttribute('data-show'));
+  const centerUp = () => page.locator(STAGE + ' .ui-stage-center').evaluate((e) => (getComputedStyle(e).display !== 'none' && e.tagName === 'BUTTON' ? e.getAttribute('aria-label') : ''));
+  const tapAt = async (fx, fy = 0.5) => { const b = await page.locator(C + ' .fsp-vbox').boundingBox(); await page.touchscreen.tap(b.x + b.width * fx, b.y + b.height * fy); };
+  const tapEl = async (sel) => { const b = await page.locator(sel).boundingBox(); await page.touchscreen.tap(b.x + b.width / 2, b.y + b.height / 2); };
+  const paused = () => video(page, (v) => v.paused);
+  const at = () => video(page, (v) => v.currentTime);
+  const marks = (name) => page.evaluate((n) => (window.__funscriptProbe || []).filter((x) => x.k === 'mark' && x.name === n).length, name);
+  const title = () => page.locator(C + ' .fsp-title').textContent();
+  const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.funscript.queue') || '[]').map((e) => e.title));
+  const chapters = { ...SCRIPT, metadata: { chapters: [{ name: 'a', startTime: '00:00:10.000', endTime: '00:00:20.000' }, { name: 'b', startTime: '00:00:20.000', endTime: '00:00:30.000' }] } };
+  const json = (s) => Buffer.from(JSON.stringify(s));
+  const there = await toPluginPage(page);
+  ok('touch: the page mounts the card', there);
+  if (there) {
+    await page.setInputFiles(C + ' .fsp-filev', [
+      { name: 'clip.webm', mimeType: 'video/webm', buffer: VIDEO }, { name: 'clip.funscript', mimeType: 'application/json', buffer: json(chapters) },
+      { name: 'two.webm', mimeType: 'video/webm', buffer: VIDEO }, { name: 'two.funscript', mimeType: 'application/json', buffer: json(SCRIPT) },
+    ]);
+    const ready = await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-play').disabled && document.querySelector(c + '[data-ar]'), C, { timeout: 6000 })
+      .then(() => true, () => false);
+    ok('touch: two videos picked: the first loads, the second is queued', ready && (await title()) === 'clip' && same(await stored(), ['two']), { title: await title(), queue: await stored() });
+    const geo = await page.locator(C).evaluate((r) => {
+      const s = r.querySelector('.fsp-stage').getBoundingClientRect(), v = r.querySelector('.fsp-vbox').getBoundingClientRect();
+      const t = r.querySelector('.fsp-tlh').getBoundingClientRect();
+      return { w: Math.round(v.width), h: Math.round(v.height), gap: Math.round(t.top - s.bottom), same: Math.abs(s.height - v.height) < 1,
+        aligned: Math.abs(v.left - t.left) < 1 && Math.abs(v.right - t.right) < 1 };
+    });
+    ok('touch: the stage is the video\'s own box (16:9 across the column), the timeline right under it',
+      Math.abs(geo.h - geo.w * 9 / 16) <= 1.5 && geo.same && geo.aligned && geo.gap <= 12, geo);
+    await page.waitForTimeout(IDLE + 400);
+    ok('touch: paused, the controls stand with the center Play; the idle never hides them', await shown() && (await centerUp()) === 'Play');
+    const pre0 = await marks('preroll'), play0 = await marks('play');
+    await tapAt(0.5, 0.2);
+    await page.waitForTimeout(150);
+    const hid = !(await shown()) && !(await centerUp());
+    await tapAt(0.5, 0.2);
+    await page.waitForTimeout(150);
+    ok('touch: a tap on the video hides the controls and a second shows them; neither plays',
+      hid && await shown() && await paused() && (await marks('preroll')) === pre0 && (await marks('play')) === play0, { hid, pre: (await marks('preroll')) - pre0 });
+    await tapEl(STAGE + ' .ui-stage-center');
+    const went = await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-stage video').paused, C, { timeout: 4000 }).then(() => true, () => false);
+    ok('touch: the center glyph plays, through the controller\'s preroll', went && (await marks('preroll')) > pre0);
+    await page.waitForTimeout(IDLE + 600);
+    ok('touch: playing, the controls hide after the idle', !(await shown()));
+    await tapAt(0.5, 0.2);
+    await page.waitForTimeout(150);
+    ok('touch: a tap shows them again, the glyph now Pause, and never pauses', await shown() && (await centerUp()) === 'Pause' && !(await paused()));
+    const t0 = await at();
+    await tapAt(0.85);
+    await page.waitForTimeout(60);
+    await tapAt(0.85);
+    await page.waitForTimeout(250);
+    const rip = await page.locator(STAGE + ' .ui-stage-ripple').evaluate((e) => (e.hasAttribute('data-on') ? e.dataset.side + ' ' + e.textContent : ''));
+    await page.waitForTimeout(300);
+    const t1 = await at();
+    ok('touch: a double-tap on the right third skips 10 s ahead with its ripple, still playing', t1 - t0 > 8.5 && t1 - t0 < 12.5 && rip === 'r 10 s' && !(await paused()),
+      { d: t1 - t0, rip });
+    await tapAt(0.15);
+    await page.waitForTimeout(60);
+    await tapAt(0.15);
+    await page.waitForTimeout(550);
+    const t2 = await at();
+    ok('touch: a double-tap on the left third skips 10 s back', t1 - t2 > 8.5 && t1 - t2 < 11.5 && !(await paused()), { d: t1 - t2 });
+    if (!(await shown())) { await tapAt(0.5, 0.2); await page.waitForTimeout(150); }
+    await tapEl(STAGE + ' .ui-stage-center');
+    await page.waitForTimeout(400);
+    ok('touch: the center glyph pauses', await paused() && (await centerUp()) === 'Play');
+    if (SHOTS) await page.screenshot({ path: join(SHOTS, 'touch-paused-420x860.png') });
+
+    // The chapters are the stage's menu (and the timeline's): Next chapter goes to 10 s.
+    const rc = () => page.locator(STAGE).evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: r.left + r.width / 2, clientY: r.top + 20 }));
+    });
+    const items = () => page.evaluate(() => [...document.querySelectorAll('.ui-menu:popover-open .ui-menu-i')].map((b) => (b.disabled ? '-' : '') + b.textContent));
+    await page.evaluate((c) => { document.querySelector(c + ' .fsp-stage video').currentTime = 0; }, C);
+    await page.waitForTimeout(300);
+    await rc();
+    const m0 = await items();
+    await page.locator('.ui-menu:popover-open .ui-menu-i', { hasText: /^Next chapter$/ }).first().click().catch(() => {});
+    await page.waitForTimeout(400);
+    ok('chapters: the stage menu offers Previous chapter and Next chapter; Next chapter goes to 10 s', m0.includes('Previous chapter') && m0.includes('Next chapter')
+      && Math.round(await at()) === 10, { m0, at: await at() });
+
+    // Previous and next walk videos and never play one.
+    const play1 = await marks('play');
+    await tapEl(C + ' .fsp-next');
+    await page.waitForFunction((c) => document.querySelector(c + ' .fsp-title').textContent === 'two', C, { timeout: 4000 }).catch(() => {});
+    await page.waitForTimeout(300);
+    ok('next: the queue\'s next video loads, paused, the queue empties', (await title()) === 'two' && await paused() && (await marks('play')) === play1
+      && same(await stored(), []), { title: await title(), queue: await stored() });
+    await tapEl(C + ' .fsp-prev');
+    await page.waitForFunction((c) => document.querySelector(c + ' .fsp-title').textContent === 'clip', C, { timeout: 4000 }).catch(() => {});
+    await page.waitForTimeout(300);
+    ok('previous: within 3 s it goes back to the video before, the current one back at the queue\'s head',
+      (await title()) === 'clip' && await paused() && same(await stored(), ['two']), { title: await title(), queue: await stored() });
+    await page.evaluate((c) => { document.querySelector(c + ' .fsp-stage video').currentTime = 6; }, C);
+    await page.waitForTimeout(400);
+    await tapEl(C + ' .fsp-prev');
+    await page.waitForTimeout(400);
+    ok('previous: past 3 s it restarts the video', (await title()) === 'clip' && (await at()) < 0.5 && await paused(), { at: await at() });
+    await tapEl(C + ' .fsp-next');
+    await page.waitForTimeout(500);
+    const lastNext = await page.locator(C + ' .fsp-next').isDisabled();
+    ok('next: off with nothing queued and no library', (await title()) === 'two' && lastNext, { title: await title(), lastNext });
+    await page.locator(C).evaluate((r) => { const b = r.querySelector('.fsp-src .fsp-close'); if (b.getClientRects().length) b.click(); else r.querySelector('.fsp-mclose').click(); });
+    await page.waitForTimeout(300);
+    ok('close: unloads the media and shows the library', (await statusText(page)) === ''
+      && await page.locator(C + ' .fsp-empty').evaluate((e) => !e.hidden) && (await page.locator(C).getAttribute('data-view')) === 'library');
+  }
+  ok('touch: no page error', errors.length === 0, errors.slice(0, 3));
+  clearInterval(hub.timer);
+  await ctx.close();
+  if (TOUCH_ONLY) {
+    await browser.close();
+    srv.close();
+    console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');
+    process.exit(fails ? 1 : 0);
+  }
+}
 
 // ---- (M) the context menus (ph-hi4i): the page's, the stage's, the timeline's, the scene and queue rows' ----
 // Every item does what it says; no element on the page leaves its right-click to the webview.
@@ -1794,23 +1932,29 @@ if (!LIVE && !STASH_LIVE) {
       ok('fullscreen: one mode, the ask bare; no mode glyph (PR8)', !!ask && ask.bare === true && await page.locator(C + ' .fsp-hb-mode').count() === 0, ask);
       await page.keyboard.press('Escape');
       await page.waitForTimeout(300);
-      // The center Play (operator 2026-10-08): shown while paused, a stage tap toggles with a flash, hidden while playing.
-      const cp = () => page.locator(C + ' .ui-stage-center').evaluate((e) => getComputedStyle(e).display !== 'none');
-      const shownPaused = await cp();
+      // The center glyph (ph-bw0o PP3, PP4): Play while paused, kept; a mouse click on the video plays and the glyph reads
+      // Pause under the pointer; the pointer leaving hides it while playing; a second click pauses and Play stands again.
+      const cp = () => page.locator(C + ' .ui-stage-center').evaluate((e) => (getComputedStyle(e).display !== 'none' ? e.getAttribute('aria-label') : ''));
+      await page.mouse.move(5, 5);
+      await page.waitForTimeout(300);
+      const shownPaused = (await cp()) === 'Play';
       const vb2 = await page.locator(C + ' .fsp-vbox').boundingBox();
       await page.mouse.click(vb2.x + vb2.width / 3, vb2.y + vb2.height / 3);
-      await page.waitForTimeout(350);
-      const flashed = await page.locator(C + ' .ui-stage-center').evaluate((e) => e.hasAttribute('data-flash'));
       await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-stage video').paused, C, { timeout: 4000 }).catch(() => {});
       await page.waitForTimeout(700);
-      const hiddenPlaying = !(await cp()) && await video(page, (v) => !v.paused);
+      const pauseUnder = (await cp()) === 'Pause' && await video(page, (v) => !v.paused);
       if (EVID) await page.screenshot({ path: join(EVID, 'center-play-playing-' + at + '.png') });
+      await page.mouse.move(5, 5);
+      await page.waitForTimeout(300);
+      const hiddenPlaying = !(await cp()) && await video(page, (v) => !v.paused);
       await page.mouse.click(vb2.x + vb2.width / 3, vb2.y + vb2.height / 3);
       await page.waitForTimeout(900);
-      const backPaused = await video(page, (v) => v.paused) && await cp();
+      await page.mouse.move(5, 5);
+      await page.waitForTimeout(300);
+      const backPaused = await video(page, (v) => v.paused) && (await cp()) === 'Play';
       if (EVID) await page.screenshot({ path: join(EVID, 'center-play-paused-' + at + '.png') });
-      ok('center play: shown while paused, a stage tap plays with a flash and hides it, a second tap pauses and shows it',
-        shownPaused && flashed && hiddenPlaying && backPaused, { shownPaused, flashed, hiddenPlaying, backPaused });
+      ok('center glyph: Play while paused, a click on the video plays and the glyph reads Pause under the pointer, gone once it leaves; a second click pauses and Play stands',
+        shownPaused && pauseUnder && hiddenPlaying && backPaused, { shownPaused, pauseUnder, hiddenPlaying, backPaused });
     }
     if (cls === 'desktop' && w === 1428) {
       const span = () => page.locator(C + ' .fsp-zoom output').textContent();
@@ -3437,39 +3581,6 @@ if (!LIVE && !args.includes('--stash-live')) {
   }
 }
 
-// ---- (v) prev and next step the script's chapters; close returns to the library ----
-if (!LIVE && !args.includes('--stash-live')) {
-  console.log('(v) chapters');
-  const cat = advgenCatalog();
-  cat.entries = decodeCatalog(cat.bytes);
-  const hub = makeHub(cat);
-  hub.values[CH.config + ':window_min'] = 0;
-  hub.values[CH.config + ':window_max'] = 100;
-  const { ctx, page } = await open({ cat, hub });
-  const TAB = '[data-tab-id="plugin:funscript-player:player"]';
-  await page.waitForSelector(TAB, { state: 'attached', timeout: 8000 }).catch(() => {});
-  await page.evaluate((s) => document.querySelectorAll(s).forEach((e) => e.click()), TAB);
-  await page.waitForSelector('main.pane .fsp-page ' + C.replace('main.pane ', ''), { timeout: 5000 }).catch(() => {});
-  const chapters = { ...SCRIPT, metadata: { chapters: [{ name: 'a', startTime: '00:00:10.000', endTime: '00:00:20.000' }, { name: 'b', startTime: '00:00:20.000', endTime: '00:00:30.000' }] } };
-  ok('chapters: the clip with chapters loads', await loadClip(page, chapters));
-  const at = () => video(page, (v) => Math.round(v.currentTime));
-  const click = async (cls) => { await page.locator(C + ' .' + cls).evaluate((e) => e.click()); await page.waitForTimeout(500); };
-  await click('fsp-next');
-  const n1 = await at();
-  await click('fsp-next');
-  const n2 = await at();
-  const nextOff = await page.locator(C + ' .fsp-next').isDisabled();
-  await click('fsp-prev');
-  const p1 = await at();
-  ok('chapters: next goes to 10 s then 20 s, prev back to 10 s; next is off past the last chapter', n1 === 10 && n2 === 20 && p1 === 10 && nextOff, [n1, n2, p1, nextOff]);
-  await click('fsp-close');
-  ok('chapters: close unloads the media and shows the library', (await statusText(page)) === ''
-    && await page.locator(C + ' .fsp-empty').evaluate((e) => !e.hidden)
-    && (await page.locator(C).getAttribute('data-view')) === 'library');
-  clearInterval(hub.timer);
-  await ctx.close();
-}
-
 // ---- (m) the hover bar over the video, media fullscreen, the analyzer column (ph-mcfe, ph-tz5t) ----
 // The bar acts through the controller: every play(), pause() and currentTime set the video takes
 // follows the controller's own probe mark (play, stop, seek; wrap for a loop), never a bar handler.
@@ -3517,7 +3628,7 @@ if (!LIVE && !args.includes('--stash-live')) {
   ok('hover: the bar\'s Fullscreen enters media fullscreen', await page.locator(C + '[data-media]').count() === 1);
   await page.mouse.move(2, 400);
   await page.waitForTimeout(IDLE + 400);
-  ok('hover: hidden at rest', !(await shown()) && (await opacity()) === 0);
+  ok('hover: paused, the bar stands at rest (the stage keeps it, PP3)', await shown() && (await opacity()) === 1);
   await overVideo();
   await page.waitForTimeout(350);
   ok('hover: a pointer move over the video shows the bar', await shown() && (await opacity()) === 1);
@@ -3536,13 +3647,13 @@ if (!LIVE && !args.includes('--stash-live')) {
   await overVideo();
   ok('hover: no floating chevrons in the card (PR10)', await page.locator(C).evaluate((r) => !r.querySelector('[class*=chevron], [class*=caret]:not(.fsp-libcaret):not(.fsp-tlcaret)')));
   await page.waitForTimeout(IDLE + 400);
-  ok('hover: hidden after ' + IDLE + ' ms idle', !(await shown()));
+  ok('hover: paused, ' + IDLE + ' ms idle never hides it', await shown());
   // The stage fills the window: the pointer leaves it for the stop pair (outside the stage).
   await overVideo(10);
   const pairBox = await page.locator('.topstrip .pair').boundingBox();
   await page.mouse.move(pairBox.x + pairBox.width / 2, pairBox.y + pairBox.height / 2);
   await page.waitForTimeout(100);
-  ok('hover: hidden on pointer leave', !(await shown()));
+  ok('hover: paused, a pointer leave keeps it', await shown());
 
   // Play and pause through the fullscreen bar: the controller's preroll first, one hold after.
   const n0 = hub.bundles.length;
@@ -3580,22 +3691,18 @@ if (!LIVE && !args.includes('--stash-live')) {
       }
     }
     return { found: [...found], pseudo, bar: getComputedStyle(document.querySelector(c + ' .ui-stage-overlay')).display,
-      caret: getComputedStyle(document.querySelector('.full-caret')).display, playing: !v.paused,
+      caret: !!document.querySelector('.full-caret'), playing: !v.paused,
       rect: [r.left, r.top, r.width, r.height], win: [innerWidth, innerHeight] };
   }, C);
-  ok('fullscreen at rest: nothing over the playing video but the stop pair; the hover bar and the caret display: none (ph-9t5l.7)',
-    over.playing && !over.found.length && !over.pseudo.length && over.bar === 'none' && over.caret === 'none', over);
+  ok('fullscreen at rest: nothing over the playing video but the stop pair; the hover bar display: none, no caret (ph-9t5l.7, PP6)',
+    over.playing && !over.found.length && !over.pseudo.length && over.bar === 'none' && !over.caret, over);
   ok('fullscreen: the video fills the window edge to edge, no gutter or caret band (ph-9t5l.7)',
     same(over.rect, [0, 0, ...over.win]), { rect: over.rect, win: over.win });
   await page.mouse.move(300, 300);
   await page.waitForTimeout(150);
-  const hot = await page.evaluate(() => {
-    const c = document.querySelector('.full-caret'), r = c.getBoundingClientRect(), p = document.querySelector('.topstrip .pair').getBoundingClientRect();
-    return { display: getComputedStyle(c).display, rect: [r.left, r.top, r.right, r.bottom].map(Math.round),
-      clear: r.right <= p.left || r.left >= p.right || r.bottom <= p.top || r.top >= p.bottom, label: c.getAttribute('aria-label') };
-  });
-  ok('fullscreen: a pointer move shows the caret, a corner hotspot top left over the video, clear of the stop pair (ph-9t5l.7)',
-    hot.display !== 'none' && hot.rect[0] < 24 && hot.rect[1] < 24 && hot.rect[2] > hot.rect[0] && hot.clear && hot.label === 'Show bar', hot);
+  const caretOnMove = await page.evaluate(() => !!document.querySelector('.full-caret'));
+  ok('fullscreen: a pointer move shows the hover bar and no caret; the bar never shows in a media fullscreen (PP6)', !caretOnMove && await shown()
+    && await page.locator('.topstrip.bare').count() === 1);
   await overVideo(-10);
   await page.click(C + ' .fsp-hb .fsp-play');
   await page.waitForTimeout(200);

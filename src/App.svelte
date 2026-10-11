@@ -57,7 +57,6 @@
   import { prefs, setPref } from './model/prefs.js';
   import { OFF, toggle, toggleBar, osFullscreen } from './model/fullscreen.js';
   import { scrollshade } from './ui/scrollshade.js';
-  import { IDLE_MS } from './plugins/kit.js';
   import RailLayouts from './shell/RailLayouts.svelte';
   import { hold } from './shell/hold.js';
   import { resetNeedsModal } from './shell/resetGate.js';
@@ -173,7 +172,8 @@
   $effect(() => { currentId; untrack(() => { full = OFF; }); });
   let osFull = false;
   $effect(() => {
-    const show = () => { if (full.bare) full = toggleBar(full); };
+    // A media page has no bar to show (one bare mode): the close ask leaves its fullscreen instead.
+    const show = () => { if (full.bare) full = current?.page?.mediaFullscreen ? OFF : toggleBar(full); };
     window.addEventListener('phosphor-close-ask', show);
     return () => window.removeEventListener('phosphor-close-ask', show);
   });
@@ -212,23 +212,9 @@
     return () => window.removeEventListener('phosphor-page-fullscreen', ask);
   });
   $effect(() => { if (OS_SHELL) document.documentElement.dataset.fullscreenMode = $prefs.fullscreen; });
-  // A media page's bare fullscreen (ph-9t5l.7): the video edge to edge, the caret a corner hotspot over it that shows on
-  // pointer movement or Tab and hides with the stage overlay (kit IDLE_MS).
+  // A media page's bare fullscreen (ph-9t5l.7): the video edge to edge. It has no caret: its one mode is bare, so showing
+  // the bar would be the In window mode its ruling removed (ph-bw0o); the page's Exit fullscreen, Escape and back leave.
   const mediaBare = $derived(isFull && full.bare && !!current?.page?.mediaFullscreen);
-  let caretWoke = $state(false);
-  $effect(() => {
-    if (!mediaBare) return;
-    let t;
-    const wake = (e) => {
-      if (e.type === 'keydown' && e.key !== 'Tab') return;
-      caretWoke = true;
-      clearTimeout(t);
-      t = setTimeout(() => { caretWoke = false; }, IDLE_MS);
-    };
-    const evs = ['pointermove', 'pointerdown', 'keydown'];
-    for (const ev of evs) window.addEventListener(ev, wake);
-    return () => { clearTimeout(t); caretWoke = false; for (const ev of evs) window.removeEventListener(ev, wake); };
-  });
   // The page status (docs/PLUGINS.md, Pages, `status`): per page, the latest
   // phosphor-page-status of each source in the pane (a plugin page, or a card
   // on the Dash or a category page), newest last. TopStrip's status slot shows
@@ -890,8 +876,8 @@
     <Dock drawer />
   {/if}
 
-  {#if isFull}
-    <button type="button" class="full-caret" class:bare={full.bare} class:hot={mediaBare} class:woke={caretWoke} aria-expanded={!full.bare}
+  {#if isFull && !current?.page?.mediaFullscreen}
+    <button type="button" class="full-caret" class:bare={full.bare} aria-expanded={!full.bare}
             aria-label={full.bare ? 'Show bar' : 'Hide bar'} data-tip={full.bare ? 'Show bar' : 'Hide bar'}
             onclick={() => (full = toggleBar(full))}>
       <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 7.5l3-3 3 3"/></svg>
@@ -1278,16 +1264,6 @@
   :global(:root[data-cutout-top]) .full-caret.bare { left: auto; right: calc(var(--cutout-r) + var(--cutout-w) + var(--sp-3)); transform: none; }
   .full-caret svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.5; }
   .full-caret.bare svg { transform: rotate(180deg); }
-  /* A media page's bare fullscreen (ph-9t5l.7): no padding and no scroll shade, the video edge to edge; the caret floats in
-     the top left corner, inset like the stop pair, and is display: none at rest so only the pair sits over the video. */
+  /* A media page's bare fullscreen (ph-9t5l.7): no padding and no scroll shade, the video edge to edge, no caret. */
   .pane.full.bare.media { padding: 0; }
-  .full-caret.hot {
-    display: none;
-    top: max(var(--sp-2), calc(var(--corner-tl, 0px) * .3));
-    left: max(var(--sp-2), calc(var(--corner-tl, 0px) * .3));
-    transform: none;
-    border-top: 1px solid var(--line);
-    border-radius: var(--r-s);
-  }
-  .full-caret.hot:is(.woke, :hover, :focus-visible) { display: grid; }
 </style>
