@@ -716,8 +716,12 @@ export function heatStops(script, T, ceiling);   // -> [{from, to (ms), ups, col
   // |dpos| / dt in units/s (pos 0..100), equal neighbors merged, the lead-in before the first action at rest; over:
   // the chord speed through T's Range past ceiling.vmax
 export function traceLines(trace, fromMs, toMs, W, H, key = 'u', clipFrom = fromMs, clipTo = toMs), clampRange(T, key, v), zoomStep(ms, dir);   // pure, node-tested;
-  // traceLines draws trace[i][key]: 'u' reality, 'p' the plan, the points inside [clipFrom, clipTo] over [fromMs, toMs];
-  // a point's text is kept per frame of reference, so a span that holds formats each point once
+  // traceLines draws trace[i][key]: 'u' reality, 'p' the plan, the points inside [clipFrom, clipTo] over [fromMs, toMs],
+  // as lines [{stale, parts: [{id, d, k0, k1, n}]}]: a monotone cubic (PCHIP) through every point, no segment outside
+  // its two points' range; a point not after its line's last is dropped, points over 250 ms apart are a gap (ph-6eh7).
+  // A line is cut into SVG path parts per 500 ms of media time; a point's text and its segment's are kept on the point
+  // per frame of reference and neighbors, so a new point formats its segment and the one before, and the timeline
+  // sets only the parts whose k0, k1 or n moved
 export const PINCH_STEP = 1.25;
 export function pinchZoom(ms, scale);   // -> the zoom after a pinch whose finger distance moved by scale since the last
   // step: >= PINCH_STEP one step narrower, <= 1 / PINCH_STEP one wider, else ms (pure, node-tested)
