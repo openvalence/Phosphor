@@ -197,7 +197,7 @@ T.applyTheme('phosphor');
 T.importTheme(out);
 ok('export then import keeps the Theme', T.currentTheme().style === 'luna' && JSON.parse(out).style === 'luna');
 ok('Phosphor is the first Theme, its twelve variants the old presets in order', T.STYLES[0].id === 'phosphor' && T.variantsOf('phosphor').slice(0, 12).map((x) => x.id).join() === 'phosphor,tracer,synth,ember,arctic,vapor,ultra,sakura,stealth,slate,ink,paper');
-ok('the Display pane shows variants only for a Theme with more than one', T.shownPresets({ style: 'rack' }).length === 0 && T.shownPresets({ style: 'luna' }).length === 3 && T.shownPresets({ style: 'phosphor' }).length >= 12);
+ok('the Display pane shows variants only for a Theme with more than one', T.STYLES.filter((x) => T.variantsOf(x.id).length === 1).every((x) => T.shownPresets({ style: x.id }).length === 0) && T.shownPresets({ style: 'luna' }).length === 3 && T.shownPresets({ style: 'phosphor' }).length >= 12);
 mem.clear();
 T.applyTheme('ember');
 ok('applying a Theme sets the root attributes\' source: style and variant', T.currentTheme().style === 'phosphor' && T.currentTheme().variant === 'ember');
