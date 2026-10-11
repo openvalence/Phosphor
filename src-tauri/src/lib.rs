@@ -8,6 +8,7 @@ mod linkstats;
 mod material;
 mod plugins;
 mod report;
+mod wallpaper;
 
 /// The webview's own errors (window.onerror, unhandled rejections, console.error)
 /// land in the log plugin's file so a field failure is readable without devtools.
@@ -54,6 +55,9 @@ pub fn run() {
     .invoke_handler(tauri::generate_handler![
       js_log,
       material::window_material,
+      material::glass_style,
+      wallpaper::wallpaper_info,
+      wallpaper::wallpaper_image,
       discovery::discover_hubs,
       estop_udp::estop_broadcast,
       linkstats::link_tcp_counters,

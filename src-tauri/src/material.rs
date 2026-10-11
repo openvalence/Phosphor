@@ -17,6 +17,20 @@ pub fn window_material(window: tauri::WebviewWindow, kind: String) -> String {
   apply(&window, &kind).to_string()
 }
 
+/// Liquid Glass's two knobs on the macOS 26 glass view: clear or regular, and a tint (r, g, b, a,
+/// each 0 to 1; none removes it). Answers what the view reads back ("style=1 tint=1 interactive=1"),
+/// or an empty string where there is no such view (every other platform, or before `window_material`).
+#[tauri::command]
+pub fn glass_style(clear: bool, tint: Option<[f64; 4]>) -> String {
+  #[cfg(target_os = "macos")]
+  return mac::style(clear, tint);
+  #[cfg(not(target_os = "macos"))]
+  {
+    let _ = (clear, tint);
+    String::new()
+  }
+}
+
 #[cfg(windows)]
 fn apply(window: &tauri::WebviewWindow, kind: &str) -> &'static str {
   use tauri::window::{Color, Effect, EffectsBuilder};
@@ -59,13 +73,37 @@ mod mac {
   //! NSGlassEffectView (AppKit, macOS 26) inserted beneath the web view as the window's
   //! backdrop, the way window-vibrancy places an NSVisualEffectView. Looked up by name at
   //! run time: an older macOS has no such class and the call answers false.
-  use objc2::runtime::{AnyClass, AnyObject};
+  use objc2::runtime::{AnyClass, AnyObject, Bool};
   use objc2::msg_send;
   use objc2_foundation::NSRect;
   use std::sync::Mutex;
 
   // The one view this module created, as an address; zero when none.
   static VIEW: Mutex<usize> = Mutex::new(0);
+
+  /// Clear or regular glass and the tint on the view this module holds; what the view reads back.
+  pub fn style(clear: bool, tint: Option<[f64; 4]>) -> String {
+    let held = VIEW.lock().unwrap_or_else(|e| e.into_inner());
+    if *held == 0 { return String::new(); }
+    unsafe {
+      let view = *held as *mut AnyObject;
+      // NSGlassEffectViewStyleRegular = 0, Clear = 1.
+      let _: () = msg_send![view, setStyle: clear as isize];
+      let color: *mut AnyObject = match (tint, AnyClass::get(c"NSColor")) {
+        (Some([r, g, b, a]), Some(cls)) => msg_send![cls, colorWithSRGBRed: r, green: g, blue: b, alpha: a],
+        _ => std::ptr::null_mut(),
+      };
+      let _: () = msg_send![view, setTintColor: color];
+      // effectIsInteractive is macOS 27's: the glass answers the pointer. Older systems lack the selector.
+      let sel = objc2::sel!(setEffectIsInteractive:);
+      let has: Bool = msg_send![view, respondsToSelector: sel];
+      if has.as_bool() { let _: () = msg_send![view, setEffectIsInteractive: Bool::YES]; }
+      let style: isize = msg_send![view, style];
+      let tinted: *mut AnyObject = msg_send![view, tintColor];
+      let live: Bool = if has.as_bool() { msg_send![view, effectIsInteractive] } else { Bool::NO };
+      format!("style={style} tint={} interactive={}", !tinted.is_null() as u8, live.as_bool() as u8)
+    }
+  }
 
   /// Insert (`on`) or remove the glass backdrop; true when it is in place.
   pub fn glass(window: &tauri::WebviewWindow, on: bool) -> bool {

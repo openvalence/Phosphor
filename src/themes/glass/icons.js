@@ -1,4 +1,4 @@
 import { stockIcons } from '../kit.js';
 
-/** Liquid Glass: the stock glyphs heavier, with a faint offset copy for depth. */
-export default stockIcons((d) => '<path d="' + d + '" stroke-width="1.9"/><path d="' + d + '" transform="translate(0 .7)" stroke-width="1.9" opacity=".28"/>');
+/** Liquid Glass: each stock glyph as a thin line inside a wide, faint copy of itself: a glass tube with a lit core. */
+export default stockIcons((d) => '<path d="' + d + '" stroke-width="3.6" opacity=".22"/><path d="' + d + '" stroke-width="1.5"/>');
