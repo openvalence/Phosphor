@@ -231,6 +231,11 @@ html:root[data-style="setup"] .og-switch:hover .track { background-color: var(--
 html:root[data-style="setup"] input[type="checkbox"]:not([role="switch"]) {
   appearance: none;
   -webkit-appearance: none;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0 var(--sp-2) 0 0;
+  vertical-align: -3px;
   background-color: var(--st-field);
   border: 2px solid var(--line-3);
   border-radius: 0;
@@ -376,3 +381,4 @@ html:root[data-style="setup"] .menu-pop { border: 3px double var(--line-4); bord
 html:root[data-style="setup"] .ui-tile-shot { border-radius: 0; border: 2px solid var(--line-3); }
 html:root[data-style="setup"][data-variant="setup-mono"] :is(.field-value, .og-num, .value-input) { text-decoration: underline; text-underline-offset: 2px; }
 html:root[data-style="setup"][data-variant="setup-mono"] .og-switch input:checked + .track::before { text-decoration: underline; }
+html:root[data-style="setup"] .phone-menu { border: 3px double var(--line-4); border-left: 0; border-radius: 0; box-shadow: 8px 8px 0 var(--st-shadow); }
