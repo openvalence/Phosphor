@@ -414,6 +414,7 @@ html:root[data-style="boing"] .og-switch .track::after {
 }
 html:root[data-style="boing"][data-variant="boing-13"] .og-switch .track::after { border-color: #fff; }
 html:root[data-style="boing"] .og-switch input:checked + .track::after { transform: translateX(20px); }
+html:root[data-style="boing"] .og-switch input:not(:checked) + .track::after { background: var(--bo-face); }
 
 html:root[data-style="boing"] input[type="checkbox"]:not([role="switch"]) {
   appearance: none;
@@ -553,3 +554,12 @@ html:root[data-style="boing"] ::-webkit-scrollbar-button:single-button:vertical:
 html:root[data-style="boing"] ::-webkit-scrollbar-button:single-button:horizontal:decrement { background-image: var(--bo-lf); }
 html:root[data-style="boing"] ::-webkit-scrollbar-button:single-button:horizontal:increment { background-image: var(--bo-rt); }
 html:root[data-style="boing"] ::-webkit-scrollbar-corner { background: var(--bo-face); }
+
+/* ================= 3.1: gloss on the larger surfaces ================= */
+html:root[data-style="boing"][data-variant="boing-31"] .og-panel { background-image: var(--bo-gloss); }
+html:root[data-style="boing"][data-variant="boing-31"] [data-part="rail"] { background-image: linear-gradient(180deg, #D6D9E3, var(--bg-raised) 30%, #B6BAC8); }
+html:root[data-style="boing"][data-variant="boing-31"] [data-part="nest"] { background-image: linear-gradient(180deg, rgba(40, 50, 90, .14), rgba(255, 255, 255, .22)); }
+html:root[data-style="boing"][data-variant="boing-31"] :is([role="tab"][aria-selected="true"]:not([data-part="rail-tab"]), .tabs button.on) { background-image: linear-gradient(180deg, #F2F3F8, var(--bo-face)); }
+html:root[data-style="boing"][data-variant="boing-31"] .ui-menu { background-image: linear-gradient(180deg, #E6E8F0, var(--bo-face)); }
+html:root[data-style="boing"][data-variant="boing-31"] ::-webkit-scrollbar-thumb { background-image: linear-gradient(90deg, #E6E8F0, #B2B6C6); }
+html:root[data-style="boing"][data-variant="boing-31"] .og-switch input:not(:checked) + .track::after { background-image: linear-gradient(180deg, #E6E8F0, #B2B6C6); }
