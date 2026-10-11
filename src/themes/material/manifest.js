@@ -2,8 +2,8 @@ import icons from './icons.js';
 
 export default {
   id: 'material', name: 'Material',
-  pitch: 'Material 3: tonal surfaces, state layers, pill buttons; Material You colors on Android',
-  note: 'Material: on Android 12 and later the Baseline colors come from your wallpaper; elsewhere the fixed palette',
+  pitch: 'Material 3: tonal surfaces, state layers, pill buttons',
+  note: 'Baseline takes your wallpaper colors on Android 12 and later',
   swatch: 'linear-gradient(135deg, #D0BCFF 0 34%, #4A4458 34% 62%, #2B2733 62% 100%)',
   icons,
   // The first variant is the theme's own palette; its id is the theme's id. docs/THEMES.md, Variants.
