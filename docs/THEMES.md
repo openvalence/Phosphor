@@ -229,6 +229,9 @@ not in `src/model/keys.js`, so F1 does not give the secret away. `test/theme-tem
 the unlock, the escape, the stop pair under 50 sprite placements, no frames while hidden or still,
 and the oracle.
 
+The arcade (`plugins/factory/arcade/`, docs/PLUGINS.md) registers its page only while Temple is
+applied; while that page is open the overlay steps aside.
+
 ## Hidden themes
 
 A manifest with `hidden: true` is left out of the picker and F3 until it is found: `theme.js`

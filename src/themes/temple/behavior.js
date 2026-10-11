@@ -187,7 +187,9 @@ export function start({ leave }) {
   };
 
   const still = () => root.classList.contains('still');
-  const live = () => document.visibilityState === 'visible' && !still() && !root.hasAttribute('data-page-full');
+  // The arcade's page (plugins/factory/arcade) gets a clear screen: no sprites over a game.
+  let quiet = false;
+  const live = () => document.visibilityState === 'visible' && !still() && !quiet && !root.hasAttribute('data-page-full');
   let raf = 0, t0 = performance.now();
   const tick = (now) => {
     raf = 0;
@@ -197,7 +199,7 @@ export function start({ leave }) {
     if (now - last < 33) return;   // ~30 frames a second is plenty for a 1990s screen
     const dt = Math.min(0.1, (now - (last || now)) / 1000);
     last = now;
-    if (frames++ % 15 === 0) measure();   // the strip's edge, twice a second: layout is never read per frame
+    if (frames++ % 15 === 0) { measure(); quiet = !!document.querySelector('.arc-page'); }   // the strip's edge, twice a second: layout is never read per frame
     step(dt, (now - t0) / 1000);
     draw((now - t0) / 1000);
   };
@@ -233,6 +235,8 @@ export function start({ leave }) {
       + '  CPU ' + String(cpu).padStart(2, ' ') + '%  Mem ' + mem + '  Tasks ' + tasks;
     root.style.setProperty('--temple-wm', JSON.stringify(s));
     measure();
+    const q = !!document.querySelector('.arc-page');
+    if (q !== quiet) { quiet = q; kick(); }
     if (!raf) draw(0);   // still: the static frame follows the layout
   };
   const iv = setInterval(tickBar, 1000);

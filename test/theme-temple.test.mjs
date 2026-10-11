@@ -102,8 +102,8 @@ console.log('\n--- unlock ---');
   await page.waitForTimeout(300);
   ok('hidden: the picker has no Temple chip before it is found', !(await page.$('[data-style-id="temple"]')));
   await page.keyboard.press('F3');
-  await page.fill('.lf-q', 'Temple');
-  ok('F3 lists no Temple entry before it is found', !(await page.$$eval('.lf-list li', (ls) => ls.some((l) => l.textContent.includes('Theme: Temple')))));
+  await page.fill('.lf-q', 'Templ');
+  ok('F3 lists no Temple entry before it is found (the word itself is the key)', !(await page.$$eval('.lf-list li', (ls) => ls.some((l) => l.textContent.includes('Theme: Temple')))));
   await page.fill('.lf-q', '');
   await page.locator('.lf-q').pressSequentially('temple', { delay: 30 });
   await page.waitForTimeout(500);
@@ -258,6 +258,111 @@ console.log('\n--- oracle ---');
   await page.waitForTimeout(100);
   ok('Escape closes it', !(await page.$('.temple-oracle')));
   ok('oracle: no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
+  await ctx.close();
+}
+
+// ---- the arcade (plugins/factory/arcade): its tab lives only under Temple; the games play with no machine ----
+console.log('\n--- arcade ---');
+{
+  const { ctx, page, errors } = await boot(byId('phosphor'));
+  ok('no Temple, no Arcade tab', !(await page.$('[data-tab-id="plugin:arcade:arcade"]')));
+  await ctx.close();
+}
+{
+  const { ctx, page, errors } = await boot(byId('temple'));
+  await page.waitForSelector('[data-tab-id="plugin:arcade:arcade"]', { timeout: 5000 }).catch(() => {});
+  ok('under Temple the Arcade tab is there', !!(await page.$('[data-tab-id="plugin:arcade:arcade"]')));
+  await goTab(page, 'plugin:arcade:arcade');
+  await page.waitForSelector('.arc-page canvas', { timeout: 5000 });
+  const sig = () => page.evaluate(() => { const c = document.querySelector('.arc-page canvas'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let h = 0; for (let i = 0; i < d.length; i += 97) h = (h * 31 + d[i]) | 0; return h; });
+  for (const name of ['Road', 'Bat', 'Song']) {
+    await page.click('.arc-page .og-seg button:has-text("' + name + '")');
+    await page.waitForTimeout(200);
+    await shot(page, 'arcade-' + name.toLowerCase() + '-intro');
+    await page.click('.arc-page canvas');
+    await page.keyboard.press('Space');
+    await page.waitForTimeout(300);
+    const a = await sig();
+    for (let i = 0; i < 6; i++) { await page.keyboard.press(name === 'Road' ? 'ArrowLeft' : name === 'Bat' ? 'Space' : 'ArrowUp'); await page.waitForTimeout(120); }
+    const b = await sig();
+    ok(name + ': plays with no motion allowed (the screen moves)', a !== b);
+    await shot(page, 'arcade-' + name.toLowerCase());
+    await page.click('.arc-page .og-btn:has-text("Stop"), .arc-page .og-btn:has-text("Play")');
+  }
+  // The fixture reports no position: Allow motion is refused, in words, and the switch stays off.
+  await page.click('.arc-page .og-switch');
+  await page.waitForTimeout(200);
+  const st = await page.evaluate(() => [document.querySelector('.arc-page .og-switch input').checked, document.querySelector('.arc-page .arc-note').textContent]);
+  ok('Allow motion without a reported position is refused and stays off', st[0] === false && /^Not allowed: /.test(st[1]), JSON.stringify(st));
+  ok('the warning line is shown beside it', /Pause or Halt stops it/.test(await page.textContent('.arc-page .arc-warn')));
+  // Leaving the theme withdraws the tab.
+  for (let i = 0; i < 3; i++) await page.keyboard.press('Escape');
+  await page.waitForTimeout(400);
+  ok('leaving Temple withdraws the Arcade tab', !(await page.$('[data-tab-id="plugin:arcade:arcade"]')));
+  ok('arcade: no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
+  await ctx.close();
+}
+
+// ---- the arcade on the built-in machine (the Nucleus twin in wasm): consent, limits, Pause ----------------
+console.log('\n--- arcade on the built-in machine ---');
+{
+  const { ctx, page, errors } = await boot(byId('temple'));
+  await goTab(page, 'shell:hubs');
+  await page.waitForTimeout(400);
+  await page.locator('.pane-list.rows').first().locator('li.virtual').getByRole('button', { name: 'Connect' }).click();
+  let live = false;
+  for (let i = 0; i < 40 && !live; i++) { await page.waitForTimeout(500); live = /\blive\b/.test(await page.evaluate(() => document.querySelector('.linkdot')?.className || '')); }
+  ok('the built-in machine is live', live);
+  await page.waitForTimeout(1500);
+  const read = () => page.evaluate(() => {
+    const t = [...document.querySelectorAll('[data-part="numerals"]')].map((e) => e.innerText.replace(/\s+/g, ' ')).join(' ');
+    const m = /planned position · mm (-?[\d.]+)/.exec(t), v = /speed (-?\d+) mm\/s/.exec(t);
+    return { pos: m ? Number(m[1]) : NaN, speed: v ? Math.abs(Number(v[1])) : NaN };
+  });
+  await goTab(page, 'plugin:arcade:arcade');
+  await page.waitForSelector('.arc-page canvas');
+  const steer = async (ms, onSample) => {
+    for (let i = 0; i < ms / 250; i++) {
+      const k = Math.floor(i / 4) % 2 ? 'ArrowLeft' : 'ArrowRight';
+      await page.keyboard.down(k); await page.waitForTimeout(250); await page.keyboard.up(k);
+      if (onSample) onSample(await read());
+    }
+  };
+  // No consent: a whole round of steering moves nothing.
+  const p0 = await read();
+  await page.click('.arc-page canvas');
+  await page.keyboard.press('Space');
+  await steer(2000);
+  const p1 = await read();
+  ok('without Allow motion the game moves nothing', p0.pos === p1.pos && p1.speed === 0, JSON.stringify([p0, p1]));
+  await page.click('.arc-page .og-btn:has-text("Stop")');
+  // Consent: it drives, inside its cap.
+  await page.click('.arc-page .og-switch');
+  await page.waitForTimeout(200);
+  const note = await page.textContent('.arc-page .arc-note');
+  const cap = Number((/at most (\d+) mm\/s/.exec(note) || [])[1]);
+  ok('Allow motion is granted and names its cap', /^Motion allowed, at most \d+ mm\/s\.$/.test(note) && cap > 0, note);
+  await page.click('.arc-page canvas');
+  await page.keyboard.press('Space');
+  let peak = 0, moved = 0;
+  await steer(4000, (r) => { peak = Math.max(peak, r.speed); moved = Math.max(moved, Math.abs(r.pos - p1.pos)); });
+  ok('with Allow motion the car drives the carriage', moved > 20, moved.toFixed(1) + ' mm');
+  ok('the planned speed stays at the cap (planner overshoot under 5 %)', peak <= cap * 1.05, peak + ' mm/s against ' + cap);
+  await shot(page, 'arcade-live');
+  // Pause: the game's motion stops at once and the consent is gone.
+  await page.click('[data-part="stop-frame"] button >> nth=0');
+  await page.waitForTimeout(600);
+  const st = await page.evaluate(() => [document.querySelector('.arc-page .og-switch input').checked, document.querySelector('.arc-page .arc-note').textContent]);
+  ok('Pause drops Allow motion and says why', st[0] === false && /^Motion stopped: paused/.test(st[1]), JSON.stringify(st));
+  const a = await read();
+  await page.click('.arc-page canvas');
+  await page.keyboard.press('Space');
+  await steer(1500);
+  const b = await read();
+  ok('after Pause the game moves nothing, even played again', a.pos === b.pos && b.speed === 0, JSON.stringify([a, b]));
+  await goTab(page, 'shell:hubs');
+  await page.locator('.pane-list.rows').first().locator('li.virtual').getByRole('button', { name: 'Stop' }).click().catch(() => {});
+  ok('arcade live: no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
   await ctx.close();
 }
 

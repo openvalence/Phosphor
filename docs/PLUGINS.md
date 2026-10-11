@@ -892,6 +892,26 @@ Shipped:
   default; its dock exists while the connected hub has pins and opens only
   when the user opens it; none on the phone class, where its pins wait for
   the desktop. Declares `intent` and `menu`.
+- `plugins/factory/arcade/`: three small games in the TempleOS spirit (Road,
+  Bat, Song) on a page, `Arcade`, that is registered only while the hidden
+  Temple theme is applied (docs/THEMES.md, Hidden themes) and withdrawn when
+  it leaves. Every game plays with no machine. Each maps one game value to the
+  carriage: Road the car's place across the road, Bat the bat's height, Song
+  each note's pitch. Motion needs the card's **Allow motion** switch (off on
+  every mount, beside its one-line warning) and leaves only through
+  `submitSegments` (`drive.js`): 100 ms segments back to back, at most
+  160 ms queued, speed and acceleration capped at 0.5 and 2 of the window a
+  second and at 40 % of `limit.input.speed` and `limit.input.accel` where the
+  window is reported in mm; the first segment starts from the reported
+  position (no position, no motion). Any gate words or refusal (Pause, Halt,
+  a lost link, another producer) drop the consent and pause the game; it never
+  resumes on its own. Its own stops (game over, Stop, the window blurred or
+  hidden, the page left) send one braking hold. Never writes a setting. Keys
+  are the game screen's own, so Space on a focused stop button never reaches
+  a game. Sound is off until its Sound button. Declares `motion`.
+  `test/arcade.test.mjs` (in `npm run check`) drives the real games through
+  the drive against a stub; `test/theme-temple.test.mjs` plays them on the
+  built-in machine.
 - `plugins/factory/funscript-player/`: plays a local or Stash video and
   drives the rail from its main (L0) funscript. One hero, `player`
   (`absorb: false`), requires `input.target` and `input.duration`, so it
