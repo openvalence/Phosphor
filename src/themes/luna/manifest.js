@@ -3,7 +3,7 @@ import icons from './icons.js';
 export default {
   id: 'luna', name: 'Luna',
   pitch: 'Blue title bars and beige windows on a green hill',
-  swatch: 'linear-gradient(180deg, #2A6DE6 0 38%, #ECE9D8 38% 100%)',
+  swatch: 'radial-gradient(ellipse 90% 55% at 25% 125%, #4FA634 0 70%, transparent 71%), linear-gradient(180deg, #0A5AE8 0 24%, #ECE9D8 24% 62%, #8FC1F2 62%)',
   icons,
   // The first variant is the theme's own palette; its id is the theme's id. docs/THEMES.md, Variants.
   variants: [
