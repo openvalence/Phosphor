@@ -120,14 +120,13 @@ html:root[data-style="setup"] .rail-sec.shell { border-radius: 0; background: va
 html:root[data-style="setup"] .pane-head h2 { color: var(--st-title); text-transform: uppercase; letter-spacing: 0; font-weight: 700; }
 
 /* ---- boxes: a double line, a one-cell shadow; a card's title is a gray tab on the top line ---- */
-html:root[data-style="setup"] [data-part="card"],
-html:root[data-style="setup"] [data-part="panel"] {
+html:root[data-style="setup"] .surface-card {
   border-style: double;
   border-color: var(--line-3);
   border-radius: 0;
   box-shadow: 6px 6px 0 var(--st-shadow);
 }
-html:root[data-style="setup"] [data-part="nest"] { border-style: solid; border-width: 2px; border-color: var(--line-3); border-radius: 0; }
+html:root[data-style="setup"] .surface-nest { border-style: solid; border-width: 2px; border-color: var(--line-3); border-radius: 0; }
 html:root[data-style="setup"] [data-part="card"],
 html:root[data-style="setup"] [data-part="nest"] { padding-top: calc(var(--dash-body-pad, var(--gap)) + 10px); }
 html:root[data-style="setup"] [data-part="card-head"]:not(.over) { z-index: 2; margin-bottom: -10px; padding: 0; justify-content: center; }
