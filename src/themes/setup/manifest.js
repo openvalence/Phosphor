@@ -12,7 +12,7 @@ const look = { glow: 0, radius: 0, scale: 1.12, numWeight: 400, motion: 2 };
 export default {
   id: 'setup', name: 'Setup',
   pitch: 'A BIOS setup screen: blue, double-line boxes, gray dialogs, reverse video',
-  swatch: 'linear-gradient(#000, #000) 58% 66% / 44% 38% no-repeat, linear-gradient(#AAAAAA, #AAAAAA) 50% 50% / 44% 38% no-repeat, linear-gradient(#FFFF55, #FFFF55) 50% 14% / 30% 10% no-repeat, #0000AA',
+  swatch: 'linear-gradient(#AAAAAA, #AAAAAA) top / 100% 24% no-repeat, linear-gradient(#AAAAAA, #AAAAAA) bottom / 100% 20% no-repeat, #0000AA',
   icons,
   // The first variant is the theme's own palette; its id is the theme's id. docs/THEMES.md, Variants.
   variants: [

@@ -317,9 +317,10 @@ html:root[data-style="setup"] :is(.ui-menu, .ui-sheet) .og-btn:not(.on):not(.pri
 html:root[data-style="setup"] #ph-tip { padding: 2px 8px; }
 
 /* ---- the status row is the key-hint bar: gray, black, the keys at its right end ---- */
-html:root[data-style="setup"] [data-part="status-row"],
-html:root[data-style="setup"] [data-part="page-foot"] { border-top: 0; background-color: var(--st-face); color: var(--st-ink); box-shadow: none; }
-html:root[data-style="setup"] [data-part="status-row"] :is(.fs-label, .k, .v, .fact-btn, .fact) { color: var(--st-ink); }
+html:root[data-style="setup"] [data-part="status-row"] { border-top: 0; background-color: var(--st-face); color: var(--st-ink); box-shadow: none; }
+html:root[data-style="setup"] [data-part="page-foot"] { border-top: 3px double var(--line-3); background-color: var(--bg); box-shadow: none; }
+html:root[data-style="setup"] [data-part="status-row"] :is(.fs-label, .k, .v, .fact-btn, .fact, output, .foot-scale) { color: var(--st-ink); }
+html:root[data-style="setup"] [data-part="status-row"] output { font-weight: 700; }
 html:root[data-style="setup"] [data-part="status-row"] .k { text-transform: uppercase; letter-spacing: 0; }
 html:root[data-style="setup"] [data-part="status-row"] .fs-label { letter-spacing: 0; font-weight: 700; }
 html:root[data-style="setup"] [data-part="status-row"]::after {
@@ -364,3 +365,14 @@ html:root[data-style="setup"]:not(.still) [data-part="bar"] .wordmark::after {
   content: '_';
   animation: theme-setup-blink 1.06s steps(1, end) infinite;
 }
+
+/* ---- later rules: the arrow on a focused field, the switch under the pointer, the home menu, tiles, mono's underline ---- */
+html:root[data-style="setup"] select:focus {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Cpath d='M0 2h8v2H6v2H5v1H3V6H2V4H0z' fill='%23000'/%3E%3C/svg%3E");
+}
+html:root[data-style="setup"] .og-switch:hover .track { background-color: var(--st-sel); }
+html:root[data-style="setup"] .og-switch:hover .track::before { color: var(--st-sel-ink); }
+html:root[data-style="setup"] .menu-pop { border: 3px double var(--line-4); border-radius: 0; box-shadow: 8px 8px 0 var(--st-shadow); }
+html:root[data-style="setup"] .ui-tile-shot { border-radius: 0; border: 2px solid var(--line-3); }
+html:root[data-style="setup"][data-variant="setup-mono"] :is(.field-value, .og-num, .value-input) { text-decoration: underline; text-underline-offset: 2px; }
+html:root[data-style="setup"][data-variant="setup-mono"] .og-switch input:checked + .track::before { text-decoration: underline; }
