@@ -789,7 +789,7 @@ export const CSS = `
 .fsp[data-comp=glance] .fsp-libbox, .fsp[data-comp=glance] .fsp-tlbox { display: none; }
 .fsp[data-comp=glance] .fsp-stage { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 /* Glance keeps the video playing in its clipped stage (frames feed the clock); none of the stage's controls is a target. */
-.fsp[data-comp=glance] .fsp-stage :is(.ui-stage-empty, .ui-stage-center, .ui-stage-overlay, .fsp-mo) { visibility: hidden; }
+.fsp[data-comp=glance] .fsp-stage :is(.ui-stage-empty, .ui-stage-center, .ui-stage-caption, .ui-stage-overlay, .fsp-mo) { visibility: hidden; }
 .fsp-meter { grid-area: meter; position: relative; display: none; background: var(--screen); border-radius: var(--r-s); }
 .fsp[data-comp=glance] .fsp-meter { display: block; }
 .fsp-tick { position: absolute; top: 2px; bottom: 2px; width: 3px; translate: -1.5px 0; }
@@ -1573,6 +1573,8 @@ export function createPlayer(api) {
       // The center glyph over a video only: in motion only the meter is the stage and the bar's Play is right there (ph-1qs5.11).
       stage.center(st.scene && st.scene.stream && !root.hasAttribute('data-an') && comp !== 'glance' ? (on ? 'pause' : 'play') : null, on ? COPY.pause : COPY.play);
       stage.keep = !on;
+      // The video's title top left with the controls (operator 2026-10-11): the scene's, else the file name without its extension.
+      stage.caption = st.scene && st.scene.stream && comp !== 'glance' ? st.scene.title : '';
       rate.label = (video.playbackRate || 1) + 'x';
       if (document.activeElement !== vol.input) vol.value = video.muted ? 0 : video.volume;
       muteB.icon = video.muted ? 'muted' : 'volume';

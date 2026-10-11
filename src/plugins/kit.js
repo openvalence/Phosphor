@@ -708,7 +708,9 @@ export function stage(o = {}) {
   const ripple = h('div', { class: 'ui-stage-ripple', 'aria-hidden': 'true' }, icon('left'), h('span'));
   const dock = h('div', { class: 'ui-stage-dock' });
   const overlay = h('div', { class: 'ui-stage-overlay' });
-  const box = h('div', { class: 'ui-stage-box' }, media, empty, center, ripple, dock, overlay);
+  // The caption: one line top left (a title), shown with the controls, clear of the stop pair in fullscreen.
+  const caption = h('div', { class: 'ui-stage-caption' });
+  const box = h('div', { class: 'ui-stage-box' }, media, empty, center, ripple, caption, dock, overlay);
   const el = h('div', { class: cls('ui-stage', o), 'data-overlay': o.overlay || 'fullscreen' }, box);
   let aspect = null, full = false, idle = 0, keep = false, kind = 'mouse', last = null, tapT = 0, ripT = 0, shownAt = -Infinity;
   // The controls stay while kept (paused), hovered (a mouse's: a touch leaves :hover stuck), dragged or holding keyboard
@@ -823,6 +825,7 @@ export function stage(o = {}) {
       },
     },
     poke: { value: poke },
+    caption: { get: () => caption.textContent, set(v) { setText(caption, v || ''); el.toggleAttribute('data-caption', !!v); } },
     // Kept: the controls show and never hide on their own (a paused video); a touch tap still hides them.
     keep: {
       get: () => keep,
