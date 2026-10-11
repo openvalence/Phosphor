@@ -30,12 +30,15 @@ function primaryPointer() {
   return 'fine';
 }
 
-const remPx = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-const colsNow = () => (hasWindow ? layoutCols(window.innerWidth, remPx()) : 40);
+// `cached` reuses the last root size: a getComputedStyle per resize event forces a whole-document style
+// recalc (docs/THEMES.md, Performance). Only --s or a theme moves the root size, and those measure afresh.
+let rem = 0;
+const remPx = (cached) => (cached && rem) || (rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16);
+const colsNow = (cached) => (hasWindow ? layoutCols(window.innerWidth, remPx(cached)) : 40);
 
-const derive = (prev, pointer) => {
+const derive = (prev, pointer, cached) => {
   if (!hasWindow) return { phone: false, cls: 'full', bucket: bucketOf(colsNow()) };
-  return phoneClamp(nextClass(prev, window.innerWidth, pointer), bucketOf(colsNow()), pointer, window.innerWidth, window.innerHeight);
+  return phoneClamp(nextClass(prev, window.innerWidth, pointer), bucketOf(colsNow(cached)), pointer, window.innerWidth, window.innerHeight);
 };
 // phone: the phone class (rclass.js phoneClamp), mirrored to html[data-phone].
 export const view = $state({ cols: colsNow(), pointer: primaryPointer(), ...derive(null, primaryPointer()) });
@@ -50,11 +53,11 @@ if (hasWindow) {
     // Guarded: the style observer below would otherwise re-enter on its own write.
     if (d.style.getPropertyValue('--cols') !== String(view.cols)) d.style.setProperty('--cols', String(view.cols));
   };
-  const apply = () => {
+  const apply = (cached = false) => {
     if (down.size) return;
     view.pointer = primaryPointer();
-    view.cols = colsNow();
-    Object.assign(view, derive(view.cls, view.pointer));
+    view.cols = colsNow(cached);
+    Object.assign(view, derive(view.cls, view.pointer, true));
     publish();
   };
   const release = (e) => { down.delete(e.pointerId); apply(); };
@@ -63,12 +66,26 @@ if (hasWindow) {
   window.addEventListener('pointercancel', release, true);
   // A pointerup lost to another window must not freeze the class forever.
   window.addEventListener('blur', () => { down.clear(); apply(); });
-  window.addEventListener('resize', apply);
-  onTheme(apply);
-  // --s changes land as an inline style on <html> without a theme event.
-  new MutationObserver(apply).observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
+  // html[data-busy="resize"] while the window is being resized, cleared 250 ms after the last resize event: a
+  // Theme may lighten an effect under it (docs/THEMES.md, Chrome hooks). Set once per gesture, never per event.
+  let settle = 0;
+  window.addEventListener('resize', () => {
+    apply(true);
+    const d = document.documentElement;
+    if (!d.hasAttribute('data-busy')) d.setAttribute('data-busy', 'resize');
+    clearTimeout(settle);
+    settle = setTimeout(() => d.removeAttribute('data-busy'), 250);
+  });
+  onTheme(() => apply());
+  // --s changes land as an inline style on <html> without a theme event; any other root style write keeps the size.
+  let s = null;
+  new MutationObserver(() => {
+    const now = document.documentElement.style.getPropertyValue('--s');
+    apply(now === s);
+    s = now;
+  }).observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
   for (const q of ['(pointer: coarse)', '(pointer: none)']) {
-    window.matchMedia?.(q).addEventListener?.('change', apply);
+    window.matchMedia?.(q).addEventListener?.('change', () => apply());
   }
   publish();
 }
