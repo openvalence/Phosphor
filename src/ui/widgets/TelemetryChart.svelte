@@ -274,11 +274,15 @@
     // html.still: no continuous scroll, a discrete 1 s redraw. Capture is
     // independent of this (the arrival effect above), and the HTML legend is
     // plain reactive markup, live either way.
-    let raf = 0, timer = 0;
-    function frame() {
+    // At most 60 draws a second while it scrolls: on a 120 Hz screen the window moves about a device pixel a
+    // frame. The last frame always draws.
+    const MIN_DRAW_MS = 1000 / 60 - 2;
+    let raf = 0, timer = 0, drawnAt = 0;
+    function frame(t) {
       raf = 0;
-      draw();
-      if (!moving(Date.now())) return;
+      const more = moving(Date.now());
+      if (!more || !(t - drawnAt < MIN_DRAW_MS)) { drawnAt = t; draw(); }
+      if (!more) return;
       if (reduced) timer = setTimeout(() => { timer = 0; raf = requestAnimationFrame(frame); }, 1000);
       else raf = requestAnimationFrame(frame);
     }
