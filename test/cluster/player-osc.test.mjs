@@ -5,10 +5,11 @@
  *
  *   node test/cluster/player-osc.test.mjs
  *
- * Cases: the card is written square with osc.enabled false, the carriage parked mid-window; while the script
- * plays, the hub reports the oscillator rendering, driven (shape sine), osc.enabled still false, and every point
- * arrives at least the grant's schedule latency (156 ms) ahead of its stamp; once the player stops, after the
- * quiet window the hub hands back to the hand state: not rendering, square again.
+ * Cases: the card offers no shape (sine only, Valence RFC-112) and is written with a crest dwell and osc.enabled
+ * false, the carriage parked mid-window; while the script plays, the hub reports the oscillator rendering, driven
+ * (no dwells), osc.enabled still false, and every point arrives at least the grant's schedule latency (156 ms)
+ * ahead of its stamp; once the player stops, after the quiet window the hub hands back to the hand state: not
+ * rendering, the dwell again.
  * Exit 1 on any FAIL.
  */
 import { bootNeutrino, wasmBytes } from './neutrino.mjs';
@@ -49,9 +50,9 @@ const oscTwin = s.catalog.find((e) => e.settingChannel === OSC.id);
 s.subscribe([[oscTwin.id, 0, PRIORITY.normal]]);
 const send = (ch, v) => s.sendIntent(ch, v).then(() => 'ok', (e) => (e.code != null ? e.name + (e.detail ? ': ' + e.detail : '') : e.message));
 const osc = () => twin.get(oscTwin.id) || {};
-const shapes = OSC.schema.find((f) => f.role === 'osc.shape').options;
-const SQUARE = shapes.indexOf('square'), SINE = shapes.indexOf('sine');
-ok('the card offers square and sine', SQUARE >= 0 && SINE >= 0, shapes);
+ok('the card offers no shape: sine only (Valence RFC-112)', !OSC.schema.some((f) => f.role === 'osc.shape'),
+  OSC.schema.map((f) => f.name));
+const DWELL = 0.5;
 
 // The carriage mid-window: at a window edge the oscillation has no room and renders 0.
 await until(() => twin.has(CH.MACHINE_CONFIG), 3000);
@@ -60,9 +61,9 @@ const lo = cfg.window_min ?? 0, hi = cfg.window_max ?? 100;
 let r = await send(MOVE.id, { [keyOf(MOVE, 'command.position')]: (lo + hi) / 2 });
 ok('jog to mid-window: ECHO', r === 'ok', r);
 await until(() => (twin.get(CH.MOTION) || {}).speed === 0 && Math.abs((twin.get(CH.MOTION) || {}).pos_10um - (lo + hi) / 2) < 2, 20000);
-r = await send(OSC.id, { [keyOf(OSC, 'osc.enabled')]: false, [keyOf(OSC, 'osc.shape')]: SQUARE });
-ok('the card by hand: square, osc.enabled false: ECHO', r === 'ok', r);
-ok('  ... at rest, reported square', await until(() => osc().shape === SQUARE && !osc().enabled && !osc().active, 3000), osc());
+r = await send(OSC.id, { [keyOf(OSC, 'osc.enabled')]: false, [keyOf(OSC, 'osc.dwell_crest')]: DWELL });
+ok('the card by hand: a crest dwell, osc.enabled false: ECHO', r === 'ok', r);
+ok('  ... at rest, reported with its dwell', await until(() => osc().dwell_crest === DWELL && !osc().enabled && !osc().active, 3000), osc());
 
 // The player's half: osc.js through the app's motion door, as the plugin host wires api.submitSamples.
 const door = createMotionDoor({ session: () => s, entries: () => s.catalog, setpoint: () => ({ ok: false, reason: 'unused' }),
@@ -88,8 +89,8 @@ ok('the grant: osc-drive at its catalog rate, 156 ms latency', await until(() =>
 ok('while the stream is live the hub renders it', await until(() => !!osc().active && osc().amplitude_effective > 0, 3000), osc());
 await sleep(1500);
 const live = osc();
-ok('  ... driven: reported sine with no dwells, osc.enabled still false',
-  live.active && live.shape === SINE && live.dwell_crest === 0 && live.dwell_trough === 0 && !live.enabled, live);
+ok('  ... driven: reported with no dwells, osc.enabled still false',
+  live.active && !('shape' in live) && live.dwell_crest === 0 && live.dwell_trough === 0 && !live.enabled, live);
 // V8 is a norm; the card's amplitude out bounds make it mm (Valence RFC-112), whatever the window.
 const askMm = live.amplitude_out_min + 0.1 * (live.amplitude_out_max - live.amplitude_out_min);
 ok('  ... V8 0.10 plays a tenth of the card\'s amplitude out bounds, in mm',
@@ -102,8 +103,8 @@ ok('every point sent at least the grant\'s 156 ms ahead of its stamp', leads.len
 playing = false;
 const sentAtStop = leads.length;
 const tStop = Date.now();
-ok('after the quiet window the hub hands back to the hand state: not rendering, square, osc.enabled false',
-  await until(() => !osc().active && osc().shape === SQUARE && !osc().enabled, 5000), { ...osc(), s: (Date.now() - tStop) / 1000 });
+ok('after the quiet window the hub hands back to the hand state: not rendering, its dwell, osc.enabled false',
+  await until(() => !osc().active && osc().dwell_crest === DWELL && !osc().enabled, 5000), { ...osc(), s: (Date.now() - tStop) / 1000 });
 ok('the player sent nothing after it stopped', leads.length === sentAtStop, leads.length - sentAtStop);
 clearInterval(frame);
 ok('Neutrino did not trap', !n.trap, n.trap && n.trap.message);
