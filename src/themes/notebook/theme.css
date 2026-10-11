@@ -19,37 +19,38 @@ html:root[data-style="notebook"] {
   --nb-cap-min: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' width='20' height='20' %3E%3Cpath d='M3.5 12.4C7 11.5 12 12.8 16.6 11.6' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   --nb-cap-max: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' width='20' height='20' %3E%3Cpath d='M4.3 4.4C8 3.6 12 4.4 15.8 3.9C16.3 8 15.5 12 16 16C12 16.6 8 15.5 4 16.1C3.7 12 4.5 8 4.3 4.4M3 3.3C3.6 3.5 4 3.8 4.2 4.1' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   --nb-cap-close: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' width='20' height='20' %3E%3Cpath d='M4 4C8 8.2 12 12.2 16.4 16.6M16.2 3.8C12.2 8 8 12 3.8 16.5' fill='none' stroke='black' stroke-width='2.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --nb-clip: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 32' width='16' height='32' %3E%3Cpath d='M5 27.5V7.600C5 3.600 11 3.600 11 7.600V25C11 28.600 6.400 28.600 6.400 25V9.400' fill='none' stroke='black' stroke-width='1.700' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   --nb-grid: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14' width='14' height='14' %3E%3Cpath d='M0 .5H14M.5 0V14' fill='none' stroke='%235B7FA8' stroke-opacity='0.16' stroke-width='1'/%3E%3C/svg%3E");
 }
 html:root[data-style="notebook"] {
   --nb-wave: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 8' width='64' height='8' %3E%3Cpath d='M0 4C8 1.4 14 6.6 24 3.6S44 5.8 52 3.1S61 4.8 64 4' fill='none' stroke='%2333415F' stroke-width='1.7' stroke-linecap='round'/%3E%3C/svg%3E");
   --nb-wave2: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 12' width='96' height='12' %3E%3Cpath d='M0 6C10 2.6 18 9.4 30 5.6S58 8.6 70 4.4S90 7.4 96 6' fill='none' stroke='%2333415F' stroke-width='1.9' stroke-linecap='round'/%3E%3Cpath d='M0 6.6C9 4.5 22 8.4 36 6.4' fill='none' stroke='%2333415F' stroke-width='.8' opacity='.5'/%3E%3C/svg%3E");
-  --nb-scribble: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 22' width='60' height='22' %3E%3Cpath d='M-2 1.5L62 5L-1 8.2L63 10.6L-2 14.8L61 17L0 20.4L62 21.6' fill='none' stroke='%231F5FA8' stroke-opacity='0.42' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  --nb-scribble2: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 22' width='60' height='22' %3E%3Cpath d='M-2 1.5L62 5L-1 8.2L63 10.6L-2 14.8L61 17L0 20.4L62 21.6' fill='none' stroke='%238A3D7B' stroke-opacity='0.42' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --nb-scribble: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 22' width='60' height='22' %3E%3Cpath d='M-1 1.5L61 14.8L-1 8.2L61 20.4L-1 14.8L61 1.5L-1 20.4L61 8.2' fill='none' stroke='%231F5FA8' stroke-opacity='0.34' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --nb-scribble2: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 22' width='60' height='22' %3E%3Cpath d='M-1 1.5L61 14.8L-1 8.2L61 20.4L-1 14.8L61 1.5L-1 20.4L61 8.2' fill='none' stroke='%238A3D7B' stroke-opacity='0.34' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   --nb-tick: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' width='20' height='20' %3E%3Cpath d='M2.6 10.6C4.8 11.4 6.6 14 8.2 17C10 11.2 14 5 18.6 1.8' fill='none' stroke='%23256B43' stroke-width='2.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   --nb-dot: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' width='20' height='20' %3E%3Cpath d='M10 10.4C9 9.6 10 8.6 11 9.2C12.6 10.2 11.6 12.6 9.6 12.4C7 12 6.6 8.2 9 6.6C12.2 4.6 15.6 8 14.2 11.6C12.8 15.2 7.4 15.4 5.4 12' fill='none' stroke='%231F5FA8' stroke-width='1.9' stroke-linecap='round'/%3E%3C/svg%3E");
   --nb-chev: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 14' width='18' height='14' %3E%3Cpath d='M2.4 3.6C5 5.6 7 7.6 9.2 10.4C11.4 7.6 14 5.4 16 3' fill='none' stroke='%2333415F' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  --nb-holes: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 28' width='26' height='28' %3E%3Cellipse cx='13' cy='14' rx='5.2' ry='4.6' fill='%234A4033'/%3E%3Cpath d='M-2 19C7 22.6 19 17 28 5' fill='none' stroke='%23A9AEB6' stroke-width='2.6' stroke-linecap='round'/%3E%3Cpath d='M-2 18.4C7 22 19 16.4 28 4.4' fill='none' stroke='white' stroke-opacity='.55' stroke-width='.8' stroke-linecap='round'/%3E%3C/svg%3E");
+  --nb-holes: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 56' width='28' height='56' %3E%3Cellipse cx='14' cy='28' rx='6' ry='5.2' fill='%234A4033'/%3E%3Cellipse cx='14.4' cy='29' rx='3.6' ry='3' fill='black' fill-opacity='.35'/%3E%3Cpath d='M-3 36C6 40.600 20 34 31 18' fill='none' stroke='%23A9AEB6' stroke-width='3.200' stroke-linecap='round'/%3E%3Cpath d='M-3 35C6 39 20 33 31 17' fill='none' stroke='white' stroke-opacity='.6' stroke-width='.9' stroke-linecap='round'/%3E%3Cpath d='M-3 37.600C6 41.600 20 35 31 19' fill='none' stroke='black' stroke-opacity='.25' stroke-width='.8' stroke-linecap='round'/%3E%3C/svg%3E");
 }
 html:root[data-style="notebook"][data-variant="notebook-graph"] {
   --nb-wave: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 8' width='64' height='8' %3E%3Cpath d='M0 4C8 1.4 14 6.6 24 3.6S44 5.8 52 3.1S61 4.8 64 4' fill='none' stroke='%233A444E' stroke-width='1.7' stroke-linecap='round'/%3E%3C/svg%3E");
   --nb-wave2: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 12' width='96' height='12' %3E%3Cpath d='M0 6C10 2.6 18 9.4 30 5.6S58 8.6 70 4.4S90 7.4 96 6' fill='none' stroke='%233A444E' stroke-width='1.9' stroke-linecap='round'/%3E%3Cpath d='M0 6.6C9 4.5 22 8.4 36 6.4' fill='none' stroke='%233A444E' stroke-width='.8' opacity='.5'/%3E%3C/svg%3E");
-  --nb-scribble: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 22' width='60' height='22' %3E%3Cpath d='M-2 1.5L62 5L-1 8.2L63 10.6L-2 14.8L61 17L0 20.4L62 21.6' fill='none' stroke='%230E5A7A' stroke-opacity='0.42' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  --nb-scribble2: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 22' width='60' height='22' %3E%3Cpath d='M-2 1.5L62 5L-1 8.2L63 10.6L-2 14.8L61 17L0 20.4L62 21.6' fill='none' stroke='%238C2F6B' stroke-opacity='0.42' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --nb-scribble: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 22' width='60' height='22' %3E%3Cpath d='M-1 1.5L61 14.8L-1 8.2L61 20.4L-1 14.8L61 1.5L-1 20.4L61 8.2' fill='none' stroke='%230E5A7A' stroke-opacity='0.34' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --nb-scribble2: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 22' width='60' height='22' %3E%3Cpath d='M-1 1.5L61 14.8L-1 8.2L61 20.4L-1 14.8L61 1.5L-1 20.4L61 8.2' fill='none' stroke='%238C2F6B' stroke-opacity='0.34' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   --nb-tick: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' width='20' height='20' %3E%3Cpath d='M2.6 10.6C4.8 11.4 6.6 14 8.2 17C10 11.2 14 5 18.6 1.8' fill='none' stroke='%231F6B4A' stroke-width='2.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   --nb-dot: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' width='20' height='20' %3E%3Cpath d='M10 10.4C9 9.6 10 8.6 11 9.2C12.6 10.2 11.6 12.6 9.6 12.4C7 12 6.6 8.2 9 6.6C12.2 4.6 15.6 8 14.2 11.6C12.8 15.2 7.4 15.4 5.4 12' fill='none' stroke='%230E5A7A' stroke-width='1.9' stroke-linecap='round'/%3E%3C/svg%3E");
   --nb-chev: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 14' width='18' height='14' %3E%3Cpath d='M2.4 3.6C5 5.6 7 7.6 9.2 10.4C11.4 7.6 14 5.4 16 3' fill='none' stroke='%233A444E' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  --nb-holes: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 28' width='26' height='28' %3E%3Cellipse cx='13' cy='14' rx='5.2' ry='4.6' fill='%233E4A52'/%3E%3Cpath d='M-2 19C7 22.6 19 17 28 5' fill='none' stroke='%23A5B0B8' stroke-width='2.6' stroke-linecap='round'/%3E%3Cpath d='M-2 18.4C7 22 19 16.4 28 4.4' fill='none' stroke='white' stroke-opacity='.55' stroke-width='.8' stroke-linecap='round'/%3E%3C/svg%3E");
+  --nb-holes: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 56' width='28' height='56' %3E%3Cellipse cx='14' cy='28' rx='6' ry='5.2' fill='%233E4A52'/%3E%3Cellipse cx='14.4' cy='29' rx='3.6' ry='3' fill='black' fill-opacity='.35'/%3E%3Cpath d='M-3 36C6 40.600 20 34 31 18' fill='none' stroke='%23A5B0B8' stroke-width='3.200' stroke-linecap='round'/%3E%3Cpath d='M-3 35C6 39 20 33 31 17' fill='none' stroke='white' stroke-opacity='.6' stroke-width='.9' stroke-linecap='round'/%3E%3Cpath d='M-3 37.600C6 41.600 20 35 31 19' fill='none' stroke='black' stroke-opacity='.25' stroke-width='.8' stroke-linecap='round'/%3E%3C/svg%3E");
 }
 html:root[data-style="notebook"][data-variant="notebook-night"] {
   --nb-wave: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 8' width='64' height='8' %3E%3Cpath d='M0 4C8 1.4 14 6.6 24 3.6S44 5.8 52 3.1S61 4.8 64 4' fill='none' stroke='%23E9EFE6' stroke-width='1.7' stroke-linecap='round'/%3E%3C/svg%3E");
   --nb-wave2: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 12' width='96' height='12' %3E%3Cpath d='M0 6C10 2.6 18 9.4 30 5.6S58 8.6 70 4.4S90 7.4 96 6' fill='none' stroke='%23E9EFE6' stroke-width='1.9' stroke-linecap='round'/%3E%3Cpath d='M0 6.6C9 4.5 22 8.4 36 6.4' fill='none' stroke='%23E9EFE6' stroke-width='.8' opacity='.5'/%3E%3C/svg%3E");
-  --nb-scribble: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 22' width='60' height='22' %3E%3Cpath d='M-2 1.5L62 5L-1 8.2L63 10.6L-2 14.8L61 17L0 20.4L62 21.6' fill='none' stroke='%239CCBFF' stroke-opacity='0.42' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  --nb-scribble2: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 22' width='60' height='22' %3E%3Cpath d='M-2 1.5L62 5L-1 8.2L63 10.6L-2 14.8L61 17L0 20.4L62 21.6' fill='none' stroke='%23D8BDFF' stroke-opacity='0.42' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --nb-scribble: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 22' width='60' height='22' %3E%3Cpath d='M-1 1.5L61 14.8L-1 8.2L61 20.4L-1 14.8L61 1.5L-1 20.4L61 8.2' fill='none' stroke='%239CCBFF' stroke-opacity='0.34' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --nb-scribble2: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 22' width='60' height='22' %3E%3Cpath d='M-1 1.5L61 14.8L-1 8.2L61 20.4L-1 14.8L61 1.5L-1 20.4L61 8.2' fill='none' stroke='%23D8BDFF' stroke-opacity='0.34' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   --nb-tick: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' width='20' height='20' %3E%3Cpath d='M2.6 10.6C4.8 11.4 6.6 14 8.2 17C10 11.2 14 5 18.6 1.8' fill='none' stroke='%23B5EBAA' stroke-width='2.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   --nb-dot: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' width='20' height='20' %3E%3Cpath d='M10 10.4C9 9.6 10 8.6 11 9.2C12.6 10.2 11.6 12.6 9.6 12.4C7 12 6.6 8.2 9 6.6C12.2 4.6 15.6 8 14.2 11.6C12.8 15.2 7.4 15.4 5.4 12' fill='none' stroke='%239CCBFF' stroke-width='1.9' stroke-linecap='round'/%3E%3C/svg%3E");
   --nb-chev: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 14' width='18' height='14' %3E%3Cpath d='M2.4 3.6C5 5.6 7 7.6 9.2 10.4C11.4 7.6 14 5.4 16 3' fill='none' stroke='%23E9EFE6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  --nb-holes: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 28' width='26' height='28' %3E%3Cellipse cx='13' cy='14' rx='5.2' ry='4.6' fill='%230B110E'/%3E%3Cpath d='M-2 19C7 22.6 19 17 28 5' fill='none' stroke='%23B7BDB9' stroke-width='2.6' stroke-linecap='round'/%3E%3Cpath d='M-2 18.4C7 22 19 16.4 28 4.4' fill='none' stroke='white' stroke-opacity='.55' stroke-width='.8' stroke-linecap='round'/%3E%3C/svg%3E");
+  --nb-holes: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 56' width='28' height='56' %3E%3Cellipse cx='14' cy='28' rx='6' ry='5.2' fill='%230B110E'/%3E%3Cellipse cx='14.4' cy='29' rx='3.6' ry='3' fill='black' fill-opacity='.35'/%3E%3Cpath d='M-3 36C6 40.600 20 34 31 18' fill='none' stroke='%23B7BDB9' stroke-width='3.200' stroke-linecap='round'/%3E%3Cpath d='M-3 35C6 39 20 33 31 17' fill='none' stroke='white' stroke-opacity='.6' stroke-width='.9' stroke-linecap='round'/%3E%3Cpath d='M-3 37.600C6 41.600 20 35 31 19' fill='none' stroke='black' stroke-opacity='.25' stroke-width='.8' stroke-linecap='round'/%3E%3C/svg%3E");
 }
 
 /* ---- tokens ---- */
@@ -66,6 +67,7 @@ html:root[data-style="notebook"] {
   --nb-tape: rgba(232, 214, 166, .78);
   --nb-tape-edge: rgba(140, 116, 64, .4);
   --nb-sticky: #FFF3A6;
+  --nb-sticky2: #BFE9D2;
   --nb-hi: rgba(110, 185, 255, .42);
   --nb-hi2: rgba(130, 220, 160, .5);
   --nb-shadow: rgba(70, 52, 24, .26);
@@ -94,6 +96,8 @@ html:root[data-style="notebook"][data-variant="notebook-graph"] {
   --nb-rule: rgba(30, 130, 120, .2);
   --nb-rule2: rgba(30, 130, 120, .12);
   --nb-margin: transparent;
+  --nb-sticky: #FFE8A8;
+  --nb-sticky2: #CFE4FF;
   --nb-tape: rgba(190, 220, 214, .8);
   --nb-tape-edge: rgba(60, 110, 104, .4);
   --nb-hi: rgba(255, 140, 190, .38);
@@ -101,6 +105,10 @@ html:root[data-style="notebook"][data-variant="notebook-graph"] {
   --nb-shadow: rgba(30, 60, 66, .25);
   --nb-cover: #14403F;
   --nb-hole: #3E4A52;
+  --nb-r1: 3px 4px 3px 5px / 4px 3px 5px 3px;
+  --nb-r2: 4px 3px 5px 3px / 3px 5px 3px 4px;
+  --nb-r3: 3px 5px 3px 4px / 5px 3px 4px 3px;
+  --nb-rc: 2px;
   --tex-page:
     linear-gradient(90deg, rgba(30, 130, 120, .26) 1px, transparent 1px),
     linear-gradient(180deg, rgba(30, 130, 120, .26) 1px, transparent 1px),
@@ -124,6 +132,7 @@ html:root[data-style="notebook"][data-variant="notebook-night"] {
   --nb-tape: rgba(204, 196, 168, .8);
   --nb-tape-edge: rgba(0, 0, 0, .35);
   --nb-sticky: #7C7330;
+  --nb-sticky2: #3F7F6A;
   --nb-hi: rgba(120, 190, 255, .3);
   --nb-hi2: rgba(150, 235, 160, .28);
   --nb-shadow: rgba(0, 0, 0, .5);
@@ -139,6 +148,8 @@ html:root[data-style="notebook"][data-variant="notebook-night"] {
     repeating-linear-gradient(180deg, transparent 0 27px, var(--nb-rule) 27px 28px);
   --tex-page-size: auto, auto, auto, auto;
 }
+
+html:root[data-style="notebook"] ::selection { background: var(--nb-hi2); color: inherit; }
 
 /* ---- the cover: the title bar, a composition-book cover with the hub's name on a label ---- */
 html:root[data-style="notebook"] [data-part="bar"] {
@@ -239,10 +250,27 @@ html:root[data-style="notebook"] [data-part="caption-btn"]:focus-visible { outli
 /* ---- the strip and the hero: the page under the cover ---- */
 html:root[data-style="notebook"] [data-part="strip"] { background-image: var(--tex-card); background-size: var(--tex-card-size); }
 html:root[data-style="notebook"] [data-part="hero"] {
+  position: relative;
   background-image: var(--tex-card);
   background-size: var(--tex-card-size);
   border-bottom: 2px dashed var(--line-3);
 }
+html:root[data-style="notebook"] [data-part="hero"]::before,
+html:root[data-style="notebook"] [data-part="hero"]::after {
+  content: '';
+  position: absolute;
+  top: -8px;
+  width: 48px;
+  height: 15px;
+  pointer-events: none;
+  background-color: var(--nb-tape);
+  background-image: repeating-linear-gradient(90deg, rgba(255, 255, 255, .22) 0 2px, transparent 2px 5px);
+  box-shadow: 0 0 0 .5px var(--nb-tape-edge);
+  clip-path: polygon(0 0, 100% 0, 96% 25%, 100% 50%, 96% 75%, 100% 100%, 0 100%, 4% 75%, 0 50%, 4% 25%);
+  z-index: 3;
+}
+html:root[data-style="notebook"] [data-part="hero"]::before { left: 10px; transform: rotate(-5deg); }
+html:root[data-style="notebook"] [data-part="hero"]::after { right: 10px; transform: rotate(4deg); }
 /* The stop pair's surroundings only: a cut-out line, dashed, with a pair of scissors on it. */
 html:root[data-style="notebook"] [data-part="stop-frame"] {
   position: relative;
@@ -285,8 +313,8 @@ html:root[data-style="notebook"] [data-part="rail"] {
 html:root[data-style="notebook"] [data-part="rail"]:not(.mini) {
   background-image: var(--nb-holes), var(--tex-card);
   background-repeat: repeat-y, repeat, repeat, repeat, repeat;
-  background-size: 26px 56px, var(--tex-card-size);
-  background-position: -4px 6px, 0 0, 0 0, 0 0, 0 0;
+  background-size: 28px 56px, var(--tex-card-size);
+  background-position: -6px 4px, 0 0, 0 0, 0 0, 0 0;
   padding-left: 14px;
 }
 html:root[data-style="notebook"] [data-part="rail-sec"] + [data-part="rail-sec"] { border-top: 2px dashed var(--line-3); }
@@ -320,7 +348,21 @@ html:root[data-style="notebook"] [data-part="rail-tab"].on::after {
   -webkit-mask: var(--nb-loop) center / 100% 100% no-repeat;
   mask: var(--nb-loop) center / 100% 100% no-repeat;
 }
-html:root[data-style="notebook"] [data-part="rail-sec"].shell { border: 1.5px dashed var(--nb-pen); border-radius: var(--nb-rc); }
+html:root[data-style="notebook"] [data-part="rail-sec"].shell { position: relative; border: 1.5px dashed var(--nb-pen); border-radius: var(--nb-rc); }
+/* The Phosphor section is a note clipped to the page. */
+html:root[data-style="notebook"] [data-part="rail-sec"].shell::after {
+  content: '';
+  position: absolute;
+  top: -9px;
+  right: 14px;
+  width: 11px;
+  height: 22px;
+  pointer-events: none;
+  background-color: var(--line-4);
+  -webkit-mask: var(--nb-clip) center / contain no-repeat;
+  mask: var(--nb-clip) center / contain no-repeat;
+  transform: rotate(8deg);
+}
 html:root[data-style="notebook"] .rail-glyph { transform: rotate(-4deg); }
 
 /* ---- cards: a paper index card in pen, held down at the corner with masking tape ---- */
@@ -353,6 +395,20 @@ html:root[data-style="notebook"] [data-part="card"]::before {
   z-index: 3;
 }
 html:root[data-style="notebook"] .dash-item:nth-child(even) > [data-part="card"]::before { left: auto; right: -19px; transform: rotate(-45deg); }
+html:root[data-style="notebook"] .dash-item:nth-child(3n) > [data-part="card"] { background-color: color-mix(in srgb, var(--bg-card) 78%, var(--nb-sticky)); }
+html:root[data-style="notebook"] .dash-item:nth-child(3n + 1):not(:first-child) > [data-part="card"] { background-color: color-mix(in srgb, var(--bg-card) 84%, var(--nb-sticky2)); }
+html:root[data-style="notebook"] .dash-item:nth-child(3n) > [data-part="card"]::before {
+  left: auto;
+  right: 0;
+  bottom: 0;
+  width: 22px;
+  height: 22px;
+  transform: none;
+  background: linear-gradient(135deg, transparent 50%, rgba(0, 0, 0, .2) 50%, var(--bg-card) 53%);
+  box-shadow: none;
+  clip-path: none;
+  border-radius: 0 0 var(--nb-rc) 0;
+}
 html:root[data-style="notebook"] :is([data-part="nest"], .surface-nest) { border-style: dashed; border-color: var(--line-3); }
 html:root[data-style="notebook"] [data-part="panel"] { background-color: color-mix(in srgb, var(--bg-card) 78%, var(--nb-sticky)); }
 html:root[data-style="notebook"] [data-part="panel"]::before {
@@ -484,6 +540,8 @@ html:root[data-style="notebook"] input[type="checkbox"]:not([role="switch"]) {
   background-repeat: no-repeat;
   background-position: center;
   background-size: 120%;
+  min-width: 16px;
+  min-height: 16px;
 }
 html:root[data-style="notebook"] input[type="checkbox"]:not([role="switch"]):checked { background-image: var(--nb-tick); }
 html:root[data-style="notebook"] [role="radio"]::before {
@@ -529,8 +587,8 @@ html:root[data-style="notebook"] progress {
   overflow: hidden;
 }
 html:root[data-style="notebook"] progress::-webkit-progress-bar { background: transparent; }
-html:root[data-style="notebook"] progress::-webkit-progress-value { background-color: transparent; background-image: var(--nb-scribble); background-size: 60px 14px; }
-html:root[data-style="notebook"] progress::-moz-progress-bar { background-color: transparent; background-image: var(--nb-scribble); background-size: 60px 14px; }
+html:root[data-style="notebook"] progress::-webkit-progress-value { background-color: transparent; background-image: var(--nb-scribble); background-size: 60px 100%; }
+html:root[data-style="notebook"] progress::-moz-progress-bar { background-color: transparent; background-image: var(--nb-scribble); background-size: 60px 100%; }
 
 /* ---- tabs: divider tabs sticking out of the page ---- */
 html:root[data-style="notebook"] [role="tab"]:not([data-part="rail-tab"]) {
@@ -582,3 +640,24 @@ html:root[data-style="notebook"] ::-webkit-scrollbar { width: 12px; height: 12px
 html:root[data-style="notebook"] ::-webkit-scrollbar-track { background: linear-gradient(90deg, transparent 5px, var(--line-3) 5px 6px, transparent 6px); }
 html:root[data-style="notebook"] ::-webkit-scrollbar-thumb { border-radius: 6px 4px 7px 5px / 5px 7px 4px 6px; background-color: var(--nb-pen); border: 3px solid transparent; background-clip: padding-box; }
 html:root[data-style="notebook"] ::-webkit-scrollbar-thumb:horizontal { border-radius: 5px 7px 4px 6px / 7px 4px 6px 5px; }
+
+/* ---- line boil: the pen outlines redraw themselves a hair off, two beats a second and a half ---- */
+@keyframes theme-notebook-boil {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  50% { transform: translate(.7px, -.6px) rotate(.08deg); }
+  100% { transform: translate(0, 0) rotate(0deg); }
+}
+html:root[data-style="notebook"]:not(.still):not(.hivis) :is([data-part="card"], [data-part="nest"], [data-part="panel"], .og-panel.pane-sec)::after {
+  animation: theme-notebook-boil 1.6s steps(1, end) infinite;
+}
+html:root[data-style="notebook"]:not(.still):not(.hivis) [data-part="rail-tab"].on::after {
+  animation: theme-notebook-boil 1.3s steps(1, end) infinite;
+}
+
+/* The close question: a sticky note under the close doodle. */
+html:root[data-style="notebook"] [data-part="caption"] [role="dialog"] {
+  background-color: color-mix(in srgb, var(--shell-bg) 78%, var(--nb-sticky));
+  border: 1.8px solid var(--nb-pen);
+  border-radius: var(--nb-r3);
+  box-shadow: 3px 4px 0 var(--nb-shadow);
+}

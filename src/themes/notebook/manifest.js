@@ -13,9 +13,9 @@ export default {
       id: 'notebook',
       name: 'Ruled',
       accents: { reality: '#1F5FA8', intent: '#8A3D7B', highlight: '#256B43' },
-      chassis: { hue: 85, tint: 1.8, brightness: 0.94, contrast: 1.15 },
+      chassis: { hue: 88, tint: 2.4, brightness: 0.94, contrast: 1.15 },
       look,
-      overrides: { '--line-1': '#D9CDB4', '--line-2': '#B8A988', '--line-3': '#9A8A68', '--line-4': '#6E6046' },
+      overrides: { '--bg': '#F4EEDC', '--bg-raised': '#F9F4E4', '--bg-card': '#FFFDF3', '--bg-sunken': '#EBE4CF', '--line-1': '#D9CDB4', '--line-2': '#B8A988', '--line-3': '#9A8A68', '--line-4': '#6E6046' },
     },
     {
       id: 'notebook-graph',
