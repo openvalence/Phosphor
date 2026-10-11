@@ -108,7 +108,7 @@ export const RESTART_MS = 3000;   // previous restarts the video past this, else
 export const SKIP_MS = 10000;     // a touch double-tap on a side third
 const PLAYED_MAX = 50;            // the videos previous can go back through
 export const SPLIT_MIN = 64, MIN_STAGE = 120;
-const STAGE_SLACK = 8;   // the portrait stage cap's margin: the page card's bottom inset and rounding
+const STAGE_SLACK = 4;   // the portrait stage cap's margin for rounding
 const AUTO_WAIT_MS = 10000;   // Autoplay waits this long for the next scene's script, then gives up
 // The player column the one-row bar needs (eleven items at their floors). A desktop page narrower than that with the
 // library open shuts the library for the session (the pref untouched); the caret reopens it, and then the bar wraps.
@@ -741,19 +741,20 @@ export const CSS = `
 .fsp-stage::before { content: ''; display: block; aspect-ratio: 16 / 9; max-height: 240px; }
 .fsp-vbox:has(> .fsp-empty:not([hidden])) { border: 1px dashed var(--line-3); }
 .fsp-stage .ui-stage-overlay { container-type: inline-size; }
-/* Phone portrait (ph-bw0o, superseding PR2's capped row): the stage is the video's own box, full width at its aspect (16:9
-   until the metadata lands), a tall one narrower and centered so it stands at most --fsp-stage-cap high (stageCap); the timeline and
-   the bar follow right under it and the room left over sits at the bottom, under the bar. Empty or motion only, a 120 px
-   strip. The library and queue views take the whole column under the head. */
+/* Phone portrait (ph-bw0o, FUNSCRIPT.md PP1): the stage is the video's own box across the column at its aspect, 16:9
+   while empty, in motion only and until the metadata lands, so a load moves nothing but a non-16:9 picture settling
+   once; a tall one stands narrower and centered, at most --fsp-stage-cap high (stageCap). The timeline and the bar
+   follow right under it, the Player card ends under the bar and the room left over sits below the card (an eighth
+   track). The library and queue views take the whole column under the head, the card around them. */
 /* The split bar is the desktop's (PR7). */
 .fsp:is([data-cls=portrait], [data-cls=landscape]) { --fsp-sp: 0px; }
 .fsp:is([data-cls=portrait], [data-cls=landscape]) .fsp-split { display: none; }
 .fsp[data-cls=portrait]:not([data-an]) .fsp-stage::before { display: none; }
-.fsp[data-cls=portrait]:not([data-an], [data-media]) {
-  grid-template-rows: var(--tap) max-content var(--fsp-sp) var(--fsp-bar) minmax(var(--fsp-detail-min), var(--fsp-detail)) var(--fsp-trh) minmax(var(--fsp-st), 1fr); }
-.fsp[data-cls=portrait]:not([data-an], [data-media]) .fsp-libbox { grid-area: 2 / 1 / -1 / 2; }
-.fsp[data-cls=portrait]:not([data-an], [data-media]) .fsp-stage { height: var(--fsp-stage-min); }
-.fsp[data-cls=portrait][data-vid]:not([data-an], [data-media]) .fsp-stage { justify-self: center; height: auto;
+.fsp[data-cls=portrait]:not([data-an], [data-media], [data-comp=glance]) {
+  grid-template-rows: var(--tap) max-content var(--fsp-sp) var(--fsp-bar) minmax(var(--fsp-detail-min), var(--fsp-detail)) var(--fsp-trh) var(--fsp-st) 1fr; }
+.fsp[data-cls=portrait]:not([data-an], [data-media], [data-comp=glance]) .fsp-libbox { grid-area: 2 / 1 / -1 / 2; }
+.fsp[data-cls=portrait][data-view=player]:not([data-an], [data-media], [data-comp=glance]) .fsp-pframe { grid-row: 1 / 8; }
+.fsp[data-cls=portrait]:not([data-an], [data-media], [data-comp=glance]) .fsp-stage { justify-self: center; height: auto;
   width: min(100% - 2 * var(--sp-4), calc(var(--fsp-stage-cap, 60dvh) * var(--ui-ar, 16 / 9))); aspect-ratio: var(--ui-ar, 16 / 9); }
 .fsp[data-an] .fsp-empty > * { display: none; }
 .fsp-mo { position: absolute; inset: 0; display: grid; grid-template: "k b" auto "m m" 24px / minmax(0, 1fr) auto; align-content: center; align-items: center;
@@ -777,6 +778,8 @@ export const CSS = `
 .fsp[data-comp=handheld][data-view=player] .fsp-libbox { visibility: hidden; }
 .fsp[data-comp=glance] .fsp-libbox, .fsp[data-comp=glance] .fsp-tlbox { display: none; }
 .fsp[data-comp=glance] .fsp-stage { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+/* Glance keeps the video playing in its clipped stage (frames feed the clock); none of the stage's controls is a target. */
+.fsp[data-comp=glance] .fsp-stage :is(.ui-stage-empty, .ui-stage-center, .ui-stage-overlay, .fsp-mo) { visibility: hidden; }
 .fsp-meter { grid-area: meter; position: relative; display: none; background: var(--screen); border-radius: var(--r-s); }
 .fsp[data-comp=glance] .fsp-meter { display: block; }
 .fsp-tick { position: absolute; top: 2px; bottom: 2px; width: 3px; translate: -1.5px 0; }
@@ -1098,8 +1101,10 @@ export function createPlayer(api) {
   const nav = {
     canNext: () => queue.some(loadable),
     canBack: () => played.length > 0,
-    next() { const i = queue.findIndex(loadable); if (i < 0) return false; Q.play(i); return true; },
+    // A pending Autoplay belongs to the scene that ended; any step drops it first (the library's too), so a step never plays.
+    next() { autoPending = null; const i = queue.findIndex(loadable); if (i < 0) return false; Q.play(i); return true; },
     back() {
+      autoPending = null;
       const e = played.pop();
       if (!e) return false;
       if (cur) { queue = [cur, ...queue.filter((x) => x.key !== cur.key)]; saveQueue(); }
@@ -1249,7 +1254,7 @@ export function createPlayer(api) {
     const stage = ui.stage({ class: 'fsp-stage', rotate: !!opts.fullscreen,
       onTap: () => { if (st.scene) ctl.toggle(); },
       onCenter: () => ctl.toggle(),
-      onSkip: (d) => { if (st.scene) ctl.seek(Math.max(0, ctl.mediaNow() + d * SKIP_MS)); return COPY.skip; },
+      onSkip: (d) => { if (!st.scene) return ''; ctl.seek(Math.max(0, ctl.mediaNow() + d * SKIP_MS)); return COPY.skip; },
       onDouble: () => { if (opts.fullscreen) fullscreen(); },
       onFullscreen: (on) => setMedia(on) });
     const vbox = stage.box;
@@ -1524,8 +1529,9 @@ export function createPlayer(api) {
     const stageCap = () => {
       if (prevCls !== 'portrait') return;
       const cs = getComputedStyle(root), t = cs.gridTemplateRows.split(' ').map(parseFloat), gap = parseFloat(cs.rowGap) || 0;
+      if (!root.clientHeight || t.length !== 8 || t.some(Number.isNaN)) return;
       const wave = root.hasAttribute('data-tlshut') ? 0 : parseFloat(cs.getPropertyValue('--fsp-detail')) || 0;
-      const fixed = t[0] + t[2] + t[3] + wave + t[5] + (t.length - 1) * gap + STAGE_SLACK;
+      const fixed = t[0] + t[2] + t[3] + wave + t[5] + t[6] + (t.length - 1) * gap + STAGE_SLACK;
       root.style.setProperty('--fsp-stage-cap', Math.max(MIN_STAGE, Math.floor(root.clientHeight - fixed)) + 'px');
     };
     const ro = new ResizeObserver(recompose);
@@ -1548,7 +1554,6 @@ export function createPlayer(api) {
       const noVid = !!st.scene && !st.scene.stream;
       root.toggleAttribute('data-mo', noVid);
       root.toggleAttribute('data-paused', !!st.scene && !on);
-      root.toggleAttribute('data-vid', !!(st.scene && st.scene.stream));
       // The center glyph over a video only: in motion only the meter is the stage and the bar's Play is right there (ph-1qs5.11).
       stage.center(st.scene && st.scene.stream && !root.hasAttribute('data-an') && comp !== 'glance' ? (on ? 'pause' : 'play') : null, on ? COPY.pause : COPY.play);
       stage.keep = !on;

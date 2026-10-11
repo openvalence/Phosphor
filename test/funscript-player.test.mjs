@@ -936,6 +936,19 @@ if (!LIVE && !STASH_LIVE && !OSC_ONLY && !args.includes('--library') && !args.in
     await page.waitForTimeout(150);
     ok('touch: a tap on the video hides the controls and a second shows them; neither plays',
       hid && await shown() && await paused() && (await marks('preroll')) === pre0 && (await marks('play')) === play0, { hid, pre: (await marks('preroll')) - pre0 });
+    // A tap where the hidden glyph sits only shows the controls: it never lands on the glyph it reveals; a quick second
+    // tap there is that double-tap's, never a Play.
+    await tapAt(0.5, 0.2);
+    await page.waitForTimeout(150);
+    await tapAt(0.5, 0.5);
+    await page.waitForTimeout(100);
+    const revealed = await shown() && (await centerUp()) === 'Play';
+    await tapAt(0.5, 0.5);
+    await page.waitForTimeout(400);
+    ok('touch: a tap over the hidden glyph shows it without playing; a double-tap there never plays',
+      revealed && await paused() && (await marks('preroll')) === pre0, { revealed, pre: (await marks('preroll')) - pre0 });
+    if (!(await shown())) { await tapAt(0.5, 0.2); await page.waitForTimeout(150); }
+    await page.waitForTimeout(400);
     await tapEl(STAGE + ' .ui-stage-center');
     const went = await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-stage video').paused, C, { timeout: 4000 }).then(() => true, () => false);
     ok('touch: the center glyph plays, through the controller\'s preroll', went && (await marks('preroll')) > pre0);
@@ -1693,7 +1706,7 @@ if (!LIVE && !STASH_LIVE) {
     const wantHeads = cls === 'portrait' || libShut ? ['01Player|uppercase'] : ['01Player|uppercase', '02Library|uppercase'];
     ok('redesign ' + at + ': heads 01 PLAYER' + (wantHeads.length === 1 ? '' : ', 02 LIBRARY') + ' on shell cards; no private box in the Player card',
       same(chromeOk.heads, wantHeads) && chromeOk.frame && chromeOk.lib && chromeOk.boxes.length === 0, chromeOk);
-    if (cls === 'portrait') ok('redesign ' + at + ': the empty stage is a 120 px strip', Math.abs(empty.vbox[3] - 120) <= 1, empty.vbox);
+    if (cls === 'portrait') ok('redesign ' + at + ': the empty stage reserves 16:9 (ph-bw0o PP1)', Math.abs(empty.vbox[3] - empty.vbox[2] * 9 / 16) <= 1.5, empty.vbox);
     // PR5: the bar's order; every target 40 px under a coarse pointer (law 12).
     const bo = await barOrder(page);
     const want = cls === 'desktop' ? [BAR_DESK] : BAR_PHONE;
@@ -1780,7 +1793,7 @@ if (!LIVE && !STASH_LIVE) {
     }, C);
     ok('redesign ' + at + ': script only is motion only: the stroke meter, Open video, Fullscreen grayed (No video), no center Play over the meter (ph-1qs5.11)',
       moUi.mo && moUi.meter && moUi.full && moUi.open && moUi.center && mo.status === '', { moUi, status: mo.status });
-    if (cls === 'portrait') ok('redesign ' + at + ': motion only keeps the 120 px strip', Math.abs(mo.vbox[3] - 120) <= 1, mo.vbox);
+    if (cls === 'portrait') ok('redesign ' + at + ': motion only keeps the 16:9 box', Math.abs(mo.vbox[3] - mo.vbox[2] * 9 / 16) <= 1.5, mo.vbox);
     if (cls === 'desktop' && w === 1428) {
       const n0 = hub.bundles.length;
       const t0 = await page.locator(C + ' .fsp-mo .fsp-tick.int').evaluate((e) => e.style.left);
@@ -1965,7 +1978,8 @@ if (!LIVE && !STASH_LIVE) {
       ok('head: zoom - and + step the span on the desktop', s0 === '10 s' && s1 === '5 s' && (await span()) === '10 s', [s0, s1]);
     }
     if (cls === 'portrait') {
-      // PR7: the band collapses to its head on the user's tap; the bar keeps its rect; the state survives a reload.
+      // PR7: the band collapses to its head on the user's tap; the state survives a reload. Portrait packs the column under the
+      // video (ph-bw0o PP1), so the bar keeps its size and follows the head up.
       const bar0 = (await look()).bar;
       await page.locator(C + ' .fsp-tlcaret').click();
       await page.waitForTimeout(200);
@@ -1977,8 +1991,9 @@ if (!LIVE && !STASH_LIVE) {
       await toPluginPage(page);
       await page.waitForTimeout(400);
       const kept = await page.locator(C).evaluate((r) => r.hasAttribute('data-tlshut'));
-      ok('head ' + at + ': the caret collapses the band to its head, the bar keeps its rect, the state survives a reload',
-        shutUi.shut && !shutUi.dt && same(shut.bar, bar0) && kept, { bar0, bar: shut.bar, shutUi, kept });
+      ok('head ' + at + ': the caret collapses the band to its head, the bar keeps its size and follows the head up, the state survives a reload',
+        shutUi.shut && !shutUi.dt && same([shut.bar[0], shut.bar[2], shut.bar[3]], [bar0[0], bar0[2], bar0[3]]) && shut.bar[1] < bar0[1] && kept,
+        { bar0, bar: shut.bar, shutUi, kept });
       await page.locator(C + ' .fsp-tabs button', { hasText: 'Player' }).click();
       await page.locator(C + ' .fsp-tlcaret').click();
       await page.waitForTimeout(200);

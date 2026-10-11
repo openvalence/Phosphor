@@ -108,7 +108,7 @@ const PROBES = {
   'Funscript player|m': /k === 'm'\) setMuted/,
   'Funscript player|Click': /filter: \(e\) => kind === 'mouse' && own\(e\)/,
   'Funscript player|Double-click': /double: \(e\) => \{ if \(o\.onDouble\) o\.onDouble\(e\)/,
-  'Funscript player|Tap': /const toggle = \(\) => \{ last = null; if \(el\.hasAttribute\('data-show'\)\) conceal\(\); else poke\(\); \}/,
+  'Funscript player|Tap': /if \(el\.hasAttribute\('data-show'\)\) conceal\(\); else \{ poke\(\);/,
   'Funscript player|Double-tap a side': /if \(side && last && last\.side === side && e\.timeStamp - last\.t < TOUCH_DOUBLE_MS\)/,
   'Funscript player|Up, Down': /export function split[\s\S]*ArrowUp: 1, ArrowDown: -1[\s\S]*e\.shiftKey \? 1 : 8/,
   'Funscript player|Ctrl+Arrows': /export function stepper[\s\S]*e && e\.ctrlKey \? snap\(value, e, lo, hi, dir, step\)/,

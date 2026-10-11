@@ -856,8 +856,11 @@ center Play of PR8 to PR10 as built, and the transport row's chapters:
   focused stop button never reaches the card) and Escape still leaves
   fullscreen.
 - **PP4 The center glyph** is the kit's play or pause in the theme's ink
-  with a halo of its ground, no disc; a button (named Play or Pause) shown
-  only while the controls show.
+  with a halo of its ground, no disc, shown only while the controls show. It
+  is a button (named Play or Pause) for a touch and the keyboard; under a
+  mouse it is decoration, so a click anywhere on the video plays or pauses
+  and a double-click anywhere goes fullscreen. A tap only shows it, never
+  lands on it, and a second tap inside the double-tap window is not a Play.
 - **PP5 Previous and next are videos.** Next loads the queue's first
   loadable entry, else the library's next. Previous restarts the video
   past 3 s, else loads the video played before it (the current one goes

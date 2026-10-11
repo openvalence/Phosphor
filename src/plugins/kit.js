@@ -709,9 +709,11 @@ export function stage(o = {}) {
   const overlay = h('div', { class: 'ui-stage-overlay' });
   const box = h('div', { class: 'ui-stage-box' }, media, empty, center, ripple, dock, overlay);
   const el = h('div', { class: cls('ui-stage', o), 'data-overlay': o.overlay || 'fullscreen' }, box);
-  let aspect = null, full = false, idle = 0, keep = false, kind = 'mouse', down = null, last = null, tapT = 0, ripT = 0;
-  // The controls stay while kept (paused), hovered, dragged or holding keyboard focus; a clicked button's focus does not keep them.
-  const busy = () => keep || !!box.querySelector(':is(.ui-stage-overlay, .ui-stage-center):hover, [data-drag], :focus-visible');
+  let aspect = null, full = false, idle = 0, keep = false, kind = 'mouse', last = null, tapT = 0, ripT = 0, shownAt = -Infinity;
+  // The controls stay while kept (paused), hovered (a mouse's: a touch leaves :hover stuck), dragged or holding keyboard
+  // focus; a clicked button's focus does not keep them.
+  const busy = () => keep || !!box.querySelector('[data-drag], :focus-visible')
+    || (kind === 'mouse' && !!box.querySelector(':is(.ui-stage-overlay, .ui-stage-center):hover'));
   const hide = () => { if (!busy()) el.removeAttribute('data-show'); };
   const poke = () => { el.setAttribute('data-show', ''); clearTimeout(idle); idle = setTimeout(hide, IDLE_MS); };
   const conceal = () => { clearTimeout(idle); if (!box.querySelector('[data-drag]')) el.removeAttribute('data-show'); };
@@ -725,14 +727,18 @@ export function stage(o = {}) {
     if (!keep) el.removeAttribute('data-show');
   });
   const own = (e) => box.contains(e.target) && !overlay.contains(e.target) && !e.target.closest('button, input, select, textarea, a, [role=slider], [role=separator]');
+  // The glyph takes a touch; under a mouse it is decoration and the click on the video is onTap (a double-click there
+  // is onDouble wherever it lands). data-touch follows the last pointer, a coarse pointer to start with.
+  el.toggleAttribute('data-touch', matchMedia('(pointer: coarse)').matches);
   el.addEventListener('pointerdown', (e) => {
     kind = e.pointerType;
-    if (kind === 'mouse' || !own(e)) { poke(); down = null; return; }
-    down = { x: e.clientX, y: e.clientY, t: e.timeStamp };
+    el.toggleAttribute('data-touch', kind !== 'mouse');
+    if (kind === 'mouse' || !own(e)) poke();
   }, true);
   const third = (x) => { const r = box.getBoundingClientRect(); return x < r.left + r.width / 3 ? -1 : x > r.right - r.width / 3 ? 1 : 0; };
   const skip = (side) => {
     const words = o.onSkip(side);
+    if (!words) return;
     ripple.dataset.side = side < 0 ? 'l' : 'r';
     setIcon(ripple.firstChild, side < 0 ? 'left' : 'right');
     setText(ripple.lastChild, words);
@@ -743,16 +749,15 @@ export function stage(o = {}) {
     ripT = setTimeout(() => ripple.removeAttribute('data-on'), RIPPLE_MS);
   };
   // A touch tap toggles the controls: at once in the middle third, after the double window on a side third
-  // (a second tap there is onSkip); a long press is the menu's, a drag the page's scroll.
-  el.addEventListener('pointerup', (e) => {
-    const d = down;
-    down = null;
-    if (!d || e.pointerType === 'mouse' || !own(e) || e.timeStamp - d.t >= HOLD_MS || Math.hypot(e.clientX - d.x, e.clientY - d.y) > INTENT_PX) return;
+  // (a second tap there is onSkip). It rides the tap's click, hit-tested before the controls show, so a tap never lands on
+  // a control it reveals; a long press (the menu's) and a drag (the page's scroll) make no click.
+  el.addEventListener('click', (e) => {
+    if (kind === 'mouse' || !own(e)) return;
     const side = o.onSkip ? third(e.clientX) : 0;
     clearTimeout(tapT);
     if (side && last && last.side === side && e.timeStamp - last.t < TOUCH_DOUBLE_MS) { last = null; skip(side); return; }
     last = { side, t: e.timeStamp };
-    const toggle = () => { last = null; if (el.hasAttribute('data-show')) conceal(); else poke(); };
+    const toggle = () => { last = null; if (el.hasAttribute('data-show')) conceal(); else { poke(); shownAt = performance.now(); } };
     if (side) tapT = setTimeout(toggle, TOUCH_DOUBLE_MS); else toggle();
   });
   gestures(el, {
@@ -760,7 +765,9 @@ export function stage(o = {}) {
     tap: (e) => { if (o.onTap) o.onTap(e); },
     double: (e) => { if (o.onDouble) o.onDouble(e); else el.fullscreen = !full; },
   });
-  if (o.onCenter) center.addEventListener('click', (e) => { o.onCenter(e); poke(); });
+  // A key (detail 0) or a touch; a second touch inside the double window after a tap revealed the glyph is that
+  // double-tap's, never a Play.
+  if (o.onCenter) center.addEventListener('click', (e) => { if (e.detail === 0 || performance.now() - shownAt >= TOUCH_DOUBLE_MS) o.onCenter(e); poke(); });
   const setFull = (on) => {
     if (on === full) return;
     full = on;
