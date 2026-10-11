@@ -423,7 +423,7 @@
       {/if}
     </span>
   </div>
-{:else if fields && haveAnyPosition}
+{:else if fields && haveAnyPosition && !readback}
   <!-- Mounted by RailWidget in the rail row's fixed box, shown over the jog
        tape while a source owns the rail, so the swap never moves anything.
        `.on` follows isActive (a plan streaming right now); off, the lane
