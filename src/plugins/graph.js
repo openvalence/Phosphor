@@ -26,7 +26,7 @@ import { ROLE, claimRoles } from '../model/roles.js';
 import { rosterCount } from '../ui/widgets/roster.js';
 import { controlKey, WIDGET, reportedValue } from '../model/settings.js';
 import { labelFor, unitOf, hubTitle } from '../model/format.js';
-import { PACKED, CORE_CHANNEL, STORE_OP, UI_CATEGORY_TIER, UI_NAV_TIER } from '../../../Valence/clients/js/generated/registry_vocab.js';
+import { PACKED, CORE_CHANNEL, STORE_OP, UI_CATEGORY_TIER, UI_NAV_TIER, FIELD_ROLE } from '../../../Valence/clients/js/generated/registry_vocab.js';
 import { CBOR_FIELD } from '../../../Valence/clients/js/frames.js';
 
 export const manifest = {
@@ -103,6 +103,19 @@ export function graphRuntime(api, shell, env) {
   const fieldFor = (key) => (allFields().find((x) => x.key === key) || {}).f || null;
   const writable = (f) => f.isIntentField || !f.readOnly;
   const toAccessory = (f) => !!f && isUserSpace(f.isIntentField ? f.channelId : f.writeChannel);
+
+  // Valence RFC-112: the oscillator amplitude and its drive's out bounds are mm, once a window share. A client map
+  // into one whose out range still reads 0..1 is never migrated; unitNote() names it on the note line.
+  const AMP = new Set([FIELD_ROLE.osc_amplitude, FIELD_ROLE.osc_amplitude_out_min, FIELD_ROLE.osc_amplitude_out_max]);
+  const ampMm = (f) => !!f && f.unit === 'mm' && (AMP.has(f.role)
+    || (env.entries() || []).some((e) => e.id === f.writeChannel && (e.schema || []).some((s) => s.key === f.settingKey && AMP.has(s.role))));
+  function unitNote() {
+    const n = g.rels.filter((r) => {
+      const ref = r.home === 'client' && (g.nodes.find((x) => x.id === r.to) || {}).ref;
+      return ref && ref.kind === 'field' && Math.max(Math.abs(r.out_min ?? 0), Math.abs(r.out_max ?? 0)) <= 1 && ampMm(fieldFor(ref.key));
+    }).length;
+    return n ? 'Oscillator amplitude is now mm: ' + n + (n > 1 ? ' maps end' : ' map ends') + ' at 0..1, check the out range' : '';
+  }
 
   // ---- buttplug ------------------------------------------------------------
   const ctlOf = (ref) => {
@@ -799,6 +812,7 @@ export function graphRuntime(api, shell, env) {
     get graph() { return g; },
     get hub() { return hub; },
     get armed() { return armedNow; },
+    get unitNote() { return unitNote(); },
     hubState: (r) => hubState.get(r.rel_id) || { phase: 'confirmed', reason: '' },
     hubArmed, home, sources, targets, add, edit, remove, refreshHub, tick,
     why, wire, unwire, place, placeMap, placeOp, editOp, batch, removeMany, duplicate, moveMany, ports, echo, palette, runs, about, state, hubName,

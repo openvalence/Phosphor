@@ -463,6 +463,32 @@ console.log('(h) where a node comes from: the add menu as the pages group it (ph
   model.categories = [];
 }
 
+console.log('(i) Valence RFC-112: a client map into the oscillator amplitude ending at 0..1 is named, never migrated');
+{
+  // The 0x1140 twin's amplitude: no role of its own, the osc.amplitude role on its writer's key.
+  const AMP = { uid: '4416:amplitude', channelId: 4416, name: 'amplitude', label: 'Amplitude', unit: 'mm', type: 2, min: 0, max: 1000, step: 0.1, readOnly: false, writeChannel: 0x3140, settingKey: 3, role: '' };
+  const m2 = { fields: [POS, AMP], byRole: new Map([['telemetry.position', [POS]]]), actions: [], categories: [] };
+  const mem = new Map();
+  const storage = { getItem: (k) => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, v) };
+  const api2 = { catalog: () => m2, value: () => undefined, status: () => 'confirmed', stale: () => '', write() {}, log() {} };
+  const env2 = { ...env, storage, entries: () => [{ id: 0x3140, schema: [{ key: 3, role: 'osc.amplitude' }] }] };
+  // An Intiface app's vibrate into the amplitude: a client map has a buttplug end.
+  const r1 = graphRuntime(api2, shell, env2);
+  await delay(10);
+  const p = r1.sources().find((s) => s.ref.kind === 'bp' && s.ref.device === MACHINE.key && s.ref.type === 'Vibrate');
+  const a = r1.targets().find((s) => s.ref.kind === 'field' && s.ref.key === 'uid:' + AMP.uid);
+  const why = p && a ? r1.add(p.ref, a.ref, MAP.linear_clamp, { in_min: 0, in_max: 100, out_min: 0, out_max: 1 }) : 'no source or target';
+  ok('a map from an app vibrate into the amplitude, out 0..1, is stored', why === '', why);
+  r1.dispose();
+  const r2 = graphRuntime(api2, shell, env2);
+  await delay(10);
+  const rel = r2.graph.rels[0];
+  ok('on load the note names it in one line, the map as made', /now mm: 1 map ends at 0\.\.1/.test(r2.unitNote) && rel && rel.out_max === 1, r2.unitNote);
+  r2.edit(rel.id, { out_max: 20 });
+  ok('an out range in mm clears the note', r2.unitNote === '', r2.unitNote);
+  r2.dispose();
+}
+
 host.setEnabled('graph', false);
 console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');
 process.exit(fails ? 1 : 0);

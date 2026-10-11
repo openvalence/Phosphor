@@ -138,13 +138,15 @@ controller tick (once per animation frame)
 
 - Layout by the role: amplitude then frequency, f32, 0..1, the axis value
   as authored (`pos / 100`). The hub maps each through its own parameter's
-  bounds where that parameter's drive is `axis`. An axis the script lacks
-  rides 0.
+  bounds where that parameter's drive is `axis`: V8 onto the amplitude's
+  out bounds in mm, the same size on every window, V9 onto the frequency's
+  out bounds, at most the hub's `osc_max_hz` (Valence RFC-112; Nucleus
+  0.1.44: 20 mm and 30 Hz). An axis the script lacks rides 0.
 - Nothing else of the oscillator is written, `osc.enabled` included: the
   hub renders by itself while the stream is live and a drive is `axis`,
   and hands back to the card's values when it goes quiet or the session
-  ends (RFC-110 items 1, 2, draft; Nucleus 0.1.37). Shape stays the hub's
-  (a driven oscillator is a sine), no bounds or drive.
+  ends (RFC-110 items 1, 2, draft; Nucleus 0.1.37). The oscillator is a
+  sine (RFC-112); no bounds or drive.
 - Rate: the grant's (`granted_rate_hz`, asked at the entry's `max_rate`).
   The actions are interpolated linearly to it.
 - Timing, one lead (RFC-110 item 4): each point is stamped at the instant
