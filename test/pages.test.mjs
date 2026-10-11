@@ -290,13 +290,11 @@ console.log('\n--- desktop 1280x800 ---');
   ok('full: pointer movement brings it to full opacity', (await bareState()).opacity === '1');
   await page.waitForTimeout(1800);
   ok('full: and back to half at rest', (await bareState()).opacity === '0.5');
-  // The media page's caret is a corner hotspot shown on pointer movement (ph-9t5l.7).
+  // A media page draws no caret (ph-bw0o): its one mode is bare, so the bar never shows, pointer movement or not.
   await page.mouse.move(310, 410);
-  await page.click('.full-caret');
-  await page.waitForTimeout(200);
-  ok('full: the caret brings the bar back', await page.locator('.linkbar').isVisible() && await page.locator('main.pane.full').count() === 1);
-  await page.click('.full-caret');
-  await page.waitForTimeout(200);
+  await page.waitForTimeout(150);
+  ok('full: a media page\'s fullscreen has no caret and keeps the bar hidden', await page.locator('.full-caret').count() === 0
+    && !(await page.locator('.linkbar').isVisible()) && await page.locator('main.pane.full.bare').count() === 1);
   await page.keyboard.press('Escape');
   await page.waitForTimeout(200);
   ok('full: Escape leaves and clears the window fullscreen', await page.locator('main.pane.full').count() === 0 && await page.locator('nav.rail').isVisible()
@@ -926,13 +924,23 @@ for (const [w, h] of [[420, 860], [860, 420], [360, 780]]) {
     await page.waitForTimeout(200);
     await check('the quick rail', ['.hero-inner.popup'], 'shape-quick');
     await page.keyboard.press('Escape');
-    // The player in its bare fullscreen: the stop pair and the caret.
+    // The player in its bare fullscreen: the stop pair, and no caret (ph-bw0o).
     await goTab(page, ID);
     await page.waitForSelector('main.pane .fsp', { timeout: 5000 });
     await page.keyboard.press('F11');
     await page.waitForTimeout(400);
     await page.mouse.move(w / 2, h / 2);
     await page.waitForTimeout(150);
+    await check('media fullscreen: the stop pair', ['.topstrip.bare .pair'], 'shape-media');
+    ok(tag + ': media fullscreen draws no caret', await page.locator('.full-caret').count() === 0);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(200);
+    // A footer page's bare fullscreen keeps its caret: In window, then the caret hides the bar.
+    await openProbe(page);
+    await page.keyboard.press('F11');
+    await page.waitForTimeout(300);
+    await page.click('.full-caret');
+    await page.waitForTimeout(300);
     await check('bare fullscreen: the stop pair and the caret', ['.topstrip.bare .pair', '.full-caret'], 'shape-bare');
     // The caret sits above the strip (z 31 over 30): over the pair it would take a Pause tap.
     const over = await page.evaluate(() => {

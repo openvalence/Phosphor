@@ -656,7 +656,8 @@ Stash's own heatmap PNG is never requested. `test/funscript-heat.test.mjs` (node
 
 ```js
 // ui.js
-export const CSS, COPY, FULL_UP = 960, GLANCE_UP = 264, HOVER_IDLE_MS = 2500;
+export const CSS, COPY, FULL_UP = 960, GLANCE_UP = 264, HOVER_IDLE_MS = 2500, RESTART_MS = 3000, SKIP_MS = 10000;
+// RESTART_MS: previous restarts the video past it; SKIP_MS: a touch double-tap on a side third (ph-bw0o)
 export function createPlayer(api);   // -> Player
 export function createControl(deps);   // the controller without DOM: every boundary injected, for the node test
 export function compositionOf(width), clampOffset(v), windowShare(v, lo, hi), ceilingOf(api, fields),
@@ -664,7 +665,9 @@ export function compositionOf(width), clampOffset(v), windowShare(v, lo, hi), ce
 export function pageClass(bucket, w, h);   // -> 'portrait' | 'landscape' | 'desktop': the page's class (PR1-PR4),
   // buckets 1 and 2 the phone (landscape when w > h), 3 and up the desktop
 // Player = {
-//   mount(el, fields, opts = {}) -> { update(), unmount() },
+//   mount(el, fields, opts = {}) -> { update(), render(), unmount() },
+//       update(): the host's, per claimed-field change; the card re-renders only when the hub state it shows moved
+//         (the gate, a trial, the speed ceiling, the oscillator role; ph-bw0o). render(): draw now (page.js, its Settings).
 //       fields: {target, dur, pos?, lo?, hi?, vmax?, patRun?, advRun?, planEl?, planDur?} from the hero spec;
 //       opts.fullscreen: the bar offers media fullscreen, one mode, always bare (PR8; the page mount, page.js); the hover
 //         bar exists only there, its row the player bar's own buttons (PR9); phone rotation enters and leaves it (PR17)
@@ -788,16 +791,18 @@ loop), so a test can prove no other path drives the video.
 Hover bar (ph-mcfe, PR9): the kit stage's overlay (api.ui stage), in
 fullscreen only: the kit scrub (role slider, played and buffered fill, a
 time tooltip) over the player bar's own buttons, moved in on entry and back
-on exit. Shown on pointer movement, hidden after `HOVER_IDLE_MS` (the kit's
-idle) and on pointer leave. Play/Pause is `ctl.toggle()`, a seek
+on exit, with mute and volume beside the time (desktop). Shown on pointer movement or a touch tap, hidden after
+`HOVER_IDLE_MS` (the kit's idle) and on pointer leave while playing; kept while paused (the kit stage's `keep`). Play/Pause is `ctl.toggle()`, a seek
 `ctl.seek(ms)`; volume and mute set the video's own and store pref
 `audio`. Keys on the card root: Space and K toggle, J/L 10 s, arrows 5 s,
 M mute, F fullscreen. Fullscreen is the kit stage's ask
 (`phosphor-page-fullscreen`, bare); the shell's `preventDefault()` is the
 yes, and the card takes `data-media` (the stage alone; the settings sheet
 turns into the kit's drawer) until the shell's fullscreen ends. The kit
-stage's center glyph shows Play over a paused video only, never in motion
-only (ph-1qs5.11).
+stage's center glyph is a button, Play or Pause, shown with the controls over a video, never in motion
+only (ph-1qs5.11); a mouse click on the video toggles, a touch tap shows or hides the controls, a touch
+double-tap on a side third skips SKIP_MS (ph-bw0o, docs/plugins/FUNSCRIPT.md PP2 to PP4). Previous and next
+walk videos (PP5): the queue ahead, the videos played before, the library's list past either; neither plays.
 
 The trial notice `Preview: not saved` (tone `intent`, an `--intent` bar)
 follows the gate in the slot order and stands while `api.trialPending`.

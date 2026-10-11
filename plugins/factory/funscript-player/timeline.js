@@ -246,6 +246,7 @@ export const CSS = `
 .fsp-ov, .fsp-dt { background: var(--screen); box-shadow: inset 0 2px 8px rgba(var(--shade-rgb), .7); }
 .fsp-ov { position: relative; height: 24px; flex: none; border: 1px solid var(--line); border-radius: var(--r-s); user-select: none; cursor: pointer; }
 .fsp-ov::before { content: ''; position: absolute; inset: -8px 0; }
+.fsp-ovtip { bottom: calc(100% + 6px); z-index: 2; }
 .fsp-ov svg, .fsp-dt svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .fsp-ov rect.bin.over { fill: var(--warn); }
 .fsp-ov rect.ab { fill: rgba(var(--highlight-rgb), .22); }
@@ -295,6 +296,9 @@ const h = (tag, attrs = {}, ...kids) => {
   e.append(...kids);
   return e;
 };
+// Writes only on change: the frame redraws every animation frame while playing (ph-bw0o).
+const sa = (e, k, v) => { if (e.getAttribute(k) !== v) e.setAttribute(k, v); };
+const prop = (e, k, v) => { if (e[k] !== v) e[k] = v; };
 const s = (tag, attrs = {}) => {
   const e = document.createElementNS(SVGNS, tag);
   for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
@@ -332,6 +336,18 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
     onMove(e) { onScrub('move', at(e)); },
     onEnd(e, ok) { if (ok) onScrub('end', at(e)); },
   });
+  // A mouse over the heat reads the time under it (the kit scrub's tip look, ph-bw0o); a touch has no hover.
+  const ovTip = h('span', { class: 'ui-scrub-tip fsp-ovtip', hidden: '' });
+  ov.append(ovTip);
+  ov.addEventListener('pointermove', (e) => {
+    if (e.pointerType !== 'mouse' || !script) return;
+    const r = ov.getBoundingClientRect();
+    ovTip.hidden = false;
+    ovTip.textContent = fmtTime(seekAt(e.clientX - r.left, r.width, dur()));
+    const w2 = ovTip.offsetWidth / 2;
+    ovTip.style.left = clamp(e.clientX - r.left, w2, r.width - w2) + 'px';
+  });
+  ov.addEventListener('pointerleave', () => { ovTip.hidden = true; });
   scrub.addEventListener('keydown', (e) => {
     if (!script) return;
     const d = SEEK_KEYS[e.key];
@@ -479,39 +495,39 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
       }
     }
     for (const [line, v] of [[rgLo, Te.lo], [rgHi, Te.hi]]) {
-      line.setAttribute('y1', String(100 - v * 100));
-      line.setAttribute('y2', String(100 - v * 100));
+      sa(line, 'y1', String(100 - v * 100));
+      sa(line, 'y2', String(100 - v * 100));
     }
     for (const p of pills) {
       const v = Te[p.dataset.key];
       p.style.setProperty('--y', String(100 - v * 100));
-      p.setAttribute('aria-valuenow', String(Math.round(v * 100)));
+      sa(p, 'aria-valuenow', String(Math.round(v * 100)));
       p.toggleAttribute('data-draft', !!preview && p.dataset.key in preview);
     }
-    zOut.disabled = zoom === ZOOMS[ZOOMS.length - 1];
-    zIn.disabled = zoom === ZOOMS[0];
+    prop(zOut, 'disabled', zoom === ZOOMS[ZOOMS.length - 1]);
+    prop(zIn, 'disabled', zoom === ZOOMS[0]);
     const zt = zoom / 1000 + ' s';
     if (zSpan.textContent !== zt) zSpan.textContent = zt;
-    win.setAttribute('x', String(d ? from / d * HEAT_BINS : 0));
-    win.setAttribute('width', String(d ? zoom / d * HEAT_BINS : 0));
+    sa(win, 'x', String(d ? from / d * HEAT_BINS : 0));
+    sa(win, 'width', String(d ? zoom / d * HEAT_BINS : 0));
     scrub.style.left = (d ? clamp(m / d, 0, 1) * 100 : 0) + '%';
-    scrub.setAttribute('aria-valuemax', String(Math.round(d)));
-    scrub.setAttribute('aria-valuenow', String(Math.round(m)));
-    scrub.setAttribute('aria-valuetext', fmtTime(m));
-    scrub.hidden = !script;
+    sa(scrub, 'aria-valuemax', String(Math.round(d)));
+    sa(scrub, 'aria-valuenow', String(Math.round(m)));
+    sa(scrub, 'aria-valuetext', fmtTime(m));
+    prop(scrub, 'hidden', !script);
     ph.style.left = scrub.style.left;
-    ph.hidden = !script;
+    prop(ph, 'hidden', !script);
     lph.style.left = scrub.style.left;
     const ax = (t) => String(((t - from) / zoom) * 1000);
-    abBand.setAttribute('x', String(d && ab.b != null ? ab.a / d * HEAT_BINS : 0));
-    abBand.setAttribute('width', String(d && ab.b != null ? (ab.b - ab.a) / d * HEAT_BINS : 0));
+    sa(abBand, 'x', String(d && ab.b != null ? ab.a / d * HEAT_BINS : 0));
+    sa(abBand, 'width', String(d && ab.b != null ? (ab.b - ab.a) / d * HEAT_BINS : 0));
     for (const [line, t] of [[abA, ab.a], [abB, ab.b]]) {
       line.style.display = t == null ? 'none' : '';
-      if (t != null) { line.setAttribute('x1', ax(t)); line.setAttribute('x2', ax(t)); }
+      if (t != null) { sa(line, 'x1', ax(t)); sa(line, 'x2', ax(t)); }
     }
     const tip = ab.a == null ? COPY.abStart : ab.b == null ? COPY.abEnd : COPY.abClear;
-    if (zAB.dataset.tip !== tip) { zAB.dataset.tip = tip; zAB.setAttribute('aria-label', tip); }
-    zAB.setAttribute('aria-pressed', String(ab.b != null));
+    if (zAB.dataset.tip !== tip) { zAB.dataset.tip = tip; sa(zAB, 'aria-label', tip); }
+    sa(zAB, 'aria-pressed', String(ab.b != null));
     zAB.classList.toggle('on', ab.b != null);
   }
 

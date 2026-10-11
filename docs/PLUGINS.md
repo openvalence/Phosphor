@@ -114,7 +114,8 @@ Plugins`, its page region the plugin's to fill full width.
   element's height fills the window.
 - **`mediaFullscreen: true`.** The page offers fullscreen itself and gets no
   footer button (F11 still works). Its fullscreen is one mode, always bare:
-  the page alone under the stop pair, and in the desktop shell the window
+  the page alone under the stop pair, with no caret (the bar never shows
+  there; the close gate's ask leaves the fullscreen instead), and in the desktop shell the window
   fullscreen too, whatever pref `fullscreen` says (DESIGN §10.3, "fullscreen
   or not", `ph-5u0g.6`). `bare: false` in its ask is not honored and there is
   no mode event for it. Footer pages keep In window / Borderless; the
@@ -588,7 +589,7 @@ returns the `<svg>`; an `icon` option takes a name or a stroke path `d`.
 | `rows` | `title` (its `card-sub` head) | the grid `row`s go in |
 | `row` | `label`, `control`, `chip` (default: the control's own `chip`), `tip` | label, control and chip on one line (the settings row) |
 | `bar` | `left`, `center`, `right` (element lists), `drop` (elements in the order they leave) | `left`, `center`, `right` (the groups), `refit()` (after a group's content changes width; a resize refits by itself). One row while it fits; else `center` takes its own row above; else the `drop` elements leave in order. A target never shrinks. |
-| `stage` | `overlay` (`'fullscreen'`, the default: the overlay exists in fullscreen only; `'always'`), `rotate` (on the phone class a turn to landscape enters fullscreen while `aspect` is set, and the turn back leaves), `onTap` (a single tap once the double window passes; a tap that only wakes a hidden overlay is none), `onDouble` (default: fullscreen), `onFullscreen(on)` | `media` (the video goes here, letterboxed), `empty` (a slot over the box; the plugin shows and hides what it puts there), `overlay` (hides after 2.5 s idle as `display: none`, nothing left over the video; kept while hovered, dragged or holding keyboard focus; Tab in fullscreen shows it), `dock` (shown while the overlay hides), `aspect` (width / height; the stage sizes to it, at most `--ui-stage-max`, 60 % of the window height by default; null keeps 16:9), `fullscreen` (get/set: the shell's bare page fullscreen), `flash(icon)`, `center(icon or null)`, `poke()` (shows the overlay) |
+| `stage` | `overlay` (`'fullscreen'`, the default: the overlay exists in fullscreen only; `'always'`), `rotate` (on the phone class a turn to landscape enters fullscreen while `aspect` is set, and the turn back leaves), `onTap` (a mouse click once the double window passes; a touch tap never: it shows or hides the controls), `onDouble` (a mouse double-click; default: fullscreen), `onCenter` (the center glyph becomes a button that calls it on a touch or a key, shown with the controls; under a mouse it is decoration and a click there is `onTap`; a second touch on it inside the touch window after a tap revealed it is never a call), `onSkip(dir)` (a touch double-tap on the left or right third, `dir` -1 or 1, inside the 300 ms touch window; it returns the words its ripple shows), `onFullscreen(on)` | `media` (the video goes here, letterboxed), `empty` (a slot over the box; the plugin shows and hides what it puts there), `overlay` (the controls: they show on mouse movement or a touch tap and hide after 2.5 s idle as `display: none`, nothing left over the video, the pointer hidden with them; kept while hovered, dragged or holding keyboard focus; a touch tap on shown controls hides them; Tab in fullscreen shows it), `dock` (shown while the overlay hides), `aspect` (width / height; the stage sizes to it, at most `--ui-stage-max`, 60 % of the window height by default; null keeps 16:9), `fullscreen` (get/set: the shell's bare page fullscreen), `flash(icon)`, `center(icon or null, label)` (shown while the controls show; `label` names the button form), `keep` (get/set: true holds the controls shown, never hiding on their own, as for a paused video), `shown`, `poke()` (shows the overlay) |
 | `scrub` | `max`, `value`, `buffered`, `step` (the arrows' step, default 1 % of `max`), `label`, `format(v)` (the hover readout and `aria-valuetext`), `onSeek(v, phase)` (`'start'`, `'move'`, `'end'`) | `value` (ignored mid-drag), `max`, `buffered`, `track` (paint a background here, e.g. a heat map) |
 | `split` | `min`, `max`, `value` (px of the region after the bar, or null), `size()` (that region's height while `value` is null), `label`, `onChange(px, commit)` | a horizontal resize bar: drag, arrows (8 px, Shift 1), a double-click asks for null |
 | `sheet` | `title`, `index`, `form` (`'auto'`, `'sheet'`, `'drawer'`, `'popover'`, `'slot'`), `slot` (an element of the plugin's: the slot form is a card there), `anchor` (its toggle: a popover opens under it, a tap on it is no outside tap; settable later), `onClose` (a user's close) | `body`, `open` (get/set), `form`, `anchor`; `data-open` while open. Auto: the right drawer in page fullscreen, the bottom sheet on a phone upright, else the slot when one is given, else the drawer; it follows a turn or a fullscreen while open, its content moving with it. The sheet drags down to close; the slot card closes on its close button. |
@@ -922,9 +923,12 @@ Shipped:
   span on the media clock, and every stop of its own sends one hold; the
   script's V8 and V9 axes ride `submitSamples('osc.drive', ...)` while it
   plays, where the hub offers the role (FUNSCRIPT.md, Multi-axis); a
-  gate or a hub refusal pauses it with no hold. The card's Play is the
-  only start, and a latch, a running generator or another producer grays
-  it with the gate's words. Stash rides `net.fetch`, its connect card
+  gate or a hub refusal pauses it with no hold. The card's Play (the bar's
+  button, the stage's center glyph, a mouse click on the video, k or Space,
+  the menu's Play) is the only start; a touch tap on the video only shows
+  or hides the controls, and previous and next load a video paused. A
+  latch, a running generator or another producer grays Play with the
+  gate's words. Stash rides `net.fetch`, its connect card
   in the Plugins pane and in the library's place. The detail's expand
   button opens the analyzer in the card's own box: the hub's Tuning
   controls (and `limit.input.*`), written Live through `api.write` or as a
@@ -932,9 +936,10 @@ Shipped:
   declares `intent`. Its settings card holds the Stash connect card,
   Scale and the playback rows (loop, auto-home, seek glide, automatic
   latency); the hub shapes the curve between actions. The detail's A-B button loops a section.
-  Its context menus (`ui.menu`): the stage's Play or Pause, Fullscreen,
-  Open video and Open script; the timeline's Seek here, Set A here, Set B
-  here and Clear loop; a scene row's Play, Play next, Add to queue and
+  Its context menus (`ui.menu`): the stage's Play or Pause, Previous
+  chapter and Next chapter (a script with chapters or bookmarks),
+  Fullscreen, Open video and Open script; the timeline's Seek here, Set A
+  here, Set B here, Clear loop and the two chapter items; a scene row's Play, Play next, Add to queue and
   Open in Stash (`net.open`); a queue row's Remove and Move to top. Operator values persist
   through `api.prefs`; all but the Stash key are mirrored under
   `phosphor.funscript.*` for the prefs backup. Its page, `Funscript` under
