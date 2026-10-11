@@ -59,7 +59,8 @@ export { default as luna } from './luna/manifest.js';
 ```
 
 The stylesheet needs no line: `src/main.js` globs every `src/themes/*/theme.css`,
-so the folder is its registration. Two agents adding two Themes conflict on at
+so the folder is its registration. Only the applied Theme's sheet is in the document
+(`<style id="themeSheet">`, swapped when the Theme changes; see Performance). Two agents adding two Themes conflict on at
 most `index.js`, and a one-line conflict resolves by keeping both lines.
 
 `manifest.js` default-exports:
@@ -212,6 +213,39 @@ What a Theme dresses besides the controls:
   default `--intent`). Set them on `:root` or `.rail-canvas` under your prefix, as any CSS
   color. The shapes, their alphas and the glow's size are not themeable: the tail's length is
   the carriage's speed and the ghost stays dimmer than the head, whatever the colors.
+- **Busy.** `html[data-busy="resize"]` is set while the window is being resized and removed 250 ms
+  after the last resize event (`src/model/viewport.svelte.js`). A Theme may trade an effect that
+  repaints slowly for a cheaper one under it, and only when the kit's perf section needs it; the
+  look at rest is the Theme's. Glass uses it (round corners for squircle ones while resizing).
+
+## Performance
+
+The operator's stress cases are dragging a Dash card in edit mode and resizing the window, on a 4K
+display. What a Theme costs there, measured 2026-10-10 (Edge headless with GPU at 3840x2160, and the
+release shell's WebView2 window at 3840x2160, DPR 1.25):
+
+- **Every rule loaded weighs on every style recalc.** A resize recalculates the whole document once or
+  twice per step, and each element is tested against every rule whose subject matches it, scoped to a
+  Theme or not. With all 19 sheets in the document a full recalc cost twice what one sheet does, so only
+  the applied Theme's sheet is in the document. Inside a sheet, a universal subject
+  (`html:root[data-style="x"] *`) and a pseudo-element on every control are paid on every element in
+  every recalc; prefer a part or a class.
+- **`corner-shape` other than `round` on a surface with shadows** turns every `box-shadow` (rims and lifts
+  alike) into a path blur: at 4K it halved Glass's resize frame rate. Use it under `:not([data-busy])` or
+  on few surfaces.
+- **A `:has()` on the root or on a page-wide box** re-runs on DOM insertions under it; keep its argument
+  specific, and never key a custom property every element inherits on it where a class would do.
+- **Textures** (`--tex-page`, `--tex-card`, gradient tiles, data-URI masks), `filter` and
+  `backdrop-filter` on bounded surfaces, and `transform`/`opacity` animations measured cheap on a GPU
+  compositor; none of the shipped Themes needed them changed.
+
+The kit's **perf** section holds every Theme to it: in a 3840x2160 GPU-composited window it drags a Dash
+card in edit mode (one pointermove per frame, 2 s), counts the composited layers mid-drag, then resizes
+the window (2 s), and compares each p95 frame time with Phosphor's in the same run (measured first and
+last; the slower reading is the baseline). Budget: p95 at most 1.5x Phosphor's, never under one 60 Hz
+frame (16.7 ms), and at most 3x Phosphor's layer count. `node test/theme-skins.test.mjs --perf` runs it
+alone and prints the table; `--no-perf` skips it. The browser chain runs it as `check:skins-perf`, by
+itself after the parallel pool (a loaded host fails a timing budget for no Theme's fault).
 
 ## Behavior
 
@@ -298,7 +332,9 @@ on the recorded catalog and checks, for the Theme and each of its Variants:
 - **reach** the center of every visible button hits that button (decoration blocks nothing);
 - **motion** under reduced motion no `theme-*` animation runs;
 - **picker** the chip, its swatch and tooltip, its Variants under it, F3 finding it;
-- **material** and **dynamic**, below.
+- **material** and **dynamic**, below;
+- **perf** dragging a card and resizing the window at 4K within 1.5x Phosphor's p95, and a layer ceiling
+  (Performance, above).
 
 Screenshots (the Dash and the funscript page at 1428x900, the Dash at 420x860, one per Variant) land in
 `test/evidence/themes/` (git-ignored). Before you hand a Theme back: the kit passes for it, `npm run check`

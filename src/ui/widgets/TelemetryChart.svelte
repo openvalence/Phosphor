@@ -140,8 +140,9 @@
     }
     readTokens();
     const colorFor = (f) => paletteColors[Math.max(0, candidates.indexOf(f)) % paletteColors.length];
+    // Class only: the root's inline style holds layout vars (--cols, --s), and a token read per write forces a style recalc per resize step.
     const themeObserver = new MutationObserver(() => { readTokens(); wake(); });
-    themeObserver.observe(root, { attributes: true, attributeFilter: ['class', 'style'] });
+    themeObserver.observe(root, { attributes: true, attributeFilter: ['class'] });
     const offTheme = onTheme(() => { readTokens(); wake(); });
 
     const reduced = still.on;   // tracked: the Motion toggle re-runs this effect

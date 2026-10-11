@@ -51,8 +51,9 @@
       statusOf(f);
       void machine.sampleTs[f.channelId];
     };
-    for (const k in fields) {
-      const f = fields[k];
+    const fs = sameFields;
+    for (const k in fs) {
+      const f = fs[k];
       if (Array.isArray(f)) for (const m of f) for (const j in m) watch(m[j]);
       else watch(f);
     }

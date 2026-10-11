@@ -33,7 +33,8 @@
     "check:hubs": "node test/hubs.test.mjs",
     "check:graph": "node test/graph-editor.test.mjs",
     "check:theme": "node test/theme-browser.test.mjs",
-    "check:skins": "node test/theme-skins.test.mjs",
+    "check:skins": "node test/theme-skins.test.mjs --no-perf",
+    "check:skins-perf": "node test/theme-skins.test.mjs --perf --no-shots",
     "check:temple": "node test/theme-temple.test.mjs --no-shots",
     "check:keys": "node test/keys.test.mjs",
     "check:virtual": "node test/virtual.test.mjs",
@@ -57,7 +58,7 @@
     "test:bp-sim": "node test/buttplug-estop-sim.mjs",
     "test:lan": "node test/open-to-lan.test.mjs",
     "test:browser": "node test/run-suites.mjs browser",
-    "test:browser:serial": "npm run check:shell && npm run check:dash && npm run check:responsive && npm run check:safety && npm run check:contract && npm run check:home && npm run check:nest && npm run check:a11y && npm run check:builder && npm run check:advpen && npm run check:panes && npm run check:hubs && npm run check:graph && npm run check:theme && npm run check:skins && npm run check:temple && npm run check:keys && npm run check:virtual && npm run check:funscript && npm run check:pages && npm run check:link && npm run check:uikit && npm run check:health && npm run check:heat && npm run check:quickaccess && npm run check:dashes && npm run check:live && npm run check:pairing && npm run check:safetylive && npm run check:browsercheck && npm run check:flagship && npm run check:taptomove && npm run check:chunk && npm run check:meteor && node test/cluster/home-osc.test.mjs && node test/cluster/player-osc.test.mjs && npm run check:fps",
+    "test:browser:serial": "npm run check:shell && npm run check:dash && npm run check:responsive && npm run check:safety && npm run check:contract && npm run check:home && npm run check:nest && npm run check:a11y && npm run check:builder && npm run check:advpen && npm run check:panes && npm run check:hubs && npm run check:graph && npm run check:theme && npm run check:skins && npm run check:temple && npm run check:keys && npm run check:virtual && npm run check:funscript && npm run check:pages && npm run check:link && npm run check:uikit && npm run check:health && npm run check:heat && npm run check:quickaccess && npm run check:dashes && npm run check:live && npm run check:pairing && npm run check:safetylive && npm run check:browsercheck && npm run check:flagship && npm run check:taptomove && npm run check:chunk && npm run check:meteor && node test/cluster/home-osc.test.mjs && node test/cluster/player-osc.test.mjs && npm run check:fps && npm run check:skins-perf",
     "tauri": "tauri"
   },
   "devDependencies": {

@@ -45,6 +45,7 @@ import { ICON_NAMES } from '../src/ui/navIcons.js';
 const args = process.argv.slice(2);
 const flag = (n) => (args.includes(n) ? args[args.indexOf(n) + 1] : null);
 const only = flag('--theme') || flag('--only');
+const PERF_ONLY = args.includes('--perf');
 const SHOTS = args.includes('--no-shots') ? null : (flag('--shots') || join(EVIDENCE, 'themes'));
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 if (only && !STYLES.some((s) => s.id === only)) { console.error('no theme "' + only + '"; registered: ' + STYLES.map((s) => s.id).join(', ')); process.exit(2); }
@@ -149,8 +150,8 @@ function fakeHub(ws) {
 }
 
 const browser = await chromium.launch();
-async function boot(viewport, theme, { reduce = false, material = null, unlocked = [] } = {}) {
-  const ctx = await browser.newContext({ viewport, reducedMotion: reduce ? 'reduce' : 'no-preference' });
+async function boot(viewport, theme, { reduce = false, material = null, unlocked = [], on = browser } = {}) {
+  const ctx = await on.newContext({ viewport, reducedMotion: reduce ? 'reduce' : 'no-preference' });
   await ctx.addInitScript(TAURI_STUB);
   // A shell whose Rust half has the material: window_material answers what was asked, and every call is kept.
   if (material) {
@@ -241,7 +242,7 @@ const sig = (s) => s.replace(/ ".*$/, '');
 // The shipped presets' reading of every page, Phosphor for a dark chassis and Paper for a light one:
 // what a skin may not make worse.
 console.log('\n--- baseline: Phosphor and Paper ---');
-for (const base of ['phosphor', 'paper']) {
+for (const base of PERF_ONLY ? [] : ['phosphor', 'paper']) {
   for (const [w, h] of VIEWPORTS) {
     const { ctx, page, errors } = await boot({ width: w, height: h }, THEMES.find((t) => t.id === base));
     for (const [name, id] of PAGES) {
@@ -253,7 +254,7 @@ for (const base of ['phosphor', 'paper']) {
   }
 }
 
-for (const skin of skins) {
+for (const skin of PERF_ONLY ? [] : skins) {
   const theme = THEMES.find((t) => t.id === skin.id);
   console.log('\n--- ' + skin.name + ' (' + skin.id + ') ---');
   for (const [w, h] of VIEWPORTS) {
@@ -372,7 +373,7 @@ for (const skin of skins) {
 }
 
 // ---- materials: the see-through look on the worst backdrops, and what takes it away --------------
-for (const skin of skins.filter((s) => s.material)) {
+for (const skin of (PERF_ONLY ? [] : skins).filter((s) => s.material)) {
   console.log('\n--- ' + skin.name + ': materials ---');
   const theme = THEMES.find((t) => t.id === skin.id);
   // Windows 10, Linux, Android, the browser: the Rust half answers none, and the look stays opaque.
@@ -437,7 +438,7 @@ const ramp = (hue, chroma) => Object.fromEntries([0, 10, 50, 100, 200, 300, 400,
   .map((t) => [t, fromOklch(1 - t / 1000 * 0.97, chroma * Math.sin(Math.PI * Math.min(1, Math.max(0.05, 1 - t / 1000))) ** 0.7, hue)]));
 const fakePalette = (hue, chroma, night) => ({ accent1: ramp(hue, chroma), accent2: ramp(hue + 40, chroma * 0.4), accent3: ramp(hue + 80, chroma * 0.8),
   neutral1: ramp(hue, 0.012), neutral2: ramp(hue, 0.024), night });
-for (const skin of skins.filter((s) => s.id === 'material')) {
+for (const skin of (PERF_ONLY ? [] : skins).filter((s) => s.id === 'material')) {
   console.log('\n--- ' + skin.name + ': a system palette ---');
   for (const [hue, chroma, night] of [[300, 0.12, true], [150, 0.14, false], [25, 0.25, true], [80, 0.2, false]]) {
     const label = 'hue ' + hue + (night ? ' night' : ' day');
@@ -483,6 +484,89 @@ for (const skin of skins.filter((s) => s.id === 'material')) {
     ok(label + ': no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
     await ctx.close();
   }
+}
+
+// ---- perf: the operator's two stress cases in a 4K window, against Phosphor in the same run ---------------
+// Frame times are requestAnimationFrame intervals in a GPU-composited Chromium window; the budget is relative,
+// so the host's speed cancels. A p95 floor of one 60 Hz frame keeps a single missed vsync at a high refresh rate
+// from failing a Theme. docs/THEMES.md, Performance.
+const PERF = { w: 3840, h: 2160, ms: 2000, ratio: 1.5, floor: 1000 / 60, layers: 3 };
+const gpuArgs = ['--ignore-gpu-blocklist', '--window-size=' + PERF.w + ',' + PERF.h];
+const gpu = args.includes('--no-perf') ? null : await chromium.launch({ channel: 'chromium', args: gpuArgs }).catch(() => chromium.launch({ args: gpuArgs }));
+/** One Theme: drag a Dash card in edit mode (a CDP press on its grip, then one pointermove per frame), then resize the window. */
+async function perfRun(theme, unlocked) {
+  const { ctx, page } = await boot(null, theme, { on: gpu, unlocked });
+  const p95 = (run) => page.evaluate(() => { window.__f = []; const t = (ts) => { window.__f.push(ts); window.__raf = requestAnimationFrame(t); }; window.__raf = requestAnimationFrame(t); })
+    .then(run).then(() => page.evaluate(() => { cancelAnimationFrame(window.__raf); return window.__f; }))
+    .then((ts) => { const d = ts.slice(3).map((t, i) => t - ts[i + 2]).sort((a, b) => a - b); return { p95: +d[Math.floor(d.length * .95)].toFixed(1), fps: +(d.length * 1000 / (ts.at(-1) - ts[2])).toFixed(1) }; });
+  await page.locator('button[data-tip="Edit layout"]:visible').first().click();
+  await page.waitForSelector('.dash-toolbar');
+  await page.locator('.dash-toolbar .palette-toggle').click().catch(() => {});
+  await page.waitForTimeout(400);
+  const b = await page.locator('.home > .dash-wrap > .dash-grid > .dash-cell .handle.grab').first().boundingBox();
+  const g = await page.locator('.home > .dash-wrap > .dash-grid').boundingBox();
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+  await page.mouse.down();
+  const drag = await p95(() => page.evaluate(([gx, gy, gw, gh, ms]) => new Promise((done) => {
+    const grip = document.querySelector('.dash-item.dragging .handle.grab');
+    let i = 0;
+    const end = performance.now() + ms;
+    const step = (ts) => {
+      if (ts > end || !grip) return done();
+      const t = i++ / 40;
+      grip.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1, isPrimary: true, pointerType: 'mouse', buttons: 1, bubbles: true,
+        clientX: gx + gw * (0.45 + 0.3 * Math.sin(t)), clientY: gy + 60 + Math.min(gh, 1200) * 0.3 * (1 - Math.cos(t * 0.7)) }));
+      requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }), [g.x, g.y, g.width, g.height, PERF.ms]));
+  const cdp = await ctx.newCDPSession(page);
+  const tree = new Promise((r) => cdp.on('LayerTree.layerTreeDidChange', (e) => e.layers && r(e.layers.length)));
+  await cdp.send('LayerTree.enable');
+  await page.evaluate(() => { document.body.style.outlineOffset = '0.01px'; });
+  const layers = await Promise.race([tree, new Promise((r) => setTimeout(() => r(-1), 3000))]);
+  await cdp.send('LayerTree.disable');
+  await page.keyboard.press('Escape');
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+  const { windowId } = await cdp.send('Browser.getWindowForTarget');
+  const resize = await p95(async () => {
+    for (let i = 0, end = Date.now() + PERF.ms; Date.now() < end; i++) {
+      const j = 20 - Math.abs(20 - (i % 40));
+      await cdp.send('Browser.setWindowBounds', { windowId, bounds: { width: PERF.w - 12 * j, height: PERF.h - 6 * j } });
+      await new Promise((r) => setTimeout(r, 4));
+    }
+  });
+  await ctx.close();
+  return { drag, resize, layers };
+}
+if (gpu) {
+  console.log('\n--- perf: drag and resize at ' + PERF.w + 'x' + PERF.h + ' ---');
+  const row = (id, r) => console.log('  ' + id.padEnd(12) + ' drag ' + String(r.drag.fps).padStart(6) + ' fps p95 ' + String(r.drag.p95).padStart(5)
+    + ' ms | resize ' + String(r.resize.fps).padStart(6) + ' fps p95 ' + String(r.resize.p95).padStart(5) + ' ms | ' + r.layers + ' layers');
+  const phos = THEMES.find((t) => t.id === 'phosphor');
+  const base = [await perfRun(phos)];
+  row('phosphor', base[0]);
+  const runs = [];
+  for (const skin of skins) {
+    const run = () => perfRun(THEMES.find((t) => t.id === skin.id), skin.hidden ? [skin.id] : []);
+    runs.push([skin, await run(), run]);
+    row(skin.id, runs.at(-1)[1]);
+  }
+  // Phosphor again at the end: the slower of the two readings is the baseline, so a host that warms or throttles mid-run fails nothing.
+  base.push(await perfRun(phos));
+  row('phosphor', base[1]);
+  const cap = (k) => Math.max(PERF.floor, PERF.ratio * Math.max(...base.map((b) => b[k].p95)));
+  const layerCap = Math.round(PERF.layers * Math.max(...base.map((b) => b.layers)));
+  const over = (r) => r.drag.p95 > cap('drag') || r.resize.p95 > cap('resize');
+  for (let [skin, r, run] of runs) {
+    // One retry: a p95 over 2 s is a handful of frames, and a background hiccup is not the Theme's.
+    if (over(r)) { const again = await run(); if (!over(again)) r = again; }
+    ok(skin.id + ': dragging a card holds p95 within ' + PERF.ratio + 'x Phosphor', r.drag.p95 <= cap('drag'), r.drag.p95 + ' ms vs ' + cap('drag').toFixed(1));
+    ok(skin.id + ': resizing the window holds p95 within ' + PERF.ratio + 'x Phosphor', r.resize.p95 <= cap('resize'), r.resize.p95 + ' ms vs ' + cap('resize').toFixed(1));
+    ok(skin.id + ': at most ' + layerCap + ' composited layers', r.layers > 0 && r.layers <= layerCap, String(r.layers));
+  }
+  await gpu.close();
 }
 
 await browser.close();

@@ -173,6 +173,8 @@ html:root[data-style="glass"] .surface-card {
   background-color: color-mix(in srgb, var(--bg-card) var(--tint), transparent);
   box-shadow: var(--rim), var(--lift);
 }
+/* Squircle corners make every rim and lift a path blur: mid-resize at 4K that halves the frame rate, so the corners go round until the window settles. */
+html:root[data-style="glass"][data-busy] :is([data-part="card"], [data-part="nest"], [data-part="panel"], .og-panel, .surface-card, [data-part="bar"]) { corner-shape: round; }
 html:root[data-style="glass"] .og-panel { background-image: var(--sheen); outline: none; }
 html:root[data-style="glass"] [data-part="nest"] { border-radius: 34px; background-color: color-mix(in srgb, var(--bg-sunken) var(--tint), transparent); }
 html:root[data-style="glass"]:not([data-material]) :is([data-part="card"], [data-part="nest"], [data-part="panel"], .og-panel),
