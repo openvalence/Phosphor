@@ -13,7 +13,12 @@
  *             and hovering and focusing controls moves no box
  *   text      no text under WCAG AA that the shipped presets do not also have
  *   stop pair Pause and Halt are visible, at least 40 px, in AA text, with the default
- *             theme's hazard stripe and size
+ *             theme's hazard stripe and size; no rule of the sheet paints them or their
+ *             ancestors (only its :root tokens reach them), nothing is drawn over them, and
+ *             Windows High Contrast keeps their colors (forced-color-adjust: none)
+ *   strip-btn Home required, Flip on and Override latched keep their safety borders under
+ *             the Theme's face
+ *   scrollbars the scrollbar preference shows and hides them under the Theme
  *   reach     decoration never covers a control: the point at the center of every visible
  *             button hits that button
  *   motion    under reduced motion no theme animation runs
@@ -38,7 +43,7 @@ import { goTab } from './nav.mjs';
 import { lowContrast, lowContrastOver } from './audit.mjs';
 import { cbMap, cbUint, cbBstr, cbTstr, cbArray, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
 import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K } from '../../Valence/clients/js/frames.js';
-import { THEMES, STYLES, deriveTokens, fromOklch } from '../src/model/theme.js';
+import { THEMES, STYLES, deriveTokens, fromOklch, inkFloor, contrast } from '../src/model/theme.js';
 import { paletteTheme } from '../src/model/dynamicColor.js';
 import { ICON_NAMES } from '../src/ui/navIcons.js';
 
@@ -75,6 +80,16 @@ ok('no variant\'s accents sit on a safety hue', THEMES.every((t) => { const d = 
   THEMES.filter((t) => { const d = deriveTokens(t); return d.near.reality || d.near.intent; }).map((t) => t.id).join(','));
 const floorBad = THEMES.filter((t) => { const d = deriveTokens(t); return !(d.ratios.text >= 4.5 && d.ratios.reality >= 4.5 && d.ratios.labels >= 3); }).map((t) => t.id);
 ok('every variant clears 4.5:1 for text and for reality on every surface, 3:1 for labels', floorBad.length === 0, floorBad.join(','));
+// The safety inks: 4.5:1 everywhere, or the Theme's own inkFloor (docs/THEMES.md, Safety).
+const inkBad = THEMES.filter((t) => { const d = deriveTokens(t); return d.inkOn.some((s) => Object.values(d.ink).some((c) => contrast(c, s) < inkFloor(t.style))); })
+  .map((t) => t.id + ' (' + inkFloor(t.style) + ':1)');
+ok('every variant\'s safety inks clear its Theme\'s floor on every surface', inkBad.length === 0, inkBad.join(','));
+// html::before and ::after and body::before and ::after are the Themes' (docs/THEMES.md, Chrome hooks): the shell never draws there.
+const SRC = fileURLToPath(new URL('../src/', import.meta.url));
+const ROOT_PSEUDO = /(^|[\s,}(>])(html|:root|body)(\[[^\]]*\]|\.[\w-]+|:not\([^)]*\))*::?(before|after)\b/;
+const shellPseudo = readdirSync(SRC, { recursive: true }).map(String).filter((f) => /\.(svelte|css)$/.test(f) && !/^themes[\\/]/.test(f))
+  .filter((f) => ROOT_PSEUDO.test(readFileSync(join(SRC, f), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')));
+ok('the shell leaves html::before/::after and body::before/::after to the Themes', shellPseudo.length === 0, shellPseudo.join(', '));
 // The old preset ids keep meaning the Phosphor Theme with that variant (the stored preference migrates by id).
 ok('the old preset ids are Phosphor variants', ['phosphor', 'tracer', 'synth', 'ember', 'arctic', 'vapor', 'ultra', 'sakura', 'stealth', 'slate', 'ink', 'paper']
   .every((id) => THEMES.find((t) => t.id === id)?.style === 'phosphor'));
@@ -93,13 +108,21 @@ const topLevel = (s) => {
   return out;
 };
 const FORBID = ['.safety-op', '.btn-estop', '.btn-pause', '.btn-override', '.latched', '[data-shadow', '.stale', '.field::after', '.hazard',
-  '.evline', '.evtag', '.recovery', '.st-dismiss', '.run-btn', '.hold', '.fx-', '--warn', '--bad', '--estop', '--glow-warn', 'danger', '.running',
+  '.evline', '.evtag', '.recovery', '.st-dismiss', '.run-btn', '.hold', '.holding', '.fx-', '--warn', '--bad', '--estop', '--glow-warn', 'danger', '.running',
   'unconfirmed', '.cat-busy', '.dash-busy'];
+// A class is matched as a whole name (.hold is not .holder); the close prompt's own hold button may show its press.
+const forbidden = (css) => {
+  const c = css.replace(/:not\(\.(running|danger)\)/g, '').replace(/\.sb-hold\.holding/g, '');
+  return FORBID.filter((w) => (/^\.[\w-]*\w$/.test(w) ? new RegExp('\\' + w + '(?![\\w-])').test(c) : c.includes(w)));
+};
 for (const s of STYLES.filter((x) => !only || x.id === only)) {
   const f = s.id + '/theme.css', id = s.id;
   const css = strip(readFileSync(join(DIR, f), 'utf8'));
-  const hit = FORBID.filter((w) => css.replace(/:not\(\.(running|danger)\)/g, '').includes(w));
+  const hit = forbidden(css);
   ok(f + ': never names a stop, safety, ladder or stale surface', hit.length === 0, hit.join(', '));
+  // Flip is a field: its ring is its ::after, and the strip-btn states win by !important (docs/THEMES.md, Parts).
+  const sb = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) => m[1].includes('strip-btn') && (/!important/.test(m[2]) || /::?after\b/.test(m[1])));
+  ok(f + ': a strip-btn rule takes no ::after and no !important', sb.length === 0, sb.map((m) => m[1].trim().slice(0, 70)).join(' | '));
   ok(f + ': loads nothing remote', !/(https?:)?\/\/[a-z0-9.-]+\.[a-z]{2,}/i.test(css.replace(/xmlns=['"]http:\/\/www\.w3\.org\/2000\/svg['"]/g, '')) && !/@import\s+url\(\s*['"]?https?:/.test(css));
   if (id === 'phosphor') continue;
   const flat = css.replace(/@keyframes\s+[\w-]+\s*\{(?:[^{}]*\{[^{}]*\})*\s*\}/g, '').replace(/@font-face\s*\{[^}]*\}/g, '');
@@ -149,8 +172,9 @@ function fakeHub(ws) {
   });
 }
 
-const browser = await chromium.launch();
-async function boot(viewport, theme, { reduce = false, material = null, unlocked = [], on = browser } = {}) {
+// Scrollbars drawn, as on the desktop: Playwright hides them by default, and a Theme may shape them (docs/THEMES.md, Chrome hooks).
+const browser = await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] });
+async function boot(viewport, theme, { reduce = false, material = null, unlocked = [], on = browser, scrollbars = false } = {}) {
   const ctx = await on.newContext({ viewport, reducedMotion: reduce ? 'reduce' : 'no-preference' });
   await ctx.addInitScript(TAURI_STUB);
   // A shell whose Rust half has the material: window_material answers what was asked, and every call is kept.
@@ -162,7 +186,7 @@ async function boot(viewport, theme, { reduce = false, material = null, unlocked
         ? (window.__materialCalls.push(a.kind), Promise.resolve(a.kind === 'none' ? 'none' : granted)) : inner(cmd, a));
     }, material);
   }
-  await ctx.addInitScript(([etag, bytes, theme, unlocked]) => {
+  await ctx.addInitScript(([etag, bytes, theme, unlocked, scrollbars]) => {
     try {
       if (!sessionStorage.getItem('booted')) {
         sessionStorage.setItem('booted', '1');
@@ -170,10 +194,11 @@ async function boot(viewport, theme, { reduce = false, material = null, unlocked
         localStorage.setItem('phosphor.hubs', JSON.stringify([{ id: '127.0.0.1:82', host: '127.0.0.1', port: 82, name: 'skins fixture', nickname: '', lastSeen: Date.now() }]));
         localStorage.setItem('phosphor.theme', JSON.stringify(theme));
         if (unlocked.length) localStorage.setItem('phosphor.theme.unlocked', JSON.stringify(unlocked));
+        if (scrollbars) localStorage.setItem('phosphor.prefs', JSON.stringify({ scrollbars: true }));
       }
       localStorage.setItem('valence.catalog.127.0.0.1', JSON.stringify({ etag, bytes }));
     } catch (e) { /* no storage */ }
-  }, [ETAG, Buffer.from(CAT).toString('hex'), theme, unlocked]);
+  }, [ETAG, Buffer.from(CAT).toString('hex'), theme, unlocked, scrollbars]);
   await ctx.routeWebSocket(/:82\//, fakeHub);
   const page = await ctx.newPage();
   const errors = [];
@@ -198,10 +223,12 @@ const probe = () => {
     return { label: b.textContent.trim().replace(/\s+/g, ' ').slice(0, 14), w: Math.round(r.width), h: Math.round(r.height), op: cs.opacity, bgi: cs.backgroundImage };
   });
   const covered = [];
+  // The viewport inside the page's own scrollbars (the kit draws them).
+  const vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
   for (const el of document.querySelectorAll('button:not([disabled]), a[href], input:not([type=hidden]), select, [role=tab]')) {
     if (!vis(el) || el.closest('.sr, .sr-only, [inert]')) continue;
     const r = el.getBoundingClientRect();
-    if (r.bottom < 0 || r.right < 0 || r.top > innerHeight || r.left > innerWidth) continue;
+    if (r.bottom < 0 || r.right < 0 || r.top > vh || r.left > vw) continue;
     const x = r.left + r.width / 2, y = r.top + r.height / 2;
     // Scrolled out of an ancestor's box is not covered, it is clipped; the page's own pinned chrome is layout, not decoration.
     let clipped = false;
@@ -211,19 +238,133 @@ const probe = () => {
       const b = a.getBoundingClientRect();
       clipped = x < b.left || x > b.right || y < b.top || y > b.bottom;
     }
-    if (clipped || x < 0 || y < 0 || x > innerWidth || y > innerHeight) continue;
+    if (clipped || x < 0 || y < 0 || x > vw || y > vh) continue;
     const hit = document.elementFromPoint(x, y);
     if (hit && hit.closest('.footstrip, .page-foot, .topstrip, .hero-inner.popup, .hero-inner.quick, [popover]')) continue;
     if (!hit || !(el.contains(hit) || hit.contains(el) || (hit.closest('label') && hit.closest('label').contains(el)))) {
       covered.push((el.className || el.tagName) + ' <- ' + (hit ? (hit.className || hit.tagName) : 'nothing'));
     }
   }
-  return { overflow: document.documentElement.scrollWidth - innerWidth, pair, covered,
-    chrome: ['.topstrip', '.strip', '.footstrip'].map((q) => Math.round(document.querySelector(q)?.getBoundingClientRect().height || 0)) };
+  return { overflow: document.documentElement.scrollWidth - vw, pair, covered,
+    chrome: ['.topstrip', '.strip', '.footstrip'].map((q) => Math.round(document.querySelector(q)?.getBoundingClientRect().height || 0)),
+    // A Theme's --slider-fill on a field slider rides under the write ladder's four gradient layers, never instead of them.
+    ladder: [...document.querySelectorAll('.field input[type=range]')].filter(vis).slice(0, 4).map((e) => {
+      const cs = getComputedStyle(e);
+      return cs.getPropertyValue('--slider-fill').trim() ? (cs.backgroundImage.match(/linear-gradient\(/g) || []).length : 4;
+    }),
+    // The scrollbar width of every scrolled [data-shade] box: 0 while the preference hides them.
+    bars: [...document.querySelectorAll('[data-shade]')].filter((e) => e.clientHeight > 0 && e.scrollHeight > e.clientHeight + 1).map((e) => {
+      const cs = getComputedStyle(e);
+      return Math.round(e.offsetWidth - e.clientWidth - parseFloat(cs.borderLeftWidth) - parseFloat(cs.borderRightWidth));
+    }) };
+};
+
+/**
+ * The stop pair against the shell's own paint (docs/THEMES.md, Safety): every paint property of Pause and Halt and
+ * their insides, and every ancestor's opacity, filter and transform, read with the Theme's sheet and again with only
+ * its :root rules (its tokens); any difference is a rule of the sheet reaching the pair. Then, with every element
+ * hit-testable, what sits on top at five points of each: anything but the button is drawn over it.
+ */
+const pairGuard = () => {
+  const OWN = ['color', 'background-color', 'background-image', 'border-top-color', 'border-right-color', 'border-bottom-color', 'border-left-color',
+    'border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width', 'border-top-style', 'box-shadow', 'outline-style',
+    'outline-width', 'opacity', 'visibility', 'display', 'filter', 'transform', 'clip-path', 'mask-image', 'mix-blend-mode', 'text-shadow',
+    'forced-color-adjust', 'fill', 'stroke', 'z-index'];
+  const UP = ['opacity', 'filter', 'visibility', 'mix-blend-mode', 'transform', 'clip-path', 'mask-image'];
+  const tag = (e) => e.tagName.toLowerCase() + '.' + String(e.className.baseVal ?? e.className).split(' ')[0];
+  const btns = [...document.querySelectorAll('[data-part="stop-frame"] .safety-op .btn')];
+  const name = (b) => (b.querySelector('.lbl')?.textContent || '').trim();
+  const snap = () => {
+    const out = [];
+    for (const b of btns) {
+      for (const e of [b, ...b.querySelectorAll('*')]) { const cs = getComputedStyle(e); for (const p of OWN) out.push([name(b) + ' ' + tag(e) + ' ' + p, cs.getPropertyValue(p)]); }
+      for (let a = b.parentElement; a; a = a.parentElement) { const cs = getComputedStyle(a); for (const p of UP) out.push([name(b) + ' under ' + tag(a) + ' ' + p, cs.getPropertyValue(p)]); }
+    }
+    return out;
+  };
+  const sheet = document.getElementById('themeSheet');
+  const ROOT = /^(html)?:root(\[[^\]]+\]|:not\([^)]*\)|\.[\w-]+)*$/;
+  const keep = (rules) => [...rules].map((r) => (r instanceof CSSStyleRule ? (r.selectorText.split(',').every((s) => ROOT.test(s.trim())) ? r.cssText : '')
+    : r instanceof CSSMediaRule ? '@media ' + r.conditionText + '{' + keep(r.cssRules) + '}'
+      : r instanceof CSSSupportsRule ? '@supports ' + r.conditionText + '{' + keep(r.cssRules) + '}' : '')).join('\n');
+  const now = snap();
+  const tmp = document.createElement('style');
+  tmp.textContent = '*, *::before, *::after { transition: none !important; }\n' + (sheet && sheet.sheet ? keep(sheet.sheet.cssRules) : '');
+  document.head.append(tmp);
+  if (sheet) sheet.disabled = true;
+  const shell = snap();
+  if (sheet) sheet.disabled = false;
+  // Back on, the sheet restarts its animations (a fade-in on the body): end the finite ones, as visit() does.
+  for (const a of document.getAnimations()) if (a.effect && a.effect.getComputedTiming().iterations !== Infinity) a.finish();
+  tmp.remove();
+  const paint = now.map(([k, v], i) => (shell[i][1] === v ? null : k + ' ' + v + ' (shell: ' + shell[i][1] + ')')).filter(Boolean);
+  const pe = document.createElement('style');
+  pe.textContent = '*, *::before, *::after { pointer-events: auto !important; }';
+  document.head.append(pe);
+  const covered = [];
+  for (const b of btns) {
+    const r = b.getBoundingClientRect();
+    for (const [fx, fy] of [[.5, .5], [.25, .3], [.75, .3], [.25, .7], [.75, .7]]) {
+      const hit = document.elementFromPoint(r.left + r.width * fx, r.top + r.height * fy);
+      if (!hit || !b.contains(hit)) covered.push(name(b) + ' at ' + fx + ',' + fy + ' <- ' + (hit ? tag(hit) : 'nothing'));
+      // An ancestor on top is one of its pseudo-elements; anything else is an element of its own.
+      if (hit && !b.contains(hit)) hit.dataset.kitCover = hit.contains(b) ? 'pseudo' : 'el';
+    }
+  }
+  pe.remove();
+  const rs = btns.map((b) => b.getBoundingClientRect());
+  const box = rs.length ? { x: Math.min(...rs.map((r) => r.left)), y: Math.min(...rs.map((r) => r.top)) } : null;
+  if (box) Object.assign(box, { width: Math.max(...rs.map((r) => r.right)) - box.x, height: Math.max(...rs.map((r) => r.bottom)) - box.y });
+  return { paint, covered, fca: btns.map((b) => getComputedStyle(b).forcedColorAdjust), n: btns.length, box };
+};
+
+/**
+ * Hit-testing sees a box, not paint: a frame's transparent middle is on top without hiding anything. What it found
+ * on top is hidden (an ancestor's pseudo-elements, or the element) and the pair's pixels compared, CSS animations
+ * paused: the same pixels mean nothing visible was drawn over the pair.
+ */
+async function drawnOver(page, box) {
+  await page.evaluate(() => document.getAnimations().forEach((a) => a.pause()));
+  const before = await page.screenshot({ clip: box });
+  await page.evaluate(() => document.head.append(Object.assign(document.createElement('style'), { id: 'kit-hide',
+    textContent: '[data-kit-cover="pseudo"]::before, [data-kit-cover="pseudo"]::after, [data-kit-cover="el"] { visibility: hidden !important; }' })));
+  const after = await page.screenshot({ clip: box });
+  await page.evaluate(() => {
+    document.getElementById('kit-hide').remove();
+    document.querySelectorAll('[data-kit-cover]').forEach((e) => e.removeAttribute('data-kit-cover'));
+    document.getAnimations().forEach((a) => a.play());
+  });
+  return !before.equals(after);
+};
+
+/** Home required, Flip on and Override latched, forced by hand: each keeps its safety border under the Theme's face. */
+const stripStates = () => {
+  const want = (v) => { const p = document.createElement('i'); p.style.color = 'var(' + v + ')'; document.body.append(p); const c = getComputedStyle(p).color; p.remove(); return c; };
+  const cases = [
+    ['Home required', '.dock [data-part="strip-btn"].btn:not(.btn-override)', 'class', 'hazard', '--bad'],
+    ['Flip on', '.dock .rw-flip[data-part="strip-btn"]', 'aria-pressed', 'true', '--warn'],
+    ['Override latched', '.dock .btn-override[data-part="strip-btn"]', 'class', 'latched', '--warn'],
+  ];
+  const bad = [], seen = [];
+  for (const [label, sel, how, val, token] of cases) {
+    for (const b of document.querySelectorAll(sel)) {
+      if (!b.getClientRects().length) continue;
+      const was = b.getAttribute('aria-pressed'), tr = b.style.transition;
+      b.style.transition = 'none';
+      if (how === 'class') b.classList.add(val); else b.setAttribute(how, val);
+      const got = getComputedStyle(b).borderTopColor;
+      if (how === 'class') b.classList.remove(val); else if (was == null) b.removeAttribute(how); else b.setAttribute(how, was);
+      b.style.transition = tr;
+      seen.push(label);
+      if (got !== want(token)) bad.push(label + ' ' + got + ' not ' + token);
+    }
+  }
+  return { bad, seen: [...new Set(seen)] };
 };
 const AUDIT = 'body :is(h1, h2, h3, p, span, label, button, a, li, td, th, output, summary, small, b, i, em, strong, div:not(#ph-tip), input, select, textarea)';
 
 const baseline = new Map();   // viewport+page -> {fails:Set, pair}
+const SCROLL_PAGES = ['dash', 'log', 'settings'];
 async function visit(page, id, shot) {
   await goTab(page, id);
   await page.waitForTimeout(450);
@@ -247,11 +388,17 @@ for (const base of PERF_ONLY ? [] : ['phosphor', 'paper']) {
     const { ctx, page, errors } = await boot({ width: w, height: h }, THEMES.find((t) => t.id === base));
     for (const [name, id] of PAGES) {
       const r = await visit(page, id);
-      baseline.set(base + w + name, { low: new Set(r.low.map(sig)), pair: r.p.pair, covered: new Set(r.p.covered), overflow: r.p.overflow, chrome: r.p.chrome });
+      const guard = name === 'dash' ? await page.evaluate(pairGuard) : null;
+      baseline.set(base + w + name, { low: new Set(r.low.map(sig)), pair: r.p.pair, covered: new Set(r.p.covered), overflow: r.p.overflow, chrome: r.p.chrome,
+        pairCover: new Set(guard ? guard.covered : []) });
     }
     ok('baseline ' + base + ' ' + w + ': no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
     await ctx.close();
   }
+  // The scrollbar preference on: what a Theme's scrollbars may not make worse.
+  const { ctx, page } = await boot({ width: 1428, height: 900 }, THEMES.find((t) => t.id === base), { scrollbars: true });
+  for (const [name, id] of PAGES.filter(([n]) => SCROLL_PAGES.includes(n))) baseline.set(base + 'bars' + name, (await visit(page, id)).p);
+  await ctx.close();
 }
 
 for (const skin of PERF_ONLY ? [] : skins) {
@@ -261,7 +408,7 @@ for (const skin of PERF_ONLY ? [] : skins) {
     const { ctx, page, errors } = await boot({ width: w, height: h }, theme);
     const root = await page.evaluate(() => [document.documentElement.dataset.style, document.documentElement.dataset.theme]);
     ok(skin.id + ' ' + w + ': the root wears its theme', root[0] === skin.id && root[1] === skin.id, root.join('/'));
-    const fitBad = [], textBad = [], pairBad = [], coverBad = [];
+    const fitBad = [], textBad = [], pairBad = [], coverBad = [], ladderBad = [], barBad = [];
     for (const [name, id] of PAGES) {
       const shot = SHOTS && w === 1428 && ['dash', 'funscript'].includes(name) ? skin.id + '-' + name
         : SHOTS && w === 420 && name === 'dash' ? skin.id + '-phone' : null;
@@ -281,7 +428,28 @@ for (const skin of PERF_ONLY ? [] : skins) {
         }
         const stop = await page.evaluate(lowContrast, '.safety-op .btn, .safety-op .btn *');
         if (stop.length) pairBad.push('text ' + stop.join(' | '));
+        const g = await page.evaluate(pairGuard);
+        if (!g.n) pairBad.push('no stop pair in the stop-frame');
+        if (g.paint.length) pairBad.push('painted by the sheet: ' + g.paint.slice(0, 3).join(' | '));
+        const over = g.covered.filter((c) => !base.pairCover.has(c));
+        if (over.length && await drawnOver(page, g.box)) pairBad.push('drawn over: ' + over.slice(0, 3).join(' | '));
+        else await page.evaluate(() => document.querySelectorAll('[data-kit-cover]').forEach((e) => e.removeAttribute('data-kit-cover')));
+        if (g.fca.some((v) => v !== 'none')) pairBad.push('forced-color-adjust ' + g.fca.join(','));
+        // Windows High Contrast: the pair keeps its stripe and its text reads.
+        await page.emulateMedia({ forcedColors: 'active' });
+        const hc = await page.evaluate(() => [...document.querySelectorAll('[data-part="stop-frame"] .safety-op .btn')].map((b) => getComputedStyle(b).backgroundImage));
+        const hcLow = await page.evaluate(lowContrast, '[data-part="stop-frame"] .safety-op .btn, [data-part="stop-frame"] .safety-op .btn *');
+        await page.emulateMedia({ forcedColors: 'none' });
+        const halt = r.p.pair.at(-1);
+        if (hc.at(-1) !== halt.bgi) pairBad.push('high contrast drops the stripe');
+        if (hcLow.length) pairBad.push('high contrast text ' + hcLow.slice(0, 2).join(' | '));
+        if (w === 1428) {
+          const s = await page.evaluate(stripStates);
+          ok(skin.id + ': the strip buttons keep their safety borders (' + (s.seen.join(', ') || 'none in the fixture') + ')', s.bad.length === 0, s.bad.join(' | '));
+        }
       }
+      if (r.p.ladder.some((n) => n < 4)) ladderBad.push(name + ' ' + r.p.ladder.join(','));
+      if (r.p.bars.some((v) => v > 0)) barBad.push(name + ' ' + r.p.bars.join(','));
       const newCover = r.p.covered.filter((c) => !base.covered.has(c));
       if (newCover.length) coverBad.push(name + ': ' + newCover.slice(0, 3).join(' | '));
     }
@@ -289,6 +457,8 @@ for (const skin of PERF_ONLY ? [] : skins) {
     ok(skin.id + ' ' + w + ': no text under AA the default theme lacks', textBad.length === 0, textBad.join(' || '));
     ok(skin.id + ' ' + w + ': the stop pair is visible, 40 px, AA, with its hazard stripe', pairBad.length === 0, pairBad.join(', '));
     ok(skin.id + ' ' + w + ': decoration covers no control', coverBad.length === 0, coverBad.join(' || '));
+    ok(skin.id + ' ' + w + ': a slider fill keeps the write ladder\'s line', ladderBad.length === 0, ladderBad.join(' | '));
+    ok(skin.id + ' ' + w + ': scrollbars stay hidden while the preference is off', barBad.length === 0, barBad.join(' | '));
     ok(skin.id + ' ' + w + ': no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
     // Shift: the bar, the strip and the status row keep the shipped heights, and hovering or
     // focusing a control moves no box.
@@ -310,6 +480,20 @@ for (const skin of PERF_ONLY ? [] : skins) {
     for (let i = 0; i < 6; i++) await page.keyboard.press('Tab');
     const moved = await page.evaluate(() => window.__snap().map((s, i) => (s.every((v, k) => Math.abs(v - window.__before[i][k]) <= 1) ? null : i + ':' + s.join(',') + ' was ' + window.__before[i].join(','))).filter(Boolean));
     ok(skin.id + ' ' + w + ': hovering and focusing move no box', moved.length === 0, moved.slice(0, 3).join(' | '));
+    await ctx.close();
+  }
+  // Scrollbars: the preference on shows them, shaped by the Theme, and they push nothing across.
+  {
+    const { ctx, page, errors } = await boot({ width: 1428, height: 900 }, theme, { scrollbars: true });
+    const bad = [];
+    for (const [name, id] of PAGES.filter(([n]) => SCROLL_PAGES.includes(n))) {
+      const r = await visit(page, id, SHOTS && name === 'log' ? skin.id + '-scrollbars' : null);
+      const base = baseline.get((deriveTokens(theme).dark ? 'phosphor' : 'paper') + 'bars' + name);
+      if (r.p.overflow > Math.max(1, base.overflow + 1)) bad.push(name + ' +' + r.p.overflow + ' px across');
+      if (r.p.bars.length && !r.p.bars.some((v) => v > 0)) bad.push(name + ' shows no scrollbar');
+    }
+    ok(skin.id + ': the scrollbar preference shows them and they push nothing across', bad.length === 0, bad.join(' | '));
+    ok(skin.id + ' scrollbars: no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
     await ctx.close();
   }
   // Motion: reduced, no skin animation runs; the page is otherwise the same.

@@ -254,6 +254,8 @@ html:root[data-style="dmg"] [data-part="status-row"] {
   box-shadow: inset 0 2px 0 var(--dmg-bz-hi);
 }
 html:root[data-style="dmg"] [data-part="status-row"] * { text-shadow: none; }
+/* The stop pair takes no ghost: it is the shell's (docs/THEMES.md, Safety). */
+html:root[data-style="dmg"] [data-part="stop-frame"] * { text-shadow: none; }
 html:root[data-style="dmg"] [data-part="status-row"] :is(.fs-label, .k) { font-family: var(--font-head); font-size: 8px; letter-spacing: .1em; }
 html:root[data-style="dmg"] [data-part="page-foot"] { border-top: 3px solid var(--dmg-0); background-image: var(--tex-page); background-size: var(--tex-page-size); }
 

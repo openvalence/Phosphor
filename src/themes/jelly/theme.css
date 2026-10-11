@@ -173,6 +173,8 @@ html:root[data-style="jelly"] [data-part="rail-tab"].on {
   text-shadow: 0 -1px 0 rgba(0, 0, 0, .35);
 }
 html:root[data-style="jelly"] [data-part="rail-tab"].on .rail-name { color: #fff; }
+/* The orb draws its own colors; the glyph's ink on the dark gel is the row's white (ph-3m2). */
+html:root[data-style="jelly"] [data-part="rail-tab"].on [data-icon] { color: #fff; }
 html:root[data-style="jelly"] .rail-sec.shell { border-radius: 12px; background-image: var(--tex-card); border-color: var(--jl-edge); }
 /* Graphite and metal keep the gray of their chassis in the glyph orbs. */
 html:root[data-style="jelly"][data-variant="jelly-graphite"] [data-icon]::before { filter: saturate(0); }

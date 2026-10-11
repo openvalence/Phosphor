@@ -165,7 +165,8 @@
 
 <div class="safety-op field" data-shadow={phase === 'confirmed' || !phase ? 'confirmed' : phase} data-glow={glow || undefined}
      onanimationend={glowEnd}>
-  <button type="button" class="btn {pair.cls}" class:latched class:holding
+  <!-- Override is a theme part (docs/THEMES.md, Parts); Pause and Halt never are. -->
+  <button type="button" class="btn {pair.cls}" class:latched class:holding data-part={isOverride ? 'strip-btn' : undefined}
           disabled={!!why} data-tip={status && status !== hint ? status : tip || undefined} aria-pressed={latched}
           {onclick} {onkeydown} {onkeyup}
           onpointerdown={pressStart} onpointerup={holdEnd} onpointerleave={holdEnd} onpointercancel={holdEnd}
@@ -182,7 +183,8 @@
 </div>
 
 <style>
-  .safety-op { display: flex; height: 100%; }
+  /* Windows High Contrast never flattens the safety red and amber (law 13). */
+  .safety-op { display: flex; height: 100%; forced-color-adjust: none; }
   /* Law 12: at least --tap in both axes at every pointer type. */
   .btn {
     position: relative;
@@ -214,6 +216,8 @@
   @media (max-width: 221px) {
     .btn { min-width: var(--tap); padding: var(--sp-1) var(--sp-2); white-space: normal; }
   }
+  /* Forced colors keep the app's ink here, so the face is opaque in the strip's own surface. */
+  @media (forced-colors: active) { .btn { background-color: var(--bg-raised); } }
   .btn:disabled { opacity: .4; }
   .btn:not(:disabled):hover { border-color: var(--line-4); }
   /* Icon above the word; the live subline sits below and never moves them. */
@@ -240,7 +244,8 @@
   }
   .btn-estop:not(:disabled):hover, .btn-estop:not(:disabled):active, .btn-estop.latched { border-color: var(--bad); }
   .btn-estop.latched .lbl { color: var(--bad-ink); }
-  .btn-pause.latched, .btn-override.latched { border-color: var(--warn); }
+  /* !important: Override is a theme part (strip-btn); its latch outranks any face. */
+  .btn-pause.latched, .btn-override.latched { border-color: var(--warn) !important; }
 
   .hold {
     position: absolute;

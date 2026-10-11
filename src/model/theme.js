@@ -169,18 +169,21 @@ export function nearSafety(hex) {
   return null;
 }
 
-/** A safety color as text: its own hue at the nearest lightness that reads 4.5:1 on every surface. */
-function safetyInk(hex, surfaces, dark) {
+/** A safety color as text: its own hue at the nearest lightness that reads `floor` (4.5:1, or a Theme's inkFloor) on every surface. */
+function safetyInk(hex, surfaces, dark, floor = 4.5) {
   const worst = (c) => Math.min(...surfaces.map((s) => contrast(c, s)));
-  if (worst(hex) >= 4.5) return hex;
+  if (worst(hex) >= floor) return hex;
   const [L, C, h] = toOklch(hex);
   let lo = L, hi = dark ? 1 : 0;
   for (let n = 0; n < 24; n++) {
     const mid = (lo + hi) / 2;
-    if (worst(fromOklch(mid, C, h)) >= 4.5) hi = mid; else lo = mid;
+    if (worst(fromOklch(mid, C, h)) >= floor) hi = mid; else lo = mid;
   }
   return fromOklch(hi, C, h);
 }
+
+/** The safety inks' contrast floor for a Theme: 4.5:1, raised by its manifest's `inkFloor` (docs/THEMES.md, Safety). */
+export function inkFloor(styleId) { return Math.max(4.5, Number(STYLE_BY_ID.get(styleId)?.inkFloor) || 0); }
 
 // ---- themes and their variants --------------------------------------------------
 // A Theme is a whole style (themes/<id>/: chrome, controls, type, icons, textures); a Variant
@@ -361,7 +364,8 @@ function derive(t) {
   }
   return {
     base, hivis, more, palette: p, dark, near,
-    ink: { '--warn-ink': safetyInk(SAFETY_HEX.amber, inkOn, dark), '--bad-ink': safetyInk(SAFETY_HEX.red, inkOn, dark) },
+    ink: { '--warn-ink': safetyInk(SAFETY_HEX.amber, inkOn, dark, inkFloor(t.style)), '--bad-ink': safetyInk(SAFETY_HEX.red, inkOn, dark, inkFloor(t.style)) },
+    inkOn,
     ratios: { text: ratio('--tx'), labels: ratio('--tx-mut'), reality: ratio('--reality') },
     brackets: brackets({ ...n, ...Object.fromEntries(Object.entries(t.overrides).filter(([, v]) => HEX.test(v))) }),
   };

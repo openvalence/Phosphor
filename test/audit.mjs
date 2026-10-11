@@ -7,13 +7,22 @@
  * (WCAG 1.4.3), and so are a stale value (law 8) and a superseded log row, both dimmed on purpose. Returns the
  * failures in words. `[sel, floor]` holds every match to one floor instead (3 for
  * chrome keys); `[sel, 3, true]` also takes matches with no text of their own
- * (icons, drawn in their color).
+ * (icons, drawn in their color). Colors parse from rgb(), color(srgb), oklab() and oklch().
  */
 export const lowContrast = (arg) => {
   const [sel, floor, glyph] = Array.isArray(arg) ? arg : [arg, 0, false];
-  const parse = (c) => { const s = /color\(srgb ([^)]+)\)/.exec(c); const m = s || /rgba?\(([^)]+)\)/.exec(c); if (!m) return null;
-    const p = m[1].split(/[\s,/]+/).filter(Boolean).map(Number); const k = s ? 255 : 1;
-    return [p[0] * k, p[1] * k, p[2] * k, p.length > 3 ? p[3] : 1]; };
+  // rgb(), color(srgb), and oklab() and oklch() (a color-mix() in those spaces computes to them), as sRGB 0..255.
+  const parse = (c) => { const m = /(rgba?|color|oklab|oklch)\(([^)]+)\)/.exec(c); if (!m || (m[1] === 'color' && !/^srgb\s/.test(m[2]))) return null;
+    const p = m[2].replace(/^srgb\s+/, '').split(/[\s,/]+/).filter(Boolean);
+    const n = (v, pct) => (v === 'none' ? 0 : v.endsWith('%') ? parseFloat(v) / 100 * pct : parseFloat(v));
+    const a = p.length > 3 ? n(p[3], 1) : 1;
+    if (m[1] !== 'oklab' && m[1] !== 'oklch') { const k = m[1] === 'color' ? 255 : 1; return [n(p[0], 1) * k, n(p[1], 1) * k, n(p[2], 1) * k, a]; }
+    const L = n(p[0], 1), C = m[1] === 'oklch' ? n(p[1], .4) : 0, h = m[1] === 'oklch' ? n(p[2], 1) * Math.PI / 180 : 0;
+    const A = m[1] === 'oklab' ? n(p[1], .4) : C * Math.cos(h), B = m[1] === 'oklab' ? n(p[2], .4) : C * Math.sin(h);
+    const l = (L + .3963377774 * A + .2158037573 * B) ** 3, q = (L - .1055613458 * A - .0638541728 * B) ** 3, s = (L - .0894841775 * A - 1.291485548 * B) ** 3;
+    const g = (v) => 255 * Math.min(1, Math.max(0, v <= .0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - .055));
+    return [g(4.0767416621 * l - 3.3077115913 * q + .2309699292 * s), g(-1.2684380046 * l + 2.6097574011 * q - .3413193965 * s),
+      g(-.0041960863 * l - .7034186147 * q + 1.707614701 * s), a]; };
   const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
     return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
   const bgOf = (el) => { for (let e = el; e; e = e.parentElement) { const c = parse(getComputedStyle(e).backgroundColor);
@@ -44,9 +53,18 @@ export const lowContrast = (arg) => {
  * into the page like lowContrast: self-contained.
  */
 export const lowContrastOver = ([sel, backdrop]) => {
-  const parse = (c) => { const s = /color\(srgb ([^)]+)\)/.exec(c); const m = s || /rgba?\(([^)]+)\)/.exec(c); if (!m) return null;
-    const p = m[1].split(/[\s,/]+/).filter(Boolean).map(Number); const k = s ? 255 : 1;
-    return [p[0] * k, p[1] * k, p[2] * k, p.length > 3 ? p[3] : 1]; };
+  // rgb(), color(srgb), and oklab() and oklch() (a color-mix() in those spaces computes to them), as sRGB 0..255.
+  const parse = (c) => { const m = /(rgba?|color|oklab|oklch)\(([^)]+)\)/.exec(c); if (!m || (m[1] === 'color' && !/^srgb\s/.test(m[2]))) return null;
+    const p = m[2].replace(/^srgb\s+/, '').split(/[\s,/]+/).filter(Boolean);
+    const n = (v, pct) => (v === 'none' ? 0 : v.endsWith('%') ? parseFloat(v) / 100 * pct : parseFloat(v));
+    const a = p.length > 3 ? n(p[3], 1) : 1;
+    if (m[1] !== 'oklab' && m[1] !== 'oklch') { const k = m[1] === 'color' ? 255 : 1; return [n(p[0], 1) * k, n(p[1], 1) * k, n(p[2], 1) * k, a]; }
+    const L = n(p[0], 1), C = m[1] === 'oklch' ? n(p[1], .4) : 0, h = m[1] === 'oklch' ? n(p[2], 1) * Math.PI / 180 : 0;
+    const A = m[1] === 'oklab' ? n(p[1], .4) : C * Math.cos(h), B = m[1] === 'oklab' ? n(p[2], .4) : C * Math.sin(h);
+    const l = (L + .3963377774 * A + .2158037573 * B) ** 3, q = (L - .1055613458 * A - .0638541728 * B) ** 3, s = (L - .0894841775 * A - 1.291485548 * B) ** 3;
+    const g = (v) => 255 * Math.min(1, Math.max(0, v <= .0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - .055));
+    return [g(4.0767416621 * l - 3.3077115913 * q + .2309699292 * s), g(-1.2684380046 * l + 2.6097574011 * q - .3413193965 * s),
+      g(-.0041960863 * l - .7034186147 * q + 1.707614701 * s), a]; };
   const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
     return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
   const bgOf = (el) => {
