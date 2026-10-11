@@ -4,7 +4,7 @@ import { variant } from '../kit.js';
 export default {
   id: 'glass', name: 'Liquid Glass',
   pitch: 'Capsules, specular rims and layered glass over your wallpaper',
-  note: 'Liquid Glass: macOS 26 system glass, Windows Acrylic; elsewhere a blurred in-page backdrop. Your desktop wallpaper is the backdrop where the app can read it.',
+  note: 'Liquid Glass: your desktop wallpaper is the backdrop where the app can read it (macOS 26 system glass, Windows Acrylic and a blurred in-page backdrop otherwise). Edge refraction by an SVG displacement filter, drawn here from the published technique; Chromium only.',
   material: 'glass',
   wallpaper: true,
   swatch: 'radial-gradient(circle at 25% 20%, rgba(255, 255, 255, .55), transparent 45%), linear-gradient(135deg, #5E5CE6, #0A84FF 55%, #30D1BE)',
