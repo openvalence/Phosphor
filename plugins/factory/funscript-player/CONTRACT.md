@@ -19,7 +19,9 @@ Rules for every module:
   module exports a frozen `COPY` of every literal it renders.
 - CSS uses tokens only: no hex, no `rgb(` literal except
   `rgba(var(--x-rgb), a)`, never `--bad` or `--estop` (law 13). Classes are
-  prefixed `fsp-`.
+  prefixed `fsp-`; the Theme parts (`fs-stage`, `fs-timeline`, `fs-library`,
+  `fs-analyzer`, `fs-queue`, `fs-frame`, `fs-head`) are docs/THEMES.md's and keep
+  their names.
 
 | key | bead | files |
 |---|---|---|

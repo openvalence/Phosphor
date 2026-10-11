@@ -459,7 +459,7 @@
 {/snippet}
 
 {#snippet opButton(op)}
-  <button type="button" class="btn" class:hazard={homeNeeded && op === homeOp} disabled={!canFire(op.action, op.value)}
+  <button type="button" class="btn" data-part="strip-btn" class:hazard={homeNeeded && op === homeOp} disabled={!canFire(op.action, op.value)}
           data-tip={reasonFor(op.action, op.value) || (homeNeeded && op === homeOp ? 'Home required' : undefined)}
           onclick={() => fire(op)}>
     <span class="lbl">{busy[op.key] ? '…' : displayLabel(op.label)}</span>
@@ -471,7 +471,7 @@
        a struck 0, the left one gray); the state is in the tooltip. -->
   <!-- The ladder wears the fields' ring outside the box (docs/EFFECTS.md A,
        ph-vdk.65), never the inset one. -->
-  <button type="button" class="rw-flip field" aria-pressed={flip.on} aria-label="Flip" disabled={!flip.enabled}
+  <button type="button" class="rw-flip field" data-part="strip-btn" aria-pressed={flip.on} aria-label="Flip" disabled={!flip.enabled}
           data-shadow={flip.status} data-glow={flip.glow || undefined} data-tip={flip.text} onclick={toggleFlip}
           onanimationend={(e) => { if (e.target === e.currentTarget && e.animationName.startsWith('fx-glow')) flip.glowEnd(); }}>
     <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"
@@ -491,9 +491,10 @@
   <LinkBar {shell} onheat={openHeat} />
   <div class="strip" data-part="strip" class:stacked class:compact={cmp} class:spread={cmp && spread} class:small-nums={smallNums} role="group" aria-label="Safety controls" bind:this={stripEl}>
     <div class="measure" aria-hidden="true" inert bind:this={measureEl}>
-      {#each ops as op (op.key)}<span class="btn" data-k="op"><span class="lbl">{displayLabel(op.label)}</span></span>{/each}
-      <span class="btn home-btn" data-k="menu">{@render homeFace()}</span>
-      <span class="btn home-btn icon-only" data-k="icon">{@render homeFace()}</span>
+      <!-- The strip-btn part here too: a Theme's face on the buttons is in the budget. -->
+      {#each ops as op (op.key)}<span class="btn" data-part="strip-btn" data-k="op"><span class="lbl">{displayLabel(op.label)}</span></span>{/each}
+      <span class="btn home-btn" data-part="strip-btn" data-k="menu">{@render homeFace()}</span>
+      <span class="btn home-btn icon-only" data-part="strip-btn" data-k="icon">{@render homeFace()}</span>
       <span data-k="tap" style="height: var(--tap)"></span>
       <span class="mono num-floor" data-k="num">000.0</span>
     </div>
@@ -562,7 +563,7 @@
         <div class="ops">{#each ops as op (op.key)}{@render opButton(op)}{/each}</div>
       {:else}
         <div class="home-menu" bind:this={menuEl}>
-          <button type="button" class="btn home-btn" class:icon-only={iconHome} class:hazard={homeNeeded}
+          <button type="button" class="btn home-btn" data-part="strip-btn" class:icon-only={iconHome} class:hazard={homeNeeded}
                   aria-haspopup="true" aria-expanded={menuOpen}
                   aria-label={homeOp ? displayLabel(homeOp.label) : 'More'}
                   data-tip={homeNeeded ? 'Home required' : homeOp ? 'Home and machine ops' : 'Machine ops'}
@@ -851,14 +852,15 @@
   .rw-flip .gray { stroke: var(--tx-ghost); }
   /* The hero numerals' face and its slashed zero. */
   .rw-flip .zero { font: 500 15px var(--mono); fill: currentColor; stroke: none; }
-  .rw-flip[aria-pressed='true'] { border-color: var(--warn); }
+  /* !important on the strip-btn states: a Theme's face (docs/THEMES.md, Parts) never hides one. */
+  .rw-flip[aria-pressed='true'] { border-color: var(--warn) !important; }
   .rw-flip:disabled { opacity: .4; }
   .rw-flip:is([data-shadow='pending'], [data-shadow='overdue']) .ico { opacity: .5; }
-  .rw-flip:is([data-shadow='overdue'], [data-shadow='fault']) { color: var(--warn-ink, var(--warn)); }
+  .rw-flip:is([data-shadow='overdue'], [data-shadow='fault']) { color: var(--warn-ink, var(--warn)) !important; }
 
   /* Home required (DESIGN §10.3): the safety red, pulsing; still at rest
      under reduced motion (law 12). */
-  .btn.hazard { border-color: var(--bad); animation: home-need 1.2s ease-in-out infinite; }
+  .btn.hazard { border-color: var(--bad) !important; animation: home-need 1.2s ease-in-out infinite !important; }
   @keyframes home-need {
     50% { box-shadow: 0 0 0 2px rgba(var(--bad-rgb), .45), 0 0 10px rgba(var(--bad-rgb), .35); }
   }
@@ -951,5 +953,5 @@
     padding: 0 var(--sp-2);
   }
 
-  :global(html.still) .btn.hazard { animation: none; }
+  :global(html.still) .btn.hazard { animation: none !important; }
 </style>

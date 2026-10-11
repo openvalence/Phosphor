@@ -23,6 +23,7 @@ import.meta.glob('./themes/*/boot.js', { eager: true });
 import { connect, machine, parseHost, recentHubs } from './model/machine.svelte.js';
 import { applyStoredTheme, onTheme } from './model/theme.js';
 import { installDynamicColor } from './model/dynamicColor.js';
+import { installReveal } from './ui/reveal.js';
 import './ui/still.svelte.js';
 import { loadPlugins } from './plugins/plugins.svelte.js';
 import { bindControls } from './plugins/kit.js';
@@ -44,6 +45,8 @@ onTheme((t) => {
   sheetStyle = t.style;
   themeSheet.textContent = THEME_CSS['./themes/' + t.style + '/theme.css'] || '';
 });
+// The pointer reveal listens only while a Theme with `reveal` is applied (docs/THEMES.md, Chrome hooks).
+installReveal();
 applyStoredTheme();
 // Android 12+: the Material Theme takes the system's palette (MainActivity.kt publishes it).
 installDynamicColor();

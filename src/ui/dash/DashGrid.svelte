@@ -734,8 +734,8 @@
        style={'--cell:' + grid.cell + 'px;--cols:' + cols + (!given && editing && palette.shown && palette.open ? ';--reserve:' + palette.h + 'px' : '')} role="presentation"
        ondragover={dragOver} ondragleave={dragLeave} ondrop={drop} oncontextmenu={contextMenu}
        onpointerdown={marqueeStart} onpointermove={marqueeMove} onpointerup={marqueeEnd} onpointercancel={() => (marquee = null)}>
-    {#each displayList as item (item.id)}
-      <div class="dash-cell" data-id={item.id} data-floor={given ? minOf(item)(item.w, item.h)[0] : null} use:registerCell={item.id}
+    {#each displayList as item, i (item.id)}
+      <div class="dash-cell" data-id={item.id} data-cell-index={i} data-floor={given ? minOf(item)(item.w, item.h)[0] : null} use:registerCell={item.id}
            style={stack ? '' : 'grid-column:' + (item.x + 1) + ' / span ' + item.w + ';grid-row:' + (item.y + 1) + ' / span ' + item.h}>
         {#if item.kind === 'section'}
           <h2 class="dash-section" data-tip={item.title}><span>{item.title}</span></h2>

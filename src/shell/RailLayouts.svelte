@@ -114,7 +114,7 @@
                onblur={() => keepRename(false)} />
         {#if taken}<span class="sub-hint" role="alert">Name taken</span>{/if}
       {:else}
-        <button type="button" class="rail-tab sub-layout" class:on data-layout={n}
+        <button type="button" class="rail-tab sub-layout" data-part="rail-layout" class:on data-layout={n}
                 aria-current={on ? 'page' : undefined} data-tip={n} onclick={() => onpick(n)}
                 ondblclick={() => startRename(n)}
                 onkeydown={(e) => { rowKey(e, n); if (e.key === 'F2') { e.preventDefault(); startRename(n); } }}>
@@ -148,7 +148,7 @@
       {#if taken}<span class="sub-hint" role="alert">Name taken</span>{/if}
     </div>
   {:else}
-    <button type="button" class="rail-tab sub-layout add" onclick={startAdd}>
+    <button type="button" class="rail-tab sub-layout add" data-part="rail-layout" onclick={startAdd}>
       <span class="rail-name">+ Add layout</span>
     </button>
   {/if}

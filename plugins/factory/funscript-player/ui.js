@@ -1157,7 +1157,7 @@ export function createPlayer(api) {
     let libView = 'library';
     const libseg = ui.segmented({ tabs: true, class: 'fsp-libseg', value: libView, onChange: (v) => { libView = v; render(); },
       options: [{ value: 'library', label: COPY.library }, { value: 'queue', label: QCOPY.queue }] });
-    const qbox = h('div', { class: 'fsp-qbox' });
+    const qbox = h('div', { class: 'fsp-qbox', 'data-part': 'fs-queue' });
     let qv = null, qSeen = null;
     const title = h('span', { class: 'fsp-title' });
     // Open video, Open script and Close (PR3): an icon and a word; the Media menu holds them on phones.
@@ -1187,7 +1187,7 @@ export function createPlayer(api) {
     // The Autoplay chip (ph-1qs5.9): the settings switch's twin on the now-playing row.
     const autoB = ui.button({ label: QCOPY.autoplay, title: QCOPY.autoplayTip, pressed: autoplay, class: 'fsp-autob', onClick: () => setAutoplay(autoB.pressed) });
     const now = h('div', { class: 'fsp-now' }, nowB, nowT, nowM, autoB);
-    const src = h('div', { class: 'fsp-src' }, head, title, openV('fsp-openv', { 'data-search-key': 'openVideo' }),
+    const src = h('div', { class: 'fsp-src', 'data-part': 'fs-head' }, head, title, openV('fsp-openv', { 'data-search-key': 'openVideo' }),
       openS('fsp-opens', { 'data-search-key': 'openScript' }), closeH, mediaB, menu, tabs, fileV, fileS);
 
     // Motion only (PR4): the stroke meter in glance's look, and the way to attach a video.
@@ -1206,18 +1206,20 @@ export function createPlayer(api) {
       onFullscreen: (on) => setMedia(on) });
     const vbox = stage.box;
     vbox.classList.add('fsp-vbox');
+    vbox.dataset.part = 'fs-stage';
     stage.empty.classList.add('fsp-empty');
     stage.empty.append(openV('fsp-eopenv'), openS('fsp-eopens'));
     stage.empty.after(mo);
     // The center glyph (operator 2026-10-08, PR9) over a video only: motion only, the meter is the stage and the
     // bar's Play is right there (ph-1qs5.11). Decorative: the stage's own tap acts.
     const flash = () => { if (st.scene && st.scene.stream && comp !== 'glance') stage.flash(act() ? 'play' : 'pause'); };
-    const tlbox = h('div', { class: 'fsp-tlbox' });
-    const lib = h('div', { class: 'fsp-libbox' });
-    const anbox = h('div', { class: 'fsp-anbox' });
+    // Theme parts (docs/THEMES.md, Parts): the page's boxes and title rows.
+    const tlbox = h('div', { class: 'fsp-tlbox', 'data-part': 'fs-timeline' });
+    const lib = h('div', { class: 'fsp-libbox', 'data-part': 'fs-library' });
+    const anbox = h('div', { class: 'fsp-anbox', 'data-part': 'fs-analyzer' });
     // The top strip's slot on the page and on a Dash card, on every class; never a row.
     const status = ui.status({ class: 'fsp-slot' });
-    const pframe = opts.page ? h('div', { class: 'fsp-pframe surface-card', 'aria-hidden': 'true' }) : '';
+    const pframe = opts.page ? h('div', { class: 'fsp-pframe surface-card', 'data-part': 'fs-frame', 'aria-hidden': 'true' }) : '';
 
     const prevB = ui.button({ icon: 'prev', title: COPY.prev, class: 'fsp-prev' }), nextB = ui.button({ icon: 'next', title: COPY.next, class: 'fsp-next' });
     const play = ui.button({ icon: 'play', title: COPY.playKey, class: 'fsp-play', onClick: () => ctl.toggle() });
@@ -1291,7 +1293,7 @@ export function createPlayer(api) {
       h('span', { class: 'dash-title', text: COPY.timeline }));
     const setTl = (on) => { root.toggleAttribute('data-tlshut', !on); tlCaret.setAttribute('aria-expanded', String(on)); };
     tlCaret.addEventListener('click', () => { const on = root.hasAttribute('data-tlshut'); setTl(on); writePref(api, 'tlOpen', on); });
-    const tlh = h('div', { class: 'fsp-tlh' }, tlCaret, h('span', { class: 'fsp-tlgap' }), off, inv, graph);
+    const tlh = h('div', { class: 'fsp-tlh', 'data-part': 'fs-head' }, tlCaret, h('span', { class: 'fsp-tlgap' }), off, inv, graph);
 
     const root = h('div', { class: 'fsp', tabindex: '-1' }, h('style', { text: CSS + TL_CSS + AN_CSS }),
       pframe, src, stage, sp, tlh, tlbox, lib, anbox, meter, status, tr);
@@ -1447,7 +1449,7 @@ export function createPlayer(api) {
             onPick: (s) => { pick(s); setDrawer(false); }, onQueue: (s) => Q.add(s), onNext: (s) => Q.addNext(s), onOpen: openStash });
           lib.append(qbox, now);
           // The column's head row: 02 LIBRARY (the page's) and the Library | Queue switch.
-          lib.prepend(h('div', { class: 'fsp-libh' }, opts.page ? h('h3', { class: 'dash-title fsp-h', 'data-pidx': '02', text: COPY.library }) : '', libseg));
+          lib.prepend(h('div', { class: 'fsp-libh', 'data-part': 'fs-head' }, opts.page ? h('h3', { class: 'dash-title fsp-h', 'data-pidx': '02', text: COPY.library }) : '', libseg));
           qv = mountQueue(qbox, { list: Q.list, onPlay: (i) => { Q.play(i); setDrawer(false); }, onNext: Q.next, onRemove: Q.remove, onMove: Q.move,
             onReopen: () => fileV.open() }, ui);
         }

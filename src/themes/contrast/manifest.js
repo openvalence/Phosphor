@@ -22,6 +22,8 @@ const LOOK = { glow: 0, radius: 0, scale: 1.12, numWeight: 700, motion: 1 };
 export default {
   id: 'contrast', name: 'Contrast',
   pitch: 'Bold plates, 7:1 text, thick rings, state by shape',
+  // The safety inks read 7:1 like the text (docs/THEMES.md, Safety).
+  inkFloor: 7,
   swatch: 'linear-gradient(90deg, #0E0E0E 0 40%, #FFFFFF 40% 48%, #00FFFF 48% 56%, #0E0E0E 56% 64%, #FFFF00 64% 72%, #0E0E0E 72%)',
   icons,
   // The first variant is the theme's own palette; its id is the theme's id. docs/THEMES.md, Variants.

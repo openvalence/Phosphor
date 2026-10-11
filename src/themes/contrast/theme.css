@@ -158,7 +158,8 @@ html:root[data-style="contrast"] .field-value { font-weight: 800; }
 html:root[data-style="contrast"] .field-value .unit,
 html:root[data-style="contrast"] .unit { color: var(--tx-val); font-weight: 700; }
 html:root[data-style="contrast"] .field-desc,
-html:root[data-style="contrast"] .hint { color: var(--tx-val); }
+/* Not the stop pair's hint line: the pair is the shell's (docs/THEMES.md, Safety). */
+html:root[data-style="contrast"] .hint:not([data-part="stop-frame"] *) { color: var(--tx-val); }
 html:root[data-style="contrast"] .og-panel { outline: none; border-width: var(--ct-w); border-color: var(--line-3); background-image: none; }
 html:root[data-style="contrast"] .og-screen { border-width: var(--ct-w); border-color: var(--line-3); box-shadow: none; }
 

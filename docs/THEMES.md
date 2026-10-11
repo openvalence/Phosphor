@@ -73,6 +73,8 @@ export default {
   note: 'optional line under the chips', // a platform note (Mica, Liquid Glass, Material)
   material: 'mica',                      // optional: the OS material the window gets (below)
   wallpaper: true,                       // optional: the desktop wallpaper layer (below)
+  inkFloor: 7,                           // optional: the safety inks' contrast floor above 4.5:1 (Safety)
+  reveal: true,                          // optional: the pointer reveal, --mx and --my (Chrome hooks)
   icons,                                 // from ./icons.js
   variants: [                            // the first is the Theme's own palette: its id is the Theme's id
     { id: 'luna', name: 'Luna', accents: {...}, chassis: {...}, look: {...}, overrides: {...} },
@@ -83,7 +85,8 @@ export default {
 
 A variant is the engine's palette (The object, below): `accents` (reality, intent,
 highlight), `chassis`, `look` and pinned `overrides`; any group left out takes the
-engine's default. `kit.js` has `variant(id, name, reality, intent, chassis, extra)`
+engine's default. A variant may also name its own `material` (Materials; `null` for none),
+which wins over the Theme's. `kit.js` has `variant(id, name, reality, intent, chassis, extra)`
 for the short form.
 
 A Theme that **needs a hook the system lacks** adds it to the system, not around it:
@@ -101,17 +104,27 @@ of them is a safety control (see Safety).
 |---|---|
 | `top` | the sticky top box: the bar over the safety strip |
 | `bar` | the top bar: the link dot, the hub name, the chips, the caption buttons |
+| `wordmark` | the hub name in the bar (also `.wordmark`); `data-text` holds its text, for a `::before` or `::after` echo |
+| `link-dot`, `link-dot-core` | the link dot and its core; the state colors (live, connecting, stale, offline) stay the shell's |
+| `heat`, `heat-blk` | the channel heatmap in the bar, and each block; a block's level and its warn fill stay the shell's |
 | `strip` | the safety strip: numerals, status slot, the Home, Flip, Override, Pause and Halt row |
+| `strip-btn` | Home (and any other op the hub puts inline), Flip and Override: give them a face (background, radius, type, a `::before`). Home required, Flip on and Override latched keep their safety border by `!important`, so a `strip-btn` rule takes no `!important` and no `::after` (Flip's write ring); the kit checks both |
 | `stop-frame` | the frame around Pause and Halt: dress its surroundings (an outline, a plate behind them); the buttons themselves are not a part |
 | `numerals` | the strip's hero numerals (`.hn-val` inside is the big readout) |
 | `hero` | the bar under the strip: the rail scope and its tape |
 | `rail`, `rail-sec`, `rail-label`, `rail-tab` | the sidebar, a section of it, a section name, a tab |
+| `rail-layout` | a Dash layout row under its tab, and Add layout (not a `rail-tab`: a tab's dressing does not reach it) |
 | `content`, `pane` | the scrolling area and the page in it |
 | `card`, `nest` | a Dash or category card's body, and a nest's |
 | `card-head` | a card's title row, above its body (not on a bare card) |
 | `panel`, `panel-bar` | a plugin card (`api.ui.card`), and its title row inside it |
 | `status-row`, `page-foot` | the bottom status row, and the page's own footer |
+| `status-label`, `status-fact` | the status row's LINK label, and each of its facts |
+| `log-row` | a row of the Log (every feed, Changes included); the level glyph and its color stay the shell's |
 | `caption`, `caption-btn` | the shell's window buttons, and each one; `data-cap="min"`, `"max"` or `"close"` |
+| `close-prompt` | the hold-to-close popover under the close button (the shell only) |
+| `fs-head` | a title row of the funscript player: the player's, the library's, the timeline's |
+| `fs-stage`, `fs-timeline`, `fs-library`, `fs-queue`, `fs-analyzer`, `fs-frame` | the funscript player's boxes: the video, the timeline band, the library column, the queue, the analyzer, the page card's frame |
 
 Global classes that are also contracts, because the shell's own controls and the
 plugin kit draw them: `.og-btn` (`.sm`), `.og-seg button`, `.stepper button`,
@@ -182,28 +195,45 @@ plugins' own page icons are not in the registry and cannot be replaced.
 What a Theme dresses besides the controls:
 
 - **Title bar.** The top bar is the title bar: `[data-part="bar"]` (background, radius,
-  shadow), `.wordmark` (the hub name) and `.chip` inside it. `[data-part="top"]` is the box
-  around bar and strip; make it transparent to show the page behind a rounded bar.
+  shadow), `[data-part="wordmark"]` (the hub name, its text again in `data-text`) and `.chip` inside it.
+  `[data-part="top"]` is the box around bar and strip; make it transparent to show the page behind a
+  rounded bar.
 - **Caption buttons.** `[data-part="caption-btn"]` with `data-cap`, 30 to 46 px wide, the
   bar's full height, an inline `<svg>` glyph (`stroke: currentColor`). Draw the face on
-  `::before` and keep the hit box; the close button asks the hold-to-close popover first, which
-  is not a part.
+  `::before` and keep the hit box; the close button asks the hold-to-close popover first
+  (`close-prompt`).
 - **Scrollbars.** Scrollbars are the user's preference (`html[data-scrollbars]`). To shape them:
   `* { scrollbar-width: auto; scrollbar-color: auto }`, then `::-webkit-scrollbar`,
   `-track`, `-thumb` under your prefix. Never set `display` on them: the preference hides them
-  with a rule yours does not outrank.
+  with a rule yours does not outrank. The kit draws scrollbars (Playwright's `--hide-scrollbars` is
+  off) and runs every Theme once with the preference on: they show and push nothing across; with it
+  off they stay hidden.
 - **Controls.** Buttons, segmented buttons, steppers, fields, selects, switches, sliders, check
   boxes, radios, tabs, progress: the global classes above. A button's colors and `box-shadow`
   carry its state (on, primary, the running and danger states, the write ladder's ring); give a
   control its shape, face (`background-color`, `background-image`), type and radius, and put
   anything that touches a state color behind `:not(.on):not(.primary):not(.running):not(.danger)`.
   A slider thumb keeps its size (`--slider-thumb-w`, `-h`) and its `:active` border.
+- **Slider fill.** Set `--slider-fill` on `input[type="range"]` to a CSS image: it is drawn on the
+  track (the content box) under the write ladder's line, never instead of it. `--h` is the thumb's
+  center along the track, so `linear-gradient(to right, var(--reality) var(--h), transparent var(--h))`
+  fills up to the thumb. Field sliders and the plugin kit's sliders publish it (`--fx-f`, written on a
+  change only). A `background-image` of your own on a field slider replaces the ladder's line; the kit
+  fails a fill that blanks it.
+- **Pointer reveal.** A manifest's `reveal: true` makes the shell write `--mx` and `--my` (px from the
+  top left) on the button, tab, select or link under a mouse, on each move (`src/ui/reveal.js`). The
+  listener exists only while that Theme is applied: nothing runs while the pointer rests, nothing
+  under another Theme. Use them under `:hover`, e.g. a `radial-gradient(at var(--mx) var(--my), ...)`.
+- **Layout attributes.** `html[data-rail-collapsed]` while the desktop rail shows its icons only;
+  `.dash-cell[data-cell-index]`, a Dash cell's place in its layout, from 0.
 - **Cards.** `[data-part="card"]` and `nest` take a frame (`--frame-w`, `border-radius`, a
   `box-shadow` outside), a texture (`--tex-card`) and a `padding-top`. A card's fault state paints
   `border-color` and `background-image` over yours; leave `border-color` to the line tokens.
   `[data-part="card-head"]` and `panel-bar` may be a band, a caption on the frame or plain text.
-- **Ambient motion.** `html::before` is free: a fixed, `pointer-events: none`, `z-index: -1`
-  layer under the page (a scanline band, a falling grid). Animate `transform` and `opacity` only,
+- **Ambient motion.** `html::before`, `html::after`, `body::before` and `body::after` are the Theme's:
+  the shell never draws on them (the kit checks). Use one as a fixed, `pointer-events: none`,
+  `z-index: -1` layer under the page (a scanline band, a falling grid); one drawn over the page
+  stays clear of the top strip (Safety). Animate `transform` and `opacity` only,
   in a keyframe named `theme-<id>-<name>`, under `:not(.still)` (and `:not(.hivis)` where it
   would distract). `html.still` is the user's, the OS's and the motion knob's "hold still".
 - **The rail's comet.** The carriage on the hero rail is drawn on a canvas in three colors,
@@ -301,12 +331,21 @@ not restyle, hide, shrink, re-color or cover them, and it adds no red, amber or 
 anywhere that could read as one. `test/theme-skins.test.mjs` lints your `theme.css` for the
 selectors and tokens that touch them (`.safety-op`, `.btn-estop`, `.latched`, `[data-shadow`,
 `.stale`, `.field::after`, `--warn`, `--bad`, `--estop`, the running and danger classes outside a
-`:not()`...), and measures the pair in a browser: visible, 40 px or more, opaque, the default hazard
-stripe, AA text.
+`:not()`...; a class by its whole name, so `.hold` is not `.holder`), and measures the pair in a
+browser: visible, 40 px or more, opaque, the default hazard stripe, AA text; painted by no rule of the
+sheet but its `:root` rules (its tokens), and no ancestor's opacity, filter, transform, clip or mask
+from it; nothing drawn over it (every element made hit-testable, five points on each button);
+under emulated forced colors its stripe and its text hold.
+
+**High contrast.** The stop pair and Override set `forced-color-adjust: none`: Windows High Contrast
+does not flatten their red and amber, and their face turns opaque in `--bg-raised` so the app's own
+ink keeps its contrast. A Theme cannot change either (the kit compares the pair with the shell's
+paint).
 
 Text: `--tx` and `--tx-hi` 4.5:1 and `--tx-mut` and `--tx-ghost` 3:1 on every surface text sits
 on, by the engine's guard (The chassis); accents 4.5:1 on every surface (a Variant that fails it
-fails the kit); the safety inks derive per chassis. A pinned surface or text token bypasses the guard
+fails the kit); the safety inks derive per chassis, at 4.5:1 or at the manifest's `inkFloor` where a
+Theme raises it (Contrast: 7), and the kit holds every Variant to that floor. A pinned surface or text token bypasses the guard
 and is yours to verify; the kit checks every Variant's ratios and every page's computed text.
 
 ## The test kit
@@ -319,19 +358,25 @@ node test/theme-skins.test.mjs                   every Theme (minutes)
 `npm run build:only` is not needed: the kit builds the shell bundle itself. It runs against a fake hub
 on the recorded catalog and checks, for the Theme and each of its Variants:
 
-- **registry** the folder, the registry line, ids, variant ids, icon names, every Variant's engine ratios;
+- **registry** the folder, the registry line, ids, variant ids, icon names, every Variant's engine ratios and
+  safety inks (its Theme's `inkFloor`), and the shell leaving the root's pseudo-elements alone;
 - **lint** the sheet (above), no remote URLs, every rule under your prefix, keyframes named `theme-<id>-*`
-  that move only `transform` and `opacity`, every animation under `:not(.still)`;
+  that move only `transform` and `opacity`, every animation under `:not(.still)`, no `!important` or `::after`
+  on `strip-btn`;
 - **fit** at 1428x900, 1024x768 and 420x860, on the Dash, a category page, the funscript player, the Log,
   the Link page and Settings: no horizontal scroll beyond what the default theme has, no page error;
 - **shift** the top strip, the safety strip and the status row keep their heights; hovering and focusing
   twelve controls moves no box;
 - **text** no element under AA that the shipped Phosphor and Paper presets do not also have (compared by
   class, so a dim label the default also dims is exempt, and a new failure is not);
-- **stop pair** visible, 40 px, opaque, the default's size and stripe, AA text, on every page size;
+- **stop pair** visible, 40 px, opaque, the default's size and stripe, AA text, on every page size; no
+  rule of the sheet paints it, nothing covers it, forced colors keep it;
+- **strip-btn** Home required, Flip on and Override latched, forced by hand, keep their safety border;
+- **scrollbars** hidden with the preference off; shown, and pushing nothing across, with it on;
 - **reach** the center of every visible button hits that button (decoration blocks nothing);
 - **motion** under reduced motion no `theme-*` animation runs;
 - **picker** the chip, its swatch and tooltip, its Variants under it, F3 finding it;
+- **ladder** a `--slider-fill` leaves the write ladder's line on field sliders;
 - **material** and **dynamic**, below;
 - **perf** dragging a card and resizing the window at 4K within 1.5x Phosphor's p95, and a layer ceiling
   (Performance, above).
@@ -357,7 +402,8 @@ opaque body, so the transparency is invisible. `src-tauri/src/material.rs` `wind
 chooses what shows through, answering what it applied (`mica`, `acrylic`, `glass`, `vibrancy`,
 `none`); `src/model/material.svelte.js` calls it from the shell, sets `html[data-material]` to the
 answer and removes it again while a page is fullscreen (`html[data-page-full]`), when the OS asks
-for reduced transparency, or when the Theme has no `material`. A Theme's transparent rules are
+for reduced transparency, or when the Theme has no `material`. The Variant's own `material` wins
+over its Theme's; a Custom theme takes the Theme's. A Theme's transparent rules are
 gated on `[data-material]`: without it the page is opaque.
 
 Verified against the installed Tauri 2.11.5 and window-vibrancy 0.6.0
@@ -365,7 +411,7 @@ Verified against the installed Tauri 2.11.5 and window-vibrancy 0.6.0
 
 | platform | what the shell gets | notes |
 |---|---|---|
-| Windows 11 | `Effect::Mica` (system backdrop), forced dark with `MicaDark` where the Theme is dark | window-vibrancy refuses Mica elsewhere: the answer is `none` |
+| Windows 11 | `mica`: `Effect::MicaDark` (the system backdrop, forced dark); `mica-light`: `Effect::MicaLight`; `mica-alt`: `Effect::TabbedDark` (Mica Alt) | window-vibrancy refuses them elsewhere: the answer is `none`; the answer is the kind applied, so gate on `[data-material]` |
 | Windows 10 and 11 | `Effect::Acrylic` with a tint color | slow while dragging or resizing on 22000 and 22621+ builds (window-vibrancy's note); `Blur` is the older, equally slow option |
 | macOS before 26 | `Effect::HudWindow` (or `UnderWindowBackground`, `Sidebar`, `Titlebar`: any `NSVisualEffectView` material) under the transparent web view | |
 | macOS 26 and later | `NSGlassEffectView` (AppKit), added as the window's bottom subview beneath the web view through `ns_window()` (`material.rs`, module `mac`) | looked up by name at run time; its `style` (regular, clear), `cornerRadius` and `tintColor` are the knobs to verify in the SDK headers |
@@ -401,7 +447,8 @@ slider thumb and track, the switches, chips, menus, the tooltip, drawers, the qu
 pair's frame), press and hover that brighten and compress, a light refraction on bounded surfaces
 (an SVG displacement filter is allowed on a card, never on a large area).
 
-**The wallpaper layer** (not built; the contract): a Rust command returns the current monitor's wallpaper
+**The wallpaper layer** (Liquid Glass's; `src-tauri/src/wallpaper.rs` and `src/themes/glass/wallpaper.js`, one
+wallpaper for every monitor until per-monitor paths are read): a Rust command returns the current monitor's wallpaper
 file path, fit mode (center, tile, stretch, fit, fill, span), the monitor's rectangle and the window's
 rectangle inside it, and the page paints the image as a fixed bottom layer placed and scaled so it
 lines up with the desktop behind the window, then dims it (a black overlay in the layer itself, not a
@@ -423,13 +470,15 @@ state layers, the M3 type scale in `Roboto Flex`, the emphasized easing in `--ea
 the showpiece.** On Android 12+ `src-tauri/android/MainActivity.kt` reads the system palette
 (`android.R.color.system_accent1_*`, `accent2`, `accent3`, `neutral1`, `neutral2`, tones 0 to 1000) and
 publishes it as `window.__phosphorSystemPalette` plus a `phosphor-system-palette` event, at document start and on
-layout; `src/model/dynamicColor.js` turns it into the Theme (surface from neutral tone 900 or 10, accents
+layout; `src/model/dynamicColor.js` turns it into every Variant of the Theme (keyed by style; a Custom theme
+is left alone) (surface from neutral tone 900 or 10, accents
 from tone 200 or 600), clamps every accent to 4.5:1 on every surface, turns one off a safety hue, applies
 it without persisting and sets `html[data-md-scheme]` (`light` for a day palette; `--on-reality` follows
 it). Below Android 12, on the desktop and in the browser the fixed baseline in the manifest stays. The
 Android path needs an APK build to be seen (`tools/android-icons.mjs` copies `MainActivity.kt` into the
 generated project; `npm run build:android`). `test/dynamic-color.test.mjs` runs 132 fake palettes through the
-derivation; the kit's `dynamic` section injects four into the page and audits the pages and the stop pair.
+derivation; `test/material-pairs.test.mjs` reads every text-on-surface pair theme.css builds under the Variants and
+those palettes; the kit's `dynamic` section injects four into the page and audits the pages and the stop pair.
 Owner: FAB-like affordances where one fits, the switch and slider shapes, a type scale on every label, a
 ripple that is a state layer (no per-frame animation), Material Symbols' weight in `icons.js`.
 
@@ -540,8 +589,8 @@ import or plugin can reach them:
   `--glow-warn` (RENDERING law 13). The editor shows the colors as locked
   swatches.
 - safety text: `--warn-ink`, `--bad-ink`, the safety color's own hue at the
-  nearest lightness that reads 4.5:1 on every surface; a dark chassis keeps
-  the raw color. Derived per chassis, never pinned. Text in a safety color
+  nearest lightness that reads 4.5:1 (or the Theme's `inkFloor`) on every
+  surface; a dark chassis keeps the raw color where it already reads. Derived per chassis, never pinned. Text in a safety color
   uses the ink (`var(--warn-ink, var(--warn))` where a sheet can paint
   before the engine); glows, fills and borders keep `--warn` and `--bad`.
 - touch floor: `--tap`, `--range-hit`, `--slider-thumb-w`, `--slider-thumb-h`
@@ -566,23 +615,23 @@ Warm ink (hue 60; its reality left the safety amber for jade, `#66D5BA`) and Pap
 |---|---|---|
 | `phosphor` | the twelve color presets | the default style: style.css |
 | `luna` | Luna, Olive Green, Silver | the 2001 chrome and controls in full: title bar, caption buttons, group boxes, orange-glow buttons, green checks, tabs, scrollbars |
-| `hellscape` | one | brick, bevels, a HUD status bar, a gutter-flicker, pixel face for labels |
-| `p1` | one | green phosphor, scanlines, a rolling band, a blinking cursor |
-| `platinum` | one | pinstripe title bars with a plate, gray bevels |
-| `dmg` | one | four-tone LCD pinned in the manifest, a pixel grid, a bezel bar |
-| `blueprint` | one | drafting blue, grid paper, dashed frames |
-| `outrun` | one | neon on a sunset, a sliding perspective grid |
-| `rack` | one | brushed metal, screws, LED readouts |
-| `amp` | one | a music player: bevels, grip-striped title bar, list rail |
-| `jelly` | one | pinstripes, glossy capsules, jelly icons |
-| `setup` | one | a BIOS blue screen: double lines, reverse video |
-| `boing` | one | gray gadgets, copper-bar title bars, depth gadgets |
-| `cipher` | one | falling code behind black glass |
-| `notebook` | one | ruled paper, stitched cards, felt-pen icons |
-| `contrast` | one | black, white and cyan, thick frames, no texture |
-| `mica` | one | Fluent on Windows 11 Mica (Materials) |
-| `glass` | one | Liquid Glass (Materials) |
-| `material` | one | Material 3 and Material You (Materials) |
+| `hellscape` | Hellscape, Brimstone, Nightmare | brick, bevels, a HUD status bar, a gutter-flicker, pixel face for labels |
+| `p1` | P1 Green, P3 Amber, P4 White | phosphor, scanlines, a rolling band, a blinking cursor |
+| `platinum` | Platinum, Graphite | pinstripe title bars with a plate, gray bevels |
+| `dmg` | DMG, Pocket, Light | four-tone LCD pinned in the manifest, a pixel grid, a bezel bar |
+| `blueprint` | Cyanotype, Whiteprint, CAD | drafting blue, grid paper, dashed frames |
+| `outrun` | Outrun, Midnight, Vice | neon on a sunset, a sliding perspective grid |
+| `rack` | Rack, Vintage, Modular | brushed metal, screws, LED readouts |
+| `amp` | Amp, Classic, Ice | a music player: bevels, grip-striped title bar, list rail |
+| `jelly` | Aqua, Graphite, Brushed Metal | pinstripes, glossy capsules, jelly icons |
+| `setup` | Setup, Red, Mono | a text-mode setup screen: one cell face, double-line boxes with a shadow, gray dialogs, reverse video, a key-hint foot |
+| `boing` | Gray 2.0, Blue 1.3, Gradient 3.1 | gray gadgets, copper-bar title bars, depth gadgets |
+| `cipher` | Cipher, Red Pill, Construct | falling code behind black glass |
+| `notebook` | Ruled, Graph Paper, Night | ruled paper, stitched cards, felt-pen icons |
+| `contrast` | Dark, Light, Yellow on Black | 7:1 text and safety inks (`inkFloor`), thick frames, state by shape, no texture |
+| `mica` | Dark, Light, Mica Alt | Fluent on Windows 11 Mica (Materials) |
+| `glass` | Liquid Glass, Clear, Tinted | Liquid Glass on the OS glass or the wallpaper layer (Materials) |
+| `material` | Baseline, Expressive, Baseline light | Material 3, and Material You on Android 12+ for every Variant (Materials) |
 | `temple` | Temple, Document | hidden (Hidden themes): the 8 x 8 face, VGA sixteen, DolDoc link buttons, [X] windows, a squirming overlay, the oracle on F7 (Behavior) |
 
 **The light chassis (Paper).** Shipped because it holds the measurable bar:

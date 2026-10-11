@@ -501,7 +501,7 @@
                     onclick={revert}>Revert changes</button>
           </div>
           {#each lists.changes as evt (evt)}
-            <div class="line change">
+            <div class="line change" data-part="log-row">
               <time class="mono" data-at={evt.t}>{hms(evt.t)}</time>
               <span class="text">{evt.label}</span>
               <span class="kv">{val(evt, evt.before)} &rarr; {val(evt, evt.after)}</span>
@@ -513,7 +513,7 @@
         {:else}
           {#each shown[t.id] as r (r.key)}
             {@const x = open.has(r.key)}
-            <div class="line" data-b={r.p.lvl ? r.p.bucket : null} class:superseded={r.p.superseded} class:diag={r.p.diag} class:open={x}>
+            <div class="line" data-part="log-row" data-b={r.p.lvl ? r.p.bucket : null} class:superseded={r.p.superseded} class:diag={r.p.diag} class:open={x}>
               <button type="button" class="head" tabindex="-1" aria-expanded={x} data-tip={tipOf(r.p.health)} onclick={(e) => toggle(r.key, e.currentTarget.parentElement)}>
                 <time class="mono" data-at={r.last}>{hms(r.last)}</time>
                 <span class="lvl">{#if r.p.lvl}<svg aria-hidden="true"><use href={'#lp-' + r.p.bucket} /></svg><span class="sr">{r.p.lvl}</span>{/if}</span>

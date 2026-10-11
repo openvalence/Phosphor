@@ -23,7 +23,7 @@ import { readFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { cbMap, cbUint, cbBstr, cbTstr, cbArray, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
 import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, LIMITS } from '../../Valence/clients/js/frames.js';
-import { deriveTokens, THEMES, STYLES, contrast } from '../src/model/theme.js';
+import { deriveTokens, THEMES, STYLES, contrast, inkFloor } from '../src/model/theme.js';
 import { formatWithUnit } from '../src/model/format.js';
 
 const SHOTS = process.argv[2] || null;
@@ -312,10 +312,10 @@ for (const id of ['slate', 'ink', 'paper', ...STYLES.filter((s) => s.id !== 'pho
   for (const ink of ['--warn-ink', '--bad-ink']) {
     for (const s of ['--bg', '--bg-raised', '--bg-card', '--bg-sunken']) {
       const r = contrast(await hexOf(page, ink), await hexOf(page, s));
-      if (r < 4.5) inkLow.push(ink + ' on ' + s + ' ' + r.toFixed(2));
+      if (r < inkFloor(t.style)) inkLow.push(ink + ' on ' + s + ' ' + r.toFixed(2));
     }
   }
-  ok(id + ': safety text reads 4.5:1 on every surface (ph-632)', inkLow.length === 0, inkLow.join(' | '));
+  ok(id + ': safety text reads ' + inkFloor(t.style) + ':1 on every surface (ph-632)', inkLow.length === 0, inkLow.join(' | '));
   const btn = await page.evaluate(() => Object.fromEntries(['running', 'danger'].map((c) => {
     const b = document.createElement('button');
     b.className = 'og-btn ' + c;
@@ -332,6 +332,8 @@ for (const id of ['slate', 'ink', 'paper', ...STYLES.filter((s) => s.id !== 'pho
     const b = document.querySelector('main.pane .run-btn');
     if (!b || !b.classList.replace('primary', 'running')) return false;
     b.disabled = false;
+    // Read the running colors, not the transition toward them.
+    for (const a of b.getAnimations({ subtree: true })) if (a.effect.getComputedTiming().iterations !== Infinity) a.finish();
     return [...document.querySelectorAll('main.pane .run-btn.running .run-text')].filter((t) => t.getClientRects().length).length === 1;
   });
   const stopLow = ran ? await page.evaluate(lowContrast, 'main.pane .run-btn.running .run-text') : ['no visible running run button'];
@@ -367,10 +369,10 @@ for (const t of THEMES) {
   for (const ink of ['--warn-ink', '--bad-ink']) {
     for (const s of ['--bg', '--bg-raised', '--bg-card', '--bg-sunken']) {
       const r = contrast(await hexOf(page, ink), await hexOf(page, s));
-      if (r < 4.5) inkLow.push(ink + ' on ' + s + ' ' + r.toFixed(2));
+      if (r < inkFloor(t.style)) inkLow.push(ink + ' on ' + s + ' ' + r.toFixed(2));
     }
   }
-  ok(t.id + ': safety text reads 4.5:1 on every surface (ph-632)', inkLow.length === 0, inkLow.join(' | '));
+  ok(t.id + ': safety text reads ' + inkFloor(t.style) + ':1 on every surface (ph-632)', inkLow.length === 0, inkLow.join(' | '));
   const ICONS = 'nav.rail :is(.rail-glyph, .rail-collapse)';
   const words = await page.evaluate(lowContrast, 'nav.rail :is(.rail-lbl, .rail-name, .sub-layout, .sub-layout *)');
   const icons = await page.evaluate(lowContrast, [ICONS, 3, true]);

@@ -39,6 +39,13 @@ fn apply(window: &tauri::WebviewWindow, kind: &str) -> &'static str {
     "mica" => {
       if set(Some(EffectsBuilder::new().effect(Effect::MicaDark).build())) { "mica" } else { let _ = set(None); "none" }
     }
+    // A Variant's own material (docs/THEMES.md, Materials): light Mica, and Mica Alt (the tabbed backdrop).
+    "mica-light" => {
+      if set(Some(EffectsBuilder::new().effect(Effect::MicaLight).build())) { "mica-light" } else { let _ = set(None); "none" }
+    }
+    "mica-alt" => {
+      if set(Some(EffectsBuilder::new().effect(Effect::TabbedDark).build())) { "mica-alt" } else { let _ = set(None); "none" }
+    }
     "glass" | "acrylic" => {
       if set(Some(EffectsBuilder::new().effect(Effect::Acrylic).color(Color(14, 16, 22, 90)).build())) { "acrylic" } else { let _ = set(None); "none" }
     }

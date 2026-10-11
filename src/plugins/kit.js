@@ -406,7 +406,8 @@ export function slider(o = {}) {
   const chip = h('output', { class: 'field-value ui-chip' });
   // The chip's width is the widest it can read, reserved: a value change never moves the row.
   chip.style.minWidth = Math.max(String(fmt(min)).length, String(fmt(max)).length) + 1 + 'ch';
-  const show = () => setText(chip, fmt(+input.value));
+  // --fx-f: the thumb's share, a Theme's slider fill (docs/THEMES.md); written on a change only.
+  const show = () => { setText(chip, fmt(+input.value)); input.style.setProperty('--fx-f', String(max > min ? (+input.value - min) / (max - min) : 0)); };
   const live = (v, e) => { v = onGrid(v, min, max, step); if (+input.value === v) return; input.value = String(v); show(); if (o.onInput) o.onInput(v, e); };
   input.addEventListener('input', (e) => { show(); if (o.onInput) o.onInput(+input.value, e); });
   input.addEventListener('change', (e) => { if (o.onChange) o.onChange(+input.value, e); });
