@@ -2,13 +2,13 @@ import icons from './icons.js';
 
 const BRASS = { '--line-1': '#37352F', '--line-2': '#5A564B', '--line-3': '#8E8365', '--line-4': '#C7B481' };
 const STEEL = { '--line-1': '#33363B', '--line-2': '#54585F', '--line-3': '#858B95', '--line-4': '#B9BFCA' };
-const FROST = { '--line-1': '#2E3A47', '--line-2': '#4A5B6E', '--line-3': '#7890AA', '--line-4': '#B2CCE6' };
+const FROST = { '--line-1': '#BFD0DD', '--line-2': '#9DB4C6', '--line-3': '#7B97AE', '--line-4': '#3F6384' };
 const LOOK = { glow: 0.9, radius: 0, scale: 1.12, numWeight: 400, motion: 3 };
 
 export default {
   id: 'amp', name: 'Amp',
   pitch: 'A 1998 player skin: gunmetal and brass, a green LCD, grip-striped title bar',
-  swatch: 'linear-gradient(180deg, #B59B5F 0 1px, transparent 1px), repeating-linear-gradient(90deg, #8A94A0 0 1px, #1B1D20 1px 3px) 0 0 / 100% 30% no-repeat, linear-gradient(180deg, #2E3034 0 55%, #07140C 55%)',
+  swatch: 'repeating-linear-gradient(90deg, #8A94A0 0 1px, #1B1D20 1px 3px) 0 0 / 100% 28% no-repeat, linear-gradient(180deg, #B59B5F 0 1px, transparent 1px), linear-gradient(180deg, #34353A 0 52%, #07140C 52% 78%, #3A3B40 78%)',
   icons,
   // The first variant is the theme's own palette; its id is the theme's id. docs/THEMES.md, Variants.
   variants: [
@@ -31,8 +31,8 @@ export default {
     {
       id: 'amp-ice',
       name: 'Ice',
-      accents: { reality: '#5FE6FF', intent: '#A9B8FF', highlight: '#E4F4FF' },
-      chassis: { hue: 235, tint: 1.1, brightness: 0.27, contrast: 1.1 },
+      accents: { reality: '#06577F', intent: '#4A3FC8', highlight: '#0B3B6B' },
+      chassis: { hue: 232, tint: 2.6, brightness: 0.9, contrast: 1.1 },
       look: LOOK,
       overrides: FROST,
     },

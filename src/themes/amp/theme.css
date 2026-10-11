@@ -1,14 +1,16 @@
-/* Amp: a 1998 player skin. Gunmetal plates with a 1 px bevel and a brass edge, a title bar of
-   grip stripes carrying an LCD window that scrolls the hub name, readouts on green glass in a
-   segment face (the hero numeral) and a pixel face (small LCD text), the channel heatmap as a
-   spectrum analyzer, the rail and the lists as a playlist window, buttons as tiny bevelled
-   transport keys, sliders as thin grooves with chunky caps.
+/* Amp: a 1998 player skin. Plates of metal with a 1 px bevel and a trim edge; a title bar of grip
+   stripes carrying an LCD window that scrolls the hub name; readouts on glass (the hero numeral in a
+   segment face, small LCD text in a pixel face); the channel heatmap as a spectrum analyzer; the
+   rail and the lists as a playlist; buttons as tiny bevelled keys; sliders as thin grooves with
+   chunky caps.
 
-   Every surface that carries text is a chassis token with texture painted over it, so the
-   contrast guard holds. The one exception is Classic's reflective LCD: its plates pin their own
-   dark ink on pea green, checked by the kit. The stop pair, the ladder and the stale states
-   are never named here; the only brass and gold are decoration on frames, never on a control
-   in a state. */
+   Surfaces that carry text are chassis tokens with texture painted over them, so the contrast guard
+   holds. The LCD plates are the one exception, and only in Classic (pea-green glass, dark ink) and
+   Ice (navy glass on a light chassis): there each plate re-declares the whole token set it reads
+   (the "islands" below), so every color in it is checked against its own ground. Lists and
+   black-glass wells stay on chassis tokens, because the log's safety text derives its ink per
+   chassis. The stop pair, the ladder and the stale states are never named here; the trim is
+   decoration on frames, never on a control in a state. */
 @font-face { font-family: 'Amp Segment'; src: url('./fonts/AmpSegment.woff2') format('woff2'); font-weight: 400; font-display: swap; }
 
 html:root[data-style="amp"] {
@@ -19,74 +21,134 @@ html:root[data-style="amp"] {
   --amp-pix: 'VT323', 'Lucida Console', Consolas, monospace;
   --amp-seg: 'Amp Segment', 'VT323', monospace;
   --amp-cap: 'Silkscreen', Tahoma, sans-serif;
-  /* bevel inks and the brass trim */
+  /* Silkscreen is drawn on an 8 px grid: only whole multiples of 8 stay crisp */
+  --amp-s8: round(nearest, calc(var(--s) * 8px), 8px);
+  --amp-s16: round(nearest, calc(var(--s) * 14px), 8px);
+  /* bevel inks, the rim around a plate, the trim of a frame */
+  --amp-edge: #000;
   --amp-hi: rgba(255, 255, 255, .17);
   --amp-lo: rgba(0, 0, 0, .62);
   --amp-brass: #B59B5F;
   --amp-brass-hi: #E2CC8F;
   --amp-brass-lo: #6F5E36;
-  /* the LCD glass */
+  /* glass: an LCD plate, a black list well, a groove */
   --amp-glass: #050E09;
-  --amp-glass-edge: #0C1D14;
-  --amp-lcd-ink: var(--reality);
-  --amp-lcd-dim: rgba(var(--reality-rgb), .1);
-  --amp-lcd-glow: 0 0 6px rgba(var(--reality-rgb), .55);
-  /* the grip stripes of a title bar, and brushed metal */
+  --amp-pit: #040A07;
+  --amp-trk: #000;
+  --amp-ink: var(--reality);
+  --amp-dim: rgba(var(--reality-rgb), .1);
+  --amp-glow: 0 0 6px rgba(var(--reality-rgb), .55);
+  /* the grip stripes of a title bar, brushed metal, a key, a pressed key */
   --amp-grip: repeating-linear-gradient(90deg, rgba(255, 255, 255, .24) 0 1px, rgba(0, 0, 0, .6) 1px 2px, transparent 2px 4px);
   --amp-brush: repeating-linear-gradient(90deg, rgba(255, 255, 255, .028) 0 1px, transparent 1px 3px);
   --amp-sheen: linear-gradient(180deg, rgba(255, 255, 255, .09), rgba(255, 255, 255, 0) 38%, rgba(0, 0, 0, .2));
   --amp-key: linear-gradient(180deg, rgba(255, 255, 255, .15), rgba(255, 255, 255, .03) 46%, rgba(0, 0, 0, .24));
+  --amp-key-up: linear-gradient(180deg, rgba(255, 255, 255, .26), rgba(255, 255, 255, .06) 46%, rgba(0, 0, 0, .18));
   --amp-key-down: linear-gradient(180deg, rgba(0, 0, 0, .36), rgba(0, 0, 0, .1) 60%, rgba(255, 255, 255, .05));
   --amp-bevel: inset 1px 1px 0 var(--amp-hi), inset -1px -1px 0 var(--amp-lo);
   --amp-bevel-down: inset 1px 1px 0 var(--amp-lo), inset -1px -1px 0 var(--amp-hi);
   --amp-well: inset 1px 1px 0 rgba(0, 0, 0, .85), inset -1px -1px 0 rgba(255, 255, 255, .1);
-  --tex-page: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, .045) 1px, transparent 1.4px), linear-gradient(180deg, rgba(0, 0, 0, .0), rgba(0, 0, 0, .32));
+  --tex-page: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, .045) 1px, transparent 1.4px), linear-gradient(180deg, rgba(0, 0, 0, 0), rgba(0, 0, 0, .32));
   --tex-page-size: 5px 5px, 100% 100%;
-  --tex-card: var(--amp-sheen), var(--amp-brush);
-  --tex-card-size: 100% 100%, auto;
+  /* a card: four trim rivets, a sheen, brushed lines */
+  --tex-card:
+    radial-gradient(circle at 6px 6px, var(--amp-brass-hi) 0 .7px, var(--amp-brass) 1px 1.9px, var(--amp-lo) 2.3px, transparent 3px),
+    radial-gradient(circle at calc(100% - 6px) 6px, var(--amp-brass-hi) 0 .7px, var(--amp-brass) 1px 1.9px, var(--amp-lo) 2.3px, transparent 3px),
+    radial-gradient(circle at 6px calc(100% - 6px), var(--amp-brass-hi) 0 .7px, var(--amp-brass) 1px 1.9px, var(--amp-lo) 2.3px, transparent 3px),
+    radial-gradient(circle at calc(100% - 6px) calc(100% - 6px), var(--amp-brass-hi) 0 .7px, var(--amp-brass) 1px 1.9px, var(--amp-lo) 2.3px, transparent 3px),
+    var(--amp-sheen),
+    var(--amp-brush);
+  --tex-card-size: 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%, auto;
 }
+
+/* Classic: steel and a pea-green reflective LCD with dark ink, over black glass lists. */
 html:root[data-style="amp"][data-variant="amp-classic"] {
   --amp-brass: #9AA0AA;
   --amp-brass-hi: #D5DAE2;
   --amp-brass-lo: #555B66;
-  --amp-glass: #09100A;
-  --amp-glass-edge: #131D14;
-  --amp-pea: #A8C080;
-  --amp-pea-hi: #BBD292;
-  --amp-pea-ink: #16240E;
-}
-html:root[data-style="amp"][data-variant="amp-ice"] {
-  --amp-brass: #8FAAC6;
-  --amp-brass-hi: #CFE3F6;
-  --amp-brass-lo: #4D6580;
-  --amp-glass: #040F17;
-  --amp-glass-edge: #0A1C28;
-  --amp-hi: rgba(220, 240, 255, .2);
-  --amp-lo: rgba(0, 6, 14, .66);
+  --amp-glass: #A9C17F;
+  --amp-pit: #070D08;
+  --amp-ink: #16240E;
+  --amp-dim: rgba(22, 36, 14, .13);
+  --amp-glow: 0 1px 0 rgba(255, 255, 255, .3);
+  --amp-well: inset 1px 1px 0 rgba(10, 20, 6, .75), inset -1px -1px 0 rgba(255, 255, 255, .28);
+  --isl-bg: #A9C17F; --isl-raised: #B3CA8A; --isl-card: #A9C17F; --isl-sunken: #9DB673;
+  --isl-l0: #93AC69; --isl-l1: #839B5A; --isl-l2: #6C8548; --isl-l3: #52692F; --isl-l4: #34481F;
+  --isl-hi: #0C1707; --isl-tx: #16240E; --isl-val: #1B2D11; --isl-mut: #2E4620; --isl-ghost: #38532A;
+  --isl-reality: #16240E; --isl-reality-rgb: 22, 36, 14;
+  --isl-intent: #1F3B63; --isl-intent-rgb: 31, 59, 99;
+  --isl-hl: #0C1707; --isl-hl-rgb: 12, 23, 7;
 }
 
-/* ---- ambient: a slow scan across the LCD windows' glass, a few pixels of sheen ---- */
+/* Ice: pale blue aluminium, steel trim, navy LCD plates with a cyan backlight. */
+html:root[data-style="amp"][data-variant="amp-ice"] {
+  --amp-edge: #284A68;
+  --amp-hi: rgba(255, 255, 255, .85);
+  --amp-lo: rgba(40, 74, 104, .38);
+  --amp-brass: #3F6384;
+  --amp-brass-hi: #1E4163;
+  --amp-brass-lo: #8FAFC9;
+  --amp-glass: #06151F;
+  --amp-pit: var(--bg-sunken);
+  --amp-trk: #2A4A66;
+  --amp-ink: #6FE8FF;
+  --amp-dim: rgba(111, 232, 255, .1);
+  --amp-glow: 0 0 6px rgba(111, 232, 255, .55);
+  --amp-grip: repeating-linear-gradient(90deg, rgba(255, 255, 255, .9) 0 1px, rgba(60, 100, 140, .5) 1px 2px, transparent 2px 4px);
+  --amp-brush: repeating-linear-gradient(90deg, rgba(255, 255, 255, .22) 0 1px, transparent 1px 3px);
+  --amp-sheen: linear-gradient(180deg, rgba(255, 255, 255, .55), rgba(255, 255, 255, 0) 40%, rgba(40, 74, 104, .1));
+  --amp-key: linear-gradient(180deg, rgba(255, 255, 255, .7), rgba(255, 255, 255, .15) 46%, rgba(40, 74, 104, .16));
+  --amp-key-up: linear-gradient(180deg, rgba(255, 255, 255, .9), rgba(255, 255, 255, .3) 46%, rgba(40, 74, 104, .1));
+  --amp-key-down: linear-gradient(180deg, rgba(40, 74, 104, .3), rgba(40, 74, 104, .08) 60%, rgba(255, 255, 255, .3));
+  --amp-well: inset 1px 1px 0 rgba(0, 10, 20, .8), inset -1px -1px 0 rgba(255, 255, 255, .55);
+  --tex-page: radial-gradient(circle at 1px 1px, rgba(40, 74, 104, .09) 1px, transparent 1.4px), linear-gradient(180deg, rgba(255, 255, 255, .4), rgba(40, 74, 104, .1));
+  --isl-bg: #0A1822; --isl-raised: #0F2230; --isl-card: #0D2231; --isl-sunken: #06151F;
+  --isl-l0: #0D1B26; --isl-l1: #17303F; --isl-l2: #234559; --isl-l3: #3A6580; --isl-l4: #6FA3C4;
+  --isl-hi: #EAF7FF; --isl-tx: #CFE6F3; --isl-val: #B3D0E2; --isl-mut: #86A8BE; --isl-ghost: #7799AF;
+  --isl-reality: #6FE8FF; --isl-reality-rgb: 111, 232, 255;
+  --isl-intent: #A9B8FF; --isl-intent-rgb: 169, 184, 255;
+  --isl-hl: #E4F4FF; --isl-hl-rgb: 228, 244, 255;
+}
+
+/* ---- islands: the plates of Classic and Ice re-declare what they read ---- */
+html:root[data-style="amp"]:is([data-variant="amp-classic"], [data-variant="amp-ice"]) :is(
+  [data-part="bar"] .chip, [data-part="numerals"], .og-num, .value-input, .ui-text, select, .field-value,
+  #ph-tip, .fsp-el, .fsp-rem, .fsp-hb-time, .logpane .q, textarea
+),
+html:root[data-style="amp"][data-variant="amp-ice"] [data-part="bar"] .header-left {
+  --bg: var(--isl-bg); --bg-raised: var(--isl-raised); --bg-card: var(--isl-card); --bg-sunken: var(--isl-sunken);
+  --screen: var(--isl-sunken); --chip: var(--isl-card); --chip-line: var(--isl-l1);
+  --line-0: var(--isl-l0); --line-1: var(--isl-l1); --line-2: var(--isl-l2); --line-3: var(--isl-l3); --line-4: var(--isl-l4);
+  --line: var(--isl-l1); --line-soft: var(--isl-l0);
+  --tx-hi: var(--isl-hi); --tx: var(--isl-tx); --tx-val: var(--isl-val); --tx-mut: var(--isl-mut); --tx-ghost: var(--isl-ghost);
+  --ink: var(--isl-tx); --ink-hi: var(--isl-hi); --ink-dim: var(--isl-mut); --ink-faint: var(--isl-ghost);
+  --shell-fg: var(--isl-tx); --shell-border: var(--isl-l3);
+  --reality: var(--isl-reality); --reality-rgb: var(--isl-reality-rgb); --good: var(--isl-reality);
+  --intent: var(--isl-intent); --intent-rgb: var(--isl-intent-rgb);
+  --highlight: var(--isl-hl); --highlight-rgb: var(--isl-hl-rgb);
+  --glow-reality: none;
+}
+
 @keyframes theme-amp-marquee { 0%, 28% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
-@keyframes theme-amp-led { 0%, 100% { opacity: 1; } 50% { opacity: .72; } }
 
 /* ---- the title bar: the top bar, a ribbed metal strip with its LCD window ---- */
-html:root[data-style="amp"] [data-part="top"] { background-color: var(--bg-raised); border-bottom: 1px solid #000; box-shadow: 0 1px 0 var(--amp-brass-lo); }
+html:root[data-style="amp"] [data-part="top"] { background-color: var(--bg-raised); border-bottom: 1px solid var(--amp-edge); box-shadow: 0 1px 0 var(--amp-brass-lo); }
 html:root[data-style="amp"] [data-part="bar"] {
   background-color: var(--bg-raised);
   background-image: var(--amp-grip), var(--amp-sheen);
   background-size: 4px 100%, 100% 100%;
-  background-position: 0 0, 0 0;
-  box-shadow: inset 0 1px 0 var(--amp-hi), inset 0 -1px 0 #000, inset 0 -2px 0 var(--amp-brass-lo);
+  box-shadow: inset 0 1px 0 var(--amp-hi), inset 0 -1px 0 var(--amp-edge), inset 0 -2px 0 var(--amp-brass-lo);
 }
 html:root[data-style="amp"] [data-part="bar"] .header-left {
   align-self: stretch;
   margin-block: 4px;
   padding: 0 6px 0 4px;
   gap: 6px;
-  background-color: var(--bg-sunken);
+  background-color: var(--amp-pit);
   background-image: linear-gradient(180deg, rgba(255, 255, 255, .06), transparent 40%);
-  box-shadow: var(--amp-well), 0 0 0 1px #000;
+  box-shadow: var(--amp-well), 0 0 0 1px var(--amp-edge);
 }
+html:root[data-style="amp"][data-variant="amp-ice"] [data-part="bar"] .header-left { background-color: var(--amp-glass); color: var(--isl-tx); }
 html:root[data-style="amp"] [data-part="bar"] .wordmark {
   position: relative;
   display: block;
@@ -97,7 +159,7 @@ html:root[data-style="amp"] [data-part="bar"] .wordmark {
   height: 20px;
   font-size: 0;
   letter-spacing: 0;
-  color: var(--amp-lcd-ink);
+  color: var(--amp-ink);
   background-color: var(--amp-glass);
   box-shadow: var(--amp-well);
   overflow: hidden;
@@ -108,13 +170,12 @@ html:root[data-style="amp"] [data-part="bar"] .wordmark::before {
   position: absolute;
   left: 5px;
   top: 0;
-  line-height: 20px;
-  font: 400 10px/20px var(--amp-cap);
-  letter-spacing: .08em;
+  font: 400 var(--amp-s16)/20px var(--amp-cap);
+  letter-spacing: .04em;
   text-transform: uppercase;
   white-space: nowrap;
-  color: var(--amp-lcd-ink);
-  text-shadow: var(--amp-lcd-glow);
+  color: var(--amp-ink);
+  text-shadow: var(--amp-glow);
 }
 html:root[data-style="amp"]:not(.still):not(.hivis) [data-part="bar"] .wordmark::before {
   content: attr(data-tip) '   ***   ' attr(data-tip) '   ***   ';
@@ -124,17 +185,16 @@ html:root[data-style="amp"] [data-part="bar"] .chip {
   border-radius: 0;
   background-color: var(--amp-glass);
   background-image: none;
-  border-color: #000;
+  border-color: var(--amp-edge);
   box-shadow: var(--amp-well);
   font-family: var(--amp-pix);
   font-size: .86rem;
   line-height: 1;
   padding: 3px 6px;
-  color: var(--amp-lcd-ink);
+  color: var(--amp-ink);
 }
 html:root[data-style="amp"] [data-part="bar"] .chip .mono { font-family: var(--amp-pix); font-size: .86rem; letter-spacing: 0; }
-html:root[data-style="amp"] [data-part="bar"] .chip .chip-lbl { font-family: var(--amp-cap); font-size: .5rem; letter-spacing: .08em; color: var(--tx-val); }
-html:root[data-style="amp"] [data-part="bar"] .chip.tone-good { border-color: #000; }
+html:root[data-style="amp"] [data-part="bar"] .chip .chip-lbl { font-family: var(--amp-cap); font-size: var(--amp-s8); letter-spacing: .08em; color: var(--tx-val); }
 
 /* the link lamp: a square LED lens */
 html:root[data-style="amp"] .linkdot .core { width: 7px; height: 7px; border-radius: 0; box-shadow: 0 0 0 1px #000, 0 0 6px rgba(var(--lc), .8); }
@@ -142,13 +202,16 @@ html:root[data-style="amp"] .linkdot.offline .core { box-shadow: inset 0 0 0 1.5
 
 /* the channel heatmap, read as a spectrum analyzer: lit cells over a dark grid, a bright peak cell on top */
 html:root[data-style="amp"] [data-part="bar"] .heat { padding: 2px 3px; background-color: var(--amp-glass); box-shadow: var(--amp-well); }
+html:root[data-style="amp"]:not([data-variant="amp-ice"]) [data-part="bar"] .heat { background-color: #030805; }
 html:root[data-style="amp"] [data-part="bar"] .heat .grp { gap: 1px; }
 html:root[data-style="amp"] [data-part="bar"] .heat .blk { border-radius: 0; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .55); }
 html:root[data-style="amp"] [data-part="bar"] .heat .blk:not(.warn) { background-color: color-mix(in oklab, var(--reality) var(--lv), rgba(var(--reality-rgb), .07)); }
+html:root[data-style="amp"][data-variant="amp-classic"] [data-part="bar"] .heat .blk:not(.warn) { background-color: color-mix(in oklab, #7CFF5C var(--lv), rgba(124, 255, 92, .07)); }
+html:root[data-style="amp"][data-variant="amp-ice"] [data-part="bar"] .heat .blk:not(.warn) { background-color: color-mix(in oklab, #6FE8FF var(--lv), rgba(111, 232, 255, .07)); }
 html:root[data-style="amp"] [data-part="bar"] .heat .blk:not(.warn):nth-child(4n+1) { filter: brightness(1.3) saturate(1.1); }
-html:root[data-style="amp"] [data-part="bar"] .heat .grp + .grp { border-left: 1px solid var(--amp-brass-lo); }
+html:root[data-style="amp"] [data-part="bar"] .heat .grp + .grp { border-left-color: var(--amp-brass-lo); }
 
-/* the caption buttons: tiny bevelled keys, glyph in brass */
+/* the caption buttons: tiny bevelled keys, the glyph in trim */
 html:root[data-style="amp"] [data-part="caption"] { padding-right: 4px; gap: 3px; align-items: center; }
 html:root[data-style="amp"] [data-part="caption-btn"] { position: relative; width: 22px; color: var(--amp-brass-hi); background: transparent; }
 html:root[data-style="amp"] [data-part="caption-btn"]::before {
@@ -161,28 +224,28 @@ html:root[data-style="amp"] [data-part="caption-btn"]::before {
   margin: -7px 0 0 -8px;
   background-color: var(--bg-card);
   background-image: var(--amp-key);
-  box-shadow: 0 0 0 1px #000, var(--amp-bevel);
+  box-shadow: 0 0 0 1px var(--amp-edge), var(--amp-bevel);
 }
 html:root[data-style="amp"] [data-part="caption-btn"] svg { position: relative; width: 9px; height: 9px; stroke-width: 1.7; }
 html:root[data-style="amp"] [data-part="caption-btn"]:hover { color: var(--tx-hi); background: transparent; }
-html:root[data-style="amp"] [data-part="caption-btn"]:hover::before { background-image: linear-gradient(180deg, rgba(255, 255, 255, .26), rgba(255, 255, 255, .06) 46%, rgba(0, 0, 0, .18)); }
+html:root[data-style="amp"] [data-part="caption-btn"]:hover::before { background-image: var(--amp-key-up); }
 html:root[data-style="amp"] [data-part="caption-btn"]:active::before,
-html:root[data-style="amp"] [data-part="caption-btn"][aria-expanded="true"]::before { background-image: var(--amp-key-down); box-shadow: 0 0 0 1px #000, var(--amp-bevel-down); }
+html:root[data-style="amp"] [data-part="caption-btn"][aria-expanded="true"]::before { background-image: var(--amp-key-down); box-shadow: 0 0 0 1px var(--amp-edge), var(--amp-bevel-down); }
 
 /* ---- the strip under the bar: readout glass, key row, the stop pair's plate ---- */
 html:root[data-style="amp"] [data-part="strip"] { background-image: var(--amp-brush), var(--amp-sheen); box-shadow: inset 0 1px 0 var(--amp-hi); }
-html:root[data-style="amp"] [data-part="numerals"] { background-color: var(--amp-glass); box-shadow: 0 0 0 6px var(--amp-glass), 0 0 0 7px #000; }
-html:root[data-style="amp"] [data-part="numerals"] .hn-label { font-family: var(--amp-cap); font-size: .56rem; letter-spacing: .1em; text-transform: uppercase; }
-html:root[data-style="amp"] [data-part="numerals"] .hn-unit { font-family: var(--amp-cap); font-size: .5rem; letter-spacing: .08em; text-transform: uppercase; }
+html:root[data-style="amp"] [data-part="numerals"] { background-color: var(--amp-glass); box-shadow: 0 0 0 6px var(--amp-glass), 0 0 0 7px var(--amp-edge); }
+html:root[data-style="amp"] [data-part="numerals"] .hn-label { font-family: var(--amp-pix); font-size: 1rem; line-height: 1; letter-spacing: .1em; text-transform: uppercase; }
+html:root[data-style="amp"] [data-part="numerals"] .hn-unit { font-family: var(--amp-pix); font-size: .95rem; line-height: 1; letter-spacing: .08em; text-transform: uppercase; }
 html:root[data-style="amp"] [data-part="numerals"] .hn-val { font-family: var(--amp-pix); font-variation-settings: normal; letter-spacing: 0; }
 html:root[data-style="amp"] [data-part="numerals"] .hn-col .hn-val { font-size: min(1.8rem, calc((var(--num-h, 96px) - 14px) / 3.1)); }
-html:root[data-style="amp"] [data-part="numerals"] .hn-primary .hn-val { font-family: var(--amp-seg); font-weight: 400; font-variation-settings: normal; text-shadow: var(--amp-lcd-glow); letter-spacing: .02em; }
+html:root[data-style="amp"] [data-part="numerals"] .hn-primary .hn-val { font-family: var(--amp-seg); font-weight: 400; font-variation-settings: normal; text-shadow: var(--amp-glow); letter-spacing: .02em; }
 html:root[data-style="amp"] [data-part="numerals"] .hn-reticle { filter: none; }
 @media (min-width: 1024px) {
   html:root[data-style="amp"] [data-part="numerals"] .hn-primary .hn-val { position: relative; min-width: 5ch; text-align: right; }
-  html:root[data-style="amp"] [data-part="numerals"] .hn-primary .hn-val::before { content: '888.8'; position: absolute; right: 0; top: 0; color: var(--amp-lcd-dim); text-shadow: none; pointer-events: none; }
+  html:root[data-style="amp"] [data-part="numerals"] .hn-primary .hn-val::before { content: '888.8'; position: absolute; right: 0; top: 0; color: var(--amp-dim); text-shadow: none; pointer-events: none; }
 }
-html:root[data-style="amp"] [data-part="stop-frame"] { background-color: #0B0B0C; box-shadow: 0 0 0 4px #0B0B0C, 0 0 0 5px #000, 0 0 0 6px var(--amp-brass-lo); }
+html:root[data-style="amp"] [data-part="stop-frame"] { background-color: var(--bg-sunken); box-shadow: 0 0 0 4px var(--bg-sunken), 0 0 0 5px var(--amp-edge), 0 0 0 6px var(--amp-brass-lo); }
 html:root[data-style="amp"] .topstrip .ops > .btn,
 html:root[data-style="amp"] .topstrip .home-menu > .btn,
 html:root[data-style="amp"] .topstrip .rw-flip {
@@ -192,14 +255,37 @@ html:root[data-style="amp"] .topstrip .rw-flip {
   border-radius: 0;
 }
 
-/* ---- the hero bar: the position scope in its own glass window ---- */
-html:root[data-style="amp"] [data-part="hero"] { background-image: var(--amp-brush), var(--amp-sheen); box-shadow: inset 0 1px 0 var(--amp-hi), inset 0 -1px 0 #000; border-bottom-color: var(--amp-brass-lo); }
+/* ---- the hero bar: the position scope in its own glass window, the tape a groove with a chunky cap ---- */
+html:root[data-style="amp"] [data-part="hero"] { background-image: var(--amp-brush), var(--amp-sheen); box-shadow: inset 0 1px 0 var(--amp-hi), inset 0 -1px 0 var(--amp-edge); border-bottom-color: var(--amp-brass-lo); }
+html:root[data-style="amp"] [data-part="hero"] .spine-rail-host { border-radius: 0; border-color: var(--amp-edge); background-color: var(--bg-sunken); box-shadow: var(--amp-well); }
+html:root[data-style="amp"] [data-part="hero"] .rail-clip { border-radius: 0; }
+html:root[data-style="amp"] [data-part="hero"] .rail-tape { border-radius: 0; }
+html:root[data-style="amp"] [data-part="hero"] .rail-tape.live { background-color: var(--bg-sunken); border-color: var(--amp-edge); box-shadow: var(--amp-well); }
+html:root[data-style="amp"] [data-part="hero"] .rail-tape:not(.live) { background-color: var(--bg-sunken); }
+html:root[data-style="amp"] [data-part="hero"] .rail-tape-micro:not(.rail-reason) { font-family: var(--amp-cap); font-size: 9px; letter-spacing: .2em; }
+html:root[data-style="amp"] [data-part="hero"] :is(.rail-endcap, .rail-ghost, .rail-win) { font-family: var(--amp-pix); font-size: 15px; letter-spacing: 0; }
+html:root[data-style="amp"] [data-part="hero"] .rail-tape-pip {
+  width: 8px;
+  transform: translateX(-4px);
+  background-color: var(--bg-card);
+  background-image: var(--amp-key);
+  border-inline: 2px solid var(--intent);
+  box-shadow: 0 0 0 1px var(--amp-edge), 0 0 8px rgba(var(--intent-rgb), .6);
+}
+html:root[data-style="amp"] [data-part="hero"] .rail-band-handle::before {
+  width: 7px;
+  background-color: var(--bg-card);
+  background-image: var(--amp-key);
+  border-inline: 2px solid var(--intent);
+  box-shadow: 0 0 0 1px var(--amp-edge), 0 0 8px rgba(var(--intent-rgb), .55);
+}
+html:root[data-style="amp"] [data-part="hero"] .rail-band-label { border-radius: 0; font-family: var(--amp-pix); font-size: 15px; box-shadow: var(--amp-well); }
 
 /* ---- the rail: a playlist window ---- */
 html:root[data-style="amp"] [data-part="rail"] {
-  background-color: var(--amp-glass);
-  background-image: linear-gradient(180deg, rgba(var(--reality-rgb), .025), transparent 30%);
-  border-color: #000;
+  background-color: var(--amp-pit);
+  background-image: linear-gradient(180deg, rgba(var(--reality-rgb), .03), transparent 30%);
+  border-color: var(--amp-edge);
   border-radius: 0;
   box-shadow: var(--amp-well), 1px 0 0 var(--amp-brass-lo);
 }
@@ -209,16 +295,17 @@ html:root[data-style="amp"] [data-part="rail-label"] {
   margin: 2px 2px 4px;
   padding: 2px 4px;
   text-align: center;
-  font-family: var(--amp-cap);
-  font-size: .5rem;
+  font-family: var(--amp-pix);
+  font-size: 1rem;
+  line-height: 1.1;
   font-weight: 400;
-  letter-spacing: .14em;
+  letter-spacing: .16em;
   color: var(--tx-hi);
   background-color: var(--bg-raised);
   background-image: var(--amp-grip);
-  box-shadow: 0 0 0 1px #000, var(--amp-bevel);
+  box-shadow: 0 0 0 1px var(--amp-edge), var(--amp-bevel);
 }
-html:root[data-style="amp"] [data-part="rail-tab"] {
+html:root[data-style="amp"] :is([data-part="rail-tab"], .rail-tab) {
   position: relative;
   min-height: 28px;
   border-radius: 0;
@@ -227,33 +314,34 @@ html:root[data-style="amp"] [data-part="rail-tab"] {
   letter-spacing: .02em;
   color: var(--tx-val);
 }
-html:root[data-style="amp"] [data-part="rail-tab"] .rail-glyph { color: var(--amp-brass); }
-html:root[data-style="amp"] [data-part="rail-tab"]:hover { background-color: rgba(var(--reality-rgb), .1); color: var(--tx-hi); }
-/* the selected row: a blue selection bar in the list, the way a playlist marks its current line */
-html:root[data-style="amp"] [data-part="rail-tab"].on {
-  background-color: color-mix(in srgb, var(--intent) 34%, var(--bg-sunken));
-  border-color: color-mix(in srgb, var(--intent) 60%, #000);
+html:root[data-style="amp"] :is([data-part="rail-tab"], .rail-tab) .rail-glyph { color: var(--amp-brass); }
+html:root[data-style="amp"] :is([data-part="rail-tab"], .rail-tab):hover { background-color: rgba(var(--reality-rgb), .1); color: var(--tx-hi); }
+/* the selected row: a blue selection bar, the way a playlist marks its current line */
+html:root[data-style="amp"] :is([data-part="rail-tab"], .rail-tab).on {
+  background-color: color-mix(in srgb, var(--intent) 34%, var(--amp-pit));
+  border-color: color-mix(in srgb, var(--intent) 60%, var(--amp-pit));
   color: var(--tx-hi);
 }
-html:root[data-style="amp"] [data-part="rail-tab"].on .rail-glyph { color: var(--reality); }
-html:root[data-style="amp"] .rail-sec.shell { border-radius: 0; background-color: var(--bg-sunken); border-color: #000; }
+html:root[data-style="amp"] :is([data-part="rail-tab"], .rail-tab).on .rail-glyph { color: var(--reality); }
+html:root[data-style="amp"] .rail-sec.shell { border-radius: 0; background-color: var(--amp-pit); border-color: var(--amp-edge); }
+html:root[data-style="amp"] .rail-wrench { border-radius: 0; }
+html:root[data-style="amp"] .sub-input { border-radius: 0; background-color: var(--amp-glass); color: var(--amp-ink); font-family: var(--amp-pix); font-size: 1.1rem; box-shadow: var(--amp-well); }
 html:root[data-style="amp"] .rail-ops { border-radius: 0; background-color: var(--bg-raised); }
-html:root[data-style="amp"] .rail-ops button { border-radius: 0; font-family: var(--amp-cap); font-size: .5rem; }
+html:root[data-style="amp"] .rail-ops button { border-radius: 0; font-family: var(--amp-cap); font-size: var(--amp-s8); }
 
-/* ---- the content window ---- */
-html:root[data-style="amp"] [data-part="content"] { background-color: transparent; }
+/* ---- the content window: frames, wells, title bands ---- */
 html:root[data-style="amp"] [data-part="card"],
 html:root[data-style="amp"] [data-part="panel"],
 html:root[data-style="amp"] .og-panel {
   border-radius: 0;
   border-color: var(--line-2);
-  box-shadow: 0 0 0 1px #000, var(--amp-bevel);
+  box-shadow: 0 0 0 1px var(--amp-edge), var(--amp-bevel);
 }
 html:root[data-style="amp"] .og-panel { outline: none; background-image: var(--amp-sheen), var(--amp-brush); }
 html:root[data-style="amp"] [data-part="nest"] {
   border-radius: 0;
-  border-color: #000;
-  background-color: var(--bg-sunken);
+  border-color: var(--amp-edge);
+  background-color: var(--amp-pit);
   box-shadow: var(--amp-well), 0 0 0 1px var(--line-2);
 }
 /* a card's title is a window title: grip stripes either side of a small caption */
@@ -262,7 +350,7 @@ html:root[data-style="amp"] [data-part="panel-bar"] {
   background-color: var(--bg-raised);
   background-image: var(--amp-grip), var(--amp-sheen);
   background-size: 4px 100%, 100% 100%;
-  box-shadow: 0 0 0 1px #000, inset 0 1px 0 var(--amp-hi);
+  box-shadow: 0 0 0 1px var(--amp-edge), inset 0 1px 0 var(--amp-hi);
   padding: 0 3px;
   margin-bottom: 3px;
 }
@@ -272,22 +360,23 @@ html:root[data-style="amp"] :is([data-part="card-head"]:not(.over), [data-part="
   padding: 0 8px;
   background-color: var(--bg-raised);
   color: var(--tx-hi);
-  font-size: .56rem;
+  font-size: 1.05rem;
+  line-height: 1;
   letter-spacing: .12em;
 }
 html:root[data-style="amp"] [data-part="panel-bar"] { margin: 0 0 var(--sp-2); }
-html:root[data-style="amp"] .dash-title { font-family: var(--amp-cap); letter-spacing: .1em; }
-html:root[data-style="amp"] .dash-title[data-pidx]::before { font-family: var(--amp-cap); color: var(--amp-brass); }
+html:root[data-style="amp"] .dash-title { font-family: var(--amp-pix); font-size: 1.05rem; letter-spacing: .12em; }
+html:root[data-style="amp"] .dash-title[data-pidx]::before { font-family: var(--amp-pix); font-size: .9rem; color: var(--amp-brass); }
 html:root[data-style="amp"] .dash-title:not([data-pidx])::before { color: var(--amp-brass); }
 html:root[data-style="amp"] .pane-head h2 {
-  font-family: var(--amp-cap);
-  font-size: .62rem;
+  font-family: var(--amp-pix);
+  font-size: 1.2rem;
   letter-spacing: .14em;
   color: var(--amp-brass-hi);
   padding-bottom: 3px;
   border-bottom: 1px solid var(--amp-brass-lo);
 }
-html:root[data-style="amp"] .card-sub { font-family: var(--amp-cap); font-size: .54rem; letter-spacing: .12em; color: var(--amp-brass); }
+html:root[data-style="amp"] .card-sub { font-family: var(--amp-pix); font-size: 1rem; letter-spacing: .12em; color: var(--amp-brass); }
 html:root[data-style="amp"] .field-label { font-family: var(--font); text-transform: none; letter-spacing: .01em; }
 
 /* ---- keys: the buttons, tiny bevelled transport keys ---- */
@@ -300,13 +389,13 @@ html:root[data-style="amp"] .stepper button {
 }
 html:root[data-style="amp"] .og-btn:not(.on):not(.primary):not(.running):not(.danger),
 html:root[data-style="amp"] .og-seg button:not(.active),
-html:root[data-style="amp"] .stepper button { box-shadow: 0 0 0 1px #000, var(--amp-bevel); }
+html:root[data-style="amp"] .stepper button { box-shadow: 0 0 0 1px var(--amp-edge), var(--amp-bevel); }
 html:root[data-style="amp"] .og-btn:not(.on):not(.primary):not(.running):not(.danger):hover:not(:disabled),
 html:root[data-style="amp"] .og-seg button:not(.active):hover:not(:disabled),
-html:root[data-style="amp"] .stepper button:hover:not(:disabled) { background-image: linear-gradient(180deg, rgba(255, 255, 255, .26), rgba(255, 255, 255, .06) 46%, rgba(0, 0, 0, .18)); }
+html:root[data-style="amp"] .stepper button:hover:not(:disabled) { background-image: var(--amp-key-up); }
 html:root[data-style="amp"] .og-btn:not(.on):not(.primary):not(.running):not(.danger):active:not(:disabled),
 html:root[data-style="amp"] .og-seg button:not(.active):active:not(:disabled),
-html:root[data-style="amp"] .stepper button:active:not(:disabled) { background-image: var(--amp-key-down); box-shadow: 0 0 0 1px #000, var(--amp-bevel-down); }
+html:root[data-style="amp"] .stepper button:active:not(:disabled) { background-image: var(--amp-key-down); box-shadow: 0 0 0 1px var(--amp-edge), var(--amp-bevel-down); }
 /* lit: the pressed-in face under the state's own border and glow */
 html:root[data-style="amp"] .og-btn.on,
 html:root[data-style="amp"] .og-seg button.active { background-image: var(--amp-key-down); }
@@ -318,25 +407,25 @@ html:root[data-style="amp"] .og-btn { font-size: .78rem; letter-spacing: .01em; 
 html:root[data-style="amp"] .og-btn.sm { font-size: .72rem; }
 html:root[data-style="amp"] .stepper button { font-family: var(--amp-pix); font-size: 1.2rem; }
 
-/* ---- readouts and entry: green glass, pixel digits ---- */
+/* ---- readouts and entry: glass, pixel digits ---- */
 html:root[data-style="amp"] .og-num,
 html:root[data-style="amp"] .value-input,
 html:root[data-style="amp"] .ui-text {
   border-radius: 0;
-  border-color: #000;
+  border-color: var(--amp-edge);
   background-color: var(--amp-glass);
   box-shadow: var(--amp-well);
-  color: var(--amp-lcd-ink);
+  color: var(--amp-ink);
   font-family: var(--amp-pix);
   font-size: 1.2rem;
   line-height: 1.1;
   letter-spacing: .02em;
-  text-shadow: var(--amp-lcd-glow);
+  text-shadow: var(--amp-glow);
 }
 html:root[data-style="amp"] .value-input,
 html:root[data-style="amp"] .ui-text { font-size: 1.1rem; }
 html:root[data-style="amp"] .og-num::selection,
-html:root[data-style="amp"] .value-input::selection { background: rgba(var(--highlight-rgb), .4); color: #fff; }
+html:root[data-style="amp"] .value-input::selection { background: rgba(var(--highlight-rgb), .4); color: var(--tx-hi); }
 html:root[data-style="amp"] .og-num:focus,
 html:root[data-style="amp"] .value-input:focus { border-color: var(--amp-brass); }
 html:root[data-style="amp"] .field-value {
@@ -347,19 +436,20 @@ html:root[data-style="amp"] .field-value {
   font-family: var(--amp-pix);
   font-size: 1.1rem;
   line-height: 1;
-  color: var(--amp-lcd-ink);
-  text-shadow: var(--amp-lcd-glow);
+  color: var(--amp-ink);
+  text-shadow: var(--amp-glow);
 }
-html:root[data-style="amp"] .field-value .unit { font-family: var(--amp-cap); font-size: .46rem; letter-spacing: .06em; text-transform: uppercase; color: var(--tx-val); text-shadow: none; }
-html:root[data-style="amp"] .og-screen { border-radius: 0; border-color: #000; background-color: var(--amp-glass); box-shadow: var(--amp-well); }
+html:root[data-style="amp"] .field-value .unit { font-family: var(--amp-cap); font-size: var(--amp-s8); letter-spacing: .06em; text-transform: uppercase; color: var(--tx-val); text-shadow: none; }
+html:root[data-style="amp"] .og-screen { border-radius: 0; border-color: var(--amp-edge); background-color: var(--amp-pit); box-shadow: var(--amp-well); }
 
 /* selects: a glass well and a keyed arrow plate at the right */
-html:root[data-style="amp"] select {
+html:root[data-style="amp"] select,
+html:root[data-style="amp"] select.og-btn {
   border-radius: 0;
-  border-color: #000;
+  border-color: var(--amp-edge);
   background-color: var(--amp-glass);
   box-shadow: var(--amp-well);
-  color: var(--amp-lcd-ink);
+  color: var(--amp-ink);
   font-family: var(--amp-pix);
   font-size: 1.1rem;
   line-height: 1.15;
@@ -367,21 +457,22 @@ html:root[data-style="amp"] select {
   background-image:
     linear-gradient(45deg, transparent 50%, var(--amp-brass-hi) 50%),
     linear-gradient(135deg, var(--amp-brass-hi) 50%, transparent 50%),
+    linear-gradient(var(--bg-card), var(--bg-card)),
     var(--amp-key);
-  background-position: calc(100% - 11px) 50%, calc(100% - 6px) 50%, 100% 0;
-  background-size: 5px 5px, 5px 5px, 20px 100%;
+  background-position: calc(100% - 11px) 50%, calc(100% - 6px) 50%, 100% 0, 100% 0;
+  background-size: 5px 5px, 5px 5px, 20px 100%, 20px 100%;
   background-repeat: no-repeat;
 }
 html:root[data-style="amp"] select:focus { border-color: var(--amp-brass); }
 html:root[data-style="amp"] option { background-color: var(--bg-sunken); color: var(--tx); font-family: var(--font); }
 
 /* switches: a slot with a metal slider cap and a lamp */
-html:root[data-style="amp"] .og-switch .track { border-radius: 0; background-color: var(--amp-glass); border-color: #000; box-shadow: var(--amp-well); }
-html:root[data-style="amp"] .og-switch .track::after { border-radius: 0; background-color: var(--tx-mut); background-image: var(--amp-key); box-shadow: 0 0 0 1px #000, var(--amp-bevel); }
+html:root[data-style="amp"] .og-switch .track { border-radius: 0; background-color: var(--amp-pit); border-color: var(--amp-edge); box-shadow: var(--amp-well); }
+html:root[data-style="amp"] .og-switch .track::after { border-radius: 0; background-color: var(--tx-mut); background-image: var(--amp-key); box-shadow: 0 0 0 1px var(--amp-edge), var(--amp-bevel); }
 html:root[data-style="amp"] .og-switch input:checked + .track::after { background-color: var(--reality); background-image: linear-gradient(180deg, rgba(255, 255, 255, .35), rgba(255, 255, 255, 0) 55%, rgba(0, 0, 0, .25)); }
 html:root[data-style="amp"] .og-switch input:focus-visible + .track { outline: 2px dotted var(--highlight); outline-offset: 2px; }
 
-/* check boxes and radios: a recessed square, a pixel check; a round lamp */
+/* check boxes and radios: a recessed square with a pixel check; a round lamp */
 html:root[data-style="amp"] input[type="checkbox"]:not([role="switch"]) {
   appearance: none;
   -webkit-appearance: none;
@@ -389,8 +480,8 @@ html:root[data-style="amp"] input[type="checkbox"]:not([role="switch"]) {
   height: 14px;
   margin: 0;
   border-radius: 0;
-  background-color: var(--amp-glass);
-  box-shadow: 0 0 0 1px #000, var(--amp-well);
+  background-color: var(--amp-pit);
+  box-shadow: 0 0 0 1px var(--amp-edge), var(--amp-well);
   vertical-align: -3px;
   cursor: pointer;
 }
@@ -399,7 +490,6 @@ html:root[data-style="amp"] input[type="checkbox"]:not([role="switch"]):checked 
   background-size: 2px 6px, 2px 4px;
   background-position: 7px 3px, 4px 5px;
   background-repeat: no-repeat;
-  transform: none;
 }
 html:root[data-style="amp"] [role="radio"]::before {
   content: '';
@@ -409,50 +499,54 @@ html:root[data-style="amp"] [role="radio"]::before {
   margin-right: 6px;
   vertical-align: -1px;
   border-radius: 50%;
-  background-color: var(--amp-glass);
-  box-shadow: 0 0 0 1px #000, var(--amp-well);
+  background-color: var(--amp-pit);
+  box-shadow: 0 0 0 1px var(--amp-edge), var(--amp-well);
 }
-html:root[data-style="amp"] [role="radio"][aria-checked="true"]::before { background-color: var(--reality); box-shadow: 0 0 0 1px #000, 0 0 6px rgba(var(--reality-rgb), .7); }
+html:root[data-style="amp"] [role="radio"][aria-checked="true"]::before { background-color: var(--reality); box-shadow: 0 0 0 1px var(--amp-edge), 0 0 6px rgba(var(--reality-rgb), .7); }
 
 /* sliders: a thin engraved groove, a chunky ribbed cap */
-html:root[data-style="amp"] input[type="range"] { background-color: #000; box-shadow: 0 1px 0 var(--amp-hi), 0 -1px 0 #000; }
-html:root[data-style="amp"] input[type="range"]::-webkit-slider-thumb {
-  border-radius: 0;
-  border-color: #000;
-  background-color: var(--bg-card);
-  background-image: linear-gradient(90deg, transparent calc(50% - 1px), #000 calc(50% - 1px) calc(50% + 0px), var(--amp-hi) calc(50% + 0px) calc(50% + 1px), transparent calc(50% + 1px)), var(--amp-key);
-  box-shadow: var(--amp-bevel);
-}
+html:root[data-style="amp"] input[type="range"] { background-color: var(--amp-trk); box-shadow: 0 1px 0 var(--amp-hi), 0 -1px 0 var(--amp-edge); }
+html:root[data-style="amp"] input[type="range"]::-webkit-slider-thumb,
 html:root[data-style="amp"] input[type="range"]::-moz-range-thumb {
   border-radius: 0;
-  border-color: #000;
+  border-color: var(--amp-edge);
   background-color: var(--bg-card);
-  background-image: linear-gradient(90deg, transparent calc(50% - 1px), #000 calc(50% - 1px) calc(50% + 0px), var(--amp-hi) calc(50% + 0px) calc(50% + 1px), transparent calc(50% + 1px)), var(--amp-key);
+  background-image: linear-gradient(90deg, transparent calc(50% - 1px), var(--amp-edge) calc(50% - 1px) 50%, var(--amp-hi) 50% calc(50% + 1px), transparent calc(50% + 1px)), var(--amp-key);
   box-shadow: var(--amp-bevel);
 }
 
 /* chips elsewhere, tabs, segmented */
 html:root[data-style="amp"] .chip { border-radius: 0; }
-html:root[data-style="amp"] [role="tab"]:not([data-part="rail-tab"]),
+html:root[data-style="amp"] [role="tab"]:not([data-part="rail-tab"]):not(.rail-tab),
 html:root[data-style="amp"] .tabs button { border-radius: 0; }
-html:root[data-style="amp"] .og-seg button { font-family: var(--amp-cap); font-size: .54rem; letter-spacing: .1em; text-transform: uppercase; }
+html:root[data-style="amp"] .og-seg button { font-family: var(--amp-pix); font-size: 1.05rem; letter-spacing: .06em; text-transform: uppercase; }
 
 /* menus, the tooltip, drawers and popovers: a small window each */
 html:root[data-style="amp"] .ui-menu,
 html:root[data-style="amp"] .ui-sheet,
 html:root[data-style="amp"] .menu-pop,
-html:root[data-style="amp"] .sb-pop,
-html:root[data-style="amp"] #ph-tip {
+html:root[data-style="amp"] .sb-pop {
   border-radius: 0;
   background-color: var(--bg-card);
   background-image: var(--amp-sheen), var(--amp-brush);
-  border: 1px solid #000;
-  box-shadow: 0 0 0 1px var(--amp-brass-lo), var(--amp-bevel), 4px 5px 0 rgba(0, 0, 0, .45);
+  border: 1px solid var(--amp-edge);
+  box-shadow: 0 0 0 1px var(--amp-brass-lo), var(--amp-bevel), 4px 5px 0 rgba(0, 0, 0, .4);
 }
-html:root[data-style="amp"] #ph-tip { outline: none; font-family: var(--amp-pix); font-size: 1rem; line-height: 1.15; color: var(--amp-lcd-ink); background-color: var(--amp-glass); background-image: none; box-shadow: 0 0 0 1px var(--amp-brass-lo), var(--amp-well); }
-html:root[data-style="amp"] .ui-menu-h { background-image: var(--amp-grip); background-size: 4px 100%; border-bottom-color: #000; }
-html:root[data-style="amp"] .ui-menu-t { font-family: var(--amp-cap); font-size: .6rem; letter-spacing: .1em; text-transform: uppercase; padding: 0 6px; background-color: var(--bg-card); width: max-content; }
-html:root[data-style="amp"] .ui-menu-sec { font-family: var(--amp-cap); font-size: .5rem; letter-spacing: .14em; color: var(--amp-brass); border-top-color: var(--amp-brass-lo); }
+html:root[data-style="amp"] #ph-tip {
+  border-radius: 0;
+  outline: none;
+  border: 1px solid var(--amp-edge);
+  font-family: var(--amp-pix);
+  font-size: 1rem;
+  line-height: 1.15;
+  color: var(--amp-ink);
+  text-shadow: var(--amp-glow);
+  background-color: var(--amp-glass);
+  box-shadow: 0 0 0 1px var(--amp-brass-lo), var(--amp-well);
+}
+html:root[data-style="amp"] .ui-menu-h { background-image: var(--amp-grip); background-size: 4px 100%; border-bottom-color: var(--amp-edge); }
+html:root[data-style="amp"] .ui-menu-t { font-family: var(--amp-pix); font-size: 1.05rem; letter-spacing: .08em; text-transform: uppercase; padding: 0 6px; background-color: var(--bg-card); width: max-content; }
+html:root[data-style="amp"] .ui-menu-sec { font-family: var(--amp-cap); font-size: var(--amp-s8); letter-spacing: .14em; color: var(--amp-brass); border-top-color: var(--amp-brass-lo); }
 html:root[data-style="amp"] .ui-menu-i { font-family: var(--amp-pix); font-size: 1.1rem; border-radius: 0; }
 html:root[data-style="amp"] .ui-menu-i:hover:not(:disabled),
 html:root[data-style="amp"] .ui-menu-i:focus-visible,
@@ -463,96 +557,72 @@ html:root[data-style="amp"] .ui-menu-i[data-checked]::after { color: var(--reali
 html:root[data-style="amp"] [data-part="status-row"],
 html:root[data-style="amp"] [data-part="page-foot"] {
   background-image: var(--amp-brush), var(--amp-sheen);
-  border-top: 1px solid #000;
+  border-top: 1px solid var(--amp-edge);
   box-shadow: inset 0 1px 0 var(--amp-hi), 0 -1px 0 var(--amp-brass-lo);
 }
-html:root[data-style="amp"] [data-part="status-row"] .fs-label { font-family: var(--amp-cap); font-size: .5rem; letter-spacing: .12em; }
+html:root[data-style="amp"] [data-part="status-row"] .fs-label { font-family: var(--amp-cap); font-size: var(--amp-s8); letter-spacing: .12em; }
 
 /* scrollbars: a dark track and a bevelled thumb with a grip */
 html:root[data-style="amp"] * { scrollbar-width: auto; scrollbar-color: auto; }
 html:root[data-style="amp"] ::-webkit-scrollbar { width: 14px; height: 14px; }
-html:root[data-style="amp"] ::-webkit-scrollbar-track { background-color: #000; box-shadow: inset 1px 0 0 rgba(255, 255, 255, .06); }
+html:root[data-style="amp"] ::-webkit-scrollbar-track { background-color: var(--amp-trk); box-shadow: inset 1px 0 0 rgba(255, 255, 255, .06); }
 html:root[data-style="amp"] ::-webkit-scrollbar-thumb {
   border-radius: 0;
-  border: 1px solid #000;
+  border: 1px solid var(--amp-edge);
   background-color: var(--bg-card);
   background-image: repeating-linear-gradient(0deg, transparent 0 2px, var(--amp-lo) 2px 3px) center / 6px 9px no-repeat, var(--amp-key);
   box-shadow: var(--amp-bevel);
 }
 html:root[data-style="amp"] ::-webkit-scrollbar-thumb:horizontal { background-image: repeating-linear-gradient(90deg, transparent 0 2px, var(--amp-lo) 2px 3px) center / 9px 6px no-repeat, var(--amp-key); }
 
-/* ---- the hero bar: the scope is a glass window, the tape a seek groove with a chunky cap ---- */
-html:root[data-style="amp"] [data-part="hero"] .spine-rail-host {
-  border-radius: 0;
-  border-color: #000;
-  background-color: var(--amp-glass);
-  box-shadow: var(--amp-well);
-}
-html:root[data-style="amp"] [data-part="hero"] .rail-clip { border-radius: 0; }
-html:root[data-style="amp"] [data-part="hero"] .rail-tape { border-radius: 0; }
-html:root[data-style="amp"] [data-part="hero"] .rail-tape.live { background-color: var(--amp-glass); border-color: #000; box-shadow: var(--amp-well); }
-html:root[data-style="amp"] [data-part="hero"] .rail-tape:not(.live) { border-radius: 0; background-color: var(--amp-glass); }
-html:root[data-style="amp"] [data-part="hero"] .rail-tape-micro:not(.rail-reason) { font-family: var(--amp-cap); font-size: 9px; letter-spacing: .2em; }
-html:root[data-style="amp"] [data-part="hero"] :is(.rail-endcap, .rail-ghost, .rail-win) { font-family: var(--amp-pix); font-size: 15px; letter-spacing: 0; }
-html:root[data-style="amp"] [data-part="hero"] .rail-tape-pip {
-  width: 8px;
-  transform: translateX(-4px);
-  background-color: var(--bg-card);
-  background-image: var(--amp-key);
-  border-inline: 2px solid var(--intent);
-  box-shadow: 0 0 0 1px #000, 0 0 8px rgba(var(--intent-rgb), .6);
-}
-html:root[data-style="amp"] [data-part="hero"] .rail-band-handle::before {
-  width: 7px;
-  background-color: var(--bg-card);
-  background-image: var(--amp-key);
-  border-inline: 2px solid var(--intent);
-  box-shadow: 0 0 0 1px #000, 0 0 8px rgba(var(--intent-rgb), .55);
-}
-html:root[data-style="amp"] [data-part="hero"] .rail-band-label { border-radius: 0; font-family: var(--amp-pix); font-size: 15px; background-color: var(--amp-glass); box-shadow: var(--amp-well); }
-
 /* ---- theme chips: each Theme is a key; the active one is pressed in ---- */
 html:root[data-style="amp"] .swatch { border-radius: 0; background-color: var(--bg-card); background-image: var(--amp-key); }
-html:root[data-style="amp"] .swatch:not(.active) { box-shadow: 0 0 0 1px #000, var(--amp-bevel); }
+html:root[data-style="amp"] .swatch:not(.active) { box-shadow: 0 0 0 1px var(--amp-edge), var(--amp-bevel); }
 html:root[data-style="amp"] .swatch.active { background-image: var(--amp-key-down); }
-html:root[data-style="amp"] .swatch .name { font-family: var(--amp-cap); font-size: .54rem; letter-spacing: .1em; }
-html:root[data-style="amp"] .swatch .chassis { border-radius: 0; border-color: #000; }
+html:root[data-style="amp"] .swatch .name { font-family: var(--amp-pix); font-size: 1.05rem; letter-spacing: .06em; }
+html:root[data-style="amp"] .swatch .chassis { border-radius: 0; border-color: var(--amp-edge); }
 html:root[data-style="amp"] .swatch .dot { border-radius: 0; }
-html:root[data-style="amp"] textarea { border-radius: 0; border-color: #000; background-color: var(--amp-glass); box-shadow: var(--amp-well); font-family: var(--amp-pix); font-size: 1rem; color: var(--amp-lcd-ink); }
-html:root[data-style="amp"] .color-input { border-radius: 0; border-color: #000; box-shadow: var(--amp-bevel); }
-html:root[data-style="amp"] .ramp { border-radius: 0; border-color: #000; }
+html:root[data-style="amp"] textarea { border-radius: 0; border-color: var(--amp-edge); background-color: var(--amp-glass); box-shadow: var(--amp-well); font-family: var(--amp-pix); font-size: 1rem; color: var(--amp-ink); }
+html:root[data-style="amp"] .color-input { border-radius: 0; border-color: var(--amp-edge); box-shadow: var(--amp-bevel); }
+html:root[data-style="amp"] .ramp { border-radius: 0; border-color: var(--amp-edge); }
 
 /* ---- the Log page: the list is a playlist, the filters are keys ---- */
-html:root[data-style="amp"] .logpane .tabs button { font-family: var(--amp-cap); font-size: .54rem; letter-spacing: .12em; text-transform: uppercase; }
-html:root[data-style="amp"] .logpane .q { border-radius: 0; border-color: #000; background-color: var(--amp-glass); box-shadow: var(--amp-well); font-family: var(--amp-pix); font-size: 1.1rem; color: var(--amp-lcd-ink); }
+html:root[data-style="amp"] .logpane .tabs button { font-family: var(--amp-pix); font-size: 1.05rem; letter-spacing: .08em; text-transform: uppercase; }
+html:root[data-style="amp"] .logpane .q { border-radius: 0; border-color: var(--amp-edge); background-color: var(--amp-glass); box-shadow: var(--amp-well); font-family: var(--amp-pix); font-size: 1.1rem; color: var(--amp-ink); }
 html:root[data-style="amp"] .logpane .lvt { border-radius: 0; background-color: var(--bg-card); background-image: var(--amp-key); font-family: var(--amp-pix); }
 html:root[data-style="amp"] .logpane .lvt b { font-family: var(--amp-pix); font-size: 1rem; }
 html:root[data-style="amp"] .logpane .feed { background-image: repeating-linear-gradient(180deg, transparent 0 calc(1.9rem - 1px), rgba(var(--reality-rgb), .035) calc(1.9rem - 1px) 1.9rem); }
 html:root[data-style="amp"] .logpane .head time,
 html:root[data-style="amp"] .logpane .n { font-family: var(--amp-pix); font-size: .95rem; }
-html:root[data-style="amp"] .logpane .head:hover { background-color: color-mix(in srgb, var(--intent) 30%, var(--amp-glass)); }
-html:root[data-style="amp"] .logpane .chip { font-family: var(--amp-cap); font-size: .46rem; letter-spacing: .08em; border-radius: 0; background-color: var(--bg-card); border-color: #000; box-shadow: var(--amp-bevel); }
+html:root[data-style="amp"] .logpane .head:hover { background-color: color-mix(in srgb, var(--intent) 30%, var(--amp-pit)); }
+html:root[data-style="amp"] .logpane .chip { font-family: var(--amp-cap); font-size: var(--amp-s8); letter-spacing: .08em; border-radius: 0; background-color: var(--bg-card); border-color: var(--amp-edge); box-shadow: var(--amp-bevel); }
 html:root[data-style="amp"] .logpane .detail { border-left-color: var(--amp-brass-lo); }
 
-/* ---- the Link page: facts are a read-out table on glass ---- */
+/* ---- the Link page: facts are a read-out table ---- */
 html:root[data-style="amp"] .pane-sec > .pane-head { border-bottom: 1px solid var(--amp-brass-lo); }
 html:root[data-style="amp"] .pane-facts .mono { font-family: var(--amp-pix); font-size: 1.1rem; letter-spacing: 0; }
-html:root[data-style="amp"] .link-page .og-screen { background-image: var(--amp-brush); }
 
-/* ---- the funscript player: the stage is a viewing glass, the seek bar a groove with a chunky cap ---- */
+/* ---- the funscript player: the stage a viewing glass, the seek bar a groove, the clock an LCD ---- */
 html:root[data-style="amp"] .fsp .ui-stage-box { border-radius: 0; background-color: #000; box-shadow: var(--amp-well), 0 0 0 1px var(--amp-brass-lo); }
-html:root[data-style="amp"] .fsp-hb-time {
+html:root[data-style="amp"] .fsp-hb-time,
+html:root[data-style="amp"] .fsp-el,
+html:root[data-style="amp"] .fsp-rem {
   font-family: var(--amp-pix);
-  font-size: 1.15rem;
-  line-height: 1;
-  color: var(--amp-lcd-ink);
-  text-shadow: var(--amp-lcd-glow);
+  font-size: 1.2rem;
+  line-height: 1.2;
+  padding: 1px 6px;
+  color: var(--amp-ink);
+  text-shadow: var(--amp-glow);
   background-color: var(--amp-glass);
   box-shadow: var(--amp-well);
-  padding: 4px 8px;
 }
+html:root[data-style="amp"] .fsp-src,
+html:root[data-style="amp"] .fsp-libh { background-color: var(--bg-raised); background-image: var(--amp-grip); background-size: 4px 100%; box-shadow: 0 0 0 1px var(--amp-edge), inset 0 1px 0 var(--amp-hi); }
+html:root[data-style="amp"] .fsp-h { padding: 0 8px; background-color: var(--bg-raised); line-height: 1.2; }
+html:root[data-style="amp"] .fsp-tr .fsp-rate,
+html:root[data-style="amp"] .fsp-zoom output { font-family: var(--amp-pix); font-size: 1.1rem; }
 html:root[data-style="amp"] .ui-scrub-track,
-html:root[data-style="amp"] .ui-scrub:is(:hover, [data-drag]) .ui-scrub-track { height: 6px; border-radius: 0; background-color: #000; box-shadow: 0 1px 0 var(--amp-hi), inset 0 1px 0 rgba(0, 0, 0, .9); }
+html:root[data-style="amp"] .ui-scrub:is(:hover, [data-drag]) .ui-scrub-track { height: 6px; border-radius: 0; background-color: var(--amp-trk); box-shadow: 0 1px 0 var(--amp-hi), inset 0 1px 0 rgba(0, 0, 0, .9); }
 html:root[data-style="amp"] .ui-scrub-buf { background-color: var(--amp-brass-lo); }
 html:root[data-style="amp"] .ui-scrub-played { background-color: transparent; background-image: repeating-linear-gradient(90deg, var(--reality) 0 3px, transparent 3px 4px); }
 html:root[data-style="amp"] .ui-scrub-played::after {
@@ -562,28 +632,23 @@ html:root[data-style="amp"] .ui-scrub-played::after {
   translate: 0 -8px;
   border-radius: 0;
   background-color: var(--bg-card);
-  background-image: linear-gradient(90deg, transparent calc(50% - 1px), #000 calc(50% - 1px) 50%, var(--amp-hi) 50% calc(50% + 1px), transparent calc(50% + 1px)), var(--amp-key);
-  box-shadow: 0 0 0 1px #000, var(--amp-bevel);
+  background-image: linear-gradient(90deg, transparent calc(50% - 1px), var(--amp-edge) calc(50% - 1px) 50%, var(--amp-hi) 50% calc(50% + 1px), transparent calc(50% + 1px)), var(--amp-key);
+  box-shadow: 0 0 0 1px var(--amp-edge), var(--amp-bevel);
   transform: none;
 }
-html:root[data-style="amp"] .ui-scrub-tip { border-radius: 0; font-family: var(--amp-pix); font-size: 1rem; color: var(--amp-lcd-ink); background-color: var(--amp-glass); border-color: #000; }
-html:root[data-style="amp"] .ui-split::after { height: 5px; translate: 0 -2.5px; background-color: var(--bg-card); background-image: var(--amp-grip); box-shadow: 0 0 0 1px #000, var(--amp-bevel); }
+html:root[data-style="amp"] .ui-scrub-tip { border-radius: 0; font-family: var(--amp-pix); font-size: 1rem; color: var(--amp-ink); background-color: var(--amp-glass); border-color: var(--amp-edge); }
+html:root[data-style="amp"] .ui-split::after { height: 5px; translate: 0 -2.5px; background-color: var(--bg-card); background-image: var(--amp-grip); box-shadow: 0 0 0 1px var(--amp-edge), var(--amp-bevel); }
 html:root[data-style="amp"] .ui-split:is(:hover, [data-drag], :focus-visible)::after { background-color: var(--amp-brass-lo); }
-html:root[data-style="amp"] .ui-tile-shot { border-radius: 0; border-color: #000; }
-html:root[data-style="amp"] .ui-tile-b[aria-current="true"] { background-color: color-mix(in srgb, var(--intent) 30%, var(--amp-glass)); }
+html:root[data-style="amp"] .ui-tile-shot { border-radius: 0; border-color: var(--amp-edge); }
+html:root[data-style="amp"] .ui-tile-b[aria-current="true"] { background-color: color-mix(in srgb, var(--intent) 30%, var(--amp-pit)); }
 html:root[data-style="amp"] .ui-tile-t { font-family: var(--amp-pix); font-size: 1.1rem; }
 html:root[data-style="amp"] .ui-tile-m,
 html:root[data-style="amp"] .ui-list-page,
 html:root[data-style="amp"] .ui-list-count { font-family: var(--amp-pix); font-size: 1rem; }
-html:root[data-style="amp"] .ui-list-body { background-color: var(--amp-glass); box-shadow: var(--amp-well); }
-html:root[data-style="amp"] .fsp-tlbox, html:root[data-style="amp"] .fsp-tl { border-radius: 0; }
-html:root[data-style="amp"] .fsp-el,
-html:root[data-style="amp"] .fsp-rem { font-family: var(--amp-pix); font-size: 1.2rem; line-height: 1.2; padding: 1px 6px; color: var(--amp-lcd-ink); text-shadow: var(--amp-lcd-glow); background-color: var(--amp-glass); box-shadow: var(--amp-well); }
-html:root[data-style="amp"] .fsp-tr .fsp-rate,
-html:root[data-style="amp"] .fsp-zoom output { font-family: var(--amp-pix); font-size: 1.1rem; }
+html:root[data-style="amp"] .ui-list-body { background-color: var(--amp-pit); box-shadow: var(--amp-well); }
 html:root[data-style="amp"] .fsp-ov,
 html:root[data-style="amp"] .fsp-dt,
-html:root[data-style="amp"] .fsp-lane { border-radius: 0; border-color: #000; background-color: var(--amp-glass); box-shadow: var(--amp-well); }
-html:root[data-style="amp"] .fsp-vbox:has(> .fsp-empty:not([hidden])) { border: 1px solid #000; }
+html:root[data-style="amp"] .fsp-lane { border-radius: 0; border-color: var(--amp-edge); background-color: var(--bg-sunken); box-shadow: var(--amp-well); }
+html:root[data-style="amp"] .fsp-vbox:has(> .fsp-empty:not([hidden])) { border: 1px solid var(--amp-edge); }
 html:root[data-style="amp"] .fsp-scrub::after,
-html:root[data-style="amp"] .fsp-rh::after { border-radius: 0; background-color: var(--bg-card); background-image: var(--amp-key); box-shadow: 0 0 0 1px #000, var(--amp-bevel); }
+html:root[data-style="amp"] .fsp-rh::after { border-radius: 0; background-color: var(--bg-card); background-image: var(--amp-key); box-shadow: 0 0 0 1px var(--amp-edge), var(--amp-bevel); }
