@@ -452,6 +452,24 @@ html:root[data-style="luna"] #ph-tip {
   box-shadow: 2px 2px 3px rgba(0, 0, 0, .35);
 }
 
+/* ---- the close prompt: a small dialog with a blue title bar ---- */
+html:root[data-style="luna"] [data-part="caption"] [role="dialog"] {
+  border: 1px solid var(--xp-frame);
+  border-radius: 8px 8px 0 0;
+  overflow: hidden;
+  box-shadow: 3px 3px 6px rgba(0, 0, 0, .4);
+}
+html:root[data-style="luna"] [data-part="caption"] [role="dialog"] > p:first-child {
+  margin: calc(var(--sp-3) * -1) calc(var(--sp-3) * -1) var(--sp-1);
+  padding: var(--sp-1) var(--sp-3);
+  color: var(--xp-ink);
+  font-family: var(--font-head);
+  font-weight: 700;
+  text-shadow: 1px 1px 0 var(--xp-ink-sh);
+  background-color: var(--xp-title-bg);
+  background-image: var(--xp-title);
+}
+
 /* ---- the window's status bar ---- */
 html:root[data-style="luna"] [data-part="page-foot"] {
   background-color: var(--bg-raised);
