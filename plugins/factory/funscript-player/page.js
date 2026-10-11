@@ -69,7 +69,7 @@ export function registerPlayerPage(api, player, spec, settings) {
     const toggle = (on) => {
       writePref(api, 'settingsOpen', on);
       setOpen(on);
-      if (inst) inst.update();
+      if (inst) inst.render();
       if (on && sheet.form === 'slot' && getComputedStyle(sheet).position === 'static') sheet.scrollIntoView({ block: 'nearest' });
     };
     el.append(root);

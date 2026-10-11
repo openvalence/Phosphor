@@ -1208,7 +1208,7 @@ export function tile(o = {}) {
   const el = h('div', { class: cls('ui-tile', o), role: 'listitem' }, b, o.actions && o.actions.length ? h('span', { class: 'ui-tile-act' }, o.actions) : null);
   b.addEventListener('click', (e) => { if (o.onClick) o.onClick(e); });
   def(el, {
-    current: { get: () => b.getAttribute('aria-current') === 'true', set(v) { b.setAttribute('aria-current', String(!!v)); } },
+    current: { get: () => b.getAttribute('aria-current') === 'true', set(v) { attr(b, 'aria-current', String(!!v)); } },
     button: { value: b },
   });
   el.current = o.current;

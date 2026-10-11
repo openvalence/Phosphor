@@ -655,10 +655,12 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     // Every telemetry sample lands here: the card re-renders only when what it shows from the hub moved (the gate, a
     // trial, the speed ceiling, the oscillator role), never per sample (ph-bw0o); position drawing is the frame's.
     update() {
-      if (gate() && active()) { stop('held', '', true); return; }
-      const c = fields ? ceilingOf(api, fields) : {};
-      const k = gate() + '|' + !!api.trialPending + '|' + c.vmax + '|' + c.spanMm + '|' + !!(osc && osc.absent);
-      if (k !== hubSeen) { hubSeen = k; changed(); }
+      const g = gate(), c = fields ? ceilingOf(api, fields) : {};
+      const k = g + '|' + !!api.trialPending + '|' + c.vmax + '|' + c.spanMm + '|' + !!(osc && osc.absent);
+      const moved = k !== hubSeen;
+      hubSeen = k;
+      if (g && active()) stop('held', '', true);
+      else if (moved) changed();
     },
     dispose() {
       if (active()) stop('held');
@@ -1183,12 +1185,15 @@ export function createPlayer(api) {
     ctl.setFields(fields);
     kick();
     return {
-      // Every telemetry sample of a claimed field lands here: ctl.update renders every view, a frame only on a change.
+      // Every telemetry sample of a claimed field lands here: ctl.update renders the views only when the hub state they
+      // show moved, a frame only on a change.
       update() {
         quiet = true;
         try { ctl.update(); } finally { quiet = false; }
         view.poll();
       },
+      /** The card drawn again now, for the page's own changes (its Settings), which update() does not imply. */
+      render() { view.render(); },
       unmount() {
         const i = views.indexOf(view);
         if (i < 0) return;
@@ -1548,7 +1553,7 @@ export function createPlayer(api) {
     if (opts.page) window.addEventListener('resize', recompose);
     ro.observe(root);
 
-    let tlKey = null, durSeen = -1, markSeen = null;
+    let tlKey = null, durSeen = -1;
     function render() {
       const ceil = ceilingOf(api, fields);
       const rt = video.playbackRate || 1, key = [st.script, st.shaped, st.T, ceil.vmax, ceil.spanMm, rt];
@@ -1592,8 +1597,7 @@ export function createPlayer(api) {
       libseg.value = lv;
       if (qv && qSeen !== queue) { qSeen = queue; qv.render(); }
       autoB.pressed = autoplay;
-      const mk = (st.scene ? st.scene.key : '') + '\n' + on + '\n' + queue.map((e) => e.key).join('\n');
-      if (library && mk !== markSeen) { markSeen = mk; library.mark({ now: st.scene ? st.scene.key : null, playing: on, queued: queue.map((e) => e.key) }); }
+      if (library) library.mark({ now: st.scene ? st.scene.key : null, playing: on, queued: queue.map((e) => e.key) });
       // The handheld Library and Queue views hide the bar (visibility); its Rail button leaves the count too (ph-5wsk.5).
       railB.shown = !(comp === 'handheld' && st.view !== 'player' && !media);
       setText(title, st.scene ? st.scene.title : '');

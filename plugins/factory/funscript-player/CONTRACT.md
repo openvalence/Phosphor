@@ -665,7 +665,9 @@ export function compositionOf(width), clampOffset(v), windowShare(v, lo, hi), ce
 export function pageClass(bucket, w, h);   // -> 'portrait' | 'landscape' | 'desktop': the page's class (PR1-PR4),
   // buckets 1 and 2 the phone (landscape when w > h), 3 and up the desktop
 // Player = {
-//   mount(el, fields, opts = {}) -> { update(), unmount() },
+//   mount(el, fields, opts = {}) -> { update(), render(), unmount() },
+//       update(): the host's, per claimed-field change; the card re-renders only when the hub state it shows moved
+//         (the gate, a trial, the speed ceiling, the oscillator role; ph-bw0o). render(): draw now (page.js, its Settings).
 //       fields: {target, dur, pos?, lo?, hi?, vmax?, patRun?, advRun?, planEl?, planDur?} from the hero spec;
 //       opts.fullscreen: the bar offers media fullscreen, one mode, always bare (PR8; the page mount, page.js); the hover
 //         bar exists only there, its row the player bar's own buttons (PR9); phone rotation enters and leaves it (PR17)
