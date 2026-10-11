@@ -11,7 +11,8 @@
  * the hub echoes, the row settles and staging empties. Last, the built-in
  * machine: Connect boots the real Nucleus twin (wasm, in a worker) and joins
  * it over no socket, the row reads its version and offers Stop, its state
- * blob persists, nothing is remembered, and it boots again from that state.
+ * blob persists, nothing is remembered, and it boots again from that state; idle, it
+ * leaves the Dash's DOM alone, and a hidden page comes back to it live.
  *
  * Run: node test/virtual.test.mjs [--shots <dir>]   (no device needed)
  */
@@ -237,6 +238,29 @@ await vrow().getByRole('button', { name: 'Stop' }).click();
 ok('Stop ends the session', await until(async () => vrow().getByRole('button', { name: 'Connect' }).isVisible()));
 await vrow().getByRole('button', { name: 'Connect' }).click();
 ok('a second boot from the saved state reaches LIVE', await until(async () => (await chip()) === 'live', 15000), await chip());
+// The twin republishes its parked carriage every hub tick (RFC-113): a push that changes nothing reaches
+// no plugin's update() and no footer counter, so the Dash's DOM stands still (the channel heat moves on
+// its own 2 Hz tick, ChannelHeat.svelte).
+await openTab('machine');
+await page.waitForTimeout(1500);
+const writes = await page.evaluate(() => new Promise((done) => {
+  const by = {};
+  const at = (t) => { const e = t.nodeType === 1 ? t : t.parentElement; return e.tagName.toLowerCase() + '.' + (e.classList[0] || '') + '<' + (e.parentElement?.classList[0] || ''); };
+  const mo = new MutationObserver((l) => { for (const m of l) { if ((m.target.nodeType === 1 ? m.target : m.target.parentElement).closest('.heat')) continue; const k = at(m.target) + ' ' + (m.attributeName || m.type); by[k] = (by[k] || 0) + 1; } });
+  mo.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+  setTimeout(() => { mo.disconnect(); done(Object.entries(by).sort((a, b) => b[1] - a[1])); }, 2000);
+}));
+const nWrites = writes.reduce((a, w) => a + w[1], 0);
+ok('idle on the Dash, the DOM takes under 60 writes in 2 s (a write per push is hundreds)', nWrites < 60, nWrites + ' ' + JSON.stringify(writes.slice(0, 4)));
+// A hidden page closes its session (machine.svelte.js, the alt-tab problem) and keeps the machine.
+const vis = (v) => page.evaluate((v) => {
+  Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => v });
+  document.dispatchEvent(new Event('visibilitychange'));
+}, v);
+await vis('hidden');
+ok('hidden, the session closes', await until(async () => (await chip()) !== 'live'), await chip());
+await vis('visible');
+ok('shown again, the built-in machine is LIVE again', await until(async () => (await chip()) === 'live', 15000), await chip());
 // RFC-109: the twin's 0x1010, its modeled supply, on the Health view's Machine card.
 await openTab('log');
 await page.click('[data-feed="health"]');

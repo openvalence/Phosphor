@@ -83,7 +83,8 @@
     const open = new Map(health.incidents.filter((i) => !i.closed).map((i) => [i.cond, i]));
     // The stalled-updates incident outlives its gap (its hold); it speaks and warns only while a gap past
     // GAP_MS is really there, in the gap's own length.
-    const gap = machine.stats.lastRxMs ? Date.now() - machine.stats.lastRxMs : 0;
+    // On the tick, never per frame: lastRxMs moves with every arrival.
+    const rx = untrack(() => machine.stats.lastRxMs), gap = rx ? Date.now() - rx : 0;
     const stalled = open.get('updates-stalled');
     if (stalled) {
       if (gap > GAP_MS) open.set('updates-stalled', { ...stalled, text: 'No machine updates for ' + secs(gap) });

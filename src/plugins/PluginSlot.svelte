@@ -5,13 +5,14 @@
    * Constraints:
    * - Plugins are not Svelte components (DESIGN §9 ABI insurance): the slot
    *   hands the plugin a bare element and its claimed fields, and calls the
-   *   instance's update() whenever a claimed field's value or write status
-   *   changes. Svelte internals never reach plugin code.
+   *   instance's update() whenever a claimed field's value, write status or
+   *   staleness changes, never for a push that changes none of them. Svelte
+   *   internals never reach plugin code.
    * - Every call into the plugin goes through the host's guards; a throw
    *   drops this hero and returns its fields to the generic renderer.
    */
   import { untrack } from 'svelte';
-  import { machine } from '../model/machine.svelte.js';
+  import { machine, freshness, staleReason } from '../model/machine.svelte.js';
   import { displayValue, statusOf } from '../model/shadow.svelte.js';
   import { CH_CONTROL_OWNER } from '../../../Valence/clients/js/index.js';
 
@@ -41,15 +42,20 @@
     };
   });
 
+  // What update() last saw: a STATE push that changes none of it (a parked carriage republished every hub
+  // tick, RFC-113) calls no update().
+  let seen = [];
+  // One level deep: a republished snapshot is a new object with the same fields.
+  const same = (a, b) => Object.is(a, b) || (!!a && !!b && typeof a === 'object' && typeof b === 'object'
+    && Object.keys(a).length === Object.keys(b).length && Object.keys(a).every((k) => Object.is(a[k], b[k])));
   $effect(() => {
     // Subscribe to every claimed field's reported value and write status,
     // instance lists (claimRoles `instances`) included, and to the link,
     // latch and rail-owner facts api.gate and api.stale read.
+    const now = [];
     const watch = (f) => {
       if (!f || !f.uid) return;
-      displayValue(f, machine.samples[f.channelId]);
-      statusOf(f);
-      void machine.sampleTs[f.channelId];
+      now.push(displayValue(f, machine.samples[f.channelId]), statusOf(f), staleReason(freshness(f.channelId)));
     };
     const fs = sameFields;
     for (const k in fs) {
@@ -57,8 +63,10 @@
       if (Array.isArray(f)) for (const m of f) for (const j in m) watch(m[j]);
       else watch(f);
     }
-    void machine.link.phase; void machine.link.roles; void machine.link.stale; void machine.link.sessionId;
-    void machine.safety; void machine.samples[CH_CONTROL_OWNER];
+    now.push(machine.link.phase, machine.link.roles, machine.link.stale, machine.link.sessionId,
+      machine.safety, machine.samples[CH_CONTROL_OWNER], inst);
+    if (now.length === seen.length && now.every((v, k) => same(v, seen[k]))) return;
+    seen = now;
     const i = inst;
     untrack(() => host?.updateHero(i));
   });
