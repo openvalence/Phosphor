@@ -1,59 +1,473 @@
-/* Jelly: pinstripes, glossy capsules and a blue jelly for the primary. Every gloss is
-   a white-to-clear gradient over a chassis surface, so dark ink only meets more
-   light behind it. */
+/* Jelly: a 2001 gel desktop in your own drawing. Pinstriped windows, a title bar with three
+   gel spheres on the left (glyphs on hover), lickable capsule buttons with a specular half,
+   a default button that breathes, blue gel scrollbar thumbs, glossy tabs, frosted menus.
+
+   Three palettes by data-variant: jelly (blue gel on pinstripes), jelly-graphite (the same gel
+   in gray) and jelly-metal (blue gel on brushed metal). Every gloss is a white-to-clear layer
+   over a chassis surface, so the text tokens only meet more light behind them. The two
+   dark-selection faces (menu hover, rail tab) carry white text of their own, 4.5:1 or better
+   on the darkest stop of the gradient that is under it. */
 html:root[data-style="jelly"] {
-  --font: 'Lucida Grande', 'Helvetica Neue', Helvetica, 'Segoe UI', Arial, sans-serif;
-  --font-head: 'Lucida Grande', 'Helvetica Neue', Helvetica, 'Segoe UI', Arial, sans-serif;
+  --font: 'Lucida Grande', 'Lucida Sans Unicode', 'Lucida Sans', 'Helvetica Neue', Helvetica, 'Segoe UI', Arial, sans-serif;
+  --font-head: 'Lucida Grande', 'Lucida Sans Unicode', 'Lucida Sans', 'Helvetica Neue', Helvetica, 'Segoe UI', Arial, sans-serif;
   --frame-w: 1px;
-  --tex-page: repeating-linear-gradient(180deg, rgba(120, 130, 150, .09) 0 2px, transparent 2px 4px);
+  /* The gel: rgb triple of the glow, three stops, the rim, the selection pair. */
+  --jl-glow: 64, 146, 255;
+  --jl-hi: #9CCBFF;
+  --jl-mid: #3F8AEE;
+  --jl-lo: #1B5FCC;
+  --jl-edge: #6E8DBA;
+  --jl-edge-lo: #4B6B9C;
+  --jl-edge-deep: #1B4E9E;
+  --jl-sel-a: #2A72DB;
+  --jl-sel-b: #1858C4;
+  --jl-title-ink: #2B2F36;
+  /* The sheen on every glossy face: a white half with a soft edge at the middle. */
+  --jl-gloss: linear-gradient(180deg, rgba(255, 255, 255, .95) 0, rgba(255, 255, 255, .55) 46%, rgba(255, 255, 255, 0) 52%);
+  --jl-bounce: radial-gradient(ellipse 85% 60% at 50% 100%, rgba(255, 255, 255, .8), rgba(255, 255, 255, 0));
+  --jl-body: linear-gradient(180deg, rgba(var(--jl-glow), 0) 40%, rgba(var(--jl-glow), .34));
+  --jl-face: var(--jl-gloss), var(--jl-bounce), var(--jl-body);
+  --jl-groove: linear-gradient(180deg, rgba(var(--shade-rgb), .18), rgba(var(--shade-rgb), .04) 55%, rgba(255, 255, 255, .5));
+  --jl-pin: repeating-linear-gradient(180deg, rgba(255, 255, 255, .6) 0 2px, rgba(var(--shade-rgb), .05) 2px 4px);
+  --tex-page: var(--jl-pin);
   --tex-page-size: auto;
-  --gloss: linear-gradient(180deg, rgba(255, 255, 255, .95), rgba(255, 255, 255, .25) 50%, rgba(255, 255, 255, 0) 51%, rgba(255, 255, 255, .25));
+  --tex-card: linear-gradient(180deg, rgba(255, 255, 255, .75), rgba(255, 255, 255, 0) 38%);
+  --tex-card-size: 100% 100%;
+  /* A tick and an arrow pair, white, for the gel faces that carry them. */
+  --jl-tick: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.2 6.4l2.6 2.6 5-5.6' fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --jl-arrows: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 22'%3E%3Cpath d='M7.5 9.5L11 6l3.5 3.5M7.5 12.5L11 16l3.5-3.5' fill='none' stroke='%23fff' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
+html:root[data-style="jelly"][data-variant="jelly-graphite"] {
+  --jl-glow: 128, 138, 158;
+  --jl-hi: #D3D8E1;
+  --jl-mid: #8A93A4;
+  --jl-lo: #5B6475;
+  --jl-edge: #8D95A4;
+  --jl-edge-lo: #626B7C;
+  --jl-edge-deep: #3F4859;
+  --jl-sel-a: #5E6B82;
+  --jl-sel-b: #424D63;
+}
+/* Brushed metal: horizontal streaks from stretched noise over the chassis gray, and a soft bar of light. */
+html:root[data-style="jelly"][data-variant="jelly-metal"] {
+  --jl-brush: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='160'%3E%3Cfilter id='n' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.004 .85' numOctaves='2' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 0 .2'/%3E%3C/filter%3E%3Crect width='320' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+  --jl-pin: var(--jl-brush), linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, .28) 22%, rgba(var(--shade-rgb), .04) 42%, rgba(255, 255, 255, .24) 66%, rgba(var(--shade-rgb), .05) 88%, rgba(255, 255, 255, .12));
+  --tex-page: var(--jl-pin);
+  --tex-card: linear-gradient(180deg, rgba(255, 255, 255, .6), rgba(255, 255, 255, 0) 38%);
+}
+
+/* ======== the title bar: pinstripes (or brushed metal), the three spheres on the left ======== */
+html:root[data-style="jelly"] [data-part="top"] { background-color: transparent; }
 html:root[data-style="jelly"] [data-part="bar"] {
   background-color: var(--bg-raised);
-  background-image: var(--gloss);
-  box-shadow: inset 0 -1px 0 var(--line-2);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, .85), rgba(255, 255, 255, 0) 62%), var(--jl-pin);
+  box-shadow: inset 0 -1px 0 var(--line-3), inset 0 1px 0 rgba(255, 255, 255, .9);
+  color: var(--jl-title-ink);
 }
-html:root[data-style="jelly"] [data-part="bar"] .wordmark { font-weight: 700; letter-spacing: 0; text-shadow: 0 1px 0 rgba(255, 255, 255, .9); }
-html:root[data-style="jelly"] [data-part="bar"] .chip { border-radius: 999px; padding-inline: 8px; background-image: var(--gloss); }
-html:root[data-style="jelly"] [data-part="strip"] { background-image: var(--gloss); }
-html:root[data-style="jelly"] [data-part="hero"] { background-image: var(--tex-page); }
-html:root[data-style="jelly"] [data-part="stop-frame"] { outline: 1px solid var(--line-2); outline-offset: 4px; }
-html:root[data-style="jelly"] [data-part="rail"] { background-image: var(--tex-page); border-radius: 0 12px 12px 0; border-color: var(--line-2); }
-html:root[data-style="jelly"] [data-part="rail-label"] { font-weight: 700; text-transform: none; letter-spacing: 0; font-size: 11px; }
+html:root[data-style="jelly"] [data-part="bar"]:has([data-part="caption"]) { padding-left: 0; padding-right: max(var(--gap), var(--corner-tr, 0px)); }
+html:root[data-style="jelly"] [data-part="bar"] .wordmark {
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--jl-title-ink);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, .95);
+}
+html:root[data-style="jelly"] [data-part="bar"] .chip {
+  border-radius: 999px;
+  padding-inline: 9px;
+  border-color: var(--jl-edge);
+  background-color: var(--bg-card);
+  background-image: linear-gradient(180deg, rgba(var(--shade-rgb), .1), rgba(var(--shade-rgb), 0) 40%, rgba(255, 255, 255, .6));
+  box-shadow: inset 0 1px 2px rgba(var(--shade-rgb), .25), 0 1px 0 rgba(255, 255, 255, .85);
+}
+/* The sphere beads of the channel heat read as little jellies. */
+html:root[data-style="jelly"] [aria-label="Channel activity"] .blk,
+html:root[data-style="jelly"] .heat.one .blk { border-radius: 50%; box-shadow: inset 0 1px 1px rgba(255, 255, 255, .85), inset 0 -1px 1px rgba(var(--shade-rgb), .3); }
+
+/* The spheres: close, minimize, zoom, left to right (the DOM order is kept for the keyboard). */
+html:root[data-style="jelly"] [data-part="caption"] { order: -1; margin-left: 6px; }
+html:root[data-style="jelly"] [data-part="caption-btn"][data-cap="close"] { order: 0; --sp-hi: #FFB3A8; --sp-mid: #F2503F; --sp-lo: #B8180C; --sp-rim: #8A1308; --sp-ink: #5C0A04; }
+html:root[data-style="jelly"] [data-part="caption-btn"][data-cap="min"] { order: 1; --sp-hi: #FFE6A0; --sp-mid: #F6B72C; --sp-lo: #BF7C00; --sp-rim: #8C5A00; --sp-ink: #5A3700; }
+html:root[data-style="jelly"] [data-part="caption-btn"][data-cap="max"] { order: 2; --sp-hi: #B7F2A5; --sp-mid: #4CC63A; --sp-lo: #1E8A14; --sp-rim: #146B0C; --sp-ink: #0B4207; }
+html:root[data-style="jelly"] [data-part="caption-btn"] { position: relative; width: 30px; background: transparent; color: var(--sp-ink); }
+html:root[data-style="jelly"] [data-part="caption-btn"]::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  border-radius: 50%;
+  border: 1px solid var(--sp-rim);
+  background:
+    radial-gradient(ellipse 52% 34% at 50% 24%, rgba(255, 255, 255, .95), rgba(255, 255, 255, 0)),
+    radial-gradient(ellipse 70% 52% at 50% 108%, var(--sp-hi), rgba(255, 255, 255, 0)),
+    radial-gradient(circle at 50% 60%, var(--sp-mid) 0, var(--sp-lo) 100%);
+  box-shadow: inset 0 -1px 2px rgba(var(--shade-rgb), .25), 0 1px 1px rgba(255, 255, 255, .8), 0 1px 3px rgba(var(--shade-rgb), .3);
+}
+html:root[data-style="jelly"] [data-part="caption-btn"] svg {
+  position: relative;
+  width: 9px;
+  height: 9px;
+  stroke-width: 1.9;
+  opacity: 0;
+  transition: opacity var(--t-quick) var(--ease-out);
+}
+/* The zoom sphere's glyph is a plus drawn on its own svg box. */
+html:root[data-style="jelly"] [data-part="caption-btn"][data-cap="max"] svg {
+  background: linear-gradient(currentColor, currentColor) center / 100% 1.8px no-repeat, linear-gradient(currentColor, currentColor) center / 1.8px 100% no-repeat;
+}
+html:root[data-style="jelly"] [data-part="caption-btn"][data-cap="max"] svg * { display: none; }
+html:root[data-style="jelly"] [data-part="caption"]:hover svg,
+html:root[data-style="jelly"] [data-part="caption-btn"]:focus-visible svg { opacity: .85; }
+html:root[data-style="jelly"] [data-part="caption-btn"]:hover { background: transparent; color: var(--sp-ink); }
+html:root[data-style="jelly"] [data-part="caption-btn"]:hover::before {
+  background:
+    radial-gradient(ellipse 52% 34% at 50% 24%, #fff, rgba(255, 255, 255, 0)),
+    radial-gradient(ellipse 80% 60% at 50% 108%, #fff, rgba(255, 255, 255, 0)),
+    radial-gradient(circle at 50% 60%, var(--sp-hi) 0, var(--sp-mid) 100%);
+}
+html:root[data-style="jelly"] [data-part="caption-btn"]:active::before,
+html:root[data-style="jelly"] [data-part="caption-btn"][aria-expanded="true"]::before {
+  background:
+    radial-gradient(ellipse 52% 34% at 50% 24%, rgba(255, 255, 255, .5), rgba(255, 255, 255, 0)),
+    radial-gradient(circle at 50% 60%, var(--sp-lo) 0, var(--sp-rim) 100%);
+  box-shadow: inset 0 1px 3px rgba(var(--shade-rgb), .5), 0 1px 0 rgba(255, 255, 255, .8);
+}
+/* The close popover opens under the spheres now, not at the right edge. */
+html:root[data-style="jelly"] [data-part="caption"] [role="dialog"] { left: 4px; right: auto; }
+
+/* ======== the toolbar under it, the scope, the stop pair's plate ======== */
+html:root[data-style="jelly"] [data-part="strip"] { background-image: linear-gradient(180deg, rgba(255, 255, 255, .7), rgba(255, 255, 255, 0) 70%), var(--jl-pin); }
+html:root[data-style="jelly"] [data-part="numerals"] :is(.hn-label, .hn-val) { text-shadow: 0 1px 0 rgba(255, 255, 255, .85); }
+html:root[data-style="jelly"] [data-part="hero"] { background-image: var(--jl-pin); border-bottom-color: var(--jl-edge); box-shadow: 0 1px 0 rgba(255, 255, 255, .9); }
+html:root[data-style="jelly"] [data-part="stop-frame"] {
+  border-radius: 12px;
+  outline: none;
+  background-color: var(--bg-sunken);
+  box-shadow: inset 0 2px 4px rgba(var(--shade-rgb), .3), 0 1px 0 rgba(255, 255, 255, .9), 0 0 0 1px var(--jl-edge);
+}
+
+/* ======== the source list: the rail ======== */
+html:root[data-style="jelly"] [data-part="rail"] {
+  background-color: var(--bg-raised);
+  background-image: linear-gradient(90deg, rgba(255, 255, 255, .7), rgba(255, 255, 255, 0) 30%), var(--jl-pin);
+  border-radius: 0 12px 12px 0;
+  border-color: var(--jl-edge);
+  box-shadow: 2px 0 6px rgba(var(--shade-rgb), .12);
+}
+html:root[data-style="jelly"] [data-part="rail-label"] { font-weight: 700; text-transform: none; letter-spacing: 0; font-size: 11px; text-shadow: 0 1px 0 rgba(255, 255, 255, .9); }
 html:root[data-style="jelly"] [data-part="rail-tab"] { border-radius: 999px; }
-html:root[data-style="jelly"] [data-part="rail-tab"].on {
-  background-color: color-mix(in srgb, var(--reality) 22%, var(--bg-card));
-  background-image: var(--gloss);
-  border-color: var(--reality);
-  box-shadow: inset 0 1px 3px rgba(var(--shade-rgb), .25);
+html:root[data-style="jelly"] [data-part="rail-tab"]:hover:not(.on) {
+  background-color: transparent;
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, .8), rgba(var(--jl-glow), .14));
+  box-shadow: inset 0 0 0 1px rgba(var(--jl-glow), .35);
 }
+/* The selected row is a dark gel with white type. */
+html:root[data-style="jelly"] [data-part="rail-tab"].on {
+  color: #fff;
+  background-color: var(--jl-sel-b);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, .38) 0, rgba(255, 255, 255, .08) 48%, rgba(255, 255, 255, 0) 52%), linear-gradient(180deg, var(--jl-sel-a), var(--jl-sel-b));
+  border-color: var(--jl-edge-deep);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .45), inset 0 -2px 3px rgba(var(--shade-rgb), .25), 0 1px 2px rgba(var(--shade-rgb), .3);
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, .35);
+}
+html:root[data-style="jelly"] [data-part="rail-tab"].on .rail-name { color: #fff; }
+html:root[data-style="jelly"] .rail-sec.shell { border-radius: 12px; background-image: var(--tex-card); border-color: var(--jl-edge); }
+/* Graphite and metal keep the gray of their chassis in the glyph orbs. */
+html:root[data-style="jelly"][data-variant="jelly-graphite"] [data-icon]::before { filter: saturate(0); }
+
+/* ======== cards, wells, panels ======== */
 html:root[data-style="jelly"] [data-part="card"],
-html:root[data-style="jelly"] [data-part="nest"],
-html:root[data-style="jelly"] [data-part="panel"] { border-radius: 12px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), 0 3px 10px rgba(40, 60, 100, .18); }
+html:root[data-style="jelly"] [data-part="panel"] {
+  border-radius: 12px;
+  border-color: var(--jl-edge);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .95), 0 2px 8px rgba(var(--shade-rgb), .18), 0 1px 1px rgba(var(--shade-rgb), .2);
+}
+html:root[data-style="jelly"] [data-part="nest"] {
+  border-radius: 12px;
+  border-color: var(--jl-edge);
+  box-shadow: inset 0 2px 5px rgba(var(--shade-rgb), .22), 0 1px 0 rgba(255, 255, 255, .85);
+}
 html:root[data-style="jelly"] [data-part="card-head"]:not(.over) { padding-left: 6px; }
-html:root[data-style="jelly"] .dash-title { text-transform: none; letter-spacing: 0; font-weight: 700; font-size: .85rem; }
-html:root[data-style="jelly"] .og-panel { outline: none; border-radius: 12px; background-image: none; box-shadow: 0 3px 10px rgba(40, 60, 100, .15); }
+html:root[data-style="jelly"] .dash-title { text-transform: none; letter-spacing: 0; font-weight: 700; font-size: .85rem; text-shadow: 0 1px 0 rgba(255, 255, 255, .85); }
+html:root[data-style="jelly"] .pane-head :is(h2, h3) { text-transform: none; letter-spacing: 0; font-weight: 700; font-size: .95rem; text-shadow: 0 1px 0 rgba(255, 255, 255, .85); }
+html:root[data-style="jelly"] .og-panel {
+  outline: none;
+  border-radius: 12px;
+  border-color: var(--jl-edge);
+  background-image: var(--tex-card);
+  background-size: 100% 100%;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .95), 0 2px 8px rgba(var(--shade-rgb), .16);
+}
+html:root[data-style="jelly"] .og-screen { border-radius: 8px; border-color: var(--jl-edge); box-shadow: inset 0 2px 6px rgba(var(--shade-rgb), .3), 0 1px 0 rgba(255, 255, 255, .85); }
+
+/* ======== capsules: the gel buttons ======== */
 html:root[data-style="jelly"] .og-btn,
 html:root[data-style="jelly"] .og-seg button,
 html:root[data-style="jelly"] .stepper button {
   border-radius: 999px;
-  background-color: var(--bg-card);
-  background-image: var(--gloss);
+  background-color: var(--bg-raised);
+  background-image: var(--jl-face);
 }
-html:root[data-style="jelly"] .og-btn:active,
-html:root[data-style="jelly"] .og-seg button:active { background-image: linear-gradient(180deg, rgba(0, 0, 0, .08), rgba(255, 255, 255, .3)); }
+html:root[data-style="jelly"] .og-btn:not(.on):not(.primary):not(.running):not(.danger),
+html:root[data-style="jelly"] .og-seg button:not(.active),
+html:root[data-style="jelly"] .stepper button { border-color: var(--jl-edge) var(--jl-edge) var(--jl-edge-lo); }
+/* The drop shadow is a filter, never a box-shadow: a button's own box-shadow carries its state. */
+html:root[data-style="jelly"] .og-btn,
+html:root[data-style="jelly"] .og-seg button,
+html:root[data-style="jelly"] .stepper button { filter: drop-shadow(0 1px 1px rgba(var(--shade-rgb), .35)); }
+html:root[data-style="jelly"] .og-btn:hover:not(:disabled),
+html:root[data-style="jelly"] .og-seg button:hover:not(:disabled),
+html:root[data-style="jelly"] .stepper button:hover:not(:disabled) { filter: drop-shadow(0 0 4px rgba(var(--jl-glow), .85)); }
+html:root[data-style="jelly"] .og-btn:not(.on):not(.primary):not(.running):not(.danger):hover:not(:disabled),
+html:root[data-style="jelly"] .og-seg button:not(.active):hover:not(:disabled),
+html:root[data-style="jelly"] .stepper button:hover:not(:disabled) { border-color: var(--jl-edge-deep); background-image: var(--jl-gloss), var(--jl-bounce), linear-gradient(180deg, rgba(var(--jl-glow), 0) 30%, rgba(var(--jl-glow), .5)); }
+html:root[data-style="jelly"] .og-btn:not(.on):not(.primary):not(.running):not(.danger):active:not(:disabled),
+html:root[data-style="jelly"] .og-seg button:not(.active):active:not(:disabled),
+html:root[data-style="jelly"] .stepper button:active:not(:disabled) { background-image: linear-gradient(180deg, rgba(var(--shade-rgb), .14), rgba(var(--jl-glow), .2) 55%, rgba(255, 255, 255, .45)); filter: none; }
+/* On and active: a pushed-in pale jelly, the blue shows through. */
+html:root[data-style="jelly"] .og-btn.on,
+html:root[data-style="jelly"] .og-seg button.active {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, .8) 0, rgba(255, 255, 255, .25) 46%, rgba(255, 255, 255, 0) 52%), linear-gradient(180deg, rgba(var(--jl-glow), .34), rgba(var(--jl-glow), .52));
+}
+/* The default button: the blue gel breathes. The ring is a pseudo layer, only opacity moves. */
+html:root[data-style="jelly"] .og-btn.primary {
+  position: relative;
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, .85) 0, rgba(255, 255, 255, .3) 46%, rgba(255, 255, 255, 0) 52%), linear-gradient(180deg, rgba(var(--jl-glow), .3), rgba(var(--jl-glow), .55));
+}
+html:root[data-style="jelly"] .og-btn.primary:not(.running):not(.danger)::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: 0 0 0 2px rgba(var(--jl-glow), .55), 0 0 11px 1px rgba(var(--jl-glow), .7);
+  opacity: .25;
+}
+html:root[data-style="jelly"]:not(.still):not(.hivis) .og-btn.primary:not(.running):not(.danger):not(:disabled)::after { animation: theme-jelly-breathe 1.5s ease-in-out infinite alternate; }
+@keyframes theme-jelly-breathe { from { opacity: .15; } to { opacity: 1; } }
+
+/* ======== fields: white wells, the popup button with its gel cap ======== */
 html:root[data-style="jelly"] .og-num,
-html:root[data-style="jelly"] .value-input,
-html:root[data-style="jelly"] select { border-radius: 999px; box-shadow: inset 0 2px 3px rgba(var(--shade-rgb), .22); }
-html:root[data-style="jelly"] .og-switch .track { border-radius: 999px; background-color: var(--bg-sunken); background-image: linear-gradient(180deg, rgba(0, 0, 0, .12), transparent); }
-html:root[data-style="jelly"] .og-switch .track::after { border-radius: 50%; background-image: var(--gloss); }
-html:root[data-style="jelly"] input[type="range"]::-webkit-slider-thumb { border-radius: 999px; background-color: var(--bg-card); background-image: var(--gloss); }
-html:root[data-style="jelly"] input[type="range"]::-moz-range-thumb { border-radius: 999px; background-color: var(--bg-card); background-image: var(--gloss); }
-html:root[data-style="jelly"] .og-screen { border-radius: 8px; }
+html:root[data-style="jelly"] .value-input {
+  border-radius: 6px;
+  border-color: var(--jl-edge);
+  background-color: var(--bg-card);
+  box-shadow: inset 0 2px 3px rgba(var(--shade-rgb), .28), 0 1px 0 rgba(255, 255, 255, .85);
+}
+html:root[data-style="jelly"] .og-num:focus,
+html:root[data-style="jelly"] .value-input:focus { box-shadow: inset 0 2px 3px rgba(var(--shade-rgb), .28), 0 0 0 3px rgba(var(--jl-glow), .45); }
+html:root[data-style="jelly"] select {
+  border-radius: 999px;
+  border-color: var(--jl-edge) var(--jl-edge) var(--jl-edge-lo);
+  background-color: var(--bg-card);
+  padding-right: 34px;
+  background-image:
+    var(--jl-arrows),
+    radial-gradient(ellipse 36% 22% at 50% 25%, rgba(255, 255, 255, .8), rgba(255, 255, 255, 0)),
+    radial-gradient(circle at 50% 50%, var(--jl-hi) 0, var(--jl-mid) 6px, var(--jl-lo) 10px, var(--jl-edge-deep) 10.5px, rgba(0, 0, 0, 0) 11.5px),
+    var(--jl-face);
+  background-repeat: no-repeat;
+  background-position: right 4px center, right 4px center, right 4px center, 0 0;
+  background-size: 22px 22px, 22px 22px, 22px 22px, 100% 100%;
+  box-shadow: 0 1px 2px rgba(var(--shade-rgb), .3), inset 0 1px 0 rgba(255, 255, 255, .95);
+}
+html:root[data-style="jelly"] select:focus { box-shadow: 0 0 0 3px rgba(var(--jl-glow), .45), inset 0 1px 0 rgba(255, 255, 255, .95); }
+
+/* ======== switches, check boxes, option dots ======== */
+html:root[data-style="jelly"] .og-switch .track {
+  border-radius: 999px;
+  border-color: var(--jl-edge);
+  background-color: var(--bg-sunken);
+  background-image: var(--jl-groove);
+  box-shadow: inset 0 2px 3px rgba(var(--shade-rgb), .3);
+}
+html:root[data-style="jelly"] .og-switch input:checked + .track {
+  background-image: var(--jl-gloss), linear-gradient(180deg, var(--jl-lo), var(--jl-mid));
+  box-shadow: inset 0 2px 3px rgba(var(--shade-rgb), .35), 0 0 6px rgba(var(--jl-glow), .4);
+}
+html:root[data-style="jelly"] .og-switch .track::after {
+  border-radius: 50%;
+  background-image: radial-gradient(ellipse 60% 40% at 50% 26%, rgba(255, 255, 255, .95), rgba(255, 255, 255, 0)), radial-gradient(circle at 50% 100%, rgba(255, 255, 255, .6), rgba(255, 255, 255, 0) 70%);
+  box-shadow: inset 0 -1px 2px rgba(var(--shade-rgb), .3), 0 1px 2px rgba(var(--shade-rgb), .45);
+}
+html:root[data-style="jelly"] input[type="checkbox"]:not([role="switch"]) {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid var(--jl-edge);
+  border-radius: 4px;
+  background-color: var(--bg-card);
+  background-image: var(--jl-gloss), linear-gradient(180deg, rgba(var(--shade-rgb), .05), rgba(var(--jl-glow), .2));
+  background-repeat: no-repeat;
+  background-position: center;
+  box-shadow: inset 0 1px 1px rgba(var(--shade-rgb), .2), 0 1px 0 rgba(255, 255, 255, .85);
+}
+html:root[data-style="jelly"] input[type="checkbox"]:not([role="switch"]):checked {
+  border-color: var(--jl-edge-deep);
+  background-image: var(--jl-tick), var(--jl-gloss), linear-gradient(180deg, var(--jl-mid), var(--jl-lo));
+  background-size: 10px 10px, 100% 100%, 100% 100%;
+}
+html:root[data-style="jelly"] [role="radio"]:not(.og-seg > button)::before {
+  content: '';
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  margin-right: 6px;
+  vertical-align: -2px;
+  border-radius: 50%;
+  border: 1px solid var(--jl-edge);
+  background: var(--jl-gloss), linear-gradient(180deg, rgba(var(--shade-rgb), .04), rgba(var(--jl-glow), .25)), var(--bg-card);
+  box-shadow: inset 0 1px 1px rgba(var(--shade-rgb), .2), 0 1px 0 rgba(255, 255, 255, .85);
+}
+html:root[data-style="jelly"] [role="radio"][aria-checked="true"]:not(.og-seg > button)::before {
+  border-color: var(--jl-edge-deep);
+  background: radial-gradient(circle at 50% 50%, #fff 0 2.2px, rgba(255, 255, 255, 0) 3px), var(--jl-gloss), linear-gradient(180deg, var(--jl-mid), var(--jl-lo));
+}
+
+/* ======== sliders and progress ======== */
+html:root[data-style="jelly"] input[type="range"] { background: transparent; }
+html:root[data-style="jelly"] input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  border: 1px solid var(--jl-edge);
+  background: var(--jl-groove), var(--bg-sunken);
+  box-shadow: inset 0 1px 2px rgba(var(--shade-rgb), .3);
+}
+html:root[data-style="jelly"] input[type="range"]::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  border: 1px solid var(--jl-edge);
+  background: var(--jl-groove), var(--bg-sunken);
+}
+html:root[data-style="jelly"] input[type="range"]::-webkit-slider-thumb {
+  margin-top: calc((var(--slider-thumb-h) - 8px) / -2);
+  border-radius: 999px;
+  border-color: var(--jl-edge-deep);
+  background-color: var(--jl-mid);
+  background-image: radial-gradient(ellipse 70% 30% at 50% 18%, rgba(255, 255, 255, .95), rgba(255, 255, 255, 0)), radial-gradient(ellipse 80% 40% at 50% 100%, rgba(255, 255, 255, .5), rgba(255, 255, 255, 0)), linear-gradient(180deg, var(--jl-hi), var(--jl-mid) 50%, var(--jl-lo));
+  box-shadow: 0 1px 3px rgba(var(--shade-rgb), .5), inset 0 -1px 2px rgba(var(--shade-rgb), .25);
+}
+html:root[data-style="jelly"] input[type="range"]::-moz-range-thumb {
+  border-radius: 999px;
+  border-color: var(--jl-edge-deep);
+  background-color: var(--jl-mid);
+  background-image: radial-gradient(ellipse 70% 30% at 50% 18%, rgba(255, 255, 255, .95), rgba(255, 255, 255, 0)), linear-gradient(180deg, var(--jl-hi), var(--jl-mid) 50%, var(--jl-lo));
+}
+html:root[data-style="jelly"] progress {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 14px;
+  border: 1px solid var(--jl-edge);
+  border-radius: 999px;
+  background-color: var(--bg-sunken);
+  overflow: hidden;
+  box-shadow: inset 0 2px 3px rgba(var(--shade-rgb), .3);
+}
+html:root[data-style="jelly"] progress::-webkit-progress-bar { background: transparent; }
+html:root[data-style="jelly"] progress::-webkit-progress-value {
+  border-radius: 999px;
+  background-color: var(--jl-mid);
+  background-image: var(--jl-gloss), repeating-linear-gradient(-45deg, rgba(255, 255, 255, .28) 0 6px, rgba(255, 255, 255, 0) 6px 12px), linear-gradient(180deg, var(--jl-hi), var(--jl-lo));
+}
+html:root[data-style="jelly"] progress::-moz-progress-bar {
+  border-radius: 999px;
+  background-color: var(--jl-mid);
+  background-image: var(--jl-gloss), repeating-linear-gradient(-45deg, rgba(255, 255, 255, .28) 0 6px, rgba(255, 255, 255, 0) 6px 12px), linear-gradient(180deg, var(--jl-hi), var(--jl-lo));
+}
+/* The funscript scrub bar: a groove and a blue gel fill with a jelly knob. */
+html:root[data-style="jelly"] .ui-scrub-track { box-shadow: inset 0 1px 2px rgba(var(--shade-rgb), .4), 0 1px 0 rgba(255, 255, 255, .7); }
+html:root[data-style="jelly"] .ui-scrub-played { background-image: var(--jl-gloss); }
+html:root[data-style="jelly"] .ui-scrub-played::after {
+  background-image: radial-gradient(ellipse 60% 36% at 50% 24%, rgba(255, 255, 255, .95), rgba(255, 255, 255, 0)), radial-gradient(circle at 50% 100%, rgba(255, 255, 255, .5), rgba(255, 255, 255, 0) 70%);
+  box-shadow: 0 1px 3px rgba(var(--shade-rgb), .5), inset 0 -1px 2px rgba(var(--shade-rgb), .25);
+}
+
+/* ======== tabs, source tabs and page tabs ======== */
+html:root[data-style="jelly"] [role="tab"]:not([data-part="rail-tab"]) {
+  border-radius: 999px;
+  border-color: var(--jl-edge) var(--jl-edge) var(--jl-edge-lo);
+  background-color: var(--bg-raised);
+  background-image: var(--jl-face);
+}
+html:root[data-style="jelly"] [role="tab"][aria-selected="true"]:not([data-part="rail-tab"]) {
+  border-color: var(--jl-edge-deep);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, .8) 0, rgba(255, 255, 255, .25) 46%, rgba(255, 255, 255, 0) 52%), linear-gradient(180deg, rgba(var(--jl-glow), .36), rgba(var(--jl-glow), .58));
+  box-shadow: inset 0 2px 3px rgba(var(--shade-rgb), .25);
+}
+html:root[data-style="jelly"] .tabs button { border-radius: 999px; }
+
+/* ======== the status dot, the footer bars ======== */
+html:root[data-style="jelly"] .linkdot .core {
+  background-image: radial-gradient(circle at 36% 28%, rgba(255, 255, 255, .85) 0, rgba(255, 255, 255, 0) 46%), radial-gradient(circle at 50% 108%, rgba(255, 255, 255, .35), rgba(255, 255, 255, 0) 60%);
+  box-shadow: inset 0 -1px 1px rgba(var(--shade-rgb), .3);
+}
 html:root[data-style="jelly"] [data-part="status-row"],
-html:root[data-style="jelly"] [data-part="page-foot"] { background-image: var(--gloss); border-top: 1px solid var(--line-2); }
+html:root[data-style="jelly"] [data-part="page-foot"] {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, .8), rgba(255, 255, 255, 0) 80%), var(--jl-pin);
+  border-top: 1px solid var(--jl-edge);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9);
+}
+
+/* ======== menus, tooltips, sheets: frosted, with a drop shadow ======== */
+html:root[data-style="jelly"] .ui-menu,
+html:root[data-style="jelly"] .ui-sheet,
+html:root[data-style="jelly"] #ph-tip {
+  background-color: color-mix(in srgb, var(--bg-card) 94%, transparent);
+  -webkit-backdrop-filter: blur(10px) saturate(1.5);
+  backdrop-filter: blur(10px) saturate(1.5);
+  border: 1px solid rgba(var(--shade-rgb), .35);
+  outline: none;
+  border-radius: 9px;
+  box-shadow: 0 10px 26px rgba(var(--shade-rgb), .38), 0 2px 5px rgba(var(--shade-rgb), .25), inset 0 1px 0 rgba(255, 255, 255, .9);
+}
+html:root[data-style="jelly"] .ui-menu { padding: 5px 0; }
+html:root[data-style="jelly"] .ui-menu-i { margin: 0 5px; border-radius: 5px; }
+html:root[data-style="jelly"] .ui-menu-i:hover:not(:disabled),
+html:root[data-style="jelly"] .ui-menu-i:focus-visible,
+html:root[data-style="jelly"] .ui-menu-i[aria-expanded="true"] {
+  color: #fff;
+  background-color: var(--jl-sel-b);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, .3), rgba(255, 255, 255, 0) 50%), linear-gradient(180deg, var(--jl-sel-a), var(--jl-sel-b));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .4);
+}
+html:root[data-style="jelly"] .ui-menu-i:hover:not(:disabled)::after,
+html:root[data-style="jelly"] .ui-menu-i:focus-visible::after,
+html:root[data-style="jelly"] .ui-menu-i[aria-expanded="true"]::after { color: #fff; }
+html:root[data-style="jelly"] .ui-menu-sec { text-transform: none; letter-spacing: 0; font-weight: 700; border-top-color: var(--line-2); }
+html:root[data-style="jelly"] #ph-tip { padding: var(--sp-2) var(--sp-3); }
+html:root[data-style="jelly"] .sb-pop,
+html:root[data-style="jelly"] [data-part="caption"] [role="dialog"] {
+  background-color: color-mix(in srgb, var(--bg-card) 94%, transparent);
+  border-radius: 9px;
+  box-shadow: 0 10px 26px rgba(var(--shade-rgb), .38), inset 0 1px 0 rgba(255, 255, 255, .9);
+}
+
+/* ======== scrollbars: blue gel thumbs in a pinstriped groove ======== */
 html:root[data-style="jelly"] * { scrollbar-width: auto; scrollbar-color: auto; }
-html:root[data-style="jelly"] ::-webkit-scrollbar { width: 14px; height: 14px; }
-html:root[data-style="jelly"] ::-webkit-scrollbar-track { background: var(--bg-sunken); border-radius: 999px; }
-html:root[data-style="jelly"] ::-webkit-scrollbar-thumb { border-radius: 999px; border: 1px solid #0F3C94; background-color: #3E86EE; background-image: var(--gloss); }
+html:root[data-style="jelly"] ::-webkit-scrollbar { width: 15px; height: 15px; }
+html:root[data-style="jelly"] ::-webkit-scrollbar-track {
+  background-color: var(--bg-sunken);
+  background-image: var(--jl-pin);
+  box-shadow: inset 1px 0 2px rgba(var(--shade-rgb), .3);
+  border-radius: 999px;
+}
+html:root[data-style="jelly"] ::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  border: 1px solid var(--jl-edge-deep);
+  background-color: var(--jl-mid);
+  background-image: linear-gradient(90deg, rgba(255, 255, 255, .85) 0, rgba(255, 255, 255, .3) 46%, rgba(255, 255, 255, 0) 52%), linear-gradient(90deg, var(--jl-hi), var(--jl-mid) 50%, var(--jl-lo));
+  box-shadow: inset 0 0 2px rgba(255, 255, 255, .6);
+}
+html:root[data-style="jelly"] ::-webkit-scrollbar-thumb:horizontal {
+  background-image: var(--jl-gloss), linear-gradient(180deg, var(--jl-hi), var(--jl-mid) 50%, var(--jl-lo));
+}
+html:root[data-style="jelly"] ::-webkit-scrollbar-corner { background: var(--bg-sunken); }
+
+/* ======== brushed metal: the bar and the strips take a banded sheen over the brushing ======== */
+html:root[data-style="jelly"][data-variant="jelly-metal"] [data-part="bar"] {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, .75), rgba(255, 255, 255, .12) 48%, rgba(var(--shade-rgb), .08) 52%, rgba(255, 255, 255, .22)), var(--jl-pin);
+}
+html:root[data-style="jelly"][data-variant="jelly-metal"] [data-part="strip"] {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, .5), rgba(255, 255, 255, 0) 60%), var(--jl-pin);
+}
