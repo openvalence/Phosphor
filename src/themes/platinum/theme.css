@@ -372,6 +372,15 @@ html:root[data-style="platinum"] [data-part="panel"]::after {
 }
 html:root[data-style="platinum"] .dash-item:has(> .handle.resize) [data-part="card"]::after { display: none; }
 
+/* a page's section names sit on the desktop: a plate under each, like a label on a folder tab */
+html:root[data-style="platinum"] .pane-head h2 {
+  display: inline-block;
+  padding: 1px 9px;
+  background-color: var(--bg-card);
+  border-radius: 3px 3px 0 0;
+  box-shadow: 0 0 0 1px var(--pt-black), inset 1px 1px 0 var(--pt-white);
+}
+
 /* ---- push buttons: black hairline, rounded, lit top-left, shaded bottom-right; pressed is the same
    button lit from the other side. The default button (.primary) wears the heavy ring. A toggled-on
    button (.on) stays pressed in. States keep their own border and text colors. ---- */
@@ -516,6 +525,7 @@ html:root[data-style="platinum"] ::selection { background: var(--pt-sel-soft); c
 /* keyboard focus: the heavier ring of full keyboard access (color, style and offset stay the page's) */
 html:root[data-style="platinum"] :focus-visible { outline-width: 3px; }
 html:root[data-style="platinum"] .ui-menu-i:focus-visible { outline-width: 1px; }
+html:root[data-style="platinum"] .og-btn.primary:disabled { outline-color: var(--pt-lo); }
 
 /* ---- menus, dialogs and the balloon ---- */
 html:root[data-style="platinum"] .ui-menu {
