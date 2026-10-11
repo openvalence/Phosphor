@@ -227,6 +227,9 @@ html.hivis {
 /* ---- reset ------------------------------------------------------------- */
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
+/* The page never stretches or bounces as a whole: the bars and the footer stay put (Android also
+   turns it off on its WebView, MainActivity.kt). */
+html { overscroll-behavior: none; }
 /* Root scale — every rem-sized rule in this sheet (labels, chips, buttons,
    card titles) rides on this. Percent, not a hardcoded px: a percentage on
    `html` resolves against the browser's OWN default font size (the operator's

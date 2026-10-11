@@ -634,24 +634,25 @@ if (!ONLY || ONLY === 'bar') {
     await page.goto('http://127.0.0.1:' + PORT + '/');
     await page.waitForSelector('.linkbar .chip', { timeout: 15000 });
     const wide = w > 560;
-    if (wide) await page.waitForFunction(() => /^[0-9]+ fps$/.test(document.querySelector('.linkbar .fps')?.textContent || ''), null, { timeout: 8000 }).catch(() => {});
+    await page.waitForFunction(() => /^[0-9]+ fps$/.test(document.querySelector('.linkbar .fps')?.textContent || ''), null, { timeout: 8000 }).catch(() => {});
     await page.waitForTimeout(400);
     const bar = await page.evaluate(() => {
       const shown = (e) => !!e && e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden';
       const fps = document.querySelector('.linkbar .fps');
       return { labels: [...document.querySelectorAll('.linkbar .chip-lbl')].filter(shown).map((e) => e.textContent.trim().toLowerCase()),
         text: document.querySelector('.linkbar').innerText, fps: shown(fps) ? fps.textContent.trim() : null, tip: fps?.closest('.chip').getAttribute('data-tip') || '',
-        geo: [...document.querySelectorAll('.linkbar > *, .linkbar .header-left > *, .linkbar .chips > *')].map((e) => { const b = e.getBoundingClientRect(); return (e.className.baseVal ?? e.className).toString().split(' ')[0] + ':' + Math.round(b.left) + '-' + Math.round(b.right) + 'y' + Math.round(b.top); }).join(' '),
+        geo: [...document.querySelectorAll('.linkbar > *, .linkbar .header-left > *, .linkbar .row2 > *, .linkbar .chips > *')].map((e) => { const b = e.getBoundingClientRect(); return (e.className.baseVal ?? e.className).toString().split(' ')[0] + ':' + Math.round(b.left) + '-' + Math.round(b.right) + 'y' + Math.round(b.top); }).join(' '),
         rx: (() => { const o = document.querySelector('.linkbar .chips.opt').getBoundingClientRect(), x = document.querySelector('.linkbar .chip-opt-last').getBoundingClientRect();
           return x.top >= o.bottom - 0.5 ? 'shed' : x.left >= o.left - 0.5 && x.right <= o.right + 0.5 ? 'whole' : 'cut'; })() };
     });
     scen(w + 'x' + h + ': the top bar holds no address, firmware or control list chip', bar.labels.every((l) => ['auth:', 'loss', 'kb/s', '%'].includes(l))
       && !/catalog|cached|fetched|0\.0\.0-fixture/.test(bar.text), JSON.stringify(bar));
-    if (wide) scen(w + 'x' + h + ': render reads N fps; its tooltip is what the number means', /^\d+ fps$/.test(bar.fps || '')
+    scen(w + 'x' + h + ': render reads N fps; its tooltip is what the number means', /^\d+ fps$/.test(bar.fps || '')
       && bar.tip === 'Frames per second this window can draw' && !/held|skew|stalled|drift/i.test(bar.tip + bar.text), JSON.stringify(bar));
-    else scen(w + 'x' + h + ': the phone bar: no fps; the rate shows whole beside a short hub name', bar.fps === null && bar.rx === 'whole', JSON.stringify(bar));
+    // At 560 px and under the bar's second row holds the rate, loss and fps (operator 2026-10-11).
+    if (!wide) scen(w + 'x' + h + ': the phone bar: the rate shows whole in the second row', bar.rx === 'whole' && /row2:/.test(bar.geo), JSON.stringify(bar));
     // No gap: every visible chip sits one chip gap from the next, the fps chip from rx too (the reserved warning slot is gone).
-    const gaps = () => page.evaluate(() => { const c = [...document.querySelectorAll('.linkbar .chips .chip')].filter((e) => e.getClientRects().length).map((e) => e.getBoundingClientRect());
+    const gaps = () => page.evaluate(() => { const c = [...document.querySelectorAll('.linkbar .chips.opt .chip')].filter((e) => e.getClientRects().length).map((e) => e.getBoundingClientRect());
       return c.slice(1).map((b, k) => Math.round(b.left - c[k].right)); });
     const g = await gaps();
     scen(w + 'x' + h + ': no gap in the bar: chips sit one chip gap apart, no empty slot', g.length > 0 && g.every((x) => x >= 0 && x <= 12) && !(await page.$('.linkbar .render-warn')), JSON.stringify(g));

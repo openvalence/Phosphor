@@ -19,6 +19,9 @@
    *   (close-confirm.js). Never red: law 13 keeps red for hazards.
    * - Close immediately when idle (the `closeIdle` pref) skips the popover
    *   only while closesAtOnce() holds at the moment of the request.
+   * - Android: no window buttons; the second back press (App.svelte,
+   *   model/back.js) raises phosphor-close-request into the same gate and
+   *   popover, and its close finishes the activity (MainActivity.kt).
    */
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { invoke } from '@tauri-apps/api/core';
@@ -30,7 +33,11 @@
   import { CH_CONTROL_OWNER } from '../../../Valence/clients/js/index.js';
   import { createCloseGate, closeConsequences, closesAtOnce, HOLD_MS } from './close-confirm.js';
 
-  const win = ['android', 'ios'].includes(import.meta.env.TAURI_ENV_PLATFORM) ? null : getCurrentWindow();
+  const MOBILE = ['android', 'ios'].includes(import.meta.env.TAURI_ENV_PLATFORM);
+  const win = MOBILE ? null : getCurrentWindow();
+  // The gate's window on Android: no OS close request to hear; destroy finishes the activity.
+  const phone = import.meta.env.TAURI_ENV_PLATFORM === 'android'
+    ? { onCloseRequested: async () => () => {}, destroy: () => globalThis.PhosphorActivity?.exit() } : null;
   // macOS: the maximize button is the true fullscreen (its own Space), the
   // operator's ruling 2026-10-04; elsewhere it stays the OS maximize.
   const MAC = import.meta.env.TAURI_ENV_PLATFORM === 'darwin';
@@ -54,7 +61,7 @@
   // lastRxMs: any frame since this hub was chosen (forgetDevice zeroes it).
   const idle = () => closesAtOnce({ on: get(prefs).closeIdle, heard: !!machine.stats.lastRxMs,
     byRole: machine.catalog.model && machine.catalog.model.byRole, samples: machine.samples, fresh });
-  const gate = win ? createCloseGate(win, ask, { idle }) : null;
+  const gate = win || phone ? createCloseGate(win || phone, ask, { idle }) : null;
   $effect(() => () => gate && gate.dispose());
   $effect(() => { if (asking && holdEl) holdEl.focus(); });
 
@@ -94,7 +101,7 @@
   }
 </script>
 
-<svelte:window onkeydown={onWindowKey} />
+<svelte:window onkeydown={onWindowKey} onphosphor-close-request={() => gate && !asking && gate.request()} />
 <svelte:document onclick={onDocClick} />
 
 {#if hubs.mode === 'ble'}<span class="sb-ble mono">BLE</span>{/if}
@@ -110,21 +117,26 @@
             aria-expanded={asking} onclick={() => (asking ? dismiss(false) : gate.request())}>
       <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/></svg>
     </button>
-    {#if asking}
-      <div class="sb-pop" data-part="close-prompt" role="dialog" aria-label="Close Phosphor">
-        <p class="sb-pop-t">Close Phosphor?</p>
-        {#each lines as l (l)}<p class="sb-pop-c">{l}</p>{/each}
-        <button class="sb-hold" bind:this={holdEl} class:holding
-                onpointerdown={start} onpointerup={stop} onpointerleave={stop} onpointercancel={stop}
-                {onkeydown} {onkeyup} oncontextmenu={(e) => e.preventDefault()}>
-          <span>{holding ? 'Keep holding' : 'Hold to close'}</span>
-          {#if holding}<span class="sb-fill" aria-hidden="true" style="--hold-ms: {HOLD_MS}ms"></span>{/if}
-        </button>
-        <p class="sb-pop-k">Esc to cancel</p>
-      </div>
-    {/if}
+    {#if asking}{@render prompt()}{/if}
   </span>
+{:else if phone && asking}
+  <!-- No box of its own: the popover is fixed, so the bar's row gains no item while it shows. -->
+  <span class="sb-phone" bind:this={winEl}>{@render prompt()}</span>
 {/if}
+
+{#snippet prompt()}
+  <div class="sb-pop" data-part="close-prompt" role="dialog" aria-label="Close Phosphor">
+    <p class="sb-pop-t">Close Phosphor?</p>
+    {#each lines as l (l)}<p class="sb-pop-c">{l}</p>{/each}
+    <button class="sb-hold" bind:this={holdEl} class:holding
+            onpointerdown={start} onpointerup={stop} onpointerleave={stop} onpointercancel={stop}
+            {onkeydown} {onkeyup} oncontextmenu={(e) => e.preventDefault()}>
+      <span>{holding ? 'Keep holding' : 'Hold to close'}</span>
+      {#if holding}<span class="sb-fill" aria-hidden="true" style="--hold-ms: {HOLD_MS}ms"></span>{/if}
+    </button>
+    {#if !phone}<p class="sb-pop-k">Esc to cancel</p>{/if}
+  </div>
+{/snippet}
 
 <style>
   .sb-ble {
@@ -135,6 +147,7 @@
     border: 1px solid color-mix(in srgb, var(--intent) 45%, var(--line));
     color: var(--intent);
   }
+  .sb-phone { display: contents; }
   /* Flush at the bar's right edge, the bar's full height. */
   .sb-win { flex: none; display: flex; align-self: stretch; }
   .sb-wbtn {

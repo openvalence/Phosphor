@@ -865,10 +865,15 @@ for (const [w, h] of [[420, 860], [860, 420], [360, 780]]) {
       await shapeShot(page, file + '-' + w + 'x' + h + (theme ? '-paper' : '') + '.png');
     };
     // The top bar takes the cutout's band, its items either side of the hole, where the auth chip
-    // fits right of it; where it does not, the bar pads under the inset instead.
+    // fits right of it; where it does not, the bar pads under the inset instead. At 560 px and
+    // under a second row, a row high, holds the heatmap and the other chips.
+    const two = w <= 560;
     const bar = await page.evaluate(() => { const b = document.querySelector('.linkbar'), r = b.getBoundingClientRect(), p = b.querySelector('.chips.pinned').getBoundingClientRect();
-      return { top: Math.round(r.top), h: Math.round(r.height), cut: b.classList.contains('cut'), rowTop: Math.round(p.top) }; });
-    ok(tag + ': the top bar rises into the cutout band', bar.cut && bar.top === 0 && bar.h <= Math.max(41, HOLE.h + 1), JSON.stringify(bar));
+      const r2 = b.querySelector('.row2')?.getBoundingClientRect();
+      return { top: Math.round(r.top), h: Math.round(r.height), cut: b.classList.contains('cut'), rowTop: Math.round(p.top),
+        row2: r2 ? [Math.round(r2.top), Math.round(r2.bottom)] : null, heat: !!b.querySelector(r2 ? '.row2 .heat' : '.header-left .heat') }; });
+    ok(tag + ': the top bar rises into the cutout band' + (two ? ', its second row under the first' : ''), bar.cut && bar.top === 0 && bar.heat
+      && (two ? bar.row2 && bar.row2[1] === bar.h && bar.h - bar.row2[0] <= 41 && bar.row2[0] <= Math.max(41, HOLE.h + 1) : !bar.row2 && bar.h <= Math.max(41, HOLE.h + 1)), JSON.stringify(bar));
     // An optional chip on the bar's line never cuts mid-text: one that does not fit wraps away whole.
     const cut = await page.evaluate(() => [...document.querySelectorAll('.linkbar .chips.opt > .chip')].filter((c) => c.getClientRects().length).map((c) => {
       const m = c.querySelector('.mono'), o = c.parentElement.getBoundingClientRect(), r = c.getBoundingClientRect();
