@@ -1,72 +1,849 @@
-/* Rack: brushed-metal faceplates, engraved labels, LED readouts. Metal is a fine
-   vertical grain under the card surfaces; bevels are inset hairlines; the only color
-   is the LED glow on the numerals and the active tab. */
+/* Rack: studio gear. A page is a rack: units on rails, brushed aluminum and black anodized faceplates,
+   steel screws, engraved silkscreen, LED and seven-segment readouts, real knobs and bat-handle toggles.
+   Variants: Rack (black anodized), Vintage (cream faceplates, walnut cheeks), Modular (Eurorack, colorful).
+
+   Surfaces that carry text are built from the surface tokens; the aluminum strip and the walnut
+   strip pin their own ink, checked by the kit. The stop pair, the ladder's rings and every warn
+   and error state are the engine's: nothing here names them. Decoration sits under controls and
+   in padding, never over one. */
+@font-face { font-family: 'RackSeg'; src: url('./fonts/RackSeg.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Barlow Condensed'; src: url('./fonts/BarlowCondensed-600.woff2') format('woff2'); font-weight: 600; font-display: swap; }
+@font-face { font-family: 'Cinzel'; src: url('./fonts/Cinzel-600.woff2') format('woff2'); font-weight: 600; font-display: swap; }
+
 html:root[data-style="rack"] {
-  --font-head: 'Bahnschrift SemiCondensed', 'Arial Narrow', 'Roboto Condensed', 'Segoe UI', 'Chakra Petch', sans-serif;
+  --font-head: 'Barlow Condensed', 'Bahnschrift SemiCondensed', 'Arial Narrow', 'Roboto Condensed', var(--font);
   --frame-w: 2px;
-  --tex-page: repeating-linear-gradient(90deg, rgba(255, 255, 255, .02) 0 1px, rgba(0, 0, 0, .04) 1px 3px);
+  --rk-seg: 'RackSeg', 'Martian Mono', ui-monospace, monospace;
+  --rk-silk-font: var(--font-head);
+  --rk-silk-track: .14em;
+  --rk-sz: 1;
+  --rk-sh: 0, 0, 0;
+  --rk-edge: #000;
+  --rk-index: #F2F4F5;
+  --rk-ts: 0 1px 0 rgba(0, 0, 0, .55);
+
+  /* the metals */
+  --rk-al: #B7BEC4;
+  --rk-al-hi: #E6EAED;
+  --rk-al-lo: #7B848B;
+  --rk-ink: #12161A;
+  --rk-ear-a: #5B646B;
+  --rk-ear-b: #2A3035;
+  --rk-hole: #040506;
+  --rk-cap-a: #3C4248;
+  --rk-cap-b: #1A1E22;
+  --rk-cap-rim: #0A0C0E;
+  --rk-bar: var(--rk-al);
+  --rk-bar-ts: 0 1px 0 rgba(255, 255, 255, .6);
+  --rk-grain: repeating-linear-gradient(0deg, rgba(255, 255, 255, .03) 0 1px, rgba(0, 0, 0, .07) 1px 2px);
+  --rk-brushed:
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, .24) 0 1px, rgba(0, 0, 0, .05) 1px 2px, rgba(255, 255, 255, .06) 2px 3px),
+    linear-gradient(90deg, rgba(0, 0, 0, .12), rgba(255, 255, 255, .16) 16%, rgba(255, 255, 255, 0) 38%, rgba(0, 0, 0, .06) 66%, rgba(255, 255, 255, .18) 90%, rgba(0, 0, 0, .12));
+  --rk-bar-img: var(--rk-brushed);
+  /* a rack ear: a flange with a slot every unit (44 px), and the two screws a faceplate wears */
+  --rk-ear-l:
+    radial-gradient(ellipse 3.4px 5.2px at 50% 22px, var(--rk-hole) 0 78%, rgba(255, 255, 255, .34) 86% 94%, transparent 100%),
+    linear-gradient(90deg, var(--rk-ear-a), var(--rk-ear-b) 88%, var(--rk-hole) 88% 100%);
+  --rk-ear-r:
+    radial-gradient(ellipse 3.4px 5.2px at 50% 22px, var(--rk-hole) 0 78%, rgba(255, 255, 255, .34) 86% 94%, transparent 100%),
+    linear-gradient(270deg, var(--rk-ear-a), var(--rk-ear-b) 88%, var(--rk-hole) 88% 100%);
+  --rk-screw-a: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cdefs%3E%3CradialGradient id='a' cx='.36' cy='.32' r='.8'%3E%3Cstop offset='0' stop-color='%23F2F4F5'/%3E%3Cstop offset='.5' stop-color='%23A2AAB0'/%3E%3Cstop offset='1' stop-color='%23373C41'/%3E%3C/radialGradient%3E%3C/defs%3E%3Ccircle cx='5' cy='5' r='4.5' fill='url(%23a)' stroke='%23101214' stroke-width='.7'/%3E%3Cpath d='M2.7 5h4.6M5 2.7v4.6' stroke='%231A1D20' stroke-width='1.1' stroke-linecap='round'/%3E%3C/svg%3E");
+  --rk-screw-b: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cdefs%3E%3CradialGradient id='a' cx='.36' cy='.32' r='.8'%3E%3Cstop offset='0' stop-color='%23F2F4F5'/%3E%3Cstop offset='.5' stop-color='%23A2AAB0'/%3E%3Cstop offset='1' stop-color='%23373C41'/%3E%3C/radialGradient%3E%3C/defs%3E%3Ccircle cx='5' cy='5' r='4.5' fill='url(%23a)' stroke='%23101214' stroke-width='.7'/%3E%3Cpath d='M3.4 3.4l3.2 3.2M6.6 3.4L3.4 6.6' stroke='%231A1D20' stroke-width='1.1' stroke-linecap='round'/%3E%3C/svg%3E");
+
+  --tex-page:
+    radial-gradient(ellipse 80% 40% at 50% 0%, rgba(120, 140, 160, .10), transparent 70%),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, .016) 0 1px, rgba(0, 0, 0, .05) 1px 3px);
   --tex-page-size: auto;
-  --tex-card: repeating-linear-gradient(90deg, rgba(255, 255, 255, .03) 0 1px, rgba(0, 0, 0, .035) 1px 2px);
+  --tex-card: var(--rk-grain);
   --tex-card-size: auto;
 }
 
+/* The rails of the cabinet: a flange down each window edge, under everything. */
+html:root[data-style="rack"]::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: var(--rk-ear-l), var(--rk-ear-r);
+  background-size: 12px 44px, 12px 44px, 12px 44px, 12px 44px;
+  background-position: left top, left top, right top, right top;
+  background-repeat: repeat-y;
+}
+
+
+/* ---- the title strip: a brushed aluminum unit header, the hub name engraved on it ---- */
+html:root[data-style="rack"] [data-part="top"] { border-bottom-color: var(--rk-edge); }
 html:root[data-style="rack"] [data-part="bar"] {
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, .09), transparent 45%, rgba(0, 0, 0, .3)), var(--tex-card);
-  box-shadow: inset 0 -1px 0 #000, inset 0 1px 0 rgba(255, 255, 255, .1);
+  color: var(--rk-ink);
+  background-color: var(--rk-bar);
+  background-image: var(--rk-ear-l), var(--rk-bar-img);
+  background-size: 12px 44px, 12px 44px, auto, auto;
+  background-position: left top, left top, 0 0, 0 0;
+  background-repeat: repeat-y, repeat-y, repeat, repeat;
+  box-shadow: inset 0 -1px 0 rgba(var(--rk-sh), .65), inset 0 1px 0 rgba(255, 255, 255, .7);
 }
-html:root[data-style="rack"] [data-part="bar"] .wordmark { font-family: var(--font-head); font-weight: 600; text-transform: uppercase; letter-spacing: .16em; font-size: .85rem; text-shadow: 0 -1px 0 rgba(0, 0, 0, .7), 0 1px 0 rgba(255, 255, 255, .1); }
-html:root[data-style="rack"] [data-part="strip"] {
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, .06), transparent 30%, rgba(0, 0, 0, .25)), var(--tex-card);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08);
+html:root[data-style="rack"] [data-part="bar"] .wordmark {
+  color: var(--rk-ink);
+  font-family: var(--rk-silk-font);
+  font-weight: 600;
+  font-size: calc(var(--wm) * 1.12);
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  text-shadow: var(--rk-bar-ts);
 }
-html:root[data-style="rack"] [data-part="hero"] { background-image: var(--tex-card); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06); }
-html:root[data-style="rack"] [data-part="numerals"] .hn-val { text-shadow: var(--glow-reality); }
-html:root[data-style="rack"] [data-part="stop-frame"] { outline: 2px groove var(--line-2); outline-offset: 4px; }
-
-html:root[data-style="rack"] [data-part="rail"] { background-image: var(--tex-card); border-style: outset; border-width: 2px 2px 2px 0; border-color: var(--line-1); }
-html:root[data-style="rack"] [data-part="rail-label"] { font-family: var(--font-head); letter-spacing: .2em; font-size: 10px; text-shadow: 0 1px 0 rgba(255, 255, 255, .08); }
-html:root[data-style="rack"] [data-part="rail-tab"].on {
+html:root[data-style="rack"] [data-part="bar"] .menu-btn { color: var(--rk-ink); }
+html:root[data-style="rack"] [data-part="bar"] .menu-btn[aria-expanded='true'] { color: var(--rk-ink); text-shadow: 0 0 0 currentColor; }
+/* The link dot is a jewel lamp in a chrome bezel. */
+html:root[data-style="rack"] [data-part="bar"] .linkdot:not(.offline) .core { box-shadow: 0 0 0 1.5px rgba(var(--rk-sh), .7), 0 0 0 2.5px rgba(255, 255, 255, .6), 0 0 7px rgba(var(--lc), .9); }
+html:root[data-style="rack"] [data-part="bar"] .linkdot.offline .core { box-shadow: inset 0 0 0 1.5px var(--rk-ink), 0 0 0 1.5px rgba(255, 255, 255, .5); }
+/* Chips are small black readout windows set into the metal. */
+html:root[data-style="rack"] [data-part="bar"] .chip {
   background-color: var(--bg-sunken);
-  box-shadow: inset 3px 0 0 var(--reality), inset 0 1px 3px rgba(0, 0, 0, .6);
+  border-radius: 2px;
+  box-shadow: inset 0 1px 3px rgba(var(--rk-sh), .85), 0 1px 0 rgba(255, 255, 255, .55);
 }
+html:root[data-style="rack"] [data-part="bar"] .chip:not([class*="tone-"]) { border-color: var(--rk-edge); }
+html:root[data-style="rack"] [data-part="bar"] .sb-ble { background-color: var(--bg-sunken); }
+/* The channel heat is a small LED matrix behind black glass. */
+html:root[data-style="rack"] [data-part="bar"] .heat { padding: 1px; background-color: #05070A; border-radius: 2px; box-shadow: 0 0 0 2px #05070A, 0 0 0 3px rgba(255, 255, 255, .4), inset 0 1px 2px rgba(var(--rk-sh), .9); }
+html:root[data-style="rack"] [data-part="bar"] .heat .blk { border-radius: 50%; }
+html:root[data-style="rack"] [data-part="bar"] .heat .blk:not(.warn) { box-shadow: 0 0 3px color-mix(in oklab, var(--reality) var(--lv), transparent); }
 
-/* Faceplates: a grooved edge, a screw at the head's left end. */
-html:root[data-style="rack"] [data-part="card"],
-html:root[data-style="rack"] [data-part="nest"],
-html:root[data-style="rack"] [data-part="panel"] {
-  border-style: outset;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .07), 3px 4px 8px rgba(0, 0, 0, .45);
-}
-html:root[data-style="rack"] [data-part="card-head"]:not(.over) { padding-left: 18px; }
-html:root[data-style="rack"] [data-part="card-head"]:not(.over)::before {
+/* The window buttons: three black keys set into the strip. */
+html:root[data-style="rack"] [data-part="caption-btn"] { position: relative; width: 38px; color: #EDEFF1; background: transparent; }
+html:root[data-style="rack"] [data-part="caption-btn"]::before {
   content: '';
   position: absolute;
-  left: 3px;
-  top: 3px;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #AEB7BC, #596267 55%, #2C3235);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, .65);
-  pointer-events: none;
+  inset: 5px 3px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--rk-cap-a), var(--rk-cap-b));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .28), 0 0 0 1px rgba(var(--rk-sh), .85), 0 1px 0 1px rgba(255, 255, 255, .5);
 }
-html:root[data-style="rack"] .dash-title { font-family: var(--font-head); font-size: .76rem; letter-spacing: .16em; text-shadow: 0 1px 0 rgba(255, 255, 255, .08); }
-html:root[data-style="rack"] .og-panel { border-style: outset; border-width: 2px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .07); }
+html:root[data-style="rack"] [data-part="caption-btn"] svg { position: relative; width: 10px; height: 10px; stroke-width: 1.5; }
+html:root[data-style="rack"] [data-part="caption-btn"]:hover { background: transparent; color: #fff; }
+html:root[data-style="rack"] [data-part="caption-btn"]:hover::before { background: linear-gradient(180deg, #565E65, #2A2F34); }
+html:root[data-style="rack"] [data-part="caption-btn"]:active::before,
+html:root[data-style="rack"] [data-part="caption-btn"][aria-expanded="true"]::before { background: linear-gradient(180deg, #14171A, #23282C); box-shadow: inset 0 2px 3px rgba(var(--rk-sh), .8), 0 0 0 1px rgba(var(--rk-sh), .85), 0 1px 0 1px rgba(255, 255, 255, .5); }
+html:root[data-style="rack"] [data-part="caption-btn"]:active svg { transform: translateY(1px); }
 
+/* ---- the display unit: the safety strip, with the readout in a glass window ---- */
+html:root[data-style="rack"] [data-part="strip"] {
+  background-image: var(--rk-ear-l), linear-gradient(180deg, rgba(255, 255, 255, .06), rgba(255, 255, 255, 0) 24%, rgba(var(--rk-sh), .3)), var(--rk-grain);
+  background-size: 12px 44px, 12px 44px, auto, auto;
+  background-position: left top, left top, 0 0, 0 0;
+  background-repeat: repeat-y, repeat-y, repeat, repeat;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08);
+}
+html:root[data-style="rack"] [data-part="numerals"] {
+  position: relative;
+  padding-inline: 14px;
+  background-color: var(--bg-sunken);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, .04), rgba(255, 255, 255, 0) 40%), var(--rk-grain);
+  border-radius: 3px;
+  box-shadow: inset 0 8px 18px rgba(var(--rk-sh), .7), inset 0 0 0 1px rgba(255, 255, 255, .07), 0 0 0 3px var(--rk-cap-b), 0 0 0 4px var(--rk-al-lo), 0 0 0 5px rgba(var(--rk-sh), .7);
+}
+html:root[data-style="rack"] [data-part="numerals"]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(158deg, rgba(255, 255, 255, .07) 0 26%, rgba(255, 255, 255, 0) 27%);
+}
+html:root[data-style="rack"] [data-part="numerals"] .hn-val { font-family: var(--rk-seg); font-weight: 400; letter-spacing: .02em; }
+html:root[data-style="rack"] [data-part="numerals"] .hn-label,
+html:root[data-style="rack"] [data-part="numerals"] .hn-unit { font-family: var(--rk-silk-font); text-transform: uppercase; letter-spacing: .14em; font-size: calc(.7rem * var(--rk-sz, 1)); }
+/* The pair sits on a plate; a bezel ring is all it is dressed with. */
+html:root[data-style="rack"] [data-part="stop-frame"] { background-color: var(--bg-raised); border-radius: 3px; box-shadow: 0 0 0 3px var(--bg-raised), 0 0 0 4px var(--rk-al-lo), 0 0 0 5px rgba(var(--rk-sh), .75); }
+
+/* ---- the scope unit ---- */
+html:root[data-style="rack"] [data-part="hero"] {
+  background-image: var(--rk-ear-l), var(--rk-grain);
+  background-size: 12px 44px, 12px 44px, auto;
+  background-position: left top, left top, 0 0;
+  background-repeat: repeat-y, repeat-y, repeat;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), inset 0 -1px 0 var(--rk-edge);
+}
+
+/* ---- the status unit and the page footer ---- */
+html:root[data-style="rack"] [data-part="status-row"],
+html:root[data-style="rack"] [data-part="page-foot"] {
+  background-image: var(--rk-ear-l), var(--rk-grain);
+  background-size: 12px 44px, 12px 44px, auto;
+  background-position: left top, left top, 0 0;
+  background-repeat: repeat-y, repeat-y, repeat;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .09);
+}
+html:root[data-style="rack"] [data-part="status-row"] .k,
+html:root[data-style="rack"] [data-part="status-row"] .fs-label { font-family: var(--rk-silk-font); text-transform: uppercase; letter-spacing: .12em; }
+
+
+/* ---- the patch bay: the rail is a flange with a row of jacks, one per page ---- */
+html:root[data-style="rack"] [data-part="rail"] {
+  background-image: var(--rk-ear-l), linear-gradient(90deg, rgba(255, 255, 255, .05), rgba(255, 255, 255, 0) 40%), var(--rk-grain);
+  background-size: 12px 44px, 12px 44px, auto, auto;
+  background-position: left top, left top, 0 0, 0 0;
+  background-repeat: repeat-y, repeat-y, repeat, repeat;
+  border-color: var(--rk-edge);
+  border-right: 2px solid var(--line-3);
+}
+html:root[data-style="rack"] [data-part="rail"] > [role="tablist"] { padding-left: 14px; }
+html:root[data-style="rack"] [data-part="rail-label"] {
+  font-family: var(--rk-silk-font);
+  font-size: calc(.8rem * var(--rk-sz, 1));
+  letter-spacing: .26em;
+  color: var(--tx-hi);
+  text-shadow: var(--rk-ts);
+  background-image: linear-gradient(var(--line-3), var(--line-3));
+  background-size: 100% 1px;
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+}
+html:root[data-style="rack"] [data-part="rail-tab"] {
+  position: relative;
+  font-family: var(--rk-silk-font);
+  font-size: calc(.98rem * var(--rk-sz, 1));
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  border-radius: 2px;
+}
+html:root[data-style="rack"] [data-part="rail-tab"]:has(.rail-name) { padding-right: 28px; }
+html:root[data-style="rack"] [data-part="rail-tab"]:has(.rail-name)::after {
+  content: '';
+  position: absolute;
+  right: 7px;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+  border-radius: 50%;
+  pointer-events: none;
+  background:
+    radial-gradient(circle, var(--rk-edge) 0 2.4px, transparent 2.9px),
+    radial-gradient(circle, #B4BCC2 0 4.6px, #5B646B 5px, transparent 5.4px),
+    radial-gradient(circle, #2E3438 0 6.2px, var(--rk-edge) 6.6px, transparent 7px);
+}
+html:root[data-style="rack"] [data-part="rail-tab"]:hover:has(.rail-name)::after { filter: brightness(1.35); }
+html:root[data-style="rack"] [data-part="rail-tab"].on {
+  background-color: var(--bg-sunken);
+  box-shadow: inset 3px 0 0 var(--reality), inset 0 1px 4px rgba(var(--rk-sh), .7);
+}
+/* The page you are on has a plug in its jack, lit in the reality color. */
+html:root[data-style="rack"] [data-part="rail-tab"].on:has(.rail-name)::after {
+  background:
+    radial-gradient(circle, var(--reality) 0 2.4px, transparent 2.9px),
+    radial-gradient(circle, #DDE3E7 0 4.6px, #7C858C 5px, transparent 5.4px),
+    radial-gradient(circle, #2E3438 0 6.2px, var(--rk-edge) 6.6px, transparent 7px);
+  box-shadow: 0 0 9px rgba(var(--reality-rgb), .55);
+}
+html:root[data-style="rack"] [data-part="rail-tab"] .rail-glyph { width: 22px; }
+html:root[data-style="rack"] [data-part="rail-tab"] .rail-glyph svg { width: 18px; height: 18px; }
+html:root[data-style="rack"] .rail-ops button { font-family: var(--rk-silk-font); letter-spacing: .12em; }
+
+
+/* ---- units: a card is a faceplate with ears and four screws; a nest is a pair of rails ---- */
+html:root[data-style="rack"] [data-part="card"],
+html:root[data-style="rack"] [data-part="panel"] {
+  --rk-pad: var(--dash-body-pad, var(--gap));
+  --ear: min(10px, calc(var(--rk-pad) - 1px));
+  border-radius: 3px;
+  background-image:
+    var(--rk-screw-a), var(--rk-screw-b), var(--rk-screw-b), var(--rk-screw-a),
+    linear-gradient(90deg, rgba(255, 255, 255, .075), rgba(255, 255, 255, .015) 68%, rgba(var(--rk-sh), .45) 69% 80%, rgba(var(--rk-sh), 0) 81%),
+    linear-gradient(270deg, rgba(255, 255, 255, .075), rgba(255, 255, 255, .015) 68%, rgba(var(--rk-sh), .45) 69% 80%, rgba(var(--rk-sh), 0) 81%),
+    var(--tex-card);
+  background-size: var(--ear) var(--ear), var(--ear) var(--ear), var(--ear) var(--ear), var(--ear) var(--ear), var(--ear) 100%, var(--ear) 100%, var(--tex-card-size);
+  background-position:
+    calc(var(--ear) * .1) calc(var(--ear) * .1),
+    right calc(var(--ear) * .1) top calc(var(--ear) * .1),
+    left calc(var(--ear) * .1) bottom calc(var(--ear) * .1),
+    right calc(var(--ear) * .1) bottom calc(var(--ear) * .1),
+    left top, right top, 0 0;
+  background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, repeat;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), 0 0 0 1px var(--rk-edge), 3px 5px 10px rgba(var(--rk-sh), .5);
+}
+html:root[data-style="rack"] [data-part="panel"] { --rk-pad: var(--sp-4); }
+html:root[data-style="rack"] [data-part="nest"] {
+  --rk-pad: var(--dash-body-pad, var(--gap));
+  --ear: min(10px, calc(var(--rk-pad) - 1px));
+  border-radius: 2px;
+  background-image: var(--rk-ear-l), var(--rk-ear-r), var(--tex-card);
+  background-size: var(--ear) 44px, var(--ear) 44px, var(--ear) 44px, var(--ear) 44px, var(--tex-card-size);
+  background-position: left top, left top, right top, right top, 0 0;
+  background-repeat: repeat-y, repeat-y, repeat-y, repeat-y, repeat;
+  box-shadow: inset 0 3px 10px rgba(var(--rk-sh), .7), 0 0 0 1px var(--rk-edge);
+}
+/* The silkscreen: a name, then a rule that runs out to the edge. */
+html:root[data-style="rack"] [data-part="card-head"]:not(.over) { padding-left: 2px; }
+html:root[data-style="rack"] [data-part="card-head"] .dash-title,
+html:root[data-style="rack"] [data-part="panel-bar"] .dash-title,
+html:root[data-style="rack"] .card-sub {
+  font-family: var(--rk-silk-font);
+  font-weight: 600;
+  letter-spacing: var(--rk-silk-track);
+  text-shadow: var(--rk-ts);
+}
+html:root[data-style="rack"] [data-part="card-head"] .dash-title { font-size: calc(.92rem * var(--rk-sz, 1)); letter-spacing: .2em; color: var(--tx-hi); }
+html:root[data-style="rack"] [data-part="card-head"] .dash-name::after {
+  content: '';
+  flex: 1 1 10px;
+  align-self: center;
+  min-width: 10px;
+  height: 1px;
+  margin-left: var(--sp-3);
+  background: linear-gradient(90deg, var(--line-4), var(--line-2));
+  box-shadow: 0 1px 0 rgba(var(--rk-sh), .6);
+}
+html:root[data-style="rack"] .pane-head h2 { font-family: var(--rk-silk-font); font-weight: 600; letter-spacing: .24em; text-transform: uppercase; text-shadow: var(--rk-ts); }
+html:root[data-style="rack"] .field-label { font-family: var(--rk-silk-font); font-weight: 600; font-size: calc(.82rem * var(--rk-sz, 1)); text-transform: uppercase; letter-spacing: .12em; }
+html:root[data-style="rack"] .field-value { padding-inline: 5px; background-color: var(--bg-sunken); border-radius: 2px; box-shadow: inset 0 1px 3px rgba(var(--rk-sh), .8); }
+html:root[data-style="rack"] .og-panel {
+  border-radius: 3px;
+  border-width: 2px;
+  outline: none;
+  background-image:
+    var(--rk-screw-a), var(--rk-screw-b), var(--rk-screw-b), var(--rk-screw-a), var(--tex-card);
+  background-size: 8px 8px, 8px 8px, 8px 8px, 8px 8px, var(--tex-card-size);
+  background-position: left 2px top 2px, right 2px top 2px, left 2px bottom 2px, right 2px bottom 2px, 0 0;
+  background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, repeat;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .07), 0 0 0 1px var(--rk-edge);
+}
+html:root[data-style="rack"] .og-screen { border-radius: 2px; box-shadow: inset 0 3px 10px rgba(var(--rk-sh), .85), 0 0 0 1px var(--rk-edge), 0 1px 0 1px rgba(255, 255, 255, .12); }
+
+
+/* ---- pushbuttons: a dark cap with a lit top edge, engraved caps for a label ---- */
 html:root[data-style="rack"] .og-btn,
 html:root[data-style="rack"] .og-seg button,
+html:root[data-style="rack"] .stepper button { position: relative; font-family: var(--rk-silk-font); font-weight: 600; text-transform: uppercase; letter-spacing: .1em; }
+html:root[data-style="rack"] .og-btn { font-size: calc(.94rem * var(--rk-sz, 1)); }
+html:root[data-style="rack"] .og-btn.sm { font-size: calc(.84rem * var(--rk-sz, 1)); }
+html:root[data-style="rack"] .og-seg button { font-size: calc(.88rem * var(--rk-sz, 1)); }
+html:root[data-style="rack"] .og-btn:not(.on):not(.primary):not(.running):not(.danger),
+html:root[data-style="rack"] .og-seg button:not(.active),
 html:root[data-style="rack"] .stepper button {
   background-color: var(--bg-card);
-  background-image: linear-gradient(180deg, var(--bg-card), var(--bg-sunken));
+  background-image:
+    linear-gradient(rgba(255, 255, 255, .24), rgba(255, 255, 255, .24)),
+    linear-gradient(rgba(var(--rk-sh), .7), rgba(var(--rk-sh), .7)),
+    linear-gradient(180deg, rgba(255, 255, 255, .11), rgba(255, 255, 255, 0) 46%, rgba(var(--rk-sh), .3));
+  background-size: 100% 1px, 100% 2px, 100% 100%;
+  background-position: top, bottom, 0 0;
+  background-repeat: no-repeat;
 }
-html:root[data-style="rack"] .og-btn:active,
-html:root[data-style="rack"] .og-seg button:active { background-image: linear-gradient(180deg, var(--bg-sunken), var(--bg-card)); }
-html:root[data-style="rack"] .og-num,
-html:root[data-style="rack"] .value-input { box-shadow: inset 0 2px 5px rgba(0, 0, 0, .75); }
-html:root[data-style="rack"] [data-part="status-row"],
-html:root[data-style="rack"] [data-part="page-foot"] { background-image: var(--tex-card); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08); }
+html:root[data-style="rack"] .og-btn.on,
+html:root[data-style="rack"] .og-btn.primary {
+  background-image: linear-gradient(rgba(255, 255, 255, .22), rgba(255, 255, 255, .22)), linear-gradient(180deg, rgba(255, 255, 255, .08), rgba(255, 255, 255, 0) 50%, rgba(var(--rk-sh), .25));
+  background-size: 100% 1px, 100% 100%;
+  background-position: top, 0 0;
+  background-repeat: no-repeat;
+}
+html:root[data-style="rack"] .og-btn:active:not(:disabled),
+html:root[data-style="rack"] .og-seg button:active:not(:disabled),
+html:root[data-style="rack"] .stepper button:active:not(:disabled) { transform: translateY(1px); }
+/* A latched button wears a lamp in its corner; a chosen option, a bar of light across its top. */
+html:root[data-style="rack"] .og-btn.on::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--reality);
+  box-shadow: 0 0 6px var(--reality);
+  pointer-events: none;
+}
+html:root[data-style="rack"] .og-seg button.active::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 18%;
+  right: 18%;
+  height: 2px;
+  background: var(--reality);
+  box-shadow: 0 0 7px var(--reality);
+  pointer-events: none;
+}
+html:root[data-style="rack"] .og-seg { gap: 3px; }
 
+/* ---- the switch: a bat-handle toggle in a bezel, a lamp on the lit side ---- */
+html:root[data-style="rack"] .og-switch .track {
+  width: 44px;
+  background-color: var(--bg-sunken);
+  border-radius: 3px;
+  box-shadow: inset 0 2px 5px rgba(var(--rk-sh), .85), 0 0 0 1px var(--rk-edge), 0 1px 0 1px rgba(255, 255, 255, .1);
+}
+html:root[data-style="rack"] .og-switch .track::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 7px;
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: 50%;
+  background: #1A1F23;
+  box-shadow: inset 0 0 0 1px rgba(var(--rk-sh), .8);
+  pointer-events: none;
+}
+html:root[data-style="rack"] .og-switch input:checked + .track::before { background: var(--reality); box-shadow: 0 0 7px var(--reality), inset 0 0 0 1px rgba(255, 255, 255, .35); }
+html:root[data-style="rack"] .og-switch .track::after {
+  top: -3px;
+  left: 3px;
+  width: 14px;
+  height: 26px;
+  border-radius: 7px 7px 4px 4px;
+  background-image: linear-gradient(90deg, rgba(var(--rk-sh), .5), rgba(255, 255, 255, .5) 34%, rgba(255, 255, 255, .06) 58%, rgba(var(--rk-sh), .55));
+  box-shadow: 0 2px 3px rgba(var(--rk-sh), .7), inset 0 0 0 1px rgba(var(--rk-sh), .5);
+}
+html:root[data-style="rack"] .og-switch input:checked + .track::after { transform: translateX(24px); box-shadow: 0 2px 3px rgba(var(--rk-sh), .7), 0 0 8px rgba(var(--reality-rgb), .5), inset 0 0 0 1px rgba(var(--rk-sh), .5); }
+html:root[data-style="rack"] .og-switch input:focus-visible + .track { outline-offset: 3px; }
+
+/* ---- the fader: a slot, a cap with a white index line ---- */
+html:root[data-style="rack"] input[type="range"] { border-radius: 2px; box-shadow: 0 0 0 2px var(--rk-edge), 0 1px 0 2px rgba(255, 255, 255, .12); }
+html:root[data-style="rack"] input[type="range"]::-webkit-slider-thumb {
+  border-radius: 2px;
+  background-color: var(--rk-cap-b);
+  background-image:
+    linear-gradient(var(--rk-index), var(--rk-index)),
+    linear-gradient(90deg, rgba(var(--rk-sh), .55), rgba(255, 255, 255, .3) 36%, rgba(255, 255, 255, .04) 60%, rgba(var(--rk-sh), .5));
+  background-size: 100% 2px, 100% 100%;
+  background-position: center, 0 0;
+  background-repeat: no-repeat;
+}
+html:root[data-style="rack"] input[type="range"]::-moz-range-thumb {
+  border-radius: 2px;
+  background-color: var(--rk-cap-b);
+  background-image:
+    linear-gradient(var(--rk-index), var(--rk-index)),
+    linear-gradient(90deg, rgba(var(--rk-sh), .55), rgba(255, 255, 255, .3) 36%, rgba(255, 255, 255, .04) 60%, rgba(var(--rk-sh), .5));
+  background-size: 100% 2px, 100% 100%;
+  background-position: center, 0 0;
+  background-repeat: no-repeat;
+}
+
+/* ---- the pot: a knurled skirt, a cap, a pointer line, a ring of light, the number in a window ---- */
+html:root[data-style="rack"] .knob { isolation: isolate; }
+html:root[data-style="rack"] .knob::before {
+  content: '';
+  position: absolute;
+  inset: 15%;
+  z-index: -1;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 36% 30%, rgba(255, 255, 255, .22), rgba(255, 255, 255, 0) 52%),
+    repeating-conic-gradient(rgba(255, 255, 255, .13) 0 2.5deg, rgba(var(--rk-sh), .34) 2.5deg 5deg),
+    radial-gradient(circle, var(--rk-cap-a), var(--rk-cap-b));
+  box-shadow: 0 5px 9px rgba(var(--rk-sh), .65), 0 0 0 1px var(--rk-cap-rim), inset 0 0 0 1px rgba(255, 255, 255, .14);
+}
+html:root[data-style="rack"] .knob::after {
+  content: '';
+  position: absolute;
+  inset: 27%;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 32%, color-mix(in srgb, var(--rk-cap-a) 62%, #fff), var(--rk-cap-a) 44%, var(--rk-cap-b));
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, .4), 0 0 0 1px rgba(var(--rk-sh), .65), 0 2px 3px rgba(var(--rk-sh), .5);
+}
+html:root[data-style="rack"] .knob circle { stroke-width: 3.2; }
+html:root[data-style="rack"] .knob .knob-hand { stroke: var(--rk-index); stroke-width: 4; stroke-linecap: round; stroke-dasharray: 11 100; stroke-dashoffset: -9; }
+html:root[data-style="rack"] .knob .knob-val {
+  inset: auto auto 1% 50%;
+  display: block;
+  transform: translateX(-50%);
+  padding: 0 5px;
+  background-color: var(--bg-sunken);
+  border-radius: 2px;
+  box-shadow: inset 0 1px 2px var(--rk-edge), 0 0 0 1px rgba(255, 255, 255, .14);
+  font-family: var(--rk-seg);
+  font-size: calc(.8rem * var(--rk-sz, 1));
+  white-space: nowrap;
+}
+
+/* ---- readouts: numbers in seven segments ---- */
+html:root[data-style="rack"] .og-num,
+html:root[data-style="rack"] .numeral-digits { font-family: var(--rk-seg); font-weight: 400; letter-spacing: .02em; }
+html:root[data-style="rack"] .og-num { background-color: var(--bg-sunken); color: var(--reality); border-radius: 2px; box-shadow: inset 0 3px 7px rgba(var(--rk-sh), .9), 0 0 0 1px var(--rk-edge); }
+html:root[data-style="rack"] .value-input { background-color: var(--bg-sunken); border-radius: 2px; box-shadow: inset 0 3px 7px rgba(var(--rk-sh), .9), 0 0 0 1px var(--rk-edge); }
+html:root[data-style="rack"] .og-num:focus,
+html:root[data-style="rack"] .value-input:focus { box-shadow: inset 0 3px 7px rgba(var(--rk-sh), .9), 0 0 0 1px var(--rk-edge), 0 0 0 2px var(--highlight); }
+
+/* ---- the level meter: a ladder of lamps ---- */
+html:root[data-style="rack"] .meter {
+  height: 12px;
+  background-color: var(--bg-sunken);
+  background-image: repeating-linear-gradient(90deg, rgba(255, 255, 255, .09) 0 6px, transparent 6px 8px);
+  border-radius: 2px;
+  box-shadow: inset 0 1px 3px var(--rk-edge), 0 0 0 1px var(--rk-edge);
+}
+html:root[data-style="rack"] .meter-fill {
+  -webkit-mask-image: repeating-linear-gradient(90deg, var(--rk-edge) 0 6px, transparent 6px 8px);
+  mask-image: repeating-linear-gradient(90deg, var(--rk-edge) 0 6px, transparent 6px 8px);
+}
+html:root[data-style="rack"] .meter-peak { width: 3px; background: var(--rk-index); }
+
+/* ---- the dropdown ---- */
+html:root[data-style="rack"] select {
+  border-radius: 2px;
+  background-color: var(--bg-sunken);
+  box-shadow: inset 0 2px 5px rgba(var(--rk-sh), .8), 0 0 0 1px var(--rk-edge);
+  font-family: var(--rk-silk-font);
+  font-size: calc(.95rem * var(--rk-sz, 1));
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+/* ---- boxes to tick, lamps to light ---- */
+html:root[data-style="rack"] input[type="checkbox"]:not([role="switch"]) {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1px solid var(--line-3);
+  border-radius: 3px;
+  background-color: var(--bg-sunken);
+  box-shadow: inset 0 2px 3px rgba(var(--rk-sh), .85), 0 1px 0 rgba(255, 255, 255, .1);
+  vertical-align: middle;
+}
+html:root[data-style="rack"] input[type="checkbox"]:not([role="switch"]):checked {
+  border-color: var(--reality);
+  background-image: radial-gradient(circle, var(--reality) 0 3.4px, rgba(var(--reality-rgb), .35) 4px 6px, transparent 7px);
+  box-shadow: inset 0 2px 3px rgba(var(--rk-sh), .85), 0 0 7px rgba(var(--reality-rgb), .45);
+}
+html:root[data-style="rack"] progress {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 12px;
+  border: 0;
+  border-radius: 2px;
+  background-color: var(--bg-sunken);
+  box-shadow: inset 0 1px 3px var(--rk-edge), 0 0 0 1px var(--rk-edge);
+}
+html:root[data-style="rack"] progress::-webkit-progress-bar { background: transparent; }
+html:root[data-style="rack"] progress::-webkit-progress-value { background-image: repeating-linear-gradient(90deg, var(--reality) 0 6px, transparent 6px 8px); background-color: transparent; }
+html:root[data-style="rack"] progress::-moz-progress-bar { background-image: repeating-linear-gradient(90deg, var(--reality) 0 6px, transparent 6px 8px); background-color: transparent; }
+
+/* ---- chips ---- */
+html:root[data-style="rack"] .chip { font-family: var(--rk-silk-font); letter-spacing: .06em; }
+
+/* ---- scrollbars: a slot and a fader cap ---- */
 html:root[data-style="rack"] * { scrollbar-width: auto; scrollbar-color: auto; }
-html:root[data-style="rack"] ::-webkit-scrollbar { width: 11px; height: 11px; }
-html:root[data-style="rack"] ::-webkit-scrollbar-track { background: var(--bg-sunken); }
-html:root[data-style="rack"] ::-webkit-scrollbar-thumb { background-color: var(--line-2); background-image: linear-gradient(90deg, rgba(255, 255, 255, .18), rgba(0, 0, 0, .25)); border-radius: 2px; }
+html:root[data-style="rack"] ::-webkit-scrollbar { width: 14px; height: 14px; }
+html:root[data-style="rack"] ::-webkit-scrollbar-track { background: var(--bg-sunken); box-shadow: inset 0 0 4px var(--rk-edge); }
+html:root[data-style="rack"] ::-webkit-scrollbar-thumb {
+  border-radius: 2px;
+  border: 1px solid var(--rk-edge);
+  background-color: var(--rk-cap-a);
+  background-image:
+    repeating-linear-gradient(0deg, transparent 0 3px, rgba(255, 255, 255, .28) 3px 4px) center / 7px 11px no-repeat,
+    linear-gradient(90deg, rgba(var(--rk-sh), .45), rgba(255, 255, 255, .28) 40%, rgba(var(--rk-sh), .5));
+}
+html:root[data-style="rack"] ::-webkit-scrollbar-thumb:horizontal {
+  background-image:
+    repeating-linear-gradient(90deg, transparent 0 3px, rgba(255, 255, 255, .28) 3px 4px) center / 11px 7px no-repeat,
+    linear-gradient(180deg, rgba(var(--rk-sh), .45), rgba(255, 255, 255, .28) 40%, rgba(var(--rk-sh), .5));
+}
+
+
+/* ---- menus, tooltips and drawers: aluminum-framed plates ---- */
+html:root[data-style="rack"] .ui-menu,
+html:root[data-style="rack"] .ui-sheet,
+html:root[data-style="rack"] #ph-tip {
+  border: 2px solid;
+  border-color: var(--rk-al-hi) var(--rk-al-lo) #2B3035 var(--rk-al);
+  border-radius: 3px;
+  outline: none;
+}
+html:root[data-style="rack"] .ui-menu-t,
+html:root[data-style="rack"] .ui-menu-sec { font-family: var(--rk-silk-font); letter-spacing: .14em; text-transform: uppercase; }
+html:root[data-style="rack"] .ui-menu-t { font-size: calc(.95rem * var(--rk-sz, 1)); }
+html:root[data-style="rack"] .ui-menu-i { font-family: var(--rk-silk-font); font-size: calc(.95rem * var(--rk-sz, 1)); letter-spacing: .06em; }
+html:root[data-style="rack"] .ui-menu-i:hover:not(:disabled),
+html:root[data-style="rack"] .ui-menu-i:focus-visible { box-shadow: inset 3px 0 0 var(--reality); background-color: var(--bg-sunken); }
+html:root[data-style="rack"] #ph-tip { font-family: var(--rk-silk-font); font-size: calc(.82rem * var(--rk-sz, 1)); letter-spacing: .04em; }
+html:root[data-style="rack"] .ui-scrub-track { height: 5px; border-radius: 1px; box-shadow: inset 0 1px 2px var(--rk-edge), 0 0 0 1px var(--rk-edge); }
+html:root[data-style="rack"] .ui-scrub-played { background: var(--reality); box-shadow: 0 0 6px var(--reality); }
+html:root[data-style="rack"] .ui-stage-box { border-radius: 2px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08), 0 0 0 2px var(--rk-edge), 0 0 0 3px var(--rk-al-lo); }
+
+
+/* ================= Vintage: cream faceplates, walnut cheeks, brass, bakelite ================= */
+html:root[data-style="rack"][data-variant="rack-vintage"] {
+  --font: 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, 'Times New Roman', serif;
+  --font-head: 'Cinzel', 'Palatino Linotype', Palatino, Georgia, serif;
+  --rk-silk-font: 'Cinzel', 'Palatino Linotype', Palatino, Georgia, serif;
+  --rk-silk-track: .1em;
+  --rk-sz: .8;
+  --rk-sh: 58, 38, 14;
+  --rk-edge: #2E2012;
+  --rk-index: #F3E7C8;
+  --rk-ts: 0 1px 0 rgba(255, 250, 235, .85);
+  --rk-bar-ts: 0 -1px 0 rgba(0, 0, 0, .75);
+  --rk-al: #B8943F;
+  --rk-al-hi: #EDD99F;
+  --rk-al-lo: #7A5C22;
+  --rk-ink: #F3E7C8;
+  --rk-bar: #4A2E1B;
+  --rk-side: #3A2314;
+  --rk-ear-a: #D2AC57;
+  --rk-ear-b: #8A6A2A;
+  --rk-hole: #1B1209;
+  --rk-cap-a: #6E472C;
+  --rk-cap-b: #2B170B;
+  --rk-cap-rim: #130903;
+  --rk-grain: repeating-linear-gradient(0deg, rgba(120, 88, 36, .06) 0 1px, rgba(255, 255, 255, .22) 1px 2px, transparent 2px 4px);
+  --rk-wood:
+    repeating-linear-gradient(0deg,
+      rgba(0, 0, 0, .22) 0 1px, transparent 1px 5px, rgba(255, 205, 150, .08) 5px 6px, transparent 6px 11px,
+      rgba(0, 0, 0, .15) 11px 13px, transparent 13px 19px, rgba(0, 0, 0, .2) 19px 20px, transparent 20px 27px,
+      rgba(255, 190, 120, .07) 27px 29px, transparent 29px 36px, rgba(0, 0, 0, .13) 36px 38px, transparent 38px 47px),
+    linear-gradient(90deg, rgba(255, 200, 140, .12), rgba(0, 0, 0, .16) 24%, rgba(255, 200, 140, .07) 58%, rgba(0, 0, 0, .2));
+  --rk-bar-img: var(--rk-wood);
+  --rk-screw-a: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cdefs%3E%3CradialGradient id='a' cx='.36' cy='.32' r='.8'%3E%3Cstop offset='0' stop-color='%23FFF1BF'/%3E%3Cstop offset='.5' stop-color='%23C49A3C'/%3E%3Cstop offset='1' stop-color='%234A3513'/%3E%3C/radialGradient%3E%3C/defs%3E%3Ccircle cx='5' cy='5' r='4.5' fill='url(%23a)' stroke='%23231708' stroke-width='.7'/%3E%3Cpath d='M2.6 5.6l4.8-1.2' stroke='%23231708' stroke-width='1.2' stroke-linecap='round'/%3E%3C/svg%3E");
+  --rk-screw-b: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cdefs%3E%3CradialGradient id='a' cx='.36' cy='.32' r='.8'%3E%3Cstop offset='0' stop-color='%23FFF1BF'/%3E%3Cstop offset='.5' stop-color='%23C49A3C'/%3E%3Cstop offset='1' stop-color='%234A3513'/%3E%3C/radialGradient%3E%3C/defs%3E%3Ccircle cx='5' cy='5' r='4.5' fill='url(%23a)' stroke='%23231708' stroke-width='.7'/%3E%3Cpath d='M3.1 3.4l3.8 3.2' stroke='%23231708' stroke-width='1.2' stroke-linecap='round'/%3E%3C/svg%3E");
+  --tex-page:
+    radial-gradient(ellipse 90% 50% at 50% 0%, rgba(255, 240, 200, .35), transparent 70%),
+    repeating-linear-gradient(0deg, rgba(120, 88, 36, .05) 0 1px, transparent 1px 4px);
+  --tex-card: var(--rk-grain);
+}
+
+/* The walnut regions read in a dark, warm set of their own: every token a child asks for is
+   answered here, the aliases included (an alias is resolved once, at the root). */
+html:root[data-style="rack"][data-variant="rack-vintage"] [data-part="bar"],
+html:root[data-style="rack"][data-variant="rack-vintage"] [data-part="rail"],
+html:root[data-style="rack"][data-variant="rack-vintage"] [data-part="status-row"],
+html:root[data-style="rack"][data-variant="rack-vintage"] [data-part="numerals"] {
+  --bg: #2B1B10;
+  --bg-raised: #33200F;
+  --bg-card: #3F2815;
+  --bg-sunken: #170E07;
+  --screen: #170E07;
+  --chip: #3F2815;
+  --line-0: #1D1109;
+  --line-1: #40291A;
+  --line-2: #5A3E25;
+  --line-3: #755434;
+  --line-4: #94704A;
+  --line: #40291A;
+  --line-soft: #1D1109;
+  --chip-line: #40291A;
+  --tx-hi: #FFF4DA;
+  --tx: #F0E3C3;
+  --tx-val: #E4D6B4;
+  --tx-mut: #CDBD98;
+  --tx-ghost: #BEAC87;
+  --tx-faint: #75613F;
+  --ink: #F0E3C3;
+  --ink-hi: #FFF4DA;
+  --ink-dim: #CDBD98;
+  --ink-faint: #BEAC87;
+  --reality: #6EE6A2;
+  --reality-rgb: 110, 230, 162;
+  --good: #6EE6A2;
+  --glow-reality: 0 0 14px rgba(110, 230, 162, .55), 0 0 32px rgba(110, 230, 162, .18);
+  --intent: #B2BBFF;
+  --intent-rgb: 178, 187, 255;
+  --highlight: #A8D6FF;
+  --highlight-rgb: 168, 214, 255;
+  --shell-bg: #2B1B10;
+  --shell-fg: #F0E3C3;
+  --shell-border: #755434;
+  color-scheme: dark;
+}
+html:root[data-style="rack"][data-variant="rack-vintage"] [data-part="rail"] {
+  background-color: var(--rk-side);
+  background-image: var(--rk-ear-l), var(--rk-wood);
+  background-size: 12px 44px, 12px 44px, auto, auto;
+  background-position: left top, left top, 0 0, 0 0;
+  background-repeat: repeat-y, repeat-y, repeat, repeat;
+  border-right-color: #1D1109;
+}
+html:root[data-style="rack"][data-variant="rack-vintage"] [data-part="status-row"] {
+  background-color: var(--rk-side);
+  background-image: var(--rk-ear-l), var(--rk-wood);
+  background-size: 12px 44px, 12px 44px, auto, auto;
+  background-position: left top, left top, 0 0, 0 0;
+  background-repeat: repeat-y, repeat-y, repeat, repeat;
+  box-shadow: inset 0 1px 0 rgba(255, 220, 160, .18);
+}
+html:root[data-style="rack"][data-variant="rack-vintage"] [data-part="bar"] { box-shadow: inset 0 -1px 0 rgba(0, 0, 0, .7), inset 0 1px 0 rgba(255, 220, 160, .25); }
+html:root[data-style="rack"][data-variant="rack-vintage"] [data-part="bar"] .chip { box-shadow: inset 0 1px 3px rgba(0, 0, 0, .85), 0 1px 0 rgba(255, 220, 160, .3); }
+html:root[data-style="rack"][data-variant="rack-vintage"] [data-part="bar"] .heat { box-shadow: 0 0 0 2px #0B0603, 0 0 0 3px rgba(235, 205, 140, .55), inset 0 1px 2px rgba(0, 0, 0, .9); background-color: #0B0603; }
+html:root[data-style="rack"][data-variant="rack-vintage"] [data-part="bar"] .linkdot:not(.offline) .core { box-shadow: 0 0 0 1.5px rgba(0, 0, 0, .7), 0 0 0 2.5px #D9B75F, 0 0 7px rgba(var(--lc), .9); }
+html:root[data-style="rack"][data-variant="rack-vintage"] [data-part="caption-btn"]::before { box-shadow: inset 0 1px 0 rgba(255, 220, 160, .3), 0 0 0 1px rgba(0, 0, 0, .85), 0 1px 0 1px rgba(235, 205, 140, .45); }
+html:root[data-style="rack"][data-variant="rack-vintage"] [data-part="rail"] > [role="tablist"] { padding-left: 14px; }
+html:root[data-style="rack"][data-variant="rack-vintage"] [data-part="rail-tab"].on { background-color: #170E07; }
+html:root[data-style="rack"][data-variant="rack-vintage"] [data-part="rail-tab"]:has(.rail-name)::after {
+  background:
+    radial-gradient(circle, #000 0 2.4px, transparent 2.9px),
+    radial-gradient(circle, #D9B75F 0 4.6px, #7A5C22 5px, transparent 5.4px),
+    radial-gradient(circle, #3B2412 0 6.2px, #000 6.6px, transparent 7px);
+}
+html:root[data-style="rack"][data-variant="rack-vintage"] [data-part="rail-tab"].on:has(.rail-name)::after {
+  background:
+    radial-gradient(circle, var(--reality) 0 2.4px, transparent 2.9px),
+    radial-gradient(circle, #F0DA9A 0 4.6px, #8A6A2A 5px, transparent 5.4px),
+    radial-gradient(circle, #3B2412 0 6.2px, #000 6.6px, transparent 7px);
+}
+html:root[data-style="rack"][data-variant="rack-vintage"] [data-part="rail-tab"] { letter-spacing: .06em; }
+
+/* The cream faceplates: brass ears, a hairline of brown, a soft shadow. */
+html:root[data-style="rack"][data-variant="rack-vintage"] [data-part="card"],
+html:root[data-style="rack"][data-variant="rack-vintage"] [data-part="panel"] { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6), 0 0 0 1px var(--rk-edge), 2px 4px 9px rgba(var(--rk-sh), .35); }
+html:root[data-style="rack"][data-variant="rack-vintage"] [data-part="nest"] {
+  background-image: var(--rk-ear-l), var(--rk-ear-r), var(--tex-card);
+  box-shadow: inset 0 3px 8px rgba(var(--rk-sh), .45), 0 0 0 1px var(--rk-edge);
+}
+html:root[data-style="rack"][data-variant="rack-vintage"] [data-part="card-head"] .dash-title { color: #3A2610; }
+html:root[data-style="rack"][data-variant="rack-vintage"] [data-part="numerals"] { box-shadow: inset 0 8px 18px rgba(0, 0, 0, .7), inset 0 0 0 1px rgba(255, 255, 255, .07), 0 0 0 3px #3B2412, 0 0 0 4px #D2AC57, 0 0 0 5px #231508; }
+html:root[data-style="rack"][data-variant="rack-vintage"] [data-part="numerals"]::before { background: linear-gradient(180deg, rgba(0, 0, 0, .45), rgba(255, 255, 255, .06) 30%, rgba(255, 255, 255, 0) 55%, rgba(0, 0, 0, .4)); }
+html:root[data-style="rack"][data-variant="rack-vintage"] [data-part="stop-frame"] { box-shadow: 0 0 0 3px var(--bg-raised), 0 0 0 4px #B8943F, 0 0 0 5px #3A2610; }
+
+/* Meters are VU scales: a printed arc of ticks and a thin black needle. */
+html:root[data-style="rack"][data-variant="rack-vintage"] .meter {
+  height: 16px;
+  background-color: var(--bg-card);
+  background-image:
+    linear-gradient(90deg, rgba(var(--rk-sh), 0) 80%, rgba(var(--rk-sh), .22) 80%),
+    repeating-linear-gradient(90deg, rgba(var(--rk-sh), .55) 0 1px, transparent 1px 20%),
+    repeating-linear-gradient(90deg, rgba(var(--rk-sh), .35) 0 1px, transparent 1px 4%);
+  background-size: 100% 100%, 100% 55%, 100% 30%;
+  background-position: 0 0, 0 100%, 0 100%;
+  background-repeat: no-repeat;
+  border-radius: 2px;
+  box-shadow: inset 0 1px 3px rgba(var(--rk-sh), .6), 0 0 0 1px var(--rk-edge);
+}
+html:root[data-style="rack"][data-variant="rack-vintage"] .meter-fill {
+  -webkit-mask-image: none;
+  mask-image: none;
+  background: linear-gradient(90deg, rgba(var(--rk-sh), 0), rgba(var(--rk-sh), .12));
+  border-right: 2px solid #1B1109;
+  box-shadow: none;
+}
+html:root[data-style="rack"][data-variant="rack-vintage"] .meter-peak { background: #1B1109; width: 2px; opacity: .55; }
+html:root[data-style="rack"][data-variant="rack-vintage"] progress { background-color: var(--bg-card); }
+html:root[data-style="rack"][data-variant="rack-vintage"] .ui-menu,
+html:root[data-style="rack"][data-variant="rack-vintage"] .ui-sheet,
+html:root[data-style="rack"][data-variant="rack-vintage"] #ph-tip { border-color: #EDD99F #7A5C22 #4F3A14 #B8943F; }
+
+
+/* ================= Modular: Eurorack, matte black panels, a color per module, jacks and cables ================= */
+html:root[data-style="rack"][data-variant="rack-modular"] {
+  --font-head: 'Orbitron', 'Barlow Condensed', 'Bahnschrift SemiCondensed', 'Arial Narrow', sans-serif;
+  --rk-silk-font: 'Orbitron', 'Barlow Condensed', sans-serif;
+  --rk-silk-track: .07em;
+  --rk-sz: .72;
+  --rk-c: #19D3C5;
+  --rk-plug: #19D3C5;
+  --rk-bar: #0F1114;
+  --rk-bar-ts: none;
+  --rk-ink: #F2F4F5;
+  --rk-al: #9AA3AA;
+  --rk-al-hi: #CDD3D7;
+  --rk-al-lo: #5A636A;
+  --rk-ear-a: #7C858C;
+  --rk-ear-b: #3A4046;
+  --rk-cap-a: #2A2D33;
+  --rk-cap-b: #121418;
+  --rk-grain: repeating-linear-gradient(0deg, rgba(255, 255, 255, .02) 0 1px, rgba(0, 0, 0, .12) 1px 2px);
+  --tex-page:
+    radial-gradient(ellipse 70% 45% at 20% 0%, rgba(58, 169, 255, .10), transparent 70%),
+    radial-gradient(ellipse 70% 45% at 85% 100%, rgba(155, 124, 255, .09), transparent 70%),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, .012) 0 1px, transparent 1px 4px);
+}
+/* One color to a module, six in a row: the band, the title, the caps of its knobs. */
+html:root[data-style="rack"][data-variant="rack-modular"] *:nth-child(6n+1) > :is([data-part="card"], [data-part="card-head"], [data-part="nest"]),
+html:root[data-style="rack"][data-variant="rack-modular"] [data-part="panel"]:nth-child(6n+1) { --rk-c: #19D3C5; }
+html:root[data-style="rack"][data-variant="rack-modular"] *:nth-child(6n+2) > :is([data-part="card"], [data-part="card-head"], [data-part="nest"]),
+html:root[data-style="rack"][data-variant="rack-modular"] [data-part="panel"]:nth-child(6n+2) { --rk-c: #3AA9FF; }
+html:root[data-style="rack"][data-variant="rack-modular"] *:nth-child(6n+3) > :is([data-part="card"], [data-part="card-head"], [data-part="nest"]),
+html:root[data-style="rack"][data-variant="rack-modular"] [data-part="panel"]:nth-child(6n+3) { --rk-c: #9B7CFF; }
+html:root[data-style="rack"][data-variant="rack-modular"] *:nth-child(6n+4) > :is([data-part="card"], [data-part="card-head"], [data-part="nest"]),
+html:root[data-style="rack"][data-variant="rack-modular"] [data-part="panel"]:nth-child(6n+4) { --rk-c: #E85CC8; }
+html:root[data-style="rack"][data-variant="rack-modular"] *:nth-child(6n+5) > :is([data-part="card"], [data-part="card-head"], [data-part="nest"]),
+html:root[data-style="rack"][data-variant="rack-modular"] [data-part="panel"]:nth-child(6n+5) { --rk-c: #3DE08C; }
+html:root[data-style="rack"][data-variant="rack-modular"] *:nth-child(6n) > :is([data-part="card"], [data-part="card-head"], [data-part="nest"]),
+html:root[data-style="rack"][data-variant="rack-modular"] [data-part="panel"]:nth-child(6n) { --rk-c: #9BE02E; }
+html:root[data-style="rack"][data-variant="rack-modular"] [data-part="rail-tab"]:nth-of-type(6n+1) { --rk-plug: #19D3C5; }
+html:root[data-style="rack"][data-variant="rack-modular"] [data-part="rail-tab"]:nth-of-type(6n+2) { --rk-plug: #3AA9FF; }
+html:root[data-style="rack"][data-variant="rack-modular"] [data-part="rail-tab"]:nth-of-type(6n+3) { --rk-plug: #9B7CFF; }
+html:root[data-style="rack"][data-variant="rack-modular"] [data-part="rail-tab"]:nth-of-type(6n+4) { --rk-plug: #E85CC8; }
+html:root[data-style="rack"][data-variant="rack-modular"] [data-part="rail-tab"]:nth-of-type(6n+5) { --rk-plug: #3DE08C; }
+html:root[data-style="rack"][data-variant="rack-modular"] [data-part="rail-tab"]:nth-of-type(6n) { --rk-plug: #9BE02E; }
+
+html:root[data-style="rack"][data-variant="rack-modular"] [data-part="card"],
+html:root[data-style="rack"][data-variant="rack-modular"] [data-part="panel"],
+html:root[data-style="rack"][data-variant="rack-modular"] [data-part="nest"] {
+  --rk-cap-a: color-mix(in srgb, var(--rk-c) 70%, #2A2D33);
+  --rk-cap-b: color-mix(in srgb, var(--rk-c) 28%, #0B0C0E);
+}
+html:root[data-style="rack"][data-variant="rack-modular"] [data-part="bar"] {
+  background-image: var(--rk-ear-l), linear-gradient(90deg, #19D3C5, #3AA9FF 20%, #9B7CFF 40%, #E85CC8 60%, #3DE08C 80%, #9BE02E), var(--rk-grain);
+  background-size: 12px 44px, 12px 44px, 100% 3px, auto;
+  background-position: left top, left top, 0 100%, 0 0;
+  background-repeat: repeat-y, repeat-y, no-repeat, repeat;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18);
+}
+html:root[data-style="rack"][data-variant="rack-modular"] [data-part="bar"] .chip:not([class*="tone-"]) { border-color: #2B2F35; }
+html:root[data-style="rack"][data-variant="rack-modular"] [data-part="bar"] .chip { box-shadow: inset 0 1px 3px rgba(0, 0, 0, .85); }
+html:root[data-style="rack"][data-variant="rack-modular"] [data-part="bar"] .heat { box-shadow: 0 0 0 2px #05070A, 0 0 0 3px #2B2F35, inset 0 1px 2px rgba(0, 0, 0, .9); }
+html:root[data-style="rack"][data-variant="rack-modular"] [data-part="bar"] .linkdot:not(.offline) .core { box-shadow: 0 0 0 1.5px rgba(0, 0, 0, .8), 0 0 0 2.5px #8D969D, 0 0 7px rgba(var(--lc), .9); }
+html:root[data-style="rack"][data-variant="rack-modular"] [data-part="caption-btn"]::before { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22), 0 0 0 1px rgba(0, 0, 0, .9), 0 1px 0 1px rgba(255, 255, 255, .1); }
+html:root[data-style="rack"][data-variant="rack-modular"] [data-part="strip"] {
+  background-image: var(--rk-ear-l), linear-gradient(90deg, #19D3C5, #3AA9FF 20%, #9B7CFF 40%, #E85CC8 60%, #3DE08C 80%, #9BE02E), linear-gradient(180deg, rgba(255, 255, 255, .05), rgba(255, 255, 255, 0) 24%, rgba(0, 0, 0, .3)), var(--rk-grain);
+  background-size: 12px 44px, 12px 44px, 100% 2px, auto, auto;
+  background-position: left top, left top, 0 100%, 0 0, 0 0;
+  background-repeat: repeat-y, repeat-y, no-repeat, repeat, repeat;
+}
+html:root[data-style="rack"][data-variant="rack-modular"] [data-part="rail-tab"]:has(.rail-name)::after {
+  background:
+    radial-gradient(circle, #000 0 2.4px, transparent 2.9px),
+    radial-gradient(circle, var(--rk-plug) 0 4.6px, #14171A 5px, transparent 5.4px),
+    radial-gradient(circle, #2E3438 0 6.2px, #000 6.6px, transparent 7px);
+}
+html:root[data-style="rack"][data-variant="rack-modular"] [data-part="rail-tab"] { letter-spacing: .04em; }
+html:root[data-style="rack"][data-variant="rack-modular"] [data-part="rail-label"] { letter-spacing: .14em; }
+
+/* A module: a colored band across the top edge, the screws, the ears. */
+html:root[data-style="rack"][data-variant="rack-modular"] [data-part="card"],
+html:root[data-style="rack"][data-variant="rack-modular"] [data-part="panel"] {
+  background-image:
+    linear-gradient(var(--rk-c), var(--rk-c)),
+    var(--rk-screw-a), var(--rk-screw-b), var(--rk-screw-b), var(--rk-screw-a),
+    linear-gradient(90deg, rgba(255, 255, 255, .075), rgba(255, 255, 255, .015) 68%, rgba(0, 0, 0, .45) 69% 80%, rgba(0, 0, 0, 0) 81%),
+    linear-gradient(270deg, rgba(255, 255, 255, .075), rgba(255, 255, 255, .015) 68%, rgba(0, 0, 0, .45) 69% 80%, rgba(0, 0, 0, 0) 81%),
+    var(--tex-card);
+  background-size: 100% 4px, var(--ear) var(--ear), var(--ear) var(--ear), var(--ear) var(--ear), var(--ear) var(--ear), var(--ear) 100%, var(--ear) 100%, var(--tex-card-size);
+  background-position:
+    0 0,
+    left calc(var(--ear) * .1) top calc(var(--ear) * .1 + 4px),
+    right calc(var(--ear) * .1) top calc(var(--ear) * .1 + 4px),
+    left calc(var(--ear) * .1) bottom calc(var(--ear) * .1),
+    right calc(var(--ear) * .1) bottom calc(var(--ear) * .1),
+    left top, right top, 0 0;
+  background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, repeat;
+}
+html:root[data-style="rack"][data-variant="rack-modular"] [data-part="card-head"] .dash-title { color: var(--rk-c); }
+html:root[data-style="rack"][data-variant="rack-modular"] [data-part="card-head"] .dash-name::after { background: linear-gradient(90deg, var(--rk-c), transparent); opacity: .7; }
+html:root[data-style="rack"][data-variant="rack-modular"] [data-part="nest"] { box-shadow: inset 0 3px 10px rgba(0, 0, 0, .7), 0 0 0 1px var(--rk-c); }
+/* Every pushbutton keeps a line of its module's color under its cap. */
+html:root[data-style="rack"][data-variant="rack-modular"] .og-btn:not(.on):not(.primary):not(.running):not(.danger),
+html:root[data-style="rack"][data-variant="rack-modular"] .og-seg button:not(.active),
+html:root[data-style="rack"][data-variant="rack-modular"] .stepper button {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, .24), rgba(255, 255, 255, .24)),
+    linear-gradient(var(--rk-c), var(--rk-c)),
+    linear-gradient(180deg, rgba(255, 255, 255, .11), rgba(255, 255, 255, 0) 46%, rgba(0, 0, 0, .3));
+  background-size: 100% 1px, 100% 2px, 100% 100%;
+}
+html:root[data-style="rack"][data-variant="rack-modular"] .og-switch .track::after { background-image: linear-gradient(90deg, rgba(0, 0, 0, .5), rgba(255, 255, 255, .5) 34%, rgba(255, 255, 255, .06) 58%, rgba(0, 0, 0, .55)), linear-gradient(var(--rk-c), var(--rk-c)); background-size: 100% 100%, 100% 5px; background-position: 0 0, 0 0; background-repeat: no-repeat; }
+html:root[data-style="rack"][data-variant="rack-modular"] input[type="range"]::-webkit-slider-thumb {
+  background-image:
+    linear-gradient(var(--rk-index), var(--rk-index)),
+    linear-gradient(90deg, rgba(0, 0, 0, .55), rgba(255, 255, 255, .3) 36%, rgba(255, 255, 255, .04) 60%, rgba(0, 0, 0, .5)),
+    linear-gradient(var(--rk-c), var(--rk-c));
+  background-size: 100% 2px, 100% 100%, 100% 4px;
+  background-position: center, 0 0, 0 0;
+}
+html:root[data-style="rack"][data-variant="rack-modular"] .knob .knob-hand { stroke: #fff; }
