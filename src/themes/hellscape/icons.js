@@ -1,4 +1,28 @@
-import { pixelIcons } from '../kit.js';
-
-/** The 8 x 8 pixel set: a starting point, replace it. */
-export default pixelIcons();
+/** Hellscape: drawn masks in the control's own ink, one demonic motif per name (a furnace, a skull, a dagger, a gate). */
+const F = ' fill="#000" stroke="none"';
+export default {
+  machine: '<rect x="2.5" y="2.5" width="11" height="11" rx="1"/><path d="M5.5 13.5v-3a2.5 2.5 0 0 1 5 0v3"/><path d="M8 10.6c-1.1-1-.1-2.1 0-3.2 1.1.6 1.7 2 0 3.2z"' + F + '/>',
+  generator: '<path d="M8 1.8c.4 2.4 3.8 3.8 3.8 7.4a3.8 3.8 0 0 1-7.6 0c0-1.4.6-2.2 1.4-3 .1 1 .5 1.6 1.2 1.9C6.4 5.6 7.2 3.8 8 1.8z"/>',
+  motion: '<path d="M1 5c2 0 3 1.5 3.5 3C5 6.5 6.5 5.5 8 8c1.5-2.5 3-1.5 3.5 0 .5-1.5 1.5-3 3.5-3-.5 2-.5 4-2 6-1-.8-2-.8-3-.2L8 14l-2-3.2c-1-.6-2-.6-3 .2C1.5 9 1.5 7 1 5z"/>',
+  safety: '<path d="M8 1.5l5.5 2v4.2c0 3-2.3 5.4-5.5 6.8-3.2-1.4-5.5-3.8-5.5-6.8V3.5z"/><path d="M5.2 8c1-1.5 1.9-2.1 2.8-2.1s1.8.6 2.8 2.1c-1 1.5-1.9 2.1-2.8 2.1S6.2 9.5 5.2 8z"/><path d="M8 6.5v3"/>',
+  limits: '<path d="M2 2.5h12M3.5 2.5l1.6 5 1.6-5M9.3 2.5l1.6 5 1.6-5M2 13.5h12M5.2 13.5L6.8 9l1.6 4.5M9.6 13.5l1.6-4.5 1.6 4.5"/>',
+  playback: '<path d="M5 2.5l9 5.5-9 5.5z"/><path d="M1.5 5.5H3M1.5 8H3M1.5 10.5H3"/>',
+  auxiliary: '<path d="M6 7.5h4v6.5H6zM4.5 14h7M8 7.5V6"/><path d="M8 1.4c1.1 1.1 1.6 2.2 0 3.8-1.6-1.6-1.1-2.7 0-3.8z"' + F + '/>',
+  automation: '<circle cx="8" cy="8" r="4.3"/><circle cx="8" cy="8" r="1.4"/><path d="M8 1.3v2.4M8 12.3v2.4M1.3 8h2.4M12.3 8h2.4M3.3 3.3l1.7 1.7M11 11l1.7 1.7M12.7 3.3L11 5M5 11l-1.7 1.7"/>',
+  hardware: '<rect x="4" y="5" width="8" height="8" rx="1"/><path d="M5.3 5L4 1.8M10.7 5L12 1.8M6.5 8.3h3M6.5 10.5h3M2 8h2M12 8h2"/>',
+  network: '<circle cx="8" cy="8" r="6.2"/><path d="M8 1.8L11.65 13.1L2.1 6.1H13.9L4.35 13.1z"/>',
+  session: '<path d="M4 2h8M4 14h8M5 2c0 3 3 4 3 6s-3 3-3 6M11 2c0 3-3 4-3 6s3 3 3 6"/>',
+  system: '<path d="M3 7.5C3 4 5.2 2 8 2s5 2 5 5.5c0 1.6-.8 2.6-1.8 3.2V13H4.8v-2.3C3.8 10.1 3 9.1 3 7.5z"/><circle cx="5.9" cy="7.6" r="1.2"' + F + '/><circle cx="10.1" cy="7.6" r="1.2"' + F + '/><path d="M8 9.7l-.8 1.6h1.6zM6.5 13v-1.5M9.5 13v-1.5"/>',
+  other: '<path d="M3.2 2.5l2.2 11M7.4 2l2.2 12M11.6 2.5l2.2 11"/>',
+  setup: '<path d="M1.5 4.5h10.5A3.5 3.5 0 0 1 8.5 8V10h2.5v3H5v-3h2.5V8C5.5 8 2.8 6.8 1.5 4.5z"/>',
+  pairing: '<rect x="1.8" y="3.8" width="12.4" height="8.6" rx="1"/><path d="M1.8 6.6h12.4"/><rect x="3.8" y="8.4" width="3.2" height="2.4"/><path d="M9 9.6h3.2"/>',
+  valence: '<circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2.1"/><circle cx="8" cy="2.1" r=".9"' + F + '/><circle cx="13.1" cy="11" r=".9"' + F + '/><circle cx="2.9" cy="11" r=".9"' + F + '/>',
+  log: '<path d="M3.5 2.5h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.5a2 2 0 0 1-2-2zM3.5 11.5H2a1 1 0 0 0 1 1.2"/><path d="M6 5.5h4.5M6 8h4.5"/>',
+  display: '<path d="M1.5 8C3.5 4.6 6 3.4 8 3.4S12.5 4.6 14.5 8c-2 3.4-4.5 4.6-6.5 4.6S3.5 11.4 1.5 8z"/><ellipse cx="8" cy="8" rx="1.3" ry="3"' + F + '/>',
+  plugins: '<path d="M8 1.5l2 8H6zM4.8 9.7h6.4M8 9.7v3.4M6.8 14h2.4"/>',
+  hubs: '<path d="M2.5 14V7.2a5.5 5.5 0 0 1 11 0V14zM6 14V8.2M8 14V6.6M10 14V8.2"/>',
+  server: '<path d="M2 12.5V5l3.2 3L8 3l2.8 5L14 5v7.5zM2 14.5h12"/>',
+  settings: '<path d="M4 2v12M8 2v12M12 2v12"/><rect x="2.3" y="8.8" width="3.4" height="2.6"' + F + '/><rect x="6.3" y="4.4" width="3.4" height="2.6"' + F + '/><rect x="10.3" y="7" width="3.4" height="2.6"' + F + '/>',
+  merge: '<path d="M8 14V6M3.5 2v4.4c0 1 .8 1.7 1.8 1.7h5.4c1 0 1.8-.7 1.8-1.7V2M8 2v6.1"/>',
+  about: '<path d="M3 2.5h8.5A1.5 1.5 0 0 1 13 4v8.5H4.5A1.5 1.5 0 0 0 3 14zM3 2.5V14"/><circle cx="8" cy="5.4" r=".8"' + F + '/><path d="M8 7.4v3.2"/>',
+};
