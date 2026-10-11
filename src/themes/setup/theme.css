@@ -1,42 +1,383 @@
-/* Setup: a BIOS blue screen. One monospace face, double-line boxes, no radius, the
-   selected row in reverse video. The blues and the ramp are pinned in the manifest
-   (white and light gray on blue, 5.9:1 or better). */
+/* Setup: a text-mode setup screen. One 8 x 16 cell face, a flat screen of one color, boxes drawn in
+   double lines with a one-cell shadow, gray dialogs and buttons, the selection in reverse video, values in
+   yellow, a key-hint bar for the foot. No radius anywhere, no glow, no gradient: a cell is one color.
+   The screen, the line ramp and the text ramp are pinned in the manifest (white, yellow and gray on blue,
+   5.7:1 or better). The three Variants (blue, red, mono) differ by the --st-* tokens below and the pins.
+   The stop pair and every safety state are not here (docs/THEMES.md, Safety): only their surroundings. */
+@font-face { font-family: 'Setup Cell'; src: url('./fonts/SetupCell-400.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Setup Cell'; src: url('./fonts/SetupCell-700.woff2') format('woff2'); font-weight: 700; font-display: swap; }
+
 html:root[data-style="setup"] {
-  --font: 'Perfect DOS VGA 437', 'Lucida Console', Consolas, 'DejaVu Sans Mono', 'Liberation Mono', 'Courier New', monospace;
-  --font-head: 'Perfect DOS VGA 437', 'Lucida Console', Consolas, 'DejaVu Sans Mono', 'Liberation Mono', 'Courier New', monospace;
-  --mono: 'Perfect DOS VGA 437', 'Lucida Console', Consolas, 'DejaVu Sans Mono', 'Liberation Mono', 'Courier New', monospace;
+  --font: 'Setup Cell', 'Lucida Console', Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace;
+  --font-head: var(--font);
+  --mono: var(--font);
   --frame-w: 3px;
+  /* A dither of one lighter cell in four, under everything: the desktop of a text-mode shell. */
+  --tex-page: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4' shape-rendering='crispEdges'%3E%3Crect x='0' y='0' width='1' height='1' fill='%23ffffff' fill-opacity='.045'/%3E%3Crect x='2' y='2' width='1' height='1' fill='%23ffffff' fill-opacity='.045'/%3E%3C/svg%3E");
+  --tex-page-size: 4px 4px;
+  --st-face: #AAAAAA;          /* the gray of dialogs, buttons and the bars */
+  --st-ink: #000000;           /* ink on the gray */
+  --st-ink-dim: #0000AA;       /* the quiet ink on the gray: indexes, hints */
+  --st-hot: #FFFFFF;           /* a button face under the pointer */
+  --st-btn: #AAAAAA;           /* a button face */
+  --st-sel: #00AAAA;           /* the selection bar, reverse video */
+  --st-sel-ink: #000000;
+  --st-field: #000080;         /* a value field */
+  --st-field-ink: #FFFF55;
+  --st-title: #FFFFFF;         /* a heading */
+  --st-item: #55FFFF;          /* an item's name */
+  --st-shadow: rgba(0, 0, 0, .6);
+  --st-cell: 8px;              /* one text cell wide: shadows and the cell-sized offsets */
 }
-html:root[data-style="setup"] [data-part="bar"] { background-color: var(--bg-card); box-shadow: inset 0 -1px 0 var(--line-3); }
-html:root[data-style="setup"] [data-part="bar"] .wordmark { text-transform: uppercase; letter-spacing: .06em; font-size: .85rem; font-weight: 700; }
-html:root[data-style="setup"] [data-part="bar"] .chip { border-radius: 0; }
-html:root[data-style="setup"] [data-part="strip"],
-html:root[data-style="setup"] [data-part="top"] { background-color: var(--bg-card); }
+html:root[data-style="setup"][data-variant="setup-red"] {
+  --st-ink-dim: #480000;
+  --st-field: #2E0000;
+  --st-sel: #AAAAAA;
+  --st-item: #55FFFF;
+}
+html:root[data-style="setup"][data-variant="setup-mono"] {
+  --st-ink-dim: #000000;
+  --st-sel: #FFFFFF;
+  --st-field: #000000;
+  --st-field-ink: #FFFFFF;
+  --st-item: #AAAAAA;
+}
+
+/* ---- type: one face, no tracking, the cell grid kept ---- */
+html:root[data-style="setup"] :is(.mono, output, .num) { letter-spacing: 0; }
+html:root[data-style="setup"] body { text-rendering: geometricPrecision; }
+html:root[data-style="setup"] ::selection { background: var(--st-sel); color: var(--st-sel-ink); }
+
+/* ---- the title bar: the gray bar of a text-mode shell, black on gray, the chips in reverse ---- */
+html:root[data-style="setup"] [data-part="top"] { background-color: var(--bg); }
+html:root[data-style="setup"] [data-part="bar"] {
+  background-color: var(--st-face);
+  background-image: none;
+  color: var(--st-ink);
+  box-shadow: inset 0 -2px 0 var(--st-ink);
+}
+html:root[data-style="setup"] [data-part="bar"] .wordmark {
+  color: var(--st-ink);
+  text-transform: uppercase;
+  letter-spacing: 0;
+  font-size: .9rem;
+  font-weight: 700;
+}
+html:root[data-style="setup"] .chip { border-radius: 0; }
+/* The link dot sits in a black socket: cyan on the gray bar reads 1.5:1 alone. */
+html:root[data-style="setup"] .linkdot::before { content: ''; position: absolute; inset: 0; background-color: var(--st-ink); }
+html:root[data-style="setup"] .linkdot .core { position: relative; width: 8px; height: 8px; border-radius: 0; }
+html:root[data-style="setup"] .linkdot .rclip { display: none; }
+html:root[data-style="setup"] [data-part="bar"] .chip {
+  border: 0;
+  border-radius: 0;
+  background-color: var(--st-ink);
+  background-image: none;
+  box-shadow: none;
+}
+/* The caption buttons: [_] [=] [X], a cell each, the pointer turns one to reverse video. */
+html:root[data-style="setup"] [data-part="caption-btn"] {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  width: 40px;
+  color: var(--st-ink);
+  background: transparent;
+  border-radius: 0;
+}
+html:root[data-style="setup"] [data-part="caption-btn"]::before,
+html:root[data-style="setup"] [data-part="caption-btn"]::after { font-weight: 700; font-size: 1rem; line-height: 1; }
+html:root[data-style="setup"] [data-part="caption-btn"]::before { content: '['; }
+html:root[data-style="setup"] [data-part="caption-btn"]::after { content: ']'; }
+html:root[data-style="setup"] [data-part="caption-btn"] svg { width: 10px; height: 10px; stroke-width: 2.4; stroke-linecap: butt; stroke-linejoin: miter; shape-rendering: crispEdges; }
+html:root[data-style="setup"] [data-part="caption-btn"]:hover,
+html:root[data-style="setup"] [data-part="caption-btn"]:focus-visible { background-color: var(--st-ink); color: var(--st-face); }
+html:root[data-style="setup"] [data-part="caption-btn"]:focus-visible { outline: 2px solid var(--st-face); outline-offset: -4px; }
+html:root[data-style="setup"] [data-part="caption-btn"]:active,
+html:root[data-style="setup"] [data-part="caption-btn"][aria-expanded="true"] { background-color: var(--st-hot); color: var(--st-ink); }
+
+/* ---- the strip, the hero scope, the rail: double-line frames ---- */
+html:root[data-style="setup"] [data-part="strip"] { background-color: var(--bg); }
 html:root[data-style="setup"] [data-part="top"] { border-bottom: 3px double var(--line-3); }
-html:root[data-style="setup"] [data-part="hero"] { background-color: var(--bg-card); border-bottom: 3px double var(--line-3); }
-html:root[data-style="setup"] [data-part="stop-frame"] { outline: 3px double var(--line-3); outline-offset: 4px; }
-html:root[data-style="setup"] [data-part="rail"] { border-style: double; border-width: 3px; border-left-width: 0; border-color: var(--line-3); border-radius: 0; }
-html:root[data-style="setup"] [data-part="rail-label"] { text-transform: uppercase; letter-spacing: .1em; color: var(--tx-hi); font-size: 11px; }
-html:root[data-style="setup"] [data-part="rail-tab"] { border-radius: 0; text-transform: uppercase; letter-spacing: .04em; font-size: .78rem; }
-html:root[data-style="setup"] [data-part="rail-tab"].on { background-color: var(--tx); color: var(--bg); border-color: var(--tx); }
-html:root[data-style="setup"] [data-part="rail-tab"].on .rail-glyph { color: var(--bg); }
-html:root[data-style="setup"] [data-part="rail-tab"]:hover:not(.on) { background-color: var(--line-1); color: var(--tx-hi); }
+html:root[data-style="setup"] [data-part="hero"] { background-color: var(--bg); border-bottom: 3px double var(--line-3); }
+html:root[data-style="setup"] [data-part="stop-frame"] { outline: 3px double var(--line-4); outline-offset: 4px; }
+html:root[data-style="setup"] [data-part="rail"] { border-style: double; border-width: 3px; border-left-width: 0; border-color: var(--line-3); border-radius: 0; background-color: var(--bg); }
+html:root[data-style="setup"] [data-part="rail-label"] {
+  color: var(--st-title);
+  text-transform: uppercase;
+  letter-spacing: 0;
+  font-size: .8rem;
+  font-weight: 700;
+}
+html:root[data-style="setup"] [data-part="rail-tab"] { position: relative; border-radius: 0; border-color: transparent; text-transform: uppercase; letter-spacing: 0; font-size: .82rem; }
+html:root[data-style="setup"] [data-part="rail-tab"]:hover:not(.on) { background-color: var(--st-face); border-color: var(--st-face); color: var(--st-ink); }
+html:root[data-style="setup"] [data-part="rail-tab"]:hover:not(.on) .rail-glyph { color: var(--st-ink); }
+html:root[data-style="setup"] [data-part="rail-tab"].on { background-color: var(--st-sel); border-color: var(--st-sel); color: var(--st-sel-ink); }
+html:root[data-style="setup"] [data-part="rail-tab"].on .rail-glyph { color: var(--st-sel-ink); }
+html:root[data-style="setup"] .rail-sec.shell { border-radius: 0; background: var(--st-field); border-color: var(--line-3); }
+html:root[data-style="setup"] .pane-head h2 { color: var(--st-title); text-transform: uppercase; letter-spacing: 0; font-weight: 700; }
+
+/* ---- boxes: a double line, a one-cell shadow; a card's title is a gray tab on the top line ---- */
+html:root[data-style="setup"] .surface-card {
+  border-style: double;
+  border-color: var(--line-3);
+  border-radius: 0;
+  box-shadow: 6px 6px 0 var(--st-shadow);
+}
+html:root[data-style="setup"] .surface-nest { border-style: solid; border-width: 2px; border-color: var(--line-3); border-radius: 0; }
 html:root[data-style="setup"] [data-part="card"],
-html:root[data-style="setup"] [data-part="nest"],
-html:root[data-style="setup"] [data-part="panel"] { border-style: double; border-color: var(--line-3); border-radius: 0; }
-html:root[data-style="setup"] [data-part="card-head"]:not(.over) { justify-content: center; }
-html:root[data-style="setup"] .dash-title { text-transform: uppercase; letter-spacing: .12em; color: var(--tx-hi); font-size: .78rem; }
+html:root[data-style="setup"] [data-part="nest"] { padding-top: calc(var(--dash-body-pad, var(--gap)) + 10px); }
+html:root[data-style="setup"] [data-part="card-head"]:not(.over) { z-index: 2; margin-bottom: -10px; padding: 0; justify-content: center; }
+html:root[data-style="setup"] [data-part="card-head"]:not(.over) .dash-name { justify-content: center; }
+html:root[data-style="setup"] [data-part="card-head"]:not(.over) .dash-title { max-width: 100%; height: 20px; line-height: 20px; }
+html:root[data-style="setup"] [data-part="panel-bar"] { box-shadow: inset 0 -1px 0 var(--line-1); }
+html:root[data-style="setup"] [data-part="panel-bar"] .dash-title { flex: 0 1 auto; height: 20px; line-height: 20px; }
+html:root[data-style="setup"] [data-part="panel-bar"] .ui-caret { color: var(--st-title); }
+html:root[data-style="setup"] [data-part="panel-bar"] > .ui-card-act { margin-left: auto; }
+/* Every title is a gray tab, black on gray, its index in the quiet ink. */
+html:root[data-style="setup"] .dash-title:not(.dash-title-edit) {
+  width: max-content;
+  max-width: 100%;
+  padding: 0 var(--st-cell);
+  background-color: var(--st-face);
+  color: var(--st-ink);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0;
+  font-size: .8rem;
+}
+html:root[data-style="setup"] .dash-title[data-pidx]::before { content: attr(data-pidx) '\2002'; color: var(--st-ink-dim); font-size: .8rem; font-weight: 400; }
+html:root[data-style="setup"] .dash-title:not([data-pidx])::before { content: none; }
+html:root[data-style="setup"] .card-sub { color: var(--st-title); letter-spacing: 0; }
 html:root[data-style="setup"] .og-panel { outline: none; border-style: double; border-width: 3px; border-color: var(--line-3); border-radius: 0; background-image: none; }
+html:root[data-style="setup"] .field-label { color: var(--st-item); text-transform: none; letter-spacing: 0; }
+html:root[data-style="setup"] .field-value { color: var(--st-field-ink); border-radius: 0; }
+
+/* ---- buttons: a gray face, black ink, a cell of shadow; a press takes the shadow's place ---- */
 html:root[data-style="setup"] .og-btn,
 html:root[data-style="setup"] .og-seg button,
-html:root[data-style="setup"] .stepper button { border-radius: 0; text-transform: uppercase; letter-spacing: .04em; background-color: var(--bg-card); }
-html:root[data-style="setup"] .og-btn:hover,
-html:root[data-style="setup"] .og-seg button:hover { background-color: var(--line-1); }
+html:root[data-style="setup"] .stepper button { border-radius: 0; text-transform: uppercase; letter-spacing: 0; }
+html:root[data-style="setup"] .og-btn:not(.on):not(.primary):not(.running):not(.danger),
+html:root[data-style="setup"] .stepper button {
+  background-color: var(--st-btn);
+  border-color: var(--st-btn);
+  color: var(--st-ink);
+  box-shadow: 3px 3px 0 var(--st-shadow);
+}
+html:root[data-style="setup"] .og-btn:not(.on):not(.primary):not(.running):not(.danger):hover:not(:disabled),
+html:root[data-style="setup"] .stepper button:hover:not(:disabled) { background-color: var(--st-hot); border-color: var(--st-hot); color: var(--st-ink); }
+html:root[data-style="setup"] .og-btn:not(.on):not(.primary):not(.running):not(.danger):active:not(:disabled),
+html:root[data-style="setup"] .stepper button:active:not(:disabled) { transform: translate(3px, 3px); box-shadow: none; color: var(--st-ink); }
+html:root[data-style="setup"] .og-btn.primary,
+html:root[data-style="setup"] .og-btn.on { outline: 1px solid currentColor; outline-offset: -4px; }
+html:root[data-style="setup"] .og-btn.sm { font-size: .72rem; }
+html:root[data-style="setup"] .og-btn:focus-visible,
+html:root[data-style="setup"] .og-seg button:focus-visible,
+html:root[data-style="setup"] .stepper button:focus-visible { outline: 2px dotted var(--highlight); outline-offset: -5px; }
+html:root[data-style="setup"] .og-btn:not(.on):not(.primary):not(.running):not(.danger):focus-visible { outline-color: var(--st-ink); }
+
+/* ---- segmented values: cells in a row, reverse video under the pointer, a double line on the chosen one ---- */
+html:root[data-style="setup"] .og-seg { gap: 0; }
+html:root[data-style="setup"] .og-seg button { margin-left: -1px; border-color: var(--line-3); background-color: var(--bg); }
+html:root[data-style="setup"] .og-seg button:first-child { margin-left: 0; }
+html:root[data-style="setup"] .og-seg button:not(.active):hover:not(:disabled) { background-color: var(--st-sel); border-color: var(--st-sel); color: var(--st-sel-ink); }
+html:root[data-style="setup"] .og-seg button.active { outline: 1px solid var(--reality); outline-offset: -4px; position: relative; z-index: 1; }
+
+/* ---- value fields: a dark cell with yellow ink; the one being edited turns to reverse video ---- */
 html:root[data-style="setup"] .og-num,
 html:root[data-style="setup"] .value-input,
-html:root[data-style="setup"] select { border-radius: 0; box-shadow: none; background-color: var(--bg); }
-html:root[data-style="setup"] .og-switch .track,
-html:root[data-style="setup"] .og-switch .track::after { border-radius: 0; }
-html:root[data-style="setup"] [data-part="status-row"],
-html:root[data-style="setup"] [data-part="page-foot"] { border-top: 3px double var(--line-3); background-color: var(--bg-card); }
-html:root[data-style="setup"] * { scrollbar-width: auto; scrollbar-color: var(--line-3) var(--bg); }
+html:root[data-style="setup"] select {
+  border-radius: 0;
+  border-color: var(--line-3);
+  box-shadow: none;
+  background-color: var(--st-field);
+  color: var(--st-field-ink);
+}
+html:root[data-style="setup"] .og-num:focus,
+html:root[data-style="setup"] .value-input:focus,
+html:root[data-style="setup"] select:focus { background-color: var(--st-sel); border-color: var(--st-sel); color: var(--st-sel-ink); }
+html:root[data-style="setup"] select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Cpath d='M0 2h8v2H6v2H5v1H3V6H2V4H0z' fill='%2355FFFF'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  background-size: 10px 10px;
+}
+html:root[data-style="setup"] select option { background-color: var(--st-face); color: var(--st-ink); }
+
+/* ---- a switch is a word: [Disabled] and [Enabled] ---- */
+html:root[data-style="setup"] .og-switch .track {
+  box-sizing: border-box;
+  width: 11ch;
+  height: 22px;
+  font-size: .76rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+html:root[data-style="setup"] .og-switch .track::after { content: none; }
+html:root[data-style="setup"] .og-switch .track::before { content: '[Disabled]'; color: var(--tx-mut); font-weight: 400; }
+html:root[data-style="setup"] .og-switch input:checked + .track::before { content: '[Enabled]'; color: var(--st-field-ink); font-weight: 700; }
+html:root[data-style="setup"] .og-switch input:focus-visible + .track { outline: 0; background-color: var(--st-sel); }
+html:root[data-style="setup"] .og-switch input:focus-visible + .track::before { color: var(--st-sel-ink); }
+html:root[data-style="setup"] .og-switch:hover .track { background-color: var(--line-1); }
+
+/* ---- check boxes and option dots: [X] and (*) ---- */
+html:root[data-style="setup"] input[type="checkbox"]:not([role="switch"]) {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0 var(--sp-2) 0 0;
+  vertical-align: -3px;
+  background-color: var(--st-field);
+  border: 2px solid var(--line-3);
+  border-radius: 0;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 10px 10px;
+}
+html:root[data-style="setup"] input[type="checkbox"]:not([role="switch"]):checked {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10' shape-rendering='crispEdges'%3E%3Cpath d='M1 1h2v2H1zM7 1h2v2H7zM3 3h4v4H3zM1 7h2v2H1zM7 7h2v2H7z' fill='%23FFFF55'/%3E%3C/svg%3E");
+}
+html:root[data-style="setup"] [role="radio"] { white-space: nowrap; }
+html:root[data-style="setup"] [role="radio"]::before { content: '(\00A0)\00A0'; color: var(--st-item); }
+html:root[data-style="setup"] [role="radio"][aria-checked="true"]::before { content: '(\2022)\00A0'; color: var(--st-field-ink); font-weight: 700; }
+
+/* ---- a slider: a dotted track, a gray block for the thumb ---- */
+html:root[data-style="setup"] input[type="range"] {
+  background: repeating-linear-gradient(90deg, var(--line-3) 0 2px, transparent 2px 4px) center / 100% 6px no-repeat;
+}
+html:root[data-style="setup"] input[type="range"]::-webkit-slider-thumb { border-radius: 0; background-color: var(--st-face); border-color: var(--st-ink); box-shadow: 3px 3px 0 var(--st-shadow); }
+html:root[data-style="setup"] input[type="range"]::-moz-range-thumb { border-radius: 0; background-color: var(--st-face); border-color: var(--st-ink); box-shadow: 3px 3px 0 var(--st-shadow); }
+
+/* ---- the scrubber is the progress bar: a dithered slot, blocks buffered, stripes played ---- */
+html:root[data-style="setup"] .ui-scrub-track,
+html:root[data-style="setup"] .ui-scrub:is(:hover, [data-drag]) .ui-scrub-track {
+  height: 12px;
+  border-radius: 0;
+  border: 2px solid var(--line-3);
+  background-color: var(--st-field);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4' shape-rendering='crispEdges'%3E%3Crect x='0' y='0' width='2' height='2' fill='%23AAAAAA' fill-opacity='.5'/%3E%3Crect x='2' y='2' width='2' height='2' fill='%23AAAAAA' fill-opacity='.5'/%3E%3C/svg%3E");
+}
+html:root[data-style="setup"] .ui-scrub-track > i { top: 0; bottom: 0; border-radius: 0; }
+html:root[data-style="setup"] .ui-scrub-buf { background-color: var(--line-2); background-image: none; opacity: .55; }
+html:root[data-style="setup"] .ui-scrub-played { background-color: var(--st-field-ink); background-image: repeating-linear-gradient(135deg, var(--st-field-ink) 0 4px, var(--st-sel) 4px 8px); }
+html:root[data-style="setup"] .ui-scrub-played::after { border-radius: 0; width: 8px; height: 16px; translate: 0 -8px; right: -4px; background: var(--st-face); border: 2px solid var(--st-ink); }
+html:root[data-style="setup"] .ui-scrub-tip { border-radius: 0; background-color: var(--st-face); color: var(--st-ink); border-color: var(--st-ink); }
+html:root[data-style="setup"] .ui-split::after { background: var(--line-3); }
+
+/* ---- a progress bar: stripes of blocks in a double-ruled slot ---- */
+html:root[data-style="setup"] progress {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 16px;
+  border: 3px double var(--line-3);
+  border-radius: 0;
+  background-color: var(--st-field);
+  overflow: hidden;
+}
+html:root[data-style="setup"] progress::-webkit-progress-bar { background: var(--st-field); }
+html:root[data-style="setup"] progress::-webkit-progress-value { background-color: transparent; background-image: repeating-linear-gradient(135deg, var(--st-field-ink) 0 4px, var(--st-sel) 4px 8px); border-radius: 0; }
+html:root[data-style="setup"] progress::-moz-progress-bar { background-color: transparent; background-image: repeating-linear-gradient(135deg, var(--st-field-ink) 0 4px, var(--st-sel) 4px 8px); }
+html:root[data-style="setup"] .og-screen { border-radius: 0; border-color: var(--line-3); box-shadow: none; }
+
+/* ---- tabs ---- */
+html:root[data-style="setup"] [role="tab"]:not([data-part="rail-tab"]) { border-radius: 0; text-transform: uppercase; }
+html:root[data-style="setup"] [role="tab"][aria-selected="true"]:not([data-part="rail-tab"]),
+html:root[data-style="setup"] .tabs button.on { outline: 1px solid var(--reality); outline-offset: -4px; }
+
+/* ---- the context menu, the tooltip, the sheets: gray dialogs, a white double line, a shadow ---- */
+html:root[data-style="setup"] :is(.ui-menu, #ph-tip, .ui-sheet:not([data-form="slot"])) {
+  --bg: var(--st-face); --bg-card: var(--st-face); --bg-raised: var(--st-face); --bg-sunken: var(--st-face);
+  --tx: var(--st-ink); --tx-hi: var(--st-ink); --tx-val: var(--st-ink); --tx-mut: var(--st-ink); --tx-ghost: var(--st-ink-dim);
+  --line-soft: var(--st-sel);
+  background-color: var(--st-face);
+  color: var(--st-ink);
+  border: 3px double #FFFFFF;
+  outline: none;
+  border-radius: 0;
+  box-shadow: 8px 8px 0 var(--st-shadow);
+}
+html:root[data-style="setup"][data-variant="setup-mono"] :is(.ui-menu, #ph-tip, .ui-sheet:not([data-form="slot"])) { border-color: #000000; }
+html:root[data-style="setup"] .ui-menu-t { color: var(--st-ink); font-weight: 700; }
+html:root[data-style="setup"] .ui-menu-d { color: var(--st-ink-dim); }
+html:root[data-style="setup"] .ui-menu-sec { color: var(--st-ink-dim); border-top-color: var(--st-ink); }
+html:root[data-style="setup"] .ui-menu-h { border-bottom-color: var(--st-ink); }
+html:root[data-style="setup"] .ui-menu-i:hover:not(:disabled),
+html:root[data-style="setup"] .ui-menu-i:focus-visible,
+html:root[data-style="setup"] .ui-menu-i[aria-expanded="true"] { background-color: var(--st-ink); color: var(--st-face); }
+html:root[data-style="setup"] .ui-menu-i:focus-visible { outline: 0; }
+html:root[data-style="setup"] .ui-menu-i:disabled { color: var(--st-ink-dim); }
+html:root[data-style="setup"] .ui-menu-i[aria-haspopup]::after,
+html:root[data-style="setup"] .ui-menu-i[data-checked]::after { color: inherit; }
+html:root[data-style="setup"] .ui-menu-ask { background-color: var(--st-field); color: var(--st-field-ink); border-radius: 0; }
+html:root[data-style="setup"] :is(.ui-menu, .ui-sheet) .og-btn:not(.on):not(.primary):not(.running):not(.danger) { --st-btn: var(--st-sel); --st-hot: #FFFFFF; }
+html:root[data-style="setup"] #ph-tip { padding: 2px 8px; }
+
+/* ---- the status row is the key-hint bar: gray, black, the keys at its right end ---- */
+html:root[data-style="setup"] [data-part="status-row"] { border-top: 0; background-color: var(--st-face); color: var(--st-ink); box-shadow: none; }
+html:root[data-style="setup"] [data-part="page-foot"] { border-top: 3px double var(--line-3); background-color: var(--bg); box-shadow: none; }
+html:root[data-style="setup"] [data-part="status-row"] :is(.fs-label, .k, .v, .fact-btn, .fact, output, .foot-scale) { color: var(--st-ink); }
+html:root[data-style="setup"] [data-part="status-row"] output { font-weight: 700; }
+html:root[data-style="setup"] [data-part="status-row"] .k { text-transform: uppercase; letter-spacing: 0; }
+html:root[data-style="setup"] [data-part="status-row"] .fs-label { letter-spacing: 0; font-weight: 700; }
+html:root[data-style="setup"] [data-part="status-row"]::after {
+  content: 'F1 Help  \2191\2193 Select  Enter Change  Esc Exit';
+  order: 2;
+  flex: none;
+  color: var(--st-ink);
+  font-weight: 700;
+  white-space: pre;
+}
+@media (max-width: 1099px) { html:root[data-style="setup"] [data-part="status-row"]::after { display: none; } }
+
+html:root[data-style="setup"] [data-part="status-row"] .og-btn:not(.on):not(.primary):not(.running):not(.danger) { background-color: var(--st-ink); border-color: var(--st-ink); color: var(--st-face); box-shadow: none; }
+html:root[data-style="setup"] [data-part="status-row"] .og-btn:not(.on):not(.primary):not(.running):not(.danger):hover:not(:disabled) { background-color: var(--st-hot); border-color: var(--st-hot); color: var(--st-ink); }
+
+/* ---- scrollbars: a dithered track, a gray block, arrow cells at the ends ---- */
+html:root[data-style="setup"] * { scrollbar-width: auto; scrollbar-color: var(--st-face) var(--st-field); }
+html:root[data-style="setup"] ::-webkit-scrollbar { width: 16px; height: 16px; }
+html:root[data-style="setup"] ::-webkit-scrollbar-track {
+  background-color: var(--st-field);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4' shape-rendering='crispEdges'%3E%3Crect x='0' y='0' width='2' height='2' fill='%23AAAAAA'/%3E%3Crect x='2' y='2' width='2' height='2' fill='%23AAAAAA'/%3E%3C/svg%3E");
+}
+html:root[data-style="setup"] ::-webkit-scrollbar-thumb { background-color: var(--st-face); border: 2px solid var(--st-ink); border-radius: 0; }
+html:root[data-style="setup"] ::-webkit-scrollbar-corner { background-color: var(--st-face); }
+html:root[data-style="setup"] ::-webkit-scrollbar-button:single-button { width: 16px; height: 16px; background-color: var(--st-face); background-repeat: no-repeat; background-position: center; background-size: 16px 16px; border: 0; }
+html:root[data-style="setup"] ::-webkit-scrollbar-button:vertical:decrement { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Cpath d='M7 4h2v2h2v2h2v2H3V8h2V6h2z' fill='%23000'/%3E%3C/svg%3E"); }
+html:root[data-style="setup"] ::-webkit-scrollbar-button:vertical:increment { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Cpath d='M3 6h10v2h-2v2H9v2H7v-2H5V8H3z' fill='%23000'/%3E%3C/svg%3E"); }
+html:root[data-style="setup"] ::-webkit-scrollbar-button:horizontal:decrement { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Cpath d='M4 7h2V5h2V3h2v10H8v-2H6V9H4z' fill='%23000'/%3E%3C/svg%3E"); }
+html:root[data-style="setup"] ::-webkit-scrollbar-button:horizontal:increment { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Cpath d='M12 7h-2V5H8V3H6v10h2v-2h2V9h2z' fill='%23000'/%3E%3C/svg%3E"); }
+html:root[data-style="setup"] ::-webkit-scrollbar-button:single-button:hover { background-color: var(--st-hot); }
+
+/* ---- the cursor: a block that blinks on the chosen row, an underscore after the name ---- */
+@keyframes theme-setup-blink { 0% { opacity: 1; } 50% { opacity: 0; } }
+html:root[data-style="setup"]:not(.still) [data-part="rail-tab"].on::after {
+  content: '\2588';
+  position: absolute;
+  right: 8px;
+  color: var(--st-sel-ink);
+  animation: theme-setup-blink 1.06s steps(1, end) infinite;
+}
+html:root[data-style="setup"]:not(.still) [data-part="bar"] .wordmark::after {
+  content: '_';
+  animation: theme-setup-blink 1.06s steps(1, end) infinite;
+}
+
+/* ---- later rules: the arrow on a focused field, the switch under the pointer, the home menu, tiles, mono's underline ---- */
+html:root[data-style="setup"] select:focus {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Cpath d='M0 2h8v2H6v2H5v1H3V6H2V4H0z' fill='%23000'/%3E%3C/svg%3E");
+}
+html:root[data-style="setup"] .og-switch:hover .track { background-color: var(--st-sel); }
+html:root[data-style="setup"] .og-switch:hover .track::before { color: var(--st-sel-ink); }
+html:root[data-style="setup"] .menu-pop { border: 3px double var(--line-4); border-radius: 0; box-shadow: 8px 8px 0 var(--st-shadow); }
+html:root[data-style="setup"] .ui-tile-shot { border-radius: 0; border: 2px solid var(--line-3); }
+html:root[data-style="setup"][data-variant="setup-mono"] :is(.field-value, .og-num, .value-input) { text-decoration: underline; text-underline-offset: 2px; }
+html:root[data-style="setup"][data-variant="setup-mono"] .og-switch input:checked + .track::before { text-decoration: underline; }
+html:root[data-style="setup"] .phone-menu { border: 3px double var(--line-4); border-left: 0; border-radius: 0; box-shadow: 8px 8px 0 var(--st-shadow); }
