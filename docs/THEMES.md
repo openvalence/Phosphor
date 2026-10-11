@@ -196,6 +196,9 @@ What a Theme dresses besides the controls:
 
 - **Title bar.** The top bar is the title bar: `[data-part="bar"]` (background, radius,
   shadow), `[data-part="wordmark"]` (the hub name, its text again in `data-text`) and `.chip` inside it.
+  At 560 px and under the bar has a second row, `[data-part="bar-info"]` (the heatmap and the rate,
+  loss and fps chips), placed in the bar's bottom padding, so a first-row item's `height: 100%` is
+  the first row's.
   `[data-part="top"]` is the box around bar and strip; make it transparent to show the page behind a
   rounded bar.
 - **Caption buttons.** `[data-part="caption-btn"]` with `data-cap`, 30 to 46 px wide, the

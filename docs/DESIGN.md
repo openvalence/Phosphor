@@ -634,8 +634,8 @@ question in §10.8).
     is three characters at most, right-aligned: one decimal under 10, whole
     from 10, `999+` past it. The 250 ms interval runs only while the link is
     live; otherwise the rate reads `--`. How long ago the last frame arrived
-    (the old rx) is the tooltip's last line. Phones drop the `KB/s` text (the
-    tooltip and the accessible name keep it) so the chip fits whole.
+    (the old rx) is the tooltip's last line. In the bar's second row (560 px and
+    under) it keeps its `KB/s`.
   - The loss chip reads `loss <client> / <machine> %` from
     `machine.stats.link` (`src/model/linkstats.js`): the share of TCP sent
     again, never "packets lost". The client figure carries its scope and
@@ -781,7 +781,16 @@ question in §10.8).
   of the cutout, the chips start past it, and the bare caret sits left of it,
   away from the stop pair. Where the phase and tier chips do not fit right
   of the cutout (a 360 px phone), the bar pads under the inset as without
-  one, until the next resize.
+  one, until the next resize. There the ends clear the true arc at the row's
+  tallest item (`--arc-l`, `--arc-r`, measured by `LinkBar`), not the linear
+  bound, so the hub name keeps its room left of the hole.
+  At 560 px and under the top bar is two fixed rows (operator 2026-10-11): the
+  first is the bar as above with the menu, the hub name, the link dot and auth;
+  the second, a row high under it (`data-part="bar-info"`), holds the
+  heatmap left and the data rate, loss and fps right, shedding from the tail
+  only past its own width. Wider (a phone on its side, where the cutout is at
+  the side) the bar stays one row. The width alone picks, so the height never
+  changes on content or link state.
   The suites assume 48 px corners and a centered 28 x 36 hole at the phone
   sizes (`test/pages.test.mjs`, the arc check). Seams: `MainActivity.kt`,
   the vars' note in `src/style.css`, `LinkBar`, `FootStrip`, `PageFoot`,
@@ -1250,6 +1259,16 @@ derives from one unit, and no size is tuned by hand.
   agent's reading, veto-able). Seams: `src/App.svelte` (`sideTabs`, shared
   with the desktop rail), `src/ui/PhoneMenu.svelte`, the hamburger in
   `src/ui/LinkBar.svelte`.
+  - Android back (operator 2026-10-11): the system gesture and button reach
+    the page through Tauri's back-button listener (`src/model/back.js`, App).
+    First match wins: close what is on top (an overlay, by the Escape it
+    already honors; page fullscreen; the drawer while there is a page to
+    return to), leave a drill-in page, return to the previous page (the
+    user's page switches, 50 kept), open the menu; at the root with the menu
+    open the first press says "Press back again to exit" in the status slot
+    and a second within 2 s goes to the shell's close gate, which closes at
+    once when idle and asks for the hold otherwise. Back never writes to the
+    machine. Desktop has no back.
 - The phone class (Fable's pick 2026-10-08, `ph-5u0g`, veto-able): a coarse
   pointer and a shortest viewport side under 500 px clamp the bucket to 2 or
   under and the renderer class off `full`, so a phone on its side (a Pixel 10
@@ -1630,3 +1649,4 @@ of the default Theme, **Phosphor**. The Display pane lists Themes first, then th
 | 2026-10-10 | §10.3 | The link dot's ripple is a faint thin ring (peak opacity .22, about a third of before) on its own cycle, two beats long and started a fifth of a beat late (live 4 s after 0.4 s, connecting 2 s after 0.2 s), on a slow-start, speed-up, slow-rest curve; the swell is 18 %, not 36 %; the `resent` chip is labeled `loss`, its tooltip still saying TCP sent again (`src/ui/LinkBar.svelte`, `src/model/linkbar.js`, responsive-matrix `barstates`). | operator (feedback 2026-10-10: "resent sounds like a grudge indicator", the ripple "softer, slower at the start, more of a ripple in water than a pulse") |
 | 2026-10-10 | §10.3 | The channel heatmap's per-block tooltips become one enlarged, labeled panel in the top layer, below the top strip, with the details of the hovered block at its foot (the bar's block count, groups and live brightness, click routing and keyboard kept; 350 ms grace; coarse pointers keep the one button); the stalled-updates line shows only past a real 1 s gap (`src/ui/ChannelHeat.svelte`, `test/channel-heat.test.mjs`). | operator ("hovering brings a slightly larger labelled view of the same group of blocks instead of individually"; the tile size 18 px, the 350 ms grace, the 1 s gap and hanging below the strip rather than the bar are the agent's, veto-able) |
 | 2026-10-10 | §10.16, themes | Themes and variants: a Theme is a whole style (chrome, controls, type, icons, textures, motion), a Variant one palette of it; the twelve color presets become Variants of the default Theme Phosphor; each Theme is a folder (`src/themes/<id>/`) joined by one registry line, scoped by `html[data-style]`, with part names, an icon registry and Theme tokens as its hooks; an old stored preset id maps to Phosphor plus that Variant; a Theme may ask the window for an OS material, and a fullscreen page is always opaque; one command (`test/theme-skins.test.mjs --theme <id>`) checks a Theme (docs/THEMES.md). | operator |
+| 2026-10-11 | §10.3, §10.12, themes | Phones get a two-row top bar: at 560 px and under the first row keeps the menu, the whole hub name, the link dot and auth, rising into the camera band beside the cutout; a second fixed row under it holds the heatmap, the data rate (with its unit), loss and fps (`data-part="bar-info"`). Beside the cutout the row's ends clear the true corner arc at its content instead of the linear bound. Android back closes what is on top, then returns through the page history, opens the menu, and at the root asks for a second press within 2 s, which goes through the close gate (`model/back.js`). The page itself never overscrolls (`overscroll-behavior: none` on the root, `OVER_SCROLL_NEVER` on the Android WebView). | operator ("the top bar needs a second row for all the phosphor and hub info"; "back command to go to the previous page or the hamburger menu, tap, gesture 2x to exit, standard android"; "the stretchy scroll should be the scrolled section not the whole application". The agent's, veto-able: 560 px as the switch (the old chip-shed width), one row on a phone on its side, the second row a full row high, the arc measured from the tallest row item, 4 px between the dot and the hole, the page history kept to user page switches, the exit notice in the status slot, exit finishing the activity, and no stretch at all where only the root could stretch) |

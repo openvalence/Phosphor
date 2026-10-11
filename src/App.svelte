@@ -64,6 +64,8 @@
   import { settingsEntries } from './shell/settingsSearch.js';
   import { shownPresets, currentTheme, pickableStyles } from './model/theme.js';
   import { registerSearch } from './ui/searchIndex.js';
+  import { backAction, EXIT_ARM_MS } from './model/back.js';
+  import { say, history as edits } from './model/history.svelte.js';
   import { layouts, orderedLayoutNames, switchLayout, addLayout, dashEdit, redHint } from './model/dashboard.svelte.js';
   import './ui/select.css';
 
@@ -344,13 +346,53 @@
   let drill = $state(null);
   // Set by a user page switch; the page fade (style.css) runs only then.
   let switching = $state(false);
-  function selectTab(id) {
-    if (id !== active) switching = true;
+  // The pages a back press returns to (model/back.js), newest last; user page switches only.
+  const pageTrail = [];
+  function selectTab(id, { back = false } = {}) {
+    if (id !== active) {
+      switching = true;
+      if (!back && pageTrail.push(active) > 50) pageTrail.shift();
+    }
     active = id;
     drill = null;
     phoneMenu.open = false;
     if (!isDesktop) window.scrollTo({ top: 0, behavior: 'auto' });
   }
+  // Android back (model/back.js): the system gesture and button land here. Something on top
+  // closes by the Escape every overlay already honors.
+  const ON_TOP = ':popover-open, [role=dialog], [role=alertdialog], .menu-pop, .hero-inner.popup, .hero-inner.quick';
+  const EXIT_NOTE = 'Press back again to exit';
+  let armedAt = 0;
+  function onBack() {
+    const overlay = [...document.querySelectorAll(ON_TOP)].some((e) => !e.closest('.phone-menu'));
+    const act = backAction({ overlay, full: full.on, menuOpen: phoneMenu.open, drill: !!drill,
+      history: pageTrail.length, armedAt, now: Date.now() });
+    if (act !== 'arm' && act !== 'exit') armedAt = 0;
+    if (act === 'dismiss') {
+      (document.activeElement || document.body).dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    } else if (act === 'unfull') full = OFF;
+    else if (act === 'close-menu') phoneMenu.open = false;
+    else if (act === 'undrill') drill = null;
+    else if (act === 'previous') selectTab(pageTrail.pop(), { back: true });
+    else if (act === 'menu') phoneMenu.open = true;
+    else if (act === 'arm') {
+      armedAt = Date.now();
+      say(EXIT_NOTE);
+      setTimeout(() => { if (edits.msg === EXIT_NOTE) say(''); }, EXIT_ARM_MS);
+    } else {
+      armedAt = 0;
+      say('');
+      // The shell's close gate (ShellStrip): asks and holds while the machine is busy.
+      window.dispatchEvent(new CustomEvent('phosphor-close-request'));
+    }
+  }
+  $effect(() => {
+    if (import.meta.env.TAURI_ENV_PLATFORM !== 'android') return;
+    let off = null, gone = false;
+    import('@tauri-apps/api/app').then((m) => m.onBackButtonPress(onBack))
+      .then((l) => { if (gone) l.unregister(); else off = l; }).catch(() => null);
+    return () => { gone = true; off?.unregister(); };
+  });
   // A saved dash layout is a view of the Dash tab: the store holds which one.
   function pickLayout(n) {
     phoneMenu.open = false;

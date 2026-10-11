@@ -3,7 +3,10 @@
    * LinkBar.svelte -- the top bar: ONE row of fixed height (operator
    * 2026-10-02). Left: the channel heatmap, the hub name and the link dot.
    * Right: the chips (auth, data rate, loss, fps), then the shell's window
-   * buttons at the far end, shell only. The bar is the Tauri
+   * buttons at the far end, shell only. At 560 px and under it is TWO
+   * fixed rows (operator 2026-10-11): the first keeps the menu, the hub
+   * name, the dot and auth; the second (data-part bar-info) the heatmap
+   * and the other chips. The bar is the Tauri
    * drag region. A reading nobody checks when something goes wrong lives in
    * the Health view instead (the address, the firmware, the control list;
    * DESIGN §10.3, operator 2026-10-10).
@@ -15,6 +18,7 @@
    *   a line added here. The dot's state is also its tooltip and its status
    *   text, never color alone.
    * - The dot and the auth chip never shed; the rest shed from the tail.
+   * - Two rows or one follows the width alone, never content or link state.
    * - The dot's ripple is a decoration behind the row: out of flow, vertically
    *   clipped to the row, motion off under html.still. No timer runs while the
    *   link is down: the one 250 ms interval is the data rate's, live only.
@@ -39,6 +43,7 @@
   import { ROLE } from '../model/roles.js';
   import { phoneMenu } from './PhoneMenu.svelte';
   import ChannelHeat from './ChannelHeat.svelte';
+  import { MediaQuery } from 'svelte/reactivity';
   import { totals } from '../model/activity.js';
   import { SAMPLE_MS, rateMeter, fmtRate, fmtNum, dotState, lossName as lossNameOf, lossTip as lossTipOf } from '../model/linkbar.js';
 
@@ -123,6 +128,9 @@
   // machine's liveness (ph-51k).
   const fpsTone = $derived(fps != null && fps < 30 ? 'warn' : 'dim');
 
+  // Keep in step with the .two rules below.
+  const two = new MediaQuery('(max-width: 560px)');
+
   // Beside a top cutout the row rises into its band only while the auth
   // chip fits right of it, clear of the top right corner's arc; short of
   // that the bar pads under the inset as without one, until the next resize
@@ -133,7 +141,15 @@
     const root = document.documentElement;
     const check = () => {
       if (!besideCut || !root.hasAttribute('data-cutout-top')) return;
-      const p = pinnedEl.getBoundingClientRect(), R = parseFloat(getComputedStyle(root).getPropertyValue('--corner-tr')) || 0;
+      // The row's tallest drawn item, centered in the first row's height: how far its top edge sits
+      // below the screen's, and so how far in the arc lets it start.
+      const cs = getComputedStyle(root), radius = (k) => parseFloat(cs.getPropertyValue('--corner-' + k)) || 0;
+      const r1 = barEl.clientHeight - (parseFloat(getComputedStyle(barEl).paddingBottom) || 0);
+      const yt = (r1 - Math.max(pinnedEl.offsetHeight, barEl.querySelector('.wordmark')?.offsetHeight || 0)) / 2;
+      const arc = (r) => (yt >= r ? 0 : r - Math.sqrt(r * r - (r - yt) ** 2)).toFixed(1) + 'px';
+      barEl.style.setProperty('--arc-l', arc(radius('tl')));
+      barEl.style.setProperty('--arc-r', arc(radius('tr')));
+      const p = pinnedEl.getBoundingClientRect(), R = radius('tr');
       const dx = p.right - (innerWidth - R), dy = R - p.top;
       if (p.right > innerWidth || (dx > 0 && dy > 0 && Math.hypot(dx, dy) > R)) besideCut = false;
     };
@@ -151,33 +167,8 @@
 
 <!-- "deep": empty bar space drags the undecorated shell window; buttons and
      other clickables opt out on their own (Tauri drag.js). -->
-<header class="linkbar" data-part="bar" class:shell={!!Shell} class:cut={besideCut} data-tauri-drag-region="deep" bind:this={barEl}>
-  <div class="header-left">
-    <!-- The phone menu (DESIGN §10.12): the sidebar as a drawer, buckets 1 and 2. -->
-    {#if phoneMenu.shown}
-      <button type="button" class="menu-btn" aria-label="Menu" data-tip="Menu" aria-expanded={phoneMenu.open}
-              onclick={() => (phoneMenu.open = !phoneMenu.open)}>
-        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11" /></svg>
-      </button>
-    {/if}
-    <ChannelHeat onopen={onheat} />
-    <span class="wordmark" data-part="wordmark" data-text={title} data-tip={title}>{title}</span>
-    <!-- The link dot: state by class (live, connecting, stale, offline), words by tooltip and status text.
-         The ripple's clip is a row-high band behind the row's content (see .rclip). -->
-    <span class="linkdot {dotCls}" data-part="link-dot" class:virtual={!!machine.link.virtual} role="status" data-tip={dotTip}>
-      <span class="rclip" aria-hidden="true"><span class="ripple"></span></span>
-      <span class="core" data-part="link-dot-core" aria-hidden="true"></span>
-      <span class="sr">Link: {dotWord}</span>
-    </span>
-  </div>
-
-  <!-- ONE flat row of equal chips (OG). Auth leads it and never sheds: it is the
-       safety-relevant read. The rest shed from the tail, before the hub name ellipsizes. -->
-  <div class="chips pinned" bind:this={pinnedEl}>
-    <span class="chip">
-      <span class="chip-lbl">auth:</span><span class="mono auth">{authLabel}</span>
-    </span>
-  </div>
+{#snippet heat()}<ChannelHeat onopen={onheat} />{/snippet}
+{#snippet opt()}
   <div class="chips opt">
     <!-- Zero wide and first on the line, so every chip after it wraps away whole. -->
     <span class="opt-lead"></span>
@@ -196,7 +187,38 @@
       <span class="mono fps">{fps == null ? '-- fps' : fps + ' fps'}</span>
     </span>
   </div>
+{/snippet}
+
+<header class="linkbar" data-part="bar" class:shell={!!Shell} class:cut={besideCut} class:two={two.current} data-tauri-drag-region="deep" bind:this={barEl}>
+  <div class="header-left">
+    <!-- The phone menu (DESIGN §10.12): the sidebar as a drawer, buckets 1 and 2. -->
+    {#if phoneMenu.shown}
+      <button type="button" class="menu-btn" aria-label="Menu" data-tip="Menu" aria-expanded={phoneMenu.open}
+              onclick={() => (phoneMenu.open = !phoneMenu.open)}>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11" /></svg>
+      </button>
+    {/if}
+    {#if !two.current}{@render heat()}{/if}
+    <span class="wordmark" data-part="wordmark" data-text={title} data-tip={title}>{title}</span>
+    <!-- The link dot: state by class (live, connecting, stale, offline), words by tooltip and status text.
+         The ripple's clip is a row-high band behind the row's content (see .rclip). -->
+    <span class="linkdot {dotCls}" data-part="link-dot" class:virtual={!!machine.link.virtual} role="status" data-tip={dotTip}>
+      <span class="rclip" aria-hidden="true"><span class="ripple"></span></span>
+      <span class="core" data-part="link-dot-core" aria-hidden="true"></span>
+      <span class="sr">Link: {dotWord}</span>
+    </span>
+  </div>
+
+  <!-- ONE flat row of equal chips (OG). Auth leads it and never sheds: it is the
+       safety-relevant read. The rest shed from the tail, before the hub name ellipsizes. -->
+  <div class="chips pinned" bind:this={pinnedEl}>
+    <span class="chip">
+      <span class="chip-lbl">auth:</span><span class="mono auth">{authLabel}</span>
+    </span>
+  </div>
+  {#if !two.current}{@render opt()}{/if}
   {#if Shell}<Shell />{/if}
+  {#if two.current}<div class="row2" data-part="bar-info">{@render heat()}{@render opt()}</div>{/if}
 </header>
 
 <style>
@@ -213,10 +235,11 @@
     --wm: 1rem;   /* the hub name's size; the dot's ripple is sized in it */
     --pl: max(var(--gap), var(--corner-tl, 0px) - var(--it));
     --pr: max(var(--gap), var(--corner-tr, 0px) - var(--it));
+    --r1: var(--row);   /* the first row's height; the second is --row */
     display: flex;
     align-items: center;
     gap: var(--sp-3);
-    height: calc(var(--row) + var(--it));
+    height: calc(var(--r1) + var(--it));
     padding: var(--it) var(--pr) 0 var(--pl);
     background: var(--bg-raised);
     box-shadow: inset 0 -1px 0 var(--line);
@@ -228,11 +251,36 @@
   }
   /* A top cutout (style.css): the row rises into the band beside it, the
      left group ending short of it and the chips starting past it. */
-  :global(:root[data-cutout-top]) .linkbar.cut { --it: 0px; height: max(var(--row), var(--cutout-h, 0px)); }
+  :global(:root[data-cutout-top]) .linkbar.cut { --it: 0px; --r1: max(var(--row), var(--cutout-h, 0px)); }
+  /* Beside the cutout the ends clear the true arc at the row's content (--arc-l/-r, measured below),
+     not the linear bound, so the hub name keeps its room left of the hole. */
+  :global(:root[data-cutout-top]) .linkbar.cut {
+    --pl: max(var(--gap), var(--arc-l, var(--corner-tl, 0px)));
+    --pr: max(var(--gap), var(--arc-r, var(--corner-tr, 0px)));
+  }
+  /* Two rows: the first is the padded box as with one; the second (.row2) sits in the bottom
+     padding, placed from the bar's edges so a Theme's bar padding never moves it, its ends clearing
+     the corners by the linear bound at its own distance from the top edge. */
+  .linkbar.two {
+    position: relative;
+    height: calc(var(--r1) + var(--row) + var(--it));
+    padding-bottom: var(--row);
+  }
+  .row2 {
+    position: absolute;
+    left: max(var(--gap), var(--corner-tl, 0px) - var(--it) - var(--r1));
+    right: max(var(--gap), var(--corner-tr, 0px) - var(--it) - var(--r1));
+    bottom: 0;
+    height: var(--row);
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+  }
+  .row2 .chips.opt { margin-left: auto; }
   :global(:root[data-cutout-top]) .cut .header-left {
     flex: none;
-    width: calc(var(--cutout-l, 0px) - var(--pl) - var(--sp-3));
-    margin-right: calc(var(--cutout-w, 0px) + var(--sp-3));
+    width: calc(var(--cutout-l, 0px) - var(--pl) - var(--sp-2));
+    margin-right: calc(var(--cutout-w, 0px) + var(--sp-2));
   }
   /* Shell chrome: the operator's window, not the machine's UI. The window
      buttons sit flush at the right edge; a phone shell has none. */
@@ -438,18 +486,12 @@
   .chip.tone-warn .mono { color: var(--warn-ink, var(--warn)); }
   .chip.tone-bad  .mono { color: var(--bad-ink); }
 
-  /* Narrow viewports shed chips from the tail. Marked by class, not
-     :nth-child: a positional selector retargets when a chip turns conditional. */
+  /* Two rows (560 px and under, `two` above): the second row holds the optional chips, so none sheds
+     here; past its width they still wrap away from the tail. */
   @media (max-width: 560px) {
-    .chip-opt { display: none; }
-    /* The rate keeps its place on a phone by dropping its unit; the tooltip and the name say KB/s. */
-    .chip-opt-last .unit { display: none; }
     .chips.pinned .chip { gap: var(--sp-1); }
-    .rv + .arrow { margin-left: 0; }
   }
   @media (max-width: 400px) {
-    .chip-opt-last { display: none; }
-    .chips.opt { display: none; }
     .linkbar { --wm: .82rem; }
     .header-left { min-width: 0; }
   }

@@ -5,6 +5,8 @@ import android.graphics.Rect
 import android.os.Build
 import android.os.Bundle
 import android.view.RoundedCorner
+import android.view.View
+import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
 import androidx.core.view.WindowCompat
@@ -37,8 +39,18 @@ class MainActivity : TauriActivity() {
   }
 
   // Corners and cutout change only with the window's size (rotation), which relays out the webview.
+  // No overscroll stretch on the WebView itself: the whole app stretched, bars included (DESIGN §10.3).
   override fun onWebViewCreate(webView: WebView) {
+    webView.overScrollMode = View.OVER_SCROLL_NEVER
     webView.addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ -> publishShape(v as WebView); publishPalette(v as WebView) }
+    webView.addJavascriptInterface(Exit(), "PhosphorActivity")
+  }
+
+  // window.PhosphorActivity.exit(): the close gate's close (src/shell/ShellStrip.svelte), after the
+  // back press that asked for it (src/model/back.js). Finishes this activity, nothing else.
+  inner class Exit {
+    @JavascriptInterface
+    fun exit() = runOnUiThread { finish() }
   }
 
   // The system's wallpaper-derived palette (Material You, API 31+): the accent1 to accent3

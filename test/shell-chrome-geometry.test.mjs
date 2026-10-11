@@ -1005,7 +1005,9 @@ for (const [w, h] of [[1280, 800], [390, 844], [1440, 900]]) {
   await cp.waitForSelector('.linkbar.shell .sb-wbtn[aria-label=Close]', { timeout: 15000 });
   const box = (sel) => cp.evaluate((s) => { const e = document.querySelector(s); if (!e) return null; const r = e.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, h: r.height }; }, sel);
   const bar0 = await box('.linkbar'), strip0 = await box('.strip');
-  ok(tag + ': the window buttons sit inside the one-row bar', !!bar0 && Math.abs((await box('.sb-win')).h - bar0.h) < 0.5, JSON.stringify(bar0));
+  // At 560 px and under the bar has a second row (LinkBar .row2); the buttons fill the first.
+  const row2 = await box('.linkbar .row2'), win0 = await box('.sb-win');
+  ok(tag + ': the window buttons fill the first row of the bar', !!bar0 && win0.top === bar0.top && Math.abs(win0.h - (bar0.h - (row2 ? row2.h : 0))) < 0.5 && (w > 560) === !row2, JSON.stringify([bar0, row2]));
   await cp.click('.sb-wbtn[aria-label=Close]');
   const pop = await box('.sb-pop'), x = await box('.sb-wbtn[aria-label=Close]'), bar1 = await box('.linkbar'), strip1 = await box('.strip');
   const top = await box('.topstrip');
