@@ -344,8 +344,9 @@ export function segmented(o = {}) {
       const on = b._v === value;
       b.classList.toggle('active', on && !tabs);
       attr(b, tabs ? 'aria-selected' : 'aria-checked', String(on));
-      b.tabIndex = on || (!any && i === 0) ? 0 : -1;
-      b.disabled = off;
+      const ti = on || (!any && i === 0) ? 0 : -1;
+      if (b.tabIndex !== ti) b.tabIndex = ti;
+      if (b.disabled !== off) b.disabled = off;
     });
   };
   const pick = (v, e) => { if (v === value) return; value = v; draw(); if (o.onChange) o.onChange(v, e); };
@@ -371,8 +372,8 @@ export function segmented(o = {}) {
     pick(b._v, e);
   });
   def(el, {
-    value: { get: () => value, set(v) { value = v; draw(); } },
-    disabled: { get: () => off, set(v) { off = !!v; draw(); } },
+    value: { get: () => value, set(v) { if (v !== value) { value = v; draw(); } } },
+    disabled: { get: () => off, set(v) { if (!!v !== off) { off = !!v; draw(); } } },
     options: { get: () => btns.map((b) => b._v), set: build },
   });
   off = !!o.disabled;
@@ -442,8 +443,8 @@ export function slider(o = {}) {
   });
   el.addEventListener('click', () => { if (document.activeElement !== input) input.focus({ preventScroll: true }); });
   def(el, {
-    value: { get: () => +input.value, set(v) { input.value = String(v); show(); } },
-    disabled: { get: () => input.disabled, set(v) { input.disabled = !!v; } },
+    value: { get: () => +input.value, set(v) { if (input.value !== String(v)) { input.value = String(v); show(); } } },
+    disabled: { get: () => input.disabled, set(v) { if (input.disabled !== !!v) input.disabled = !!v; } },
     chip: { value: chip },
     input: { value: input },
   });
@@ -518,7 +519,7 @@ export function stepper(o = {}) {
     input.addEventListener('mousedown', (e) => { if (document.activeElement !== input) e.preventDefault(); });
   }
   def(el, {
-    value: { get: () => value, set(v) { value = onGrid(+v, min, max, step); show(); } },
+    value: { get: () => value, set(v) { const n = onGrid(+v, min, max, step); if (n !== value) { value = n; show(); } } },
     disabled: { get: () => input.disabled, set(v) { input.disabled = !!v; el.querySelectorAll('.ui-step').forEach((b) => { b.disabled = !!v; }); } },
     input: { value: input },
   });
@@ -874,8 +875,8 @@ export function scrub(o = {}) {
   });
   def(el, {
     value: { get: () => value, set(v) { if (!el.hasAttribute('data-drag')) { value = +v || 0; draw(); } } },
-    max: { get: () => max, set(v) { max = +v || 0; draw(); } },
-    buffered: { get: () => buffered, set(v) { buffered = +v || 0; draw(); } },
+    max: { get: () => max, set(v) { if ((+v || 0) !== max) { max = +v || 0; draw(); } } },
+    buffered: { get: () => buffered, set(v) { if ((+v || 0) !== buffered) { buffered = +v || 0; draw(); } } },
     track: { value: track },
   });
   draw();
@@ -1050,7 +1051,7 @@ export function quickRail(o = {}) {
   b.setAttribute('aria-expanded', 'false');
   // Hidden (the attribute, so the shell counts it out) while the host offers no rail or the plugin says so.
   let available = !!document.documentElement.dataset.quickRail, shown = true;
-  const draw = () => { b.hidden = !shown || !available; };
+  const draw = () => { const off = !shown || !available; if (b.hidden !== off) b.hidden = off; };
   draw();
   b.addEventListener('click', () => b.dispatchEvent(new CustomEvent('phosphor-quick-rail', { bubbles: true, cancelable: true, detail: { open: 'toggle' } })));
   winOn(b, 'phosphor-quick-rail-change', (e) => {

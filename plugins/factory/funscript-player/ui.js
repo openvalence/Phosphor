@@ -282,6 +282,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
   let homeAt = Infinity; // the pause home's due time
   let planAge = Infinity, planEl = NaN, latAt = -Infinity;
   let autoMap = [0, 1], autoFor = null;
+  let hubSeen = '';     // update()'s key: the hub state the card shows
   const trace = [];
   let traceAt = NaN, traceLap = 0;   // the last traced sample's arrival, the loop lap it was traced in
   scheduler.setTransform(state.T);
@@ -651,7 +652,14 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     wakeIn: () => (active() ? 0 : state.phase === 'ready' && state.play.home ? Math.max(0, homeAt - now()) : Infinity),
     setFields(f) { fields = f; reshape(); warm(); changed(); },
     setInterp(v) { interp = v; reshape(); changed(); },
-    update() { if (gate() && active()) stop('held', '', true); else changed(); },
+    // Every telemetry sample lands here: the card re-renders only when what it shows from the hub moved (the gate, a
+    // trial, the speed ceiling, the oscillator role), never per sample (ph-bw0o); position drawing is the frame's.
+    update() {
+      if (gate() && active()) { stop('held', '', true); return; }
+      const c = fields ? ceilingOf(api, fields) : {};
+      const k = gate() + '|' + !!api.trialPending + '|' + c.vmax + '|' + c.spanMm + '|' + !!(osc && osc.absent);
+      if (k !== hubSeen) { hubSeen = k; changed(); }
+    },
     dispose() {
       if (active()) stop('held');
       if (url) revoke(url);
@@ -911,6 +919,8 @@ const h = (tag, attrs = {}, ...kids) => {
   return e;
 };
 const setText = (e, t) => { if (e.textContent !== t) e.textContent = t; };
+// A property write only on change: render runs every frame, and a same-value disabled or hidden still rewrites the attribute.
+const prop = (e, k, v) => { if (e[k] !== v) e[k] = v; };
 const attr = (e, k, v) => { if (e.getAttribute(k) !== v) e.setAttribute(k, v); };
 // A meter tick's left at share u, its 3 px inside the meter at either end.
 const tickAt = (u) => 'calc(1.5px + (100% - 3px) * ' + u + ')';
@@ -1538,7 +1548,7 @@ export function createPlayer(api) {
     if (opts.page) window.addEventListener('resize', recompose);
     ro.observe(root);
 
-    let tlKey = null, durSeen = -1;
+    let tlKey = null, durSeen = -1, markSeen = null;
     function render() {
       const ceil = ceilingOf(api, fields);
       const rt = video.playbackRate || 1, key = [st.script, st.shaped, st.T, ceil.vmax, ceil.spanMm, rt];
@@ -1547,10 +1557,11 @@ export function createPlayer(api) {
       const on = act();
       play.icon = on ? 'pause' : 'play';
       play.title = on ? COPY.pauseKey : COPY.playKey;
-      play.disabled = !on && !ctl.canPlay();
-      prevB.disabled = !st.scene && !nav.canBack() && !(library && library.canStep(-1));
-      nextB.disabled = !nav.canNext() && !(library && library.canStep(1));
-      closeH.disabled = mClose.disabled = !st.scene;
+      prop(play, 'disabled', !on && !ctl.canPlay());
+      prop(prevB, 'disabled', !st.scene && !nav.canBack() && !(library && library.canStep(-1)));
+      prop(nextB, 'disabled', !nav.canNext() && !(library && library.canStep(1)));
+      prop(closeH, 'disabled', !st.scene);
+      prop(mClose, 'disabled', !st.scene);
       const noVid = !!st.scene && !st.scene.stream;
       root.toggleAttribute('data-mo', noVid);
       root.toggleAttribute('data-paused', !!st.scene && !on);
@@ -1564,11 +1575,11 @@ export function createPlayer(api) {
       setB.pressed = !!(opts.settings && opts.settings.open);
       motion.pressed = st.motion;
       inv.pressed = st.T.invert;
-      fullB.disabled = noVid;
+      prop(fullB, 'disabled', noVid);
       fullB.icon = media ? 'unfull' : 'full';
       fullB.title = media ? COPY.fullExit : noVid ? COPY.noVideo : COPY.full;
       if (document.activeElement !== offN.input) offN.value = st.T.offsetMs;
-      root.dataset.view = st.view;
+      attr(root, 'data-view', st.view);
       // F3's Open video and Open script land on the head's buttons, or the Media menu's button where it holds them.
       const inMenu = comp === 'handheld';
       for (const [b, k] of [[src.querySelector('.fsp-openv'), 'openVideo'], [src.querySelector('.fsp-opens'), 'openScript']]) {
@@ -1581,24 +1592,25 @@ export function createPlayer(api) {
       libseg.value = lv;
       if (qv && qSeen !== queue) { qSeen = queue; qv.render(); }
       autoB.pressed = autoplay;
-      if (library) library.mark({ now: st.scene ? st.scene.key : null, playing: on, queued: queue.map((e) => e.key) });
+      const mk = (st.scene ? st.scene.key : '') + '\n' + on + '\n' + queue.map((e) => e.key).join('\n');
+      if (library && mk !== markSeen) { markSeen = mk; library.mark({ now: st.scene ? st.scene.key : null, playing: on, queued: queue.map((e) => e.key) }); }
       // The handheld Library and Queue views hide the bar (visibility); its Rail button leaves the count too (ph-5wsk.5).
       railB.shown = !(comp === 'handheld' && st.view !== 'player' && !media);
       setText(title, st.scene ? st.scene.title : '');
       setText(nowT, st.scene ? st.scene.title : '');
       nowB.icon = on ? 'pause' : 'play';
       nowB.title = on ? COPY.pause : COPY.play;
-      nowB.disabled = play.disabled;
+      prop(nowB, 'disabled', play.disabled);
       if (head) {
         const libTab = comp === 'handheld' && st.view !== 'player';
-        head.dataset.pidx = libTab ? '02' : '01';
+        attr(head, 'data-pidx', libTab ? '02' : '01');
         const ht = !libTab ? COPY.player : st.view === 'queue' ? QCOPY.queue : COPY.library;
         setText(head, ht);
         // A narrow phone head ellipsizes it (ph-5u0g.15): the whole word stays one hover away.
         attr(head, 'data-tip', ht);
       }
-      stage.empty.hidden = !!st.scene;
-      mo.hidden = !noVid;
+      prop(stage.empty, 'hidden', !!st.scene);
+      prop(mo, 'hidden', !noVid);
       status.set({ text: st.status.text, tone: st.status.tone || null, title: st.status.notes.join('\n') || st.status.text });
     }
     function frame() {
@@ -1631,17 +1643,18 @@ export function createPlayer(api) {
         setText(speedTxt, Math.round(sp2.v) + ' ' + sp2.unit);
         speedBar.style.width = cap ? clamp(sp2.v / cap, 0, 1) * 100 + '%' : '0';
         speed.toggleAttribute('data-over', !!cap && sp2.v > cap);
-        speed.dataset.tip = cap && sp2.v > cap ? COPY.speedOver : COPY.speed;
+        attr(speed, 'data-tip', cap && sp2.v > cap ? COPY.speedOver : COPY.speed);
         const at = tickAt(applyT(posAt(st.shaped || st.script, m), st.T));
-        for (const t of [tickI, moI]) { t.hidden = false; t.style.left = at; }
+        for (const t of [tickI, moI]) { prop(t, 'hidden', false); t.style.left = at; }
       } else {
         setText(speedTxt, '');
         speedBar.style.width = '0';
-        tickI.hidden = moI.hidden = true;
+        prop(tickI, 'hidden', true);
+        prop(moI, 'hidden', true);
       }
       const pu = realShare(), stale = !!(fields.pos && api.stale(fields.pos));
       for (const t of [tickR, moR]) {
-        t.hidden = pu == null;
+        prop(t, 'hidden', pu == null);
         if (pu != null) t.style.left = tickAt(pu);
         t.classList.toggle('stale', stale);
       }
@@ -1652,7 +1665,10 @@ export function createPlayer(api) {
     // analyzer's rows read the hub when api.changed moves (analyzer.js); a hidden one only checks whether its render is current.
     const anShown = () => root.hasAttribute('data-an') && !root.hasAttribute('data-media');
     const realShare = () => (fields.pos ? windowShare(api.value(fields.pos), fields.lo && api.value(fields.lo), fields.hi && api.value(fields.hi)) : null);
-    const hubKey = (pu, stale, c) => pu + ' ' + stale + ' ' + c.vmax + ' ' + c.spanMm;
+    // The real position is drawn only by a meter (glance, motion only): elsewhere a moving rail with no video playing
+    // (a pattern) wakes no frame (ph-bw0o).
+    const meterShown = () => comp === 'glance' || root.hasAttribute('data-mo');
+    const hubKey = (pu, stale, c) => (meterShown() ? pu + ' ' + stale : '') + ' ' + c.vmax + ' ' + c.spanMm;
     let hubSeen = '';
     function poll() {
       if (raf) return;

@@ -9,6 +9,8 @@
  *   read from there when api.prefs has none (a restored backup). 'stash'
  *   holds the Stash API key: never mirrored, so never in a backup file.
  * - No DOM or window at import time: node imports this module.
+ * - A read never writes on every call (ph-bw0o: it cost 4 % of a phone's main thread): a key read from api.prefs is
+ *   mirrored once per session; writePref mirrors every write.
  */
 
 import { SCALE, cleanScale } from './scale.js';
@@ -90,10 +92,11 @@ function clean(k, v) {
   return REPAIR[k] ? REPAIR[k](out) : out;
 }
 
+const mirrored = new Set();
 function readOne(api, k) {
   let v = api.prefs.get(k);
   if (v == null) v = mirrorGet(k);
-  else mirrorSet(k, v);
+  else if (!mirrored.has(k)) { mirrored.add(k); mirrorSet(k, v); }
   return clean(k, v);
 }
 
