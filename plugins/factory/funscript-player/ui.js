@@ -271,6 +271,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
   let planAge = Infinity, planEl = NaN, latAt = -Infinity;
   let autoMap = [0, 1], autoFor = null;
   const trace = [];
+  let traceAt = NaN, traceLap = 0;   // the last traced sample's arrival, the loop lap it was traced in
   scheduler.setTransform(state.T);
 
   const gate = () => (state.motion && fields && fields.dur ? api.gate(fields.dur) || '' : '');
@@ -399,10 +400,15 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
       probe({ k: 'mark', t: now(), name: 'wrap', lap: loop.lap });
       video.currentTime = loop.wrap() / 1000;
     }
-    if (state.phase === 'playing' && clock.ready && fields && fields.pos) {
-      const m = fold(clock.mediaAt(now() - state.T.offsetMs + scheduler.compMs));
+    // One trace point per telemetry sample, at its arrival (now less its age): never a held copy per frame.
+    const at = fields && fields.pos ? now() - api.age(fields.pos) : NaN;
+    if (state.phase === 'playing' && clock.ready && Number.isFinite(at) && !(Math.abs(at - traceAt) < 1)) {
+      traceAt = at;
+      const m = fold(clock.mediaAt(at - state.T.offsetMs + scheduler.compMs));
       if (Number.isFinite(m)) {
-        trace.push({ m, at: now(), u: windowShare(api.value(fields.pos), fields.lo && api.value(fields.lo), fields.hi && api.value(fields.hi)),
+        if (trace.length && traceLap !== loop.lap) trace.push({ m, at, u: null, p: null });   // a wrap: the lap starts its own line
+        traceLap = loop.lap;
+        trace.push({ m, at, u: windowShare(api.value(fields.pos), fields.lo && api.value(fields.lo), fields.hi && api.value(fields.hi)),
           stale: !!api.stale(fields.pos), p: planShare() });
       }
     }

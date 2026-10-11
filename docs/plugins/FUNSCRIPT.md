@@ -934,9 +934,16 @@ FULL
   `theme.test.mjs` (3.5:1 on the Ember and Phosphor cards); 4.5:1 would
   be a shell token change, not the player's. Heat past the limit is
   striped, not only recolored, because Ember's `--intent` and `--warn`
-  sit 13.6 Delta E apart. The reality trace is drawn at `mediaAt(t - offset)`, so a
-  machine in sync draws on the curve: offset can be set by eye. It is a
-  scope, not a measurement (ponytail; arrival-stamped).
+  sit 13.6 Delta E apart. The reality trace holds one point per telemetry
+  sample, drawn at `mediaAt(arrival - offset)`, so a machine in sync draws on
+  the curve: offset can be set by eye. It is a scope, not a measurement
+  (arrival-stamped). The curve between samples is a monotone cubic (PCHIP):
+  it passes through every sample and never leaves the range of two
+  neighbors, so it adds no peak; the detail's tooltip says it is
+  interpolated. Time only runs forward in it: the media clock re-anchors
+  backward at play, after a frame step or buffering, and before its ring
+  fills, and a sample that lands at or before the last drawn one is
+  dropped; samples over 250 ms apart are a gap (ph-6eh7).
 - **Heat** (ph-rsb5): the speed heatmap funscript users know. Each span
   between two of the file's actions is painted at its stroke speed,
   `|dpos| / dt` in units/s (pos 0..100), as one hard-edged run of a
