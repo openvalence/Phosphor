@@ -133,6 +133,27 @@ html:root[data-style="dmg"] [data-part="bar"] .wordmark {
 }
 html:root[data-style="dmg"]:not(.still) [data-part="bar"] .wordmark { animation: theme-dmg-boot 1s steps(8, end) 1 both; }
 @keyframes theme-dmg-boot { from { transform: translateY(-32px); } to { transform: none; } }
+html:root[data-style="dmg"] [data-part="bar"] { position: relative; }
+html:root[data-style="dmg"] [data-part="bar"]::after {
+  content: 'DOT MATRIX WITH SERVO MOTION' / '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  translate: -50% -50%;
+  padding: 3px 8px;
+  font-family: var(--font-head);
+  font-size: 8px;
+  letter-spacing: .2em;
+  line-height: 8px;
+  white-space: nowrap;
+  color: var(--dmg-ink2);
+  background-color: var(--dmg-bz);
+  pointer-events: none;
+  display: none;
+}
+@media (min-width: 1240px) {
+  html:root[data-style="dmg"] [data-part="bar"]::after { display: block; }
+}
 html:root[data-style="dmg"] [data-part="bar"] .chip { border-width: 2px; border-radius: 0; font-family: var(--font); font-size: .62rem; }
 html:root[data-style="dmg"] [data-part="bar"] .chip-lbl { font-family: var(--font-head); font-size: 8px; letter-spacing: .08em; }
 html:root[data-style="dmg"] [data-part="bar"] [aria-label="Channel activity"] { background-color: var(--dmg-3); box-shadow: 0 0 0 2px var(--dmg-bz-edge); }
@@ -518,6 +539,10 @@ html:root[data-style="dmg"] .ui-menu-i:focus-visible::before,
 html:root[data-style="dmg"] .ui-menu-i[aria-expanded="true"]::before { opacity: 1; }
 html:root[data-style="dmg"] .ui-menu-i[data-checked]::after { color: inherit; }
 
+/* ---- a confirm box and the side dock are dialog boxes too ---- */
+html:root[data-style="dmg"] [role="alertdialog"] { border-width: 3px; border-radius: 0; box-shadow: inset 0 0 0 2px var(--dmg-3), 5px 5px 0 var(--dmg-1); }
+html:root[data-style="dmg"] .side-dock { border-width: 3px; border-color: var(--dmg-0); border-radius: 0; }
+
 /* ---- the funscript player: a dotted track, a square knob, a stage with no signal ---- */
 html:root[data-style="dmg"] .ui-scrub-track { height: 4px; border-radius: 0; background-color: var(--dmg-3); background-image: conic-gradient(var(--dmg-1) 0 25%, transparent 0 50%, var(--dmg-1) 0 75%, transparent 0); background-size: 4px 4px; }
 html:root[data-style="dmg"] .ui-scrub:is(:hover, [data-drag]) .ui-scrub-track { height: 6px; }
@@ -557,7 +582,19 @@ html:root[data-style="dmg"] [data-shade]::after {
 html:root[data-style="dmg"] * { scrollbar-width: auto; scrollbar-color: auto; }
 html:root[data-style="dmg"] ::-webkit-scrollbar { width: 16px; height: 16px; }
 html:root[data-style="dmg"] ::-webkit-scrollbar-track { background-color: var(--dmg-3); background-image: conic-gradient(var(--dmg-1) 0 25%, transparent 0 50%, var(--dmg-1) 0 75%, transparent 0); background-size: 4px 4px; border-left: 2px solid var(--dmg-0); }
-html:root[data-style="dmg"] ::-webkit-scrollbar-thumb { background-color: var(--dmg-0); border: 2px solid var(--dmg-3); border-radius: 0; }
+html:root[data-style="dmg"] ::-webkit-scrollbar-thumb {
+  background-color: var(--dmg-0);
+  background-image: linear-gradient(var(--dmg-3), var(--dmg-3)), linear-gradient(var(--dmg-3), var(--dmg-3)), linear-gradient(var(--dmg-3), var(--dmg-3));
+  background-size: 6px 2px, 6px 2px, 6px 2px;
+  background-position: center calc(50% - 4px), center 50%, center calc(50% + 4px);
+  background-repeat: no-repeat;
+  border: 2px solid var(--dmg-3);
+  border-radius: 0;
+}
+html:root[data-style="dmg"] ::-webkit-scrollbar-thumb:horizontal {
+  background-size: 2px 6px, 2px 6px, 2px 6px;
+  background-position: calc(50% - 4px) center, 50% center, calc(50% + 4px) center;
+}
 html:root[data-style="dmg"] ::-webkit-scrollbar-button:single-button { width: 16px; height: 16px; background-color: var(--dmg-3); background-repeat: no-repeat; background-position: center; border: 2px solid var(--dmg-0); }
 html:root[data-style="dmg"] ::-webkit-scrollbar-button:single-button:vertical:decrement { background-image: var(--dmg-i-up); }
 html:root[data-style="dmg"] ::-webkit-scrollbar-button:single-button:vertical:increment { background-image: var(--dmg-i-dn); }
