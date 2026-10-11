@@ -16,7 +16,7 @@ export default {
       id: 'amp',
       name: 'Amp',
       accents: { reality: '#3CF27C', intent: '#8FB4FF', highlight: '#E9DBA8' },
-      chassis: { hue: 85, tint: 0.25, brightness: 0.27, contrast: 1.1 },
+      chassis: { hue: 85, tint: 0.25, brightness: 0.25, contrast: 1.1 },
       look: LOOK,
       overrides: BRASS,
     },

@@ -22,8 +22,8 @@ html:root[data-style="amp"] {
   --amp-seg: 'Amp Segment', 'VT323', monospace;
   --amp-cap: 'Silkscreen', Tahoma, sans-serif;
   /* Silkscreen is drawn on an 8 px grid: only whole multiples of 8 stay crisp */
-  --amp-s8: round(nearest, calc(var(--s) * 8px), 8px);
-  --amp-s16: round(nearest, calc(var(--s) * 14px), 8px);
+  --amp-s8: .5rem;
+  --amp-s16: 1rem;
   /* bevel inks, the rim around a plate, the trim of a frame */
   --amp-edge: #000;
   --amp-hi: rgba(255, 255, 255, .17);
@@ -35,6 +35,7 @@ html:root[data-style="amp"] {
   --amp-glass: #050E09;
   --amp-pit: #040A07;
   --amp-trk: #000;
+  --amp-cap-bg: color-mix(in srgb, var(--tx-ghost) 52%, var(--bg-card));
   --amp-ink: var(--reality);
   --amp-dim: rgba(var(--reality-rgb), .1);
   --amp-glow: 0 0 6px rgba(var(--reality-rgb), .55);
@@ -59,6 +60,10 @@ html:root[data-style="amp"] {
     var(--amp-sheen),
     var(--amp-brush);
   --tex-card-size: 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%, auto;
+}
+
+@supports (font-size: round(nearest, 9px, 8px)) {
+  html:root[data-style="amp"] { --amp-s8: round(nearest, calc(var(--s) * 8px), 8px); --amp-s16: round(nearest, calc(var(--s) * 14px), 8px); }
 }
 
 /* Classic: steel and a pea-green reflective LCD with dark ink, over black glass lists. */
@@ -267,14 +272,14 @@ html:root[data-style="amp"] [data-part="hero"] :is(.rail-endcap, .rail-ghost, .r
 html:root[data-style="amp"] [data-part="hero"] .rail-tape-pip {
   width: 8px;
   transform: translateX(-4px);
-  background-color: var(--bg-card);
+  background-color: var(--amp-cap-bg);
   background-image: var(--amp-key);
   border-inline: 2px solid var(--intent);
   box-shadow: 0 0 0 1px var(--amp-edge), 0 0 8px rgba(var(--intent-rgb), .6);
 }
 html:root[data-style="amp"] [data-part="hero"] .rail-band-handle::before {
   width: 7px;
-  background-color: var(--bg-card);
+  background-color: var(--amp-cap-bg);
   background-image: var(--amp-key);
   border-inline: 2px solid var(--intent);
   box-shadow: 0 0 0 1px var(--amp-edge), 0 0 8px rgba(var(--intent-rgb), .55);
@@ -455,8 +460,8 @@ html:root[data-style="amp"] select.og-btn {
   line-height: 1.15;
   padding-right: 28px;
   background-image:
-    linear-gradient(45deg, transparent 50%, var(--amp-brass-hi) 50%),
-    linear-gradient(135deg, var(--amp-brass-hi) 50%, transparent 50%),
+    linear-gradient(45deg, transparent 50%, var(--tx-hi) 50%),
+    linear-gradient(135deg, var(--tx-hi) 50%, transparent 50%),
     linear-gradient(var(--bg-card), var(--bg-card)),
     var(--amp-key);
   background-position: calc(100% - 11px) 50%, calc(100% - 6px) 50%, 100% 0, 100% 0;
@@ -485,11 +490,16 @@ html:root[data-style="amp"] input[type="checkbox"]:not([role="switch"]) {
   vertical-align: -3px;
   cursor: pointer;
 }
-html:root[data-style="amp"] input[type="checkbox"]:not([role="switch"]):checked {
-  background-image: linear-gradient(var(--reality), var(--reality)), linear-gradient(var(--reality), var(--reality));
-  background-size: 2px 6px, 2px 4px;
-  background-position: 7px 3px, 4px 5px;
-  background-repeat: no-repeat;
+html:root[data-style="amp"] input[type="checkbox"]:not([role="switch"]) { position: relative; }
+html:root[data-style="amp"] input[type="checkbox"]:not([role="switch"]):checked::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 6px;
+  width: 2px;
+  height: 2px;
+  background: var(--reality);
+  box-shadow: 2px 2px 0 var(--reality), 4px 0 0 var(--reality), 6px -2px 0 var(--reality), 8px -4px 0 var(--reality);
 }
 html:root[data-style="amp"] [role="radio"]::before {
   content: '';
@@ -506,20 +516,41 @@ html:root[data-style="amp"] [role="radio"][aria-checked="true"]::before { backgr
 
 /* sliders: a thin engraved groove, a chunky ribbed cap */
 html:root[data-style="amp"] input[type="range"] { background-color: var(--amp-trk); box-shadow: 0 1px 0 var(--amp-hi), 0 -1px 0 var(--amp-edge); }
-html:root[data-style="amp"] input[type="range"]::-webkit-slider-thumb,
-html:root[data-style="amp"] input[type="range"]::-moz-range-thumb {
+html:root[data-style="amp"] input[type="range"]::-webkit-slider-thumb {
   border-radius: 0;
   border-color: var(--amp-edge);
-  background-color: var(--bg-card);
+  background-color: var(--amp-cap-bg);
   background-image: linear-gradient(90deg, transparent calc(50% - 1px), var(--amp-edge) calc(50% - 1px) 50%, var(--amp-hi) 50% calc(50% + 1px), transparent calc(50% + 1px)), var(--amp-key);
   box-shadow: var(--amp-bevel);
 }
+html:root[data-style="amp"] input[type="range"]::-moz-range-thumb {
+  border-radius: 0;
+  border-color: var(--amp-edge);
+  background-color: var(--amp-cap-bg);
+  background-image: linear-gradient(90deg, transparent calc(50% - 1px), var(--amp-edge) calc(50% - 1px) 50%, var(--amp-hi) 50% calc(50% + 1px), transparent calc(50% + 1px)), var(--amp-key);
+  box-shadow: var(--amp-bevel);
+}
+
+/* progress: a row of lit cells in a glass slot */
+html:root[data-style="amp"] progress {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 12px;
+  border: 0;
+  border-radius: 0;
+  background-color: var(--amp-pit);
+  box-shadow: 0 0 0 1px var(--amp-edge), var(--amp-well);
+  overflow: hidden;
+}
+html:root[data-style="amp"] progress::-webkit-progress-bar { background: transparent; }
+html:root[data-style="amp"] progress::-webkit-progress-value { background-color: transparent; background-image: repeating-linear-gradient(90deg, var(--reality) 0 4px, transparent 4px 6px); }
+html:root[data-style="amp"] progress::-moz-progress-bar { background-color: transparent; background-image: repeating-linear-gradient(90deg, var(--reality) 0 4px, transparent 4px 6px); }
 
 /* chips elsewhere, tabs, segmented */
 html:root[data-style="amp"] .chip { border-radius: 0; }
 html:root[data-style="amp"] [role="tab"]:not([data-part="rail-tab"]):not(.rail-tab),
 html:root[data-style="amp"] .tabs button { border-radius: 0; }
-html:root[data-style="amp"] .og-seg button { font-family: var(--amp-pix); font-size: 1.05rem; letter-spacing: .06em; text-transform: uppercase; }
+html:root[data-style="amp"] .og-seg button { font-family: var(--amp-pix); font-size: 1rem; letter-spacing: .03em; text-transform: uppercase; }
 
 /* menus, the tooltip, drawers and popovers: a small window each */
 html:root[data-style="amp"] .ui-menu,
@@ -532,6 +563,8 @@ html:root[data-style="amp"] .sb-pop {
   border: 1px solid var(--amp-edge);
   box-shadow: 0 0 0 1px var(--amp-brass-lo), var(--amp-bevel), 4px 5px 0 rgba(0, 0, 0, .4);
 }
+html:root[data-style="amp"] .sb-hold { border-radius: 0; background-color: var(--bg-card); background-image: var(--amp-key); box-shadow: 0 0 0 1px var(--amp-edge), var(--amp-bevel); font-family: var(--amp-pix); font-size: 1.15rem; letter-spacing: .06em; }
+html:root[data-style="amp"] .sb-pop-t { font-family: var(--amp-pix); font-size: 1.2rem; letter-spacing: .06em; }
 html:root[data-style="amp"] #ph-tip {
   border-radius: 0;
   outline: none;
@@ -631,7 +664,7 @@ html:root[data-style="amp"] .ui-scrub-played::after {
   height: 16px;
   translate: 0 -8px;
   border-radius: 0;
-  background-color: var(--bg-card);
+  background-color: var(--amp-cap-bg);
   background-image: linear-gradient(90deg, transparent calc(50% - 1px), var(--amp-edge) calc(50% - 1px) 50%, var(--amp-hi) 50% calc(50% + 1px), transparent calc(50% + 1px)), var(--amp-key);
   box-shadow: 0 0 0 1px var(--amp-edge), var(--amp-bevel);
   transform: none;
@@ -651,4 +684,4 @@ html:root[data-style="amp"] .fsp-dt,
 html:root[data-style="amp"] .fsp-lane { border-radius: 0; border-color: var(--amp-edge); background-color: var(--bg-sunken); box-shadow: var(--amp-well); }
 html:root[data-style="amp"] .fsp-vbox:has(> .fsp-empty:not([hidden])) { border: 1px solid var(--amp-edge); }
 html:root[data-style="amp"] .fsp-scrub::after,
-html:root[data-style="amp"] .fsp-rh::after { border-radius: 0; background-color: var(--bg-card); background-image: var(--amp-key); box-shadow: 0 0 0 1px var(--amp-edge), var(--amp-bevel); }
+html:root[data-style="amp"] .fsp-rh::after { border-radius: 0; background-color: var(--amp-cap-bg); background-image: var(--amp-key); box-shadow: 0 0 0 1px var(--amp-edge), var(--amp-bevel); }
