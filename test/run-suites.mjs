@@ -13,7 +13,7 @@ import { cpus } from 'node:os';
 
 const SERIAL_LANE = []; // substrings of a suite command, e.g. 'responsive-matrix' if it ever contends
 // Suites that time this host run alone after the pool: a loaded host reads to them as a busy device.
-const ALONE = ['health-browser', 'fps-chip'];
+const ALONE = ['health-browser', 'fps-chip', 'theme-skins.test.mjs --perf'];
 const LAST = 'copy-lint';
 
 const set = process.argv[2];
