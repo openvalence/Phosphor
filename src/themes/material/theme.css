@@ -176,6 +176,9 @@ html:root[data-style="material"] .rail-ops { border-radius: 0 0 20px 20px; borde
 html:root[data-style="material"] .rail-ops button { border-radius: 999px; border-color: transparent; color: var(--md-on-sc); }
 html:root[data-style="material"] [data-part="rail-tab"].on:has(+ .rail-ops) { border-radius: 20px 20px 0 0; }
 
+/* ---- the phone menu: the modal navigation drawer ---- */
+html:root[data-style="material"] .phone-menu { border-radius: 0 var(--md-r-sheet) var(--md-r-sheet) 0; background-color: var(--md-s1); border-color: transparent; box-shadow: var(--md-e3); }
+
 /* ---- surfaces: filled cards one tone up, lifted by level 1; nests and screens one tone down ---- */
 html:root[data-style="material"] [data-part="card"],
 html:root[data-style="material"] [data-part="panel"],
