@@ -400,7 +400,8 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
       probe({ k: 'mark', t: now(), name: 'wrap', lap: loop.lap });
       video.currentTime = loop.wrap() / 1000;
     }
-    // One trace point per telemetry sample, at its arrival (now less its age): never a held copy per frame.
+    // One trace point per telemetry sample, at its sample time (now less its age; hub-dated where the
+    // machine stamps it, machine.svelte.js sampleTs): never a held copy per frame.
     const at = fields && fields.pos ? now() - api.age(fields.pos) : NaN;
     if (state.phase === 'playing' && clock.ready && Number.isFinite(at) && !(Math.abs(at - traceAt) < 1)) {
       traceAt = at;

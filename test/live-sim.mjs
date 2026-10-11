@@ -16,7 +16,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DIST_HTML } from './dist.mjs';
 
-export const SIM = fileURLToPath(new URL('../../Nucleus/sim/valencesim/build/valencesim.exe', import.meta.url));
+// VALENCESIM names another build (a Nucleus worktree's) for one run.
+export const SIM = process.env.VALENCESIM || fileURLToPath(new URL('../../Nucleus/sim/valencesim/build/valencesim.exe', import.meta.url));
 
 const answers = (port) => new Promise((resolve) => {
   const ws = new WebSocket('ws://127.0.0.1:' + port + '/');
