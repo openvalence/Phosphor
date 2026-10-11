@@ -3,7 +3,9 @@
  * pattern at three speeds, at 4K (1920 x 1080 CSS at device scale 2).
  *
  * Per speed: the display lag (the shift that lays the painted head over the arrivals), the
- * render delay, the head's distance off the samples at that lag (px), the tail's
+ * render delay, the wire's step jitter (each sample's travel against its neighbors' mean, RMS,
+ * on fast steps: an alias between two paces reads 0.5 and up, bd val-7f5), the head's judder
+ * (each frame's speed against its neighbors' mean, p95, on frames in one-way motion), the head's distance off the samples at that lag (px), the tail's
  * length, the ghost against the plan, the draw cost, and a frame series of the rail
  * (evidence/meteor-<label>-<speed>-<n>.png). Reduced motion at full speed keeps a short tail
  * (meteor-<label>-still.png). Then the pattern stops: the tail collapses and
@@ -138,9 +140,24 @@ for (const sp of SPEEDS) {
   }
   const gaps = [];
   for (let i = 1; i < arrivals.length; i++) gaps.push(arrivals[i][1] - arrivals[i - 1][1]);
+  const steps = arrivals.slice(1).map((a, i) => Math.abs(a[2] - arrivals[i][2]));
+  const fast = 0.5 * q(steps, 0.95), stepDev = [];
+  for (let i = 1; i + 1 < steps.length; i++) {
+    if (steps[i - 1] > fast && steps[i] > fast && steps[i + 1] > fast) stepDev.push((steps[i] / ((steps[i - 1] + steps[i + 1]) / 2) - 1) ** 2);
+  }
+  const judder = [];
+  const speedAt = (i) => (frames[i][5] - frames[i - 1][5]) / (frames[i][0] - frames[i - 1][0]);
+  for (const i of moving) {
+    if (i < 2 || i + 1 >= frames.length || !moving.includes(i - 1) || !moving.includes(i + 1)) continue;
+    const [a, b, c] = [speedAt(i - 1), speedAt(i), speedAt(i + 1)];
+    if (![a, b, c].every(Number.isFinite)) continue;
+    judder.push(Math.abs(b - (a + c) / 2) / ((Math.abs(a) + Math.abs(c)) / 2));
+  }
   const r = {
     frames: frames.length, arrivals: arrivals.length,
     arrivalGapP50: q(gaps, 0.5), arrivalGapP95: q(gaps, 0.95),
+    stepJitter: stepDev.length ? Math.sqrt(stepDev.reduce((x, y) => x + y, 0) / stepDev.length) : NaN,
+    judderP50: q(judder, 0.5), judderP95: q(judder, 0.95),
     delayP50: q(frames.map((f) => origin + f[0] - f[1]), 0.5),
     ...(({ lag, offP95, offMax }) => ({ lagMs: lag, offP95, offMax }))(lagOf(frames, arrivals, origin)),
     tailP90: has ? q(frames.map((f) => f[6]), 0.9) : NaN,
@@ -167,7 +184,8 @@ for (const sp of SPEEDS) {
   }
   report.speeds[sp] = r;
   console.log('  ' + sp + '%: lag ' + r.lagMs + ' ms, delay ' + f1(r.delayP50) + ' ms, arrivals p50/p95 ' + f1(r.arrivalGapP50) + '/' + f1(r.arrivalGapP95)
-    + ' ms, head off-sample p95/max ' + f1(r.offP95) + '/' + f1(r.offMax) + ' px, tail p90 ' + f1(r.tailP90) + ' px, tail/path ' + (r.tailVsPath ?? NaN).toFixed?.(2) + ', ghost ' + f1(r.ghostShare * 100)
+    + ' ms, step jitter ' + r.stepJitter.toFixed(3) + ', head judder p50/p95 ' + r.judderP50.toFixed(3) + '/' + r.judderP95.toFixed(3)
+    + ', head off-sample p95/max ' + f1(r.offP95) + '/' + f1(r.offMax) + ' px, tail p90 ' + f1(r.tailP90) + ' px, tail/path ' + (r.tailVsPath ?? NaN).toFixed?.(2) + ', ghost ' + f1(r.ghostShare * 100)
     + '% (at reversal ' + f1(r.ghostAtReversal * 100) + '% of ' + r.reversals + '), draw p50/p95 ' + (r.drawP50 ?? NaN).toFixed?.(3) + '/' + (r.drawP95 ?? NaN).toFixed?.(3) + ' ms');
 }
 

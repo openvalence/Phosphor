@@ -64,6 +64,8 @@ export const ROLE = {
   telemetryPowerDraw: 'telemetry.power.draw',
   telemetryTemp: 'telemetry.temp',
   telemetryUptime: 'telemetry.uptime',
+  // RFC-113 (draft): the hub time (SPEC 7.1, us) the fields of its layout were sampled.
+  telemetrySampleTime: 'telemetry.sample_time',
   // RFC-032: where the machine is currently COMMANDED to, as opposed to
   // telemetryPosition (where it is). Neither role says whether its number was
   // measured or computed — that is `provenance` (RFC-048 key 22), per FIELD,
@@ -193,6 +195,7 @@ export const ROLE_LABEL = {
   [ROLE.telemetryPowerDraw]: 'Power draw',
   [ROLE.telemetryTemp]: 'Temperature',
   [ROLE.telemetryUptime]: 'Uptime',
+  [ROLE.telemetrySampleTime]: 'Sample time',
 
   [ROLE.identityName]: 'Machine name',
 

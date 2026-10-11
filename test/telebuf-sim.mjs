@@ -417,6 +417,23 @@ console.log('\ntelebuf.js — monotone cubic and tail assertions\n');
   ok('the schedule does not ratchet ahead of arrival', p95 < 70, p95.toFixed(0) + ' ms');
 }
 
+// ---- claim: a hub-dated sample is stored at its own time, lateness from its arrival ----
+// The rescheduling telebuf takes {value, sample time, arrival} (machine.sampleRxTs,
+// RFC-113 draft): samples taken every 20 ms that arrive clumped keep their 20 ms
+// spacing, a repeat of the newest is dropped, and lateness is the arrival past the
+// newest stored sample.
+{
+  const tele = createTelebuf();
+  const late = [];
+  const rx = [25, 25, 25, 85, 85, 85, 145];   // three per clump
+  for (let i = 0; i < rx.length; i++) late.push(tele.push(i * 2, i * 20, rx[i]));
+  const ts = [];
+  tele.forEach((t) => ts.push(t));
+  ok('hub-dated samples keep their own spacing under clumped arrival', ts.join() === '0,20,40,60,80,100,120', ts.join());
+  ok('lateness is the arrival past the newest stored sample', late[1] === 25 && late[3] === 45 && late[6] === 45, late.join());
+  ok('a repeat of the newest sample time is dropped', Number.isNaN(tele.push(12, 120, 150)) && tele.length === 7);
+}
+
 // ---------------------------------------------------------------------------
 // TelemetryChart path (RENDERING Â§13 laws 8, 9). The chart stores arrivals in a
 // rescheduling telebuf and cuts its line at link-stale spans. The span is built

@@ -1,14 +1,13 @@
 /**
  * telebuf.js — a tiny ring-buffer interpolator for smoothing ONE live scalar.
  *
- * This is a deliberately shrunk port of the pre-refactor `core/telebuf.js`.
- * The original also did WS-frame parsing and dual-clock (device/client) sync
- * because it fed off a raw binary telemetry plane; that plane is gone. Here,
- * `machine.svelte.js` already timestamps every decoded STATE sample
- * (`machine.sampleTs[channelId]`) with `Date.now()` — the epoch-ms domain set
- * at `session.js`'s `emit('state', ..., Date.now())` — so there is nothing
- * left to synchronize — a caller just pushes {value, tsMs} pairs as they
- * arrive off `machine.samples`/`machine.sampleTs`.
+ * `machine.svelte.js` stamps every decoded STATE sample
+ * (`machine.sampleTs[channelId]`) in the Date.now() epoch-ms domain: by its hub
+ * sample time through the CLOCK offset where the layout carries a
+ * telemetry.sample_time field (RFC-113 draft; `machine.sampleRxTs` then holds
+ * the arrival), else by its arrival. A caller pushes {value, tsMs} pairs as
+ * they arrive off `machine.samples`/`machine.sampleTs`, with the arrival for a
+ * hub-dated one.
  *
  * CLOCK-DOMAIN TRAP (bit us once, guard stays): `sampleAt(tMs)` must be
  * called with a timestamp in that SAME Date.now() epoch-ms domain. A
@@ -138,21 +137,25 @@ export function createTelebuf(opts = {}) {
   let lastArrivalTs = 0;
 
   /**
-   * Push one ground-truth sample. `tsMs` is the ARRIVAL hint (see header).
-   * Returns the lateness: how far this arrival ran past the newest stored
-   * sample (negative while the schedule leads), NaN for the first sample, a
-   * stall or a dwell. Feed it to createRenderClock's noteLate().
+   * Push one ground-truth sample. `tsMs` is the ARRIVAL hint (see header), or
+   * with `arrivalMs` the instant the sample was TAKEN (a hub-dated sample,
+   * machine.sampleRxTs), stored as is: no reschedule, since its spacing is the
+   * truth. Returns the lateness: how far this arrival ran past the newest
+   * stored sample (negative while the schedule leads), NaN for the first
+   * sample, a stall or a dwell. Feed it to createRenderClock's noteLate().
    */
-  function push(value, tsMs) {
+  function push(value, tsMs, arrivalMs) {
     if (value == null || !isFinite(value) || !isFinite(tsMs)) return NaN;
 
     const newestIdx = len ? (head + len - 1) % CAP : -1;
+    const trusted = !RESCHEDULE || arrivalMs != null;
     let ts;
     let late = NaN;
-    if (!RESCHEDULE) {
+    if (trusted) {
       if (newestIdx >= 0 && tsMs <= bufT[newestIdx]) return NaN; // trusted stamps: not newer, drop
       ts = tsMs;
-      if (newestIdx >= 0) late = tsMs - bufT[newestIdx];
+      if (newestIdx >= 0) late = (arrivalMs ?? tsMs) - bufT[newestIdx];
+      lastArrivalTs = arrivalMs ?? tsMs;
     } else {
       const gapSinceLast = lastArrivalTs > 0 ? tsMs - lastArrivalTs : -1;
       // Only plausible STREAMING gaps teach the period. Idle/dwell gaps (the
@@ -189,7 +192,7 @@ export function createTelebuf(opts = {}) {
     // Against the RECONSTRUCTED schedule, never the arrival stamps: a clump
     // shares one arrival, so an arrival-delta slope is undefined inside it (T18).
     if (newestIdx >= 0) lastVelPerMs = (value - bufV[newestIdx]) / (ts - bufT[newestIdx]);
-    lastPushTs = tsMs;
+    lastPushTs = arrivalMs ?? tsMs;
     return late;
   }
 

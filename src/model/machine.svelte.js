@@ -42,6 +42,7 @@ import { CORE_CHANNEL, CORE_CHANNEL_NAME } from '../../../Valence/clients/js/gen
 import { buildSettingsModel } from './settings.js';
 import { MAX_SUBSCRIBE_HZ, regrow, telemetryChannelIds } from './wishes.js';
 import { ROLE } from './roles.js';
+import { filteredHubNowUs } from './motion.js';
 import { endpointLabel, setHubClock, unitOf } from './format.js';
 import { recorder } from './vault.js';
 import { bump } from './changes.js';
@@ -168,8 +169,15 @@ export const machine = $state({
    * catalog still names retired bits.
    */
   safety: null,
-  /** channelId -> ms timestamp of that sample, for staleness display. */
+  /**
+   * channelId -> Date.now() ms that sample describes: its hub sample time (a
+   * telemetry.sample_time field, RFC-113 draft) through the CLOCK offset when
+   * the layout carries one and the clock is synced, else its arrival. Staleness
+   * and every age read it.
+   */
   sampleTs: {},
+  /** channelId -> arrival ms, only for samples sampleTs dates by hub time. */
+  sampleRxTs: {},
   /** channelId -> granted {rate, priority}, so the UI can show what it really gets. */
   grants: {},
 
@@ -393,6 +401,41 @@ export function specSafetyAction() {
 }
 
 /**
+ * When a STATE sample was taken, in Date.now() ms: its telemetry.sample_time
+ * field (hub us, SPEC 7.2's STREAM wrap rule) through the filtered CLOCK
+ * offset, never after its arrival `rx`. Null when the layout has no such
+ * field, the clock is not synced, or the age is implausible (a missed resync):
+ * the caller dates the sample by arrival.
+ *
+ * Constraints:
+ * - Hub dating removes the link's arrival jitter from every consumer of
+ *   sampleTs (the rail's comet, the funscript trace); arrival stamps clump on
+ *   WiFi (telebuf.js, regression #5).
+ * - The CLOCK offset drifts with two crystals (motion.js CLOCK_DRIFT), so a
+ *   dated channel resyncs every clock_resync_interval_s (SPEC 7.1).
+ */
+const SAMPLE_AGE_MAX_MS = 2000;
+let lastClockMs = 0;   // the newest CLOCK reply, any exchange's
+function hubDated(channelId, sample, rx) {
+  const fields = machine.catalog.model && machine.catalog.model.byRole.get(ROLE.telemetrySampleTime);
+  const f = fields && fields.find((x) => x.channelId === channelId);
+  const t = f && sample && sample[f.name];
+  if (typeof t !== 'number' || !session || !session.state.clockSynced) {
+    if (f && session && !session.state.clockSynced) filteredHubNowUs(session);   // first use starts the CLOCK hunt
+    return null;
+  }
+  // Never over another exchange: the session holds one CLOCK in flight, and a
+  // second replaces it (motion.js's hunt stops on the lost one).
+  if (rx - lastClockMs >= LIMITS.clock_resync_interval_s * 1000) {
+    lastClockMs = rx;
+    session.syncClock().catch(() => {});
+  }
+  const ageMs = ((filteredHubNowUs(session) - t) | 0) / 1000;
+  if (!(ageMs > -SAMPLE_AGE_MAX_MS && ageMs < SAMPLE_AGE_MAX_MS)) return null;
+  return rx - Math.max(0, ageMs);
+}
+
+/**
  * The hub-clock reference format.js converts hub-time stamps with (SPEC §7.1):
  * the session's CLOCK-offset hub-µs for the fraction, the `telemetry.uptime`
  * field, extrapolated from its arrival, for the wrap. Null with no uptime.
@@ -606,7 +649,7 @@ export function connect(opts = {}) {
     const removed = grow(prev, entries);
     // RFC-077: survivors keep their samples, grants, shadows and confirms; a
     // vanished channel's go, so its placements resolve to nothing (inert, law 10).
-    for (const id of removed) { delete machine.samples[id]; delete machine.sampleTs[id]; delete machine.grants[id]; }
+    for (const id of removed) { delete machine.samples[id]; delete machine.sampleTs[id]; delete machine.sampleRxTs[id]; delete machine.grants[id]; }
     adopted = true;
   });
 
@@ -651,7 +694,11 @@ export function connect(opts = {}) {
 
   session.on('state', (channelId, sample, tsMs) => {
     machine.samples[channelId] = rawSample(sample);
-    machine.sampleTs[channelId] = tsMs || Date.now();
+    const rx = tsMs || Date.now();
+    const at = hubDated(channelId, sample, rx);
+    machine.sampleTs[channelId] = at ?? rx;
+    if (at != null) machine.sampleRxTs[channelId] = rx;
+    else delete machine.sampleRxTs[channelId];
     bump(channelId);
     machine.stats.statePushes++;
     machine.stats.pushesByChannel[channelId] = (machine.stats.pushesByChannel[channelId] || 0) + 1;
@@ -749,6 +796,7 @@ export function connect(opts = {}) {
   });
 
   session.on('clock', (c) => {
+    lastClockMs = Date.now();
     machine.stats.clockOffsetUs = c.offsetUs;
     machine.stats.clockRttUs = c.rttUs;
   });
@@ -836,6 +884,7 @@ function forgetDevice() {
   machine.catalog = blankCatalog();
   machine.samples = {};
   machine.sampleTs = {};
+  machine.sampleRxTs = {};
   machine.grants = {};
   machine.events = blankEvents();
   machine.stats = blankStats();

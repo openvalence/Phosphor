@@ -387,7 +387,7 @@
     if (ts && s) {
       const v = displayValue(f, s);
       if (typeof v === 'number' && isFinite(v)) {
-        renderClock.noteLate(posTele.push(v, ts));
+        renderClock.noteLate(posTele.push(v, ts, machine.sampleRxTs[f.channelId]));
         if (v !== posLast) { posLast = v; wake(); }
         // Latency probe (test/latency-probe.mjs): [state write, this push, value]. Unset costs nothing.
         if (window.__railArrivals) window.__railArrivals.push([ts, performance.timeOrigin + performance.now(), v]);
@@ -404,7 +404,7 @@
     if (ts && s) {
       const v = displayValue(f, s);
       if (typeof v === 'number' && isFinite(v)) {
-        velTele.push(v, ts);
+        velTele.push(v, ts, machine.sampleRxTs[f.channelId]);
         if (v !== velLast) { velLast = v; wake(); }
       }
     }
@@ -425,7 +425,7 @@
     if (ts && s) {
       const v = displayValue(f, s);
       if (typeof v === 'number' && isFinite(v)) {
-        targetTele.push(v, ts);
+        targetTele.push(v, ts, machine.sampleRxTs[f.channelId]);
         if (v !== targetLast) { targetLast = v; wake(); }
       }
     }

@@ -384,7 +384,7 @@ and moved on a reorder, so a control keeps its in-flight write.
 | `field(role)` | first field carrying a registry role, or null | **freeze candidate** |
 | `value(field)` | the value a control must show (reported, or the in-flight request while pending) | **freeze candidate** |
 | `status(field)` | `confirmed` / `pending` / `overdue` / `fault` | **freeze candidate** |
-| `age(field)` | ms since the field's channel last reported (dim when stale, RENDERING §13 law 8) | **freeze candidate** |
+| `age(field)` | ms since the field's channel last reported: since its hub sample time where the channel carries a `telemetry.sample_time` field (RFC-113 draft), else since its arrival (dim when stale, RENDERING §13 law 8) | **freeze candidate** |
 | `catalog()` | the whole settings model (categories, `byRole`, `fields`, `actions`) for channel-bound plugins | **freeze candidate** |
 | `write(field, value)` | routes to `writeSetting` / `sendCommand` / `runAction` by field shape. Needs `intent` | **freeze candidate** |
 | `write`'s third argument `payload` and its confirm | an action's other schema keys, `{key: value}`. The host renders the confirm first (`source.background_run` enable, a confirm-tagged or destructive op, an `action.store` delete) and a cancel resolves `{ok: false, error: 'canceled'}` | experimental |
