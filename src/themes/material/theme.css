@@ -47,7 +47,6 @@ html:root[data-style="material"] {
   --md-s1: color-mix(in srgb, var(--reality) 3%, var(--bg-raised));
   --md-s2: color-mix(in srgb, var(--reality) 4%, var(--bg-card));
   --md-s3: color-mix(in srgb, var(--reality) 6%, var(--bg-card));
-  --md-field: color-mix(in srgb, var(--tx) 6%, var(--md-s2));
   --md-hairline: var(--line-1);
   --md-outline: var(--line-3);
 
@@ -91,7 +90,6 @@ html:root[data-style="material"][data-variant="material-expressive"] {
   --md-spring: linear(0, .32 6%, .78 14%, 1.1 26%, 1.07 36%, .98 50%, 1.005 68%, 1);
   --md-tk: 2.3;
   --md-ta: .014;
-  --md-field: color-mix(in srgb, var(--tx) 7%, var(--md-s2));
   --md-hairline: color-mix(in srgb, var(--reality) 24%, var(--line-1));
   --md-outline: color-mix(in srgb, var(--reality) 38%, var(--line-3));
 }
@@ -105,7 +103,6 @@ html:root[data-style="material"][data-md-scheme="light"] { --md-e1: 0 1px 2px rg
 }
 
 /* ---- type: the M3 scale on the shell's own classes ---- */
-html:root[data-style="material"] body { font-optical-sizing: auto; }
 html:root[data-style="material"] .dash-title { font-family: var(--font-head); text-transform: none; letter-spacing: .01em; font-weight: 500; font-size: 1rem; color: var(--tx-hi); }
 html:root[data-style="material"] .dash-title[data-pidx]::before { content: attr(data-pidx) "\2002\00B7\2002"; font-family: var(--font); letter-spacing: 0; color: var(--tx-ghost); }
 html:root[data-style="material"] .dash-title:not([data-pidx])::before { content: none; }
