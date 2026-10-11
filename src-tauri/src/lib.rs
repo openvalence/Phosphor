@@ -108,6 +108,8 @@ pub fn run() {
       #[cfg(not(target_os = "ios"))]
       buttplug::bp_device_rename,
       #[cfg(not(target_os = "ios"))]
+      buttplug::bp_device_rate,
+      #[cfg(not(target_os = "ios"))]
       buttplug::bp_device_forget,
       #[cfg(not(target_os = "ios"))]
       buttplug::bp_device_disconnect,

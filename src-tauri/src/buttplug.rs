@@ -177,6 +177,10 @@ pub struct Device {
   /// The saved name override (devices.json); apps see it from the device's
   /// next connection.
   display_name: Option<String>,
+  /// The device config's message gap in ms (devices.json, or the protocol's
+  /// own); None leaves the client's default. Upstream batches a device's
+  /// commands in this window from the device's next connection.
+  message_gap_ms: Option<u32>,
 }
 
 /// One feature as a module control. `range` is in the steps the bp_toy_*
@@ -603,6 +607,18 @@ impl Buttplug {
     self.devices_changed(&dm).await
   }
 
+  /// Save a device's message gap in ms (upstream batches its commands in that
+  /// window from the next connection); None clears it. Zero is refused.
+  pub async fn set_rate(&self, key: &str, gap_ms: Option<u32>) -> Result<(), String> {
+    if gap_ms == Some(0) {
+      return Err("the message gap must be above zero".into());
+    }
+    let (dm, id, def) = self.device_entry(key).await?;
+    let def = ServerDeviceDefinitionBuilder::from_user(&def).message_gap_ms(gap_ms).finish();
+    dm.device_configuration_manager().add_user_device_definition(&id, &def);
+    self.devices_changed(&dm).await
+  }
+
   /// Drop a device's saved config (name, index). Refused while it is connected.
   pub async fn forget(&self, key: &str) -> Result<(), String> {
     let (dm, id, _) = self.device_entry(key).await?;
@@ -852,6 +868,7 @@ fn device_list(dm: &ServerDeviceManager, dl: &DeviceListV4) -> Vec<Device> {
   let defs = dm.device_configuration_manager().user_device_definitions();
   let entry = |index, id: &UserDeviceIdentifier, device_name: String, connected| {
     let display_name = defs.get(id).and_then(|d| d.display_name().clone());
+    let message_gap_ms = defs.get(id).and_then(|d| d.message_gap_ms());
     Device {
       index,
       key: device_key(id.protocol(), id.address()),
@@ -864,6 +881,7 @@ fn device_list(dm: &ServerDeviceManager, dl: &DeviceListV4) -> Vec<Device> {
       address: id.address().clone(),
       device_name,
       display_name,
+      message_gap_ms,
     }
   };
   let mut out = Vec::new();
@@ -1261,6 +1279,11 @@ pub async fn bp_status(bp: State<'_, Buttplug>) -> Result<Status, String> {
 #[tauri::command]
 pub async fn bp_device_rename(bp: State<'_, Buttplug>, key: String, name: Option<String>) -> Result<(), String> {
   bp.rename(&key, name).await
+}
+
+#[tauri::command]
+pub async fn bp_device_rate(bp: State<'_, Buttplug>, key: String, gap_ms: Option<u32>) -> Result<(), String> {
+  bp.set_rate(&key, gap_ms).await
 }
 
 #[tauri::command]
@@ -1748,6 +1771,13 @@ mod tests {
     assert_eq!((d.name.as_str(), d.display_name.as_deref(), d.connected), ("Bedside", Some("Bedside"), true));
     assert!(bp.rename(&machine.key, Some("x".into())).await.is_err(), "the machine keeps its identity");
     assert!(bp.rename("no-such-key", None).await.is_err());
+    // The message gap is the device config's own setting.
+    bp.set_rate(&vib.key, Some(40)).await.unwrap();
+    assert_eq!(device(&bp, &vib.key).await.unwrap().message_gap_ms, Some(40));
+    assert!(bp.set_rate(&vib.key, Some(0)).await.is_err(), "zero is refused");
+    assert!(bp.set_rate(&machine.key, Some(40)).await.is_err(), "the machine is fixed");
+    bp.set_rate(&vib.key, None).await.unwrap();
+    assert_eq!(device(&bp, &vib.key).await.unwrap().message_gap_ms, None);
     let e = bp.forget(&vib.key).await.unwrap_err();
     assert!(e.contains("disconnect it first"), "{e}");
     assert!(bp.disconnect_device(machine.index).await.is_err(), "the machine leaves with the hub");
