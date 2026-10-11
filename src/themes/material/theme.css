@@ -212,13 +212,13 @@ html:root[data-style="material"][data-variant="material-expressive"] .fsp-play:n
 
 /* ---- segmented buttons: connected, pill ends, the chosen one a container with a check ---- */
 html:root[data-style="material"] .og-seg:not([role="tablist"]) { gap: 0; }
-html:root[data-style="material"] .og-seg:not([role="tablist"]) > button { flex: 1 0 auto; padding-inline: 14px; white-space: nowrap; border-radius: 0; margin-left: -1px; background-color: transparent; color: var(--tx); }
+html:root[data-style="material"] .og-seg:not([role="tablist"]) > button { flex: 1 0 auto; padding-inline: 22px 18px; white-space: nowrap; border-radius: 0; margin-left: -1px; background-color: transparent; color: var(--tx); }
 html:root[data-style="material"] .og-seg:not([role="tablist"]) > button:not(.active) { border-color: var(--md-outline); }
 html:root[data-style="material"] .og-seg:not([role="tablist"]) > button:first-child { margin-left: 0; border-radius: 999px 0 0 999px; }
 html:root[data-style="material"] .og-seg:not([role="tablist"]) > button:last-child { border-radius: 0 999px 999px 0; }
 html:root[data-style="material"] .og-seg:not([role="tablist"]) > button:only-child { border-radius: 999px; }
 html:root[data-style="material"] .og-seg:not([role="tablist"]) > button.active { z-index: 1; background-color: var(--md-sc); color: var(--md-on-sc); box-shadow: none; }
-html:root[data-style="material"] .og-seg:not([role="tablist"]) > button.active::before { content: ''; display: inline-block; width: 5px; height: 9px; margin-right: 9px; border: solid currentColor; border-width: 0 2px 2px 0; transform: translateY(-2px) rotate(45deg); }
+html:root[data-style="material"] .og-seg:not([role="tablist"]) > button.active::before { content: ''; position: absolute; left: 9px; top: 50%; width: 5px; height: 9px; margin-top: -7px; border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(45deg); }
 html:root[data-style="material"] .og-seg:not([role="tablist"]) > button:disabled { opacity: .45; }
 
 /* ---- tabs: the label, the primary underline growing under the open one ---- */
@@ -342,9 +342,20 @@ html:root[data-style="material"][data-variant="material-expressive"] .rail-ops b
 html:root[data-style="material"][data-variant="material-expressive"] .og-btn:not(.on):not(.primary):not(.running):not(.danger):not(.sm) { background-color: var(--md-tc); color: var(--md-on-tc); }
 html:root[data-style="material"][data-variant="material-expressive"] .og-switch .track::after { transition-duration: var(--t-slow); }
 
-/* ---- scrollbars: thin pill thumbs ---- */
+/* ---- dialogs: the 28 px container, text-button actions; the keys and headers in sentence case ---- */
+html:root[data-style="material"] [role="alertdialog"],
+html:root[data-style="material"] .sb-pop { border-radius: var(--md-r-sheet); background-color: var(--md-s3); box-shadow: var(--md-e3); }
+html:root[data-style="material"] [role="alertdialog"] h2 { font-family: var(--font-head); font-weight: 400; font-size: 1.35rem; letter-spacing: 0; }
+html:root[data-style="material"] [role="alertdialog"] .acts .og-btn:not(.primary):not(.running):not(.danger) { background-color: transparent; color: var(--reality); }
+html:root[data-style="material"] [data-part="status-row"] .k,
+html:root[data-style="material"] [data-part="status-row"] .fs-label,
+html:root[data-style="material"] [data-part="bar"] .chip-lbl { text-transform: none; letter-spacing: .03em; font-weight: 500; }
+html:root[data-style="material"] .rail-ops button { text-transform: none; letter-spacing: .02em; font-size: .75rem; }
+html:root[data-style="material"] th { text-transform: none; letter-spacing: .03em; font-weight: 500; }
+
+/* ---- scrollbars: a pill thumb in the shell's 4 px track (App.svelte reserves exactly that) ---- */
 html:root[data-style="material"] * { scrollbar-width: thin; scrollbar-color: var(--md-outline) transparent; }
-html:root[data-style="material"] ::-webkit-scrollbar { width: 10px; height: 10px; }
+html:root[data-style="material"] ::-webkit-scrollbar { width: 4px; height: 4px; }
 html:root[data-style="material"] ::-webkit-scrollbar-track { background: transparent; }
-html:root[data-style="material"] ::-webkit-scrollbar-thumb { border-radius: 999px; border: 2px solid transparent; background-color: var(--md-outline); background-clip: padding-box; }
-html:root[data-style="material"] ::-webkit-scrollbar-thumb:hover { background-color: var(--tx-mut); background-clip: padding-box; }
+html:root[data-style="material"] ::-webkit-scrollbar-thumb { border-radius: 999px; background-color: var(--md-outline); }
+html:root[data-style="material"] ::-webkit-scrollbar-thumb:hover { background-color: var(--tx-mut); }
