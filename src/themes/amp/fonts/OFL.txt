@@ -1,3 +1,6 @@
+AmpSegment.woff2 (family "Amp Segment") is a digits-only subset of DSEG7 Classic Regular 0.46 by keshikan,
+renamed because the license reserves the name DSEG. 2.8 KB.
+
 Copyright (c) 2017, keshikan (http://www.keshikan.net),
 with Reserved Font Name "DSEG".
 
