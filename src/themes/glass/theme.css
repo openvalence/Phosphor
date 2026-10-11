@@ -1,52 +1,60 @@
 /* Liquid Glass: an homage to Apple's 2025 look in a web view. Real refraction is the OS's and
-   cannot reach DOM elements; this is the approximation: every surface is layered translucency
-   with a lensed top half, a specular rim that is bright at the upper left and dim at the
-   lower right, a soft drop, a capsule shape and a blurred, saturated, dimmed backdrop on
-   bounded surfaces only (cards, pills, menus, the rail; never a full-page layer). Controls
-   compress and brighten under the pointer.
-
+   cannot reach DOM elements; this is the approximation. The rules it follows:
+   - Clarity over frost: a light blur (4 to 8 px) with the backdrop saturated, so what is
+     behind stays recognizable and its color tints the pane. No gray smear, no noise.
+   - A thin, bright specular rim, strongest at the upper left and fading around the shape,
+     with an inner glow line just inside it, so the edge catches light.
+   - Lensing at the edges of small surfaces (chips, buttons, the caption lenses, the tooltip)
+     by an SVG displacement on the backdrop (lens.js, Chromium; WebKit keeps the blur).
+   - Depth: wide, soft, low shadows; capsules and continuous corners; controls float over the
+     content and compress and brighten when pressed.
    Three modes, chosen by two attributes the shell sets:
    - html[data-wall]: the desktop wallpaper is a page layer (wallpaper.js, #ph-wall), so
-     surfaces blur and dim it for real: a 66% tint over a backdrop dimmed to 40%.
+     surfaces refract it for real.
    - html[data-material] alone: the OS gives the window glass, Acrylic or vibrancy, and
      the page has nothing of its own to blur: surfaces are a 96% tint.
-   - neither: an opaque window; the page paints its own aurora and the surfaces blur that.
-   Text sits on the tint in every mode; the backdrop under a surface is dimmed so that a
-   white wallpaper still reads (test/theme-skins.test.mjs, materials).
+   - neither: an opaque window; the page paints its own colorful backdrop (an aurora, a few
+     bright orbs, one of them drifting) and the surfaces refract that.
+   Text sits on the tint in every mode; the layer under a surface is dimmed so that a white
+   wallpaper still reads (test/theme-skins.test.mjs, materials).
 
    Three Variants share the structure and differ in the tokens at the top: Liquid Glass
-   (regular), Clear (the most see-through, a stronger rim, no fill) and Tinted (the glass
-   takes the accent). Controls in a state (on, primary, running, danger) keep their own
-   colors and glow: the glass is added around them, never over them. The write ladder
-   paints background-image on number boxes, tracks and active segments, so those take
-   color and shadow only. */
+   (regular), Clear (the most see-through, the brightest rim) and Tinted (the glass takes the
+   accent). Controls in a state (on, primary, running, danger) keep their own colors and glow:
+   the glass is added around them, never over them. The write ladder paints background-image
+   on number boxes, tracks and active segments, so those take color and shadow only. */
 html:root[data-style="glass"] {
   --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Segoe UI Variable Text', 'Segoe UI', system-ui, 'Helvetica Neue', Roboto, sans-serif;
   --font-head: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI Variable Display', 'Segoe UI', system-ui, 'Helvetica Neue', Roboto, sans-serif;
   --frame-w: 0px;
-  --tint: 72%;
-  --glass-blur: blur(26px) saturate(1.9) brightness(.85);
-  --glass-blur-s: blur(18px) saturate(1.7) brightness(.55);
+  --tint: 50%;
+  --dim: .34;
+  --glass-blur: blur(8px) saturate(1.8) brightness(.95);
+  --glass-blur-s: blur(4px) saturate(1.8);
   --lit: 255, 255, 255;
-  /* The rim: a hairline all round, a bright arc at the upper left, a dim one at the lower right, the lit top edge of a thick pane. */
-  --rim: inset 0 0 0 .75px rgba(var(--lit), .2), inset 1.5px 1.5px 2px -1px rgba(var(--lit), .8), inset -1.5px -1.5px 2px -1px rgba(var(--lit), .42),
-    inset 0 16px 20px -16px rgba(var(--lit), .3), inset 0 -18px 22px -18px rgba(var(--lit), .16);
-  --rim-s: inset 0 0 0 .75px rgba(var(--lit), .22), inset 1px 1.5px 1px -.5px rgba(var(--lit), .85), inset -1px -1.5px 1px -.5px rgba(var(--lit), .38),
-    inset 0 -7px 9px -7px rgba(var(--lit), .22);
-  --lift: 0 14px 34px rgba(0, 0, 0, .3), 0 2px 6px rgba(0, 0, 0, .2);
-  --drop-s: 0 4px 10px rgba(0, 0, 0, .28), 0 1px 2px rgba(0, 0, 0, .3);
-  --sheen: linear-gradient(180deg, rgba(var(--lit), .15), rgba(var(--lit), 0) 32%), radial-gradient(120% 70% at 0% 0%, rgba(var(--lit), .14), transparent 62%);
+  /* The rim: a hairline all round, a bright thin edge at the upper left, a dim one at the lower right, a soft glow line just inside, a lit lip below. */
+  --rim: inset 0 0 0 1px rgba(var(--lit), .14), inset 1px 1px 0 0 rgba(var(--lit), .9), inset -1px -1px 0 0 rgba(var(--lit), .3),
+    inset 3px 3px 8px -3px rgba(var(--lit), .6), inset 0 0 26px rgba(var(--lit), .06), inset 0 -16px 24px -18px rgba(var(--lit), .24);
+  --rim-s: inset 0 0 0 1px rgba(var(--lit), .2), inset 1px 1.5px 0 0 rgba(var(--lit), .95), inset -1px -1.5px 0 0 rgba(var(--lit), .36),
+    inset 2px 3px 6px -3px rgba(var(--lit), .7), inset 0 -9px 11px -9px rgba(var(--lit), .3);
+  --lift: 0 32px 70px -12px rgba(0, 0, 0, .36), 0 8px 20px rgba(0, 0, 0, .14);
+  --drop-s: 0 10px 22px -4px rgba(0, 0, 0, .3), 0 2px 4px rgba(0, 0, 0, .16);
+  --sheen: linear-gradient(180deg, rgba(var(--lit), .12), rgba(var(--lit), 0) 30%), radial-gradient(110% 60% at 0% 0%, rgba(var(--lit), .14), transparent 60%);
   /* The lens: a bright upper half, a clear seam, a faint lower glow: a capsule that reads as a thick drop of glass. */
-  --lens: linear-gradient(180deg, rgba(var(--lit), .3) 0%, rgba(var(--lit), .08) 48%, rgba(var(--lit), .02) 52%, rgba(var(--lit), .12) 100%);
-  --capsule: var(--lens);
+  --lens: linear-gradient(180deg, rgba(var(--lit), .28) 0%, rgba(var(--lit), .07) 46%, rgba(var(--lit), .02) 54%, rgba(var(--lit), .12) 100%);
   --fill: rgba(var(--lit), .1);
   --fill-hi: rgba(var(--lit), .2);
   --fill-lo: rgba(var(--lit), .05);
-  --edge: rgba(var(--lit), .22);
   --trough: rgba(0, 0, 0, .3);
   --tex-card: var(--sheen);
   --tex-card-size: 100% 100%;
+  /* A backdrop for the glass to bend: an aurora, a few sharp-edged orbs, a diagonal light. */
   --tex-page:
+    radial-gradient(circle at 80% 30%, rgba(255, 210, 110, .45) 0, rgba(255, 210, 110, .6) calc(6.5vmax - 1.2vmax), rgba(255, 210, 110, .95) calc(6.5vmax - .5vmax), transparent calc(6.5vmax + 1px)),
+    radial-gradient(circle at 10% 72%, rgba(255, 96, 170, .45) 0, rgba(255, 96, 170, .6) calc(9vmax - 1.2vmax), rgba(255, 96, 170, .9) calc(9vmax - .5vmax), transparent calc(9vmax + 1px)),
+    radial-gradient(circle at 52% 88%, rgba(64, 224, 255, .45) 0, rgba(64, 224, 255, .6) calc(5.5vmax - 1.2vmax), rgba(64, 224, 255, .9) calc(5.5vmax - .5vmax), transparent calc(5.5vmax + 1px)),
+    radial-gradient(circle at 34% 14%, rgba(150, 130, 255, .45) 0, rgba(150, 130, 255, .6) calc(4vmax - 1.2vmax), rgba(150, 130, 255, .85) calc(4vmax - .5vmax), transparent calc(4vmax + 1px)),
+    linear-gradient(112deg, transparent 38%, rgba(255, 255, 255, .16) 50%, transparent 62%),
     radial-gradient(62vmax 44vmax at 12% 8%, rgba(94, 92, 230, .9), transparent 62%),
     radial-gradient(52vmax 42vmax at 92% 18%, rgba(255, 79, 160, .62), transparent 62%),
     radial-gradient(64vmax 52vmax at 68% 104%, rgba(10, 132, 255, .8), transparent 62%),
@@ -55,54 +63,59 @@ html:root[data-style="glass"] {
   --tex-page-size: 100% 100%;
 }
 html:root[data-style="glass"][data-material] { --tint: 96%; }
-html:root[data-style="glass"][data-wall] { --tint: 56%; --glass-blur: blur(26px) saturate(1.9) brightness(.55); --tex-page: none; }
+html:root[data-style="glass"][data-wall] { --tint: 46%; --dim: .34; --tex-page: none; }
 
-/* Clear: the most see-through pane. Less tint, less dimming, a brighter rim, glassy controls with no fill of their own. */
+/* Clear: the most see-through pane. Little tint, the lightest blur, the brightest rim, controls with almost no fill. */
 html:root[data-style="glass"][data-variant="glass-clear"] {
-  --tint: 46%;
-  --glass-blur: blur(14px) saturate(1.6) brightness(.95);
-  --glass-blur-s: blur(10px) saturate(1.5) brightness(.65);
-  --rim: inset 0 0 0 1px rgba(var(--lit), .3), inset 2px 2px 3px -1.5px rgba(var(--lit), .95), inset -2px -2px 3px -1.5px rgba(var(--lit), .6),
-    inset 0 22px 26px -22px rgba(var(--lit), .38), inset 0 -22px 26px -22px rgba(var(--lit), .24);
-  --sheen: linear-gradient(180deg, rgba(var(--lit), .1), rgba(var(--lit), 0) 26%);
-  --lens: linear-gradient(180deg, rgba(var(--lit), .22) 0%, rgba(var(--lit), .02) 50%, rgba(var(--lit), .08) 100%);
-  --fill: rgba(var(--lit), .04);
-  --fill-hi: rgba(var(--lit), .14);
+  --tint: 30%;
+  --glass-blur: blur(4px) saturate(1.7) brightness(1);
+  --glass-blur-s: blur(2px) saturate(1.7);
+  --rim: inset 0 0 0 1px rgba(var(--lit), .26), inset 1.5px 1.5px 0 0 rgba(var(--lit), 1), inset -1.5px -1.5px 0 0 rgba(var(--lit), .5),
+    inset 4px 4px 10px -4px rgba(var(--lit), .75), inset 0 0 30px rgba(var(--lit), .08), inset 0 -18px 26px -20px rgba(var(--lit), .3);
+  --sheen: linear-gradient(180deg, rgba(var(--lit), .08), rgba(var(--lit), 0) 24%);
+  --lens: linear-gradient(180deg, rgba(var(--lit), .2) 0%, rgba(var(--lit), .02) 50%, rgba(var(--lit), .08) 100%);
+  --fill: rgba(var(--lit), .05);
+  --fill-hi: rgba(var(--lit), .16);
   --fill-lo: rgba(var(--lit), .02);
-  --edge: rgba(var(--lit), .36);
-  --trough: rgba(0, 0, 0, .18);
+  --trough: rgba(0, 0, 0, .2);
   --tex-page:
+    radial-gradient(circle at 80% 30%, rgba(255, 190, 90, .45) 0, rgba(255, 190, 90, .6) calc(6.5vmax - 1.2vmax), rgba(255, 190, 90, .95) calc(6.5vmax - .5vmax), transparent calc(6.5vmax + 1px)),
+    radial-gradient(circle at 10% 72%, rgba(0, 220, 255, .45) 0, rgba(0, 220, 255, .6) calc(9vmax - 1.2vmax), rgba(0, 220, 255, .9) calc(9vmax - .5vmax), transparent calc(9vmax + 1px)),
+    radial-gradient(circle at 52% 88%, rgba(120, 255, 190, .45) 0, rgba(120, 255, 190, .6) calc(5.5vmax - 1.2vmax), rgba(120, 255, 190, .9) calc(5.5vmax - .5vmax), transparent calc(5.5vmax + 1px)),
+    radial-gradient(circle at 34% 14%, rgba(255, 110, 190, .45) 0, rgba(255, 110, 190, .6) calc(4vmax - 1.2vmax), rgba(255, 110, 190, .85) calc(4vmax - .5vmax), transparent calc(4vmax + 1px)),
+    linear-gradient(112deg, transparent 38%, rgba(255, 255, 255, .2) 50%, transparent 62%),
     radial-gradient(58vmax 46vmax at 10% 6%, rgba(0, 212, 255, .85), transparent 62%),
     radial-gradient(54vmax 40vmax at 94% 22%, rgba(130, 90, 255, .7), transparent 62%),
     radial-gradient(70vmax 50vmax at 60% 108%, rgba(255, 184, 96, .6), transparent 62%),
-    radial-gradient(36vmax 28vmax at 24% 82%, rgba(60, 255, 190, .45), transparent 62%),
     linear-gradient(160deg, #0c2a5a, #1a1250 60%, #0a3a4a);
 }
 html:root[data-style="glass"][data-variant="glass-clear"][data-material] { --tint: 92%; }
-html:root[data-style="glass"][data-variant="glass-clear"][data-wall] { --tint: 44%; --glass-blur: blur(12px) saturate(1.7) brightness(.72); }
+html:root[data-style="glass"][data-variant="glass-clear"][data-wall] { --tint: 30%; --dim: .44; --tex-page: none; }
 
-/* Tinted: the glass takes the accent. More opaque, a colored rim and fill, one hue through every surface. */
+/* Tinted: the glass takes the accent. A denser pane, a colored rim and fill, one hue through every surface. */
 html:root[data-style="glass"][data-variant="glass-tinted"] {
-  --tint: 80%;
-  --lit: 255, 232, 255;
-  --glass-blur: blur(30px) saturate(1.5) brightness(.8);
+  --tint: 62%;
+  --lit: 255, 226, 255;
+  --glass-blur: blur(10px) saturate(1.6) brightness(.9);
   --fill: rgba(var(--reality-rgb), .2);
   --fill-hi: rgba(var(--reality-rgb), .34);
   --fill-lo: rgba(var(--reality-rgb), .1);
-  --edge: rgba(var(--reality-rgb), .5);
   --trough: rgba(20, 0, 40, .4);
-  --sheen: linear-gradient(180deg, rgba(var(--reality-rgb), .2), rgba(var(--reality-rgb), 0) 34%), radial-gradient(120% 70% at 0% 0%, rgba(var(--lit), .14), transparent 62%);
+  --sheen: linear-gradient(180deg, rgba(var(--reality-rgb), .22), rgba(var(--reality-rgb), 0) 34%), radial-gradient(110% 60% at 0% 0%, rgba(var(--lit), .14), transparent 60%);
   --tex-page:
+    radial-gradient(circle at 80% 30%, rgba(255, 150, 200, .45) 0, rgba(255, 150, 200, .6) calc(6.5vmax - 1.2vmax), rgba(255, 150, 200, .95) calc(6.5vmax - .5vmax), transparent calc(6.5vmax + 1px)),
+    radial-gradient(circle at 10% 72%, rgba(168, 120, 255, .45) 0, rgba(168, 120, 255, .6) calc(9vmax - 1.2vmax), rgba(168, 120, 255, .9) calc(9vmax - .5vmax), transparent calc(9vmax + 1px)),
+    radial-gradient(circle at 52% 88%, rgba(120, 240, 220, .45) 0, rgba(120, 240, 220, .6) calc(5.5vmax - 1.2vmax), rgba(120, 240, 220, .85) calc(5.5vmax - .5vmax), transparent calc(5.5vmax + 1px)),
+    linear-gradient(112deg, transparent 38%, rgba(255, 220, 255, .16) 50%, transparent 62%),
     radial-gradient(60vmax 44vmax at 14% 6%, rgba(168, 85, 247, .9), transparent 62%),
     radial-gradient(52vmax 40vmax at 92% 20%, rgba(236, 72, 153, .65), transparent 62%),
     radial-gradient(64vmax 52vmax at 64% 106%, rgba(99, 102, 241, .8), transparent 62%),
-    radial-gradient(38vmax 28vmax at 28% 80%, rgba(45, 212, 191, .35), transparent 62%),
     linear-gradient(160deg, #2a0f4a, #3a0f3a 60%, #1a1050);
 }
 html:root[data-style="glass"][data-variant="glass-tinted"][data-material] { --tint: 96%; }
-html:root[data-style="glass"][data-variant="glass-tinted"][data-wall] { --tint: 74%; --glass-blur: blur(30px) saturate(1.5) brightness(.5); --tex-page: none; }
+html:root[data-style="glass"][data-variant="glass-tinted"][data-wall] { --tint: 56%; --dim: .38; --tex-page: none; }
 
-/* ---- the backdrop: the wallpaper layer, or an aurora that drifts ---- */
+/* ---- the backdrop: the wallpaper layer, or an aurora with one orb that drifts ---- */
 html:root[data-style="glass"][data-material],
 html:root[data-style="glass"][data-material] body { background-color: transparent; }
 html:root[data-style="glass"][data-material]:not([data-wall]) body { background-image: none; }
@@ -129,7 +142,7 @@ html:root[data-style="glass"] #ph-wall::before {
   will-change: transform;
 }
 /* The dim is a layer, not a filter: a white wallpaper must still leave the text 4.5:1. */
-html:root[data-style="glass"] #ph-wall::after { content: ''; position: absolute; inset: 0; background: rgba(0, 0, 0, .24); }
+html:root[data-style="glass"] #ph-wall::after { content: ''; position: absolute; inset: 0; background: rgba(0, 0, 0, var(--dim)); }
 html:root[data-style="glass"]:not([data-wall]):not([data-material]):not(.still):not(.hivis)::before {
   content: '';
   position: fixed;
@@ -137,14 +150,15 @@ html:root[data-style="glass"]:not([data-wall]):not([data-material]):not(.still):
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(34vmax 26vmax at 22% 30%, rgba(94, 214, 255, .45), transparent 70%),
-    radial-gradient(30vmax 24vmax at 74% 62%, rgba(214, 120, 255, .4), transparent 70%),
-    radial-gradient(26vmax 20vmax at 50% 90%, rgba(255, 140, 190, .3), transparent 70%);
-  animation: theme-glass-drift 48s ease-in-out infinite alternate;
+    radial-gradient(circle at 60% 40%, rgba(255, 244, 190, .45) 0, rgba(255, 244, 190, .6) calc(3.2vmax - 1.2vmax), rgba(255, 244, 190, .95) calc(3.2vmax - .5vmax), transparent calc(3.2vmax + 1px)),
+    radial-gradient(circle at 24% 56%, rgba(120, 255, 235, .45) 0, rgba(120, 255, 235, .6) calc(2.2vmax - 1.2vmax), rgba(120, 255, 235, .8) calc(2.2vmax - .5vmax), transparent calc(2.2vmax + 1px)),
+    radial-gradient(34vmax 26vmax at 22% 30%, rgba(94, 214, 255, .4), transparent 70%),
+    radial-gradient(30vmax 24vmax at 74% 62%, rgba(214, 120, 255, .36), transparent 70%);
+  animation: theme-glass-drift 42s ease-in-out infinite alternate;
 }
 @keyframes theme-glass-drift {
-  from { transform: translate3d(-4%, -3%, 0) scale(1); opacity: .85; }
-  to { transform: translate3d(5%, 4%, 0) scale(1.12); opacity: 1; }
+  from { transform: translate3d(-5%, -4%, 0) scale(1); opacity: .9; }
+  to { transform: translate3d(7%, 5%, 0) scale(1.1); opacity: 1; }
 }
 
 /* ---- surfaces: a tint over what is behind, a rim, a lift ---- */
@@ -153,13 +167,14 @@ html:root[data-style="glass"] [data-part="nest"],
 html:root[data-style="glass"] [data-part="panel"],
 html:root[data-style="glass"] .og-panel,
 html:root[data-style="glass"] .surface-card {
-  border-radius: 26px;
+  border-radius: 30px;
+  corner-shape: squircle;
   border-color: transparent;
   background-color: color-mix(in srgb, var(--bg-card) var(--tint), transparent);
   box-shadow: var(--rim), var(--lift);
 }
 html:root[data-style="glass"] .og-panel { background-image: var(--sheen); outline: none; }
-html:root[data-style="glass"] [data-part="nest"] { border-radius: 30px; background-color: color-mix(in srgb, var(--bg-sunken) var(--tint), transparent); }
+html:root[data-style="glass"] [data-part="nest"] { border-radius: 34px; background-color: color-mix(in srgb, var(--bg-sunken) var(--tint), transparent); }
 html:root[data-style="glass"]:not([data-material]) :is([data-part="card"], [data-part="nest"], [data-part="panel"], .og-panel),
 html:root[data-style="glass"][data-wall] :is([data-part="card"], [data-part="nest"], [data-part="panel"], .og-panel) {
   -webkit-backdrop-filter: var(--glass-blur);
@@ -180,11 +195,10 @@ html:root[data-style="glass"] [data-part="top"] { background-color: transparent;
 html:root[data-style="glass"] [data-part="bar"] {
   background-color: color-mix(in srgb, var(--shell-bg) var(--tint), transparent);
   background-image: linear-gradient(180deg, rgba(var(--lit), .16), rgba(var(--lit), .02) 60%, rgba(var(--lit), .06));
-  border-radius: 0 0 22px 22px;
-  box-shadow: inset 0 -1px 0 rgba(var(--lit), .3), inset 0 -8px 10px -8px rgba(var(--lit), .2), 0 8px 24px rgba(0, 0, 0, .28);
+  border-radius: 0 0 26px 26px;
+  corner-shape: squircle;
+  box-shadow: inset 0 -1px 0 rgba(var(--lit), .5), inset 0 -10px 14px -10px rgba(var(--lit), .28), 0 14px 30px -10px rgba(0, 0, 0, .35);
 }
-html:root[data-style="glass"]:not([data-material]) [data-part="bar"],
-html:root[data-style="glass"][data-wall] [data-part="bar"] { -webkit-backdrop-filter: var(--glass-blur-s); backdrop-filter: var(--glass-blur-s); }
 html:root[data-style="glass"] [data-part="bar"] .wordmark { font-family: var(--font-head); font-weight: 600; letter-spacing: 0; font-size: .92rem; }
 html:root[data-style="glass"] [data-part="bar"] .chip {
   border-radius: 999px;
@@ -309,6 +323,10 @@ html:root[data-style="glass"] .stepper button:active:not(:disabled) { box-shadow
 /* A button in a state keeps its own border, glow and ink; the glass is its fill and its shape. */
 html:root[data-style="glass"] .og-btn.on,
 html:root[data-style="glass"] .og-btn.primary { background-color: rgba(var(--reality-rgb), .22); }
+html:root[data-style="glass"] .og-btn.on:hover:not(:disabled),
+html:root[data-style="glass"] .og-btn.primary:hover:not(:disabled),
+html:root[data-style="glass"] .og-btn.on:active:not(:disabled),
+html:root[data-style="glass"] .og-btn.primary:active:not(:disabled) { background-color: rgba(var(--reality-rgb), .34); }
 html:root[data-style="glass"] .og-btn:focus-visible,
 html:root[data-style="glass"] .og-seg button:focus-visible,
 html:root[data-style="glass"] .stepper button:focus-visible { outline: 2px solid var(--highlight); outline-offset: 3px; }
@@ -393,11 +411,11 @@ html:root[data-style="glass"] .ui-menu,
 html:root[data-style="glass"] .ui-sheet,
 html:root[data-style="glass"] .sb-pop {
   border-radius: 22px;
-  background-color: color-mix(in srgb, var(--bg-card) 86%, transparent);
+  background-color: color-mix(in srgb, var(--bg-card) 64%, transparent);
   background-image: var(--sheen);
-  box-shadow: var(--rim), 0 20px 50px rgba(0, 0, 0, .5), 0 4px 12px rgba(0, 0, 0, .3);
-  -webkit-backdrop-filter: blur(34px) saturate(1.9);
-  backdrop-filter: blur(34px) saturate(1.9);
+  box-shadow: var(--rim), 0 28px 60px -8px rgba(0, 0, 0, .5), 0 6px 14px rgba(0, 0, 0, .2);
+  -webkit-backdrop-filter: blur(12px) saturate(1.8);
+  backdrop-filter: blur(12px) saturate(1.8);
   border-color: transparent;
   outline: none;
 }
@@ -409,6 +427,20 @@ html:root[data-style="glass"] .ui-menu-i:hover:not(:disabled),
 html:root[data-style="glass"] .ui-menu-i:focus-visible,
 html:root[data-style="glass"] .ui-menu-i[aria-expanded='true'] { background-color: var(--fill-hi); box-shadow: var(--rim-s); }
 html:root[data-style="glass"] .ui-menu-sec { border-top-color: rgba(var(--lit), .14); }
+
+/* ---- lensing: the displacement filter on small surfaces that sit on the page itself, never inside a card ----
+   A card is a backdrop root: a control inside it sees only the card, where a bend would show nothing. */
+html:root[data-style="glass"][data-lens] [data-part="bar"] .chip,
+html:root[data-style="glass"][data-lens] [data-part="caption"]::before,
+html:root[data-style="glass"][data-lens] [data-part="caption-btn"]::before,
+html:root[data-style="glass"][data-lens] #ph-tip,
+html:root[data-style="glass"][data-lens] .ui-menu,
+html:root[data-style="glass"][data-lens] :is(.og-btn, .og-seg button.active, [data-part="rail-tab"].on):not(:is([data-part="card"], [data-part="nest"], [data-part="panel"], .og-panel, [data-part="rail"]) *) {
+  -webkit-backdrop-filter: url(#ph-lens) blur(2px) saturate(1.8);
+  backdrop-filter: url(#ph-lens) blur(2px) saturate(1.8);
+}
+html:root[data-style="glass"][data-lens] #ph-tip,
+html:root[data-style="glass"][data-lens] .ui-menu { -webkit-backdrop-filter: url(#ph-lens) blur(12px) saturate(1.8); backdrop-filter: url(#ph-lens) blur(12px) saturate(1.8); }
 
 /* ---- scrollbars: a glass pill that wakes under the pointer ---- */
 html:root[data-style="glass"] * { scrollbar-width: auto; scrollbar-color: auto; }

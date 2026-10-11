@@ -9,8 +9,9 @@
  * - `html[data-material]` is set only while the OS material is really there, so a Theme's
  *   transparent rules never meet a bare transparent window: Windows 10 (no Mica), Linux,
  *   Android and the browser answer "none" and keep the opaque look.
- * - Page fullscreen, the OS's reduced-transparency setting and a theme without a
- *   material all take the material away; fullscreen media never plays over a see-through
+ * - Page fullscreen, the OS's reduced-transparency setting, a theme without a
+ *   material and the wallpaper layer (html[data-wall]: opaque, so the material would
+ *   only cost Acrylic's slow drags) all take the material away; fullscreen media never plays over a see-through
  *   window.
  * - Browser or desktop preference only: nothing here reaches the hub.
  */
@@ -30,7 +31,7 @@ const reduced = () => typeof matchMedia === 'function' && matchMedia('(prefers-r
 function wanted() {
   const m = themeMeta(currentTheme().style);
   if (!m || !m.material) return null;
-  if (root().hasAttribute('data-page-full') || reduced()) return null;
+  if (root().hasAttribute('data-page-full') || root().hasAttribute('data-wall') || reduced()) return null;
   return m.material;
 }
 
@@ -52,7 +53,7 @@ function sync() {
 export function installMaterial(tauriInvoke) {
   invoke = tauriInvoke;
   onTheme(sync);
-  new MutationObserver(sync).observe(root(), { attributes: true, attributeFilter: ['data-page-full'] });
+  new MutationObserver(sync).observe(root(), { attributes: true, attributeFilter: ['data-page-full', 'data-wall'] });
   if (typeof matchMedia === 'function') matchMedia('(prefers-reduced-transparency: reduce)').addEventListener('change', sync);
   sync();
 }

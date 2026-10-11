@@ -6,16 +6,20 @@
  * - Reads the wallpaper FILE through src-tauri/src/wallpaper.rs, never a screen capture.
  * - The layer exists, and html[data-wall] is set, only while the picture is really placed. A
  *   slideshow, no path, a failed decode, a theme without `wallpaper`, reduced transparency,
- *   reduced motion (html.still) and a fullscreen page all remove both: the Theme then draws its
+ *   reduced motion (html.still), high legibility (html.hivis) and a fullscreen page all remove both: the Theme then draws its
  *   material or its opaque look.
  * - Follows the window with a throttled call (move, resize, scale, focus), never per frame; the
  *   image bytes are fetched again only when the file's key changes.
  * - The dim is the layer's own ::after in theme.css (a black overlay, not a filter): a white
  *   wallpaper must still leave the text 4.5:1.
+ * - The macOS 26 glass view behind the page (src-tauri/src/material.rs, glass_style) takes this
+ *   Theme's Variant: Clear is its clear style, Tinted is a tint of the accent. Only while the
+ *   shell says html[data-material="glass"]; where the wallpaper layer shows, the glass is under it.
  * - Browser or desktop preference only: nothing here reaches the hub.
  */
 import { onTheme, currentTheme, themeMeta } from '../../model/theme.js';
 import { place } from './place.js';
+import { installLens } from './lens.js';
 
 const root = document.documentElement;
 const THROTTLE_MS = 60;
@@ -27,10 +31,11 @@ let url = '';
 let size = null;
 let gen = 0;
 let timer = 0;
+let glassKey = '';
 
 const mq = (q) => typeof matchMedia === 'function' && matchMedia(q).matches;
 const wanted = () => !!themeMeta(currentTheme().style)?.wallpaper
-  && !root.hasAttribute('data-page-full') && !root.classList.contains('still')
+  && !root.hasAttribute('data-page-full') && !root.classList.contains('still') && !root.classList.contains('hivis')
   && !mq('(prefers-reduced-transparency: reduce)') && !mq('(prefers-reduced-motion: reduce)');
 
 function off() {
@@ -63,6 +68,18 @@ function paint(info) {
   root.dataset.wall = '';
 }
 
+/** The variant's two knobs on the OS glass view, sent when they change. */
+function glass() {
+  if (!invoke || root.dataset.material !== 'glass' || root.dataset.style !== 'glass') { glassKey = ''; return; }
+  const id = currentTheme().id;
+  const rgb = getComputedStyle(root).getPropertyValue('--reality-rgb').split(',').map((v) => Number(v) / 255);
+  const tint = id === 'glass-tinted' && rgb.length === 3 && rgb.every(Number.isFinite) ? [...rgb, 0.35] : null;
+  const k = id + '|' + (tint || '');
+  if (k === glassKey) return;
+  glassKey = k;
+  invoke('glass_style', { clear: id === 'glass-clear', tint }).catch(() => { glassKey = ''; });
+}
+
 const decode = (blobUrl) => new Promise((ok, no) => {
   const i = new Image();
   i.onload = () => ok({ w: i.naturalWidth, h: i.naturalHeight });
@@ -71,6 +88,7 @@ const decode = (blobUrl) => new Promise((ok, no) => {
 });
 
 async function refresh() {
+  glass();
   if (!invoke) return;
   if (!wanted()) { if (layer) off(); return; }
   const mine = ++gen;
@@ -104,8 +122,9 @@ function soon() {
 /** Shell only: `tauriInvoke` is Tauri's. */
 export async function installWallpaper(tauriInvoke) {
   invoke = tauriInvoke;
+  installLens();
   onTheme(refresh);
-  new MutationObserver(refresh).observe(root, { attributes: true, attributeFilter: ['data-page-full', 'class'] });
+  new MutationObserver(refresh).observe(root, { attributes: true, attributeFilter: ['data-page-full', 'data-material', 'class'] });
   for (const q of ['(prefers-reduced-transparency: reduce)', '(prefers-reduced-motion: reduce)']) {
     if (typeof matchMedia === 'function') matchMedia(q).addEventListener('change', refresh);
   }

@@ -55,6 +55,7 @@ pub fn run() {
     .invoke_handler(tauri::generate_handler![
       js_log,
       material::window_material,
+      material::glass_style,
       wallpaper::wallpaper_info,
       wallpaper::wallpaper_image,
       discovery::discover_hubs,
