@@ -37,12 +37,16 @@ html:root[data-style="material"] {
   --md-e3: 0 1px 3px rgba(0, 0, 0, .3), 0 4px 8px 3px rgba(0, 0, 0, .15);
   --md-e4: 0 2px 3px rgba(0, 0, 0, .3), 0 6px 10px 4px rgba(0, 0, 0, .15);
 
-  /* Tonal surfaces: the primary mixed into a chassis surface, more as the surface rises. */
-  /* The recessed tier stays the chassis surface itself: the safety inks are derived against it. */
+  /* Tonal surfaces. The chassis surfaces are the lightness ladder (page, bars, cards) and the engine
+     guards the labels against them to the last tenth of a ratio, so a tier keeps its surface's own
+     lightness and hue and takes more chroma (the neutral-variant tint of M3), --md-tk times and
+     --md-ta more. Without relative colors, a few percent of the primary mixed in. */
+  --md-tk: 1.55;
+  --md-ta: .006;
   --md-s0: var(--bg-sunken);
-  --md-s1: color-mix(in srgb, var(--reality) 6%, var(--bg-raised));
-  --md-s2: color-mix(in srgb, var(--reality) 8%, var(--bg-card));
-  --md-s3: color-mix(in srgb, var(--reality) 12%, var(--bg-card));
+  --md-s1: color-mix(in srgb, var(--reality) 3%, var(--bg-raised));
+  --md-s2: color-mix(in srgb, var(--reality) 4%, var(--bg-card));
+  --md-s3: color-mix(in srgb, var(--reality) 6%, var(--bg-card));
   --md-field: color-mix(in srgb, var(--tx) 6%, var(--md-s2));
   --md-hairline: var(--line-1);
   --md-outline: var(--line-3);
@@ -61,6 +65,9 @@ html:root[data-style="material"] {
 }
 @supports (color: oklch(from red l c h)) {
   html:root[data-style="material"] {
+    --md-s1: color-mix(in srgb, oklch(from var(--bg-raised) l calc(c * var(--md-tk) + var(--md-ta)) h) 100%, black 0%);
+    --md-s2: color-mix(in srgb, oklch(from var(--bg-card) l calc(c * var(--md-tk) + var(--md-ta)) h) 100%, black 0%);
+    --md-s3: color-mix(in srgb, oklch(from var(--bg-card) l calc(c * var(--md-tk) * 1.2 + var(--md-ta) * 1.5) h) 100%, black 0%);
     --md-on-p: color-mix(in srgb, oklch(from var(--reality) clamp(.18, calc((l - .6) * -1000), .99) calc(c * .3) h) 100%, black 0%);
     --md-pc: color-mix(in srgb, oklch(from var(--reality) calc(.36 + clamp(0, calc((.6 - l) * 1000), 1) * .54) calc(c * .75) h) 100%, black 0%);
     --md-on-pc: color-mix(in srgb, oklch(from var(--reality) calc(.93 - clamp(0, calc((.6 - l) * 1000), 1) * .68) calc(c * .2) h) 100%, black 0%);
@@ -82,9 +89,8 @@ html:root[data-style="material"][data-variant="material-expressive"] {
   --md-r-sheet: 36px;
   --md-r-nav: 28px;
   --md-spring: linear(0, .32 6%, .78 14%, 1.1 26%, 1.07 36%, .98 50%, 1.005 68%, 1);
-  --md-s1: color-mix(in srgb, var(--reality) 8%, var(--bg-raised));
-  --md-s2: color-mix(in srgb, var(--reality) 9%, var(--bg-card));
-  --md-s3: color-mix(in srgb, var(--reality) 15%, var(--bg-card));
+  --md-tk: 2.3;
+  --md-ta: .014;
   --md-field: color-mix(in srgb, var(--tx) 7%, var(--md-s2));
   --md-hairline: color-mix(in srgb, var(--reality) 24%, var(--line-1));
   --md-outline: color-mix(in srgb, var(--reality) 38%, var(--line-3));
@@ -200,13 +206,13 @@ html:root[data-style="material"][data-variant="material-expressive"] :is(.og-btn
 /* An icon-only button is an icon button: no container, a circle for its state layer. */
 html:root[data-style="material"] .og-btn.ui-btn:not(:has(> .ui-btn-l)):not(.on):not(.primary):not(.running):not(.danger) { background-color: transparent; border-color: transparent; color: var(--tx-val); border-radius: 50%; }
 html:root[data-style="material"] .og-btn.ui-btn:not(:has(> .ui-btn-l)).on:not(.primary):not(.running):not(.danger) { border-radius: 50%; }
-/* The transport's play: a small FAB in the primary container. */
-html:root[data-style="material"] .fsp-play:not(.running):not(.danger) { width: 40px; min-height: 40px; height: 40px; margin: -5px 0; border-radius: 12px; background-color: var(--md-pc); color: var(--md-on-pc); box-shadow: var(--md-e2); border-color: transparent; }
+/* The transport's play: a small FAB, filled with the primary, lifted to level 3. */
+html:root[data-style="material"] .fsp-play:not(.running):not(.danger) { width: 40px; min-height: 40px; height: 40px; margin: -5px 0; border-radius: 12px; background-color: var(--reality); color: var(--md-on-p); box-shadow: var(--md-e3); border-color: transparent; }
 html:root[data-style="material"][data-variant="material-expressive"] .fsp-play:not(.running):not(.danger) { border-radius: 16px; }
 
 /* ---- segmented buttons: connected, pill ends, the chosen one a container with a check ---- */
 html:root[data-style="material"] .og-seg:not([role="tablist"]) { gap: 0; }
-html:root[data-style="material"] .og-seg:not([role="tablist"]) > button { white-space: nowrap; border-radius: 0; margin-left: -1px; background-color: transparent; color: var(--tx); }
+html:root[data-style="material"] .og-seg:not([role="tablist"]) > button { flex: 1 0 auto; padding-inline: 14px; white-space: nowrap; border-radius: 0; margin-left: -1px; background-color: transparent; color: var(--tx); }
 html:root[data-style="material"] .og-seg:not([role="tablist"]) > button:not(.active) { border-color: var(--md-outline); }
 html:root[data-style="material"] .og-seg:not([role="tablist"]) > button:first-child { margin-left: 0; border-radius: 999px 0 0 999px; }
 html:root[data-style="material"] .og-seg:not([role="tablist"]) > button:last-child { border-radius: 0 999px 999px 0; }
@@ -218,7 +224,7 @@ html:root[data-style="material"] .og-seg:not([role="tablist"]) > button:disabled
 /* ---- tabs: the label, the primary underline growing under the open one ---- */
 html:root[data-style="material"] [role="tablist"]:not(.rail-sec):has(> [role="tab"]) { gap: 0; border-bottom: 1px solid var(--md-hairline); }
 html:root[data-style="material"] :is([role="tablist"] > [role="tab"]:not([data-part="rail-tab"]), .tabs button) { position: relative; border-radius: 0; background-color: transparent; border-color: transparent; color: var(--tx-val); box-shadow: none; font-weight: 500; letter-spacing: .01em; }
-html:root[data-style="material"] :is([role="tablist"] > [role="tab"]:not([data-part="rail-tab"]), .tabs button)::before { content: ''; position: absolute; left: 16px; right: 16px; bottom: 0; height: 3px; border-radius: 3px 3px 0 0; background: var(--reality); transform: scaleX(0); transition: transform var(--t-move) var(--md-spring); }
+html:root[data-style="material"] :is([role="tablist"] > [role="tab"]:not([data-part="rail-tab"]), .tabs button)::before { content: ''; position: absolute; left: max(16px, calc(50% - 3em)); right: max(16px, calc(50% - 3em)); bottom: 0; height: 3px; border-radius: 3px 3px 0 0; background: var(--reality); transform: scaleX(0); transition: transform var(--t-move) var(--md-spring); }
 html:root[data-style="material"] :is([role="tablist"] > [role="tab"]:not([data-part="rail-tab"]), .tabs button):is(.active, .on, [aria-selected="true"]) { color: var(--reality); border-color: transparent; background-color: transparent; }
 html:root[data-style="material"] :is([role="tablist"] > [role="tab"]:not([data-part="rail-tab"]), .tabs button):is(.active, .on, [aria-selected="true"])::before { transform: scaleX(1); }
 html:root[data-style="material"] .tabs button.shell { border-radius: 999px; }
@@ -249,7 +255,7 @@ html:root[data-style="material"] .og-switch input:checked + .track { background-
 html:root[data-style="material"] .og-switch input:checked + .track::after { transform: translateX(20px) scale(1); background: var(--md-on-p); box-shadow: none; }
 html:root[data-style="material"] .og-switch:hover input:checked + .track::after { box-shadow: 0 0 0 8px color-mix(in srgb, var(--reality) 14%, transparent); }
 html:root[data-style="material"] .og-switch:active input:checked + .track::after { transform: translateX(20px) scale(1.1667); }
-html:root[data-style="material"] .og-switch .track::before { content: ''; position: absolute; left: 31px; top: 7px; width: 5px; height: 10px; border: solid var(--reality); border-width: 0 2px 2px 0; transform: rotate(45deg) scale(0); transition: transform var(--t-move) var(--md-spring); }
+html:root[data-style="material"] .og-switch .track::before { content: ''; z-index: 1; position: absolute; left: 31px; top: 7px; width: 5px; height: 10px; border: solid var(--reality); border-width: 0 2px 2px 0; transform: rotate(45deg) scale(0); transition: transform var(--t-move) var(--md-spring); }
 html:root[data-style="material"] .og-switch input:checked + .track::before { transform: rotate(45deg) scale(1); }
 html:root[data-style="material"] .og-switch input:focus-visible + .track { outline: 3px solid var(--highlight); outline-offset: 2px; }
 
@@ -285,7 +291,9 @@ html:root[data-style="material"] .ui-split::after { border-radius: 2px; }
 html:root[data-style="material"] .chip { border-radius: var(--md-r-chip); }
 html:root[data-style="material"] .chip.tag { background-color: var(--md-tc); color: var(--md-on-tc); border-color: transparent; }
 html:root[data-style="material"] .swatch { border-radius: var(--md-r-chip); border-color: var(--md-outline); }
-html:root[data-style="material"] .swatch.active { background-color: var(--md-sc); border-color: transparent; }
+html:root[data-style="material"] .swatch.active { background-color: var(--md-sc); border-color: transparent; box-shadow: none; }
+html:root[data-style="material"] .swatch .name { text-transform: none; letter-spacing: .01em; font-weight: 500; font-size: .85rem; }
+html:root[data-style="material"] .info { border-radius: 50%; }
 
 /* ---- menus, the tooltip, sheets and drawers: lifted containers; the tooltip inverts the surface ---- */
 html:root[data-style="material"] .ui-menu { border-radius: var(--md-r-menu); background-color: var(--md-s3); border: 0; box-shadow: var(--md-e2); padding: 8px 0; }
@@ -310,6 +318,29 @@ html:root[data-style="material"] [data-part="page-foot"] { background-color: var
 
 /* ---- the log: rows on a screen, a hairline between ---- */
 html:root[data-style="material"] .feed .line { border-bottom-color: var(--md-hairline); }
+
+/* ---- the Log's search bar, the tab badge, progress ---- */
+html:root[data-style="material"] input.q { border-radius: 999px; padding-inline: 16px; background-color: var(--md-sc); color: var(--md-on-sc); box-shadow: none; border-color: transparent; }
+html:root[data-style="material"] input.q::placeholder { color: var(--md-on-sc); opacity: .8; }
+html:root[data-style="material"] input.q:focus { box-shadow: inset 0 0 0 2px var(--reality); border-color: var(--reality); }
+html:root[data-style="material"] [role="tab"] .count { margin-left: 8px; padding: 0 7px; border-radius: 999px; background-color: var(--md-tc); color: var(--md-on-tc); font-weight: 500; }
+html:root[data-style="material"] progress { appearance: none; -webkit-appearance: none; height: 4px; border: 0; border-radius: 4px; background-color: var(--md-sc); overflow: hidden; }
+html:root[data-style="material"] progress::-webkit-progress-bar { background-color: var(--md-sc); }
+html:root[data-style="material"] progress::-webkit-progress-value { background-color: var(--reality); border-radius: 4px; }
+html:root[data-style="material"] progress::-moz-progress-bar { background-color: var(--reality); border-radius: 4px; }
+
+/* ---- the top app bar lifts a level over the page ---- */
+html:root[data-style="material"] [data-part="top"] { box-shadow: var(--md-e1); }
+
+/* ---- Expressive: color-forward containers, the primary on the wordmark, bigger plates ---- */
+html:root[data-style="material"][data-variant="material-expressive"] [data-part="bar"] .wordmark { color: var(--reality); }
+html:root[data-style="material"][data-variant="material-expressive"] [data-part="stop-frame"] { border-radius: 30px; }
+html:root[data-style="material"][data-variant="material-expressive"] [data-part="rail-tab"].on { background-color: var(--md-pc); color: var(--md-on-pc); }
+html:root[data-style="material"][data-variant="material-expressive"] .og-seg:not([role="tablist"]) > button.active { background-color: var(--md-pc); color: var(--md-on-pc); }
+html:root[data-style="material"][data-variant="material-expressive"] .rail-ops { background-color: var(--md-pc); }
+html:root[data-style="material"][data-variant="material-expressive"] .rail-ops button { color: var(--md-on-pc); }
+html:root[data-style="material"][data-variant="material-expressive"] .og-btn:not(.on):not(.primary):not(.running):not(.danger):not(.sm) { background-color: var(--md-tc); color: var(--md-on-tc); }
+html:root[data-style="material"][data-variant="material-expressive"] .og-switch .track::after { transition-duration: var(--t-slow); }
 
 /* ---- scrollbars: thin pill thumbs ---- */
 html:root[data-style="material"] * { scrollbar-width: thin; scrollbar-color: var(--md-outline) transparent; }
