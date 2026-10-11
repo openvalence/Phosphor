@@ -160,7 +160,7 @@
   }
 </script>
 
-<div class="hero-numerals" class:stale={!fresh} class:virtual={!!machine.link.virtual} title={staleTitle}>
+<div class="hero-numerals" class:stale={!fresh} class:virtual={!!machine.link.virtual} data-tip={staleTitle}>
   <div class="hn-item hn-primary">
     <span class="hn-label">
       <svg class="hn-reticle" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
@@ -186,7 +186,7 @@
                onkeydown={onEditKey} onblur={() => closeEdit(false)} />
       {:else}
         <button type="button" class="hn-val mono hn-intent hn-entry" bind:this={btnEl}
-                aria-disabled={!!jogWhy} title={jogWhy || 'Click to type a target'} onclick={openEdit}>{commandedText}</button>
+                aria-disabled={!!jogWhy} data-tip={jogWhy || 'Click to type a target'} onclick={openEdit}>{commandedText}</button>
       {/if}
       <span class="hn-unit">{unitOf(targetField)}</span>
     </div>

@@ -15,19 +15,21 @@
 
 import { createPluginHost, isHubUrl } from './host.js';
 import PluginSlot from './PluginSlot.svelte';
-import { machine, getSession, freshness, staleReason } from '../model/machine.svelte.js';
+import { machine, getSession, freshness, staleReason, subscribed } from '../model/machine.svelte.js';
 import {
-  writeSetting, runAction, sendCommand, submitMotion, submitSegments, submitSamples, displayValue, statusOf, shadowOf,
+  writeSetting, runAction, sendCommand, submitMotion, submitSegments, submitSamples, displayValue, statusOf, shadowOf, shadows,
 } from '../model/shadow.svelte.js';
+import { bumpAll, seq, watch } from '../model/changes.js';
 import { WIDGET, isFieldEnabled, modTargetUid } from '../model/settings.js';
 import { needsConfirm, settingNeedsConfirm, confirmCopy, railOwners, railOwned } from '../model/actions.js';
 import { streamGate, conflictWords, latchWords } from '../model/motion.js';
 import { askConfirm } from '../ui/confirm.svelte.js';
-import { pendingSlots, enumerateStore, storeOfRoster, rosterOfStore, rosterCount } from '../ui/widgets/roster.js';
+import { pendingSlots, enumerateStore, storeOfRoster, rosterOfStore, rosterCount, slotHint } from '../ui/widgets/roster.js';
 import { registerTheme } from '../model/theme.js';
 import { FACTORY } from './factory.js';
 import { KIT } from './kit.js';
 import { hubKey } from '../model/prefs.js';
+import { view } from '../model/viewport.svelte.js';
 import {
   LOG_LEVEL_NAME, CHANNEL_CLASS, CH_CONTROL_OWNER, CH_SETTINGS_TRIAL, FIELD_ROLE, TRIAL_OP,
 } from '../../../Valence/clients/js/index.js';
@@ -135,10 +137,14 @@ async function storeSlots(field) {
     // ponytail: a 20 ms poll capped at 1 s; a reactive wait if this ever shows.
     for (let i = 0; i < 50 && machine.samples[roster.id] === before; i++) await new Promise((r) => setTimeout(r, 20));
   }
+  // A subscribed roster not yet sampled (a session start, before its GRANT): its retained
+  // value is on its way. Read without a count, every empty slot costs a NACK.
+  // ponytail: the same poll, capped at 2 s; past it the slots stay pending and the caller reads again.
+  for (let i = 0; i < 100 && roster && !machine.samples[roster.id] && subscribed(roster.id); i++) await new Promise((r) => setTimeout(r, 20));
   const count = roster ? rosterCount(roster, machine.samples[roster.id]) : null;
-  // A granted roster not yet sampled: stay pending, the caller reads again.
-  if (count == null && roster && machine.grants[roster.id]) return slots;
-  await enumerateStore(s.fetchBlob, store, { role: machine.link.roles, count, onSlot: (r) => { slots[r.slot] = r; } });
+  if (count == null && roster && subscribed(roster.id)) return slots;
+  await enumerateStore(s.fetchBlob, store, { role: machine.link.roles, count, known: slotHint(currentHub(), store.store.storeId),
+    onSlot: (r) => { slots[r.slot] = r; } });
   return slots;
 }
 
@@ -177,10 +183,37 @@ async function shellFetch(url, init) {
   return fetch(url, init);
 }
 
+// api.changed: what gate(), statusOf(), displayValue()'s shadow, freshness() and a write refusal read beyond a
+// channel's own samples (which bump in machine.svelte.js). A change bumps every channel. An effect: it runs on a
+// change, never per frame. roleChannels is the catalog's role -> channel ids, plain, for api.changed(role).
+let roleChannels = new Map(), roleSrc = null;
+const NO_CHANNELS = Object.freeze([]);
+$effect.root(() => {
+  const owned = $derived(railOwned(machine.catalog.model?.byRole, machine.samples));
+  $effect(() => {
+    const l = machine.link;
+    void l.phase; void l.roles; void l.stale; void l.staleTick; void l.openedAt; void l.sessionId;
+    void machine.safety; void owned;
+    for (const k in shadows) { const s = shadows[k]; void s.status; void s.requested; void s.error; }
+    const byRole = machine.catalog.model?.byRole;
+    if (byRole !== roleSrc) {
+      roleSrc = byRole;
+      roleChannels = new Map([...(byRole || [])].map(([r, fs]) => [r, [...new Set(fs.map((f) => f.channelId))]]));
+    }
+    bumpAll();
+  });
+});
+
 export const host = createPluginHost({
   model: () => machine.catalog.model,
   sample: (ch) => machine.samples[ch],
   sampleAge: (ch) => (machine.sampleTs[ch] ? Date.now() - machine.sampleTs[ch] : Infinity),
+  changed: (x) => seq(typeof x === 'string' ? roleChannels.get(x) || NO_CHANNELS : x),
+  // Roles resolve at each move, so a new catalog's channels count without a new watch.
+  onChanged: (list, fn) => watch((ch) => {
+    for (const x of list) if (typeof x === 'string' ? (roleChannels.get(x) || NO_CHANNELS).includes(ch) : x === ch) return true;
+    return false;
+  }, fn),
   display: displayValue,
   status: statusOf,
   write,
@@ -206,10 +239,14 @@ export const host = createPluginHost({
   registerTheme,
   listenTcp: SHELL ? listenTcp : null,
   fetch: SHELL ? shellFetch : (import.meta.env.DEV && typeof window !== 'undefined' ? window.fetch.bind(window) : null),
+  openUrl: SHELL ? (url) => import('@tauri-apps/api/core').then(({ invoke }) => invoke('plugin_open_url', { url })).then(() => true, () => false)
+    : (url) => { window.open(url, '_blank', 'noopener'); return Promise.resolve(true); },
   isHub: (u) => isHubUrl(u, machine.link.host, machine.link.port),
   hub: currentHub,
   prefs: typeof localStorage !== 'undefined' ? localStorage : null,
   ui: KIT,
+  // No right dock on the phone class (DESIGN §10.13); read inside Dock's derived, so it tracks.
+  dockable: () => !view.phone,
   log: logLine,
 });
 
@@ -225,6 +262,14 @@ host.onChange(() => {
   pluginsUi.gen++;
 });
 host.onDocks(() => { pluginsUi.docks++; });
+// api.onHub: the connected hub's key moving reaches the plugins.
+$effect.root(() => {
+  let last;
+  $effect(() => {
+    const h = currentHub();
+    if (h !== last) { last = h; host.hubChanged(); }
+  });
+});
 
 /** The connected hub's key (prefs.js hubKey), null before a catalog: per-hub plugin state keys on it. */
 export function currentHub() {

@@ -140,8 +140,9 @@
     }
     readTokens();
     const colorFor = (f) => paletteColors[Math.max(0, candidates.indexOf(f)) % paletteColors.length];
+    // Class only: the root's inline style holds layout vars (--cols, --s), and a token read per write forces a style recalc per resize step.
     const themeObserver = new MutationObserver(() => { readTokens(); wake(); });
-    themeObserver.observe(root, { attributes: true, attributeFilter: ['class', 'style'] });
+    themeObserver.observe(root, { attributes: true, attributeFilter: ['class'] });
     const offTheme = onTheme(() => { readTokens(); wake(); });
 
     const reduced = still.on;   // tracked: the Motion toggle re-runs this effect
@@ -312,12 +313,12 @@
         {@const on = selected.includes(f.role)}
         {@const fr = on ? freshness(f.channelId) : null}
         <button type="button" class="leg" class:off={!on} aria-pressed={on}
-                title={on ? 'Hide lane' : 'Plot lane'}
+                data-tip={on ? 'Hide lane' : 'Plot lane'}
                 onclick={() => toggleLane(f.role)}>
           <i class="swatch" style="background: var({paletteVarFor(f)})" aria-hidden="true"></i>
           <span class="leg-label">{labelFor(f)}</span>
           {#if on}
-            <output class="mono leg-val" class:stale={fr && fr.stale} title={staleReason(fr)}>{@render vu(f, reportedValue(f, machine.samples[f.channelId]))}</output>
+            <output class="mono leg-val" class:stale={fr && fr.stale} data-tip={staleReason(fr)}>{@render vu(f, reportedValue(f, machine.samples[f.channelId]))}</output>
           {/if}
         </button>
       {/each}
@@ -336,11 +337,8 @@
 {/if}
 
 <style>
+  /* No box of its own: the card it sits in is the box (DESIGN §10.6). */
   .tchart {
-    background: var(--bg-card);
-    border: 1px solid var(--line);
-    border-radius: var(--r);
-    padding: var(--gap);
     display: flex;
     flex-direction: column;
     gap: var(--sp-3);

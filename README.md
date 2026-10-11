@@ -83,15 +83,15 @@ every time.
 | `node test/valence-modes.mjs <host>` | a hub at `<host>:82` -- fails against valencesim today (Nucleus val-091.11, motion writes) |
 | `node test/valence-tuning.mjs <host>` | a hub at `<host>:82` -- fails against valencesim today (val-091.12, pattern engine) |
 | `node test/valence-writeplane.mjs <host> [port]` | a hub at `<host>:82` |
-| `node test/tap-to-move-live.mjs <host>` | a hub at `<host>:82`, commands real moves |
+| `node test/tap-to-move-live.mjs <host>` | a hub at `<host>:82`, commands real moves; with no host, its own sim (`check:taptomove` in `test:browser`) |
 | `node test/model-vs-device.mjs <host>` | a hub at `<host>:82` |
 | `node test/position-jitter-probe.mjs <host> ...` | a hub at `<host>:82`, commands real moves |
 | `node test/streamed-outlier-probe.mjs <host> [durationMs]` | a hub at `<host>:82`, commands real moves |
 | `node test/rail-probe.mjs <host>` | a hub at `<host>:82`, machine already moving |
 | `node test/wire-forensics.mjs <host>` | a hub at `<host>:82`, machine already moving |
 | `node test/render-vs-samplerate-probe.mjs` | pre-captured `test/evidence/trace-{30,25}hz.json`, produced by `position-jitter-probe.mjs` against a live hub |
-| `node test/browser-check.mjs <host>` | a hub serving the deployed bundle, plus a browser |
-| `node test/flagship-render-smoke.mjs <host>` | a hub serving the deployed bundle, plus a browser |
+| `node test/browser-check.mjs <host>` | a hub serving the deployed bundle, plus a browser; with no host, its own sim (`check:browsercheck` in `test:browser`) |
+| `node test/flagship-render-smoke.mjs <host>` | a hub serving the deployed bundle, plus a browser; with no host, its own sim (`check:flagship` in `test:browser`) |
 | `node test/jitter-measure.mjs <host> [durationMs]` | a hub serving the page, plus a browser |
 | `node test/og-reference-shots.mjs [baseUrl] [outDir]` | a static server for the OG (main-branch) bundle, plus a browser -- not a Valence hub |
 | `node test/valence-sim.mjs [--host] [--port]` | the simulator (valencesim), `../Nucleus/sim/valencesim/build/valencesim.exe` -- fails today (val-091.11/.12) |
@@ -101,6 +101,59 @@ every time.
 README has the recipe), run it, then `node test/valence-sim.mjs`. Its last
 step writes both files from that session's real BLOB_CHUNK bytes and the etag
 the hub declared. Never hand-edit the `.bin`; re-run the sim to re-capture it.
+
+### The Neutrino cluster
+
+`test/cluster/cluster.mjs` runs many Neutrinos at once against scripted
+clients, by hand, never in `npm test`; its head has the usage. The two
+oscillator suites beside it (`home-osc`, `player-osc`) run in `test:browser`.
+
+How the Neutrino cluster works: `node test/cluster/cluster.mjs` starts worker
+threads, at most one per physical core (`--max-workers`, default half the
+logical cores), and spreads its hubs across them, `--per-worker` (default 32)
+each until that cap, then more per worker. Each hub is one Neutrino wasm
+instance (one compiled module per worker). Each worker ticks all its hubs on a
+real-time 1 ms tick (`--tick-us`) polled against the wall clock or, with
+`--lockstep`, on a virtual 1 ms clock as fast as it can. Each hub gets one
+scripted client (about a third get two): a headless valence-js session with a
+seeded personality that picks random actions from the hub's catalog (streams,
+jogs, safety, home, trial writes, limits, the oscillator, reconnects) over an
+impaired link, with latency and jitter on every frame and loss and reorder on
+motion STREAM frames, all on the worker's clock. It measures, per worker, the
+tick lateness (p50, p99, max) and the loop's work share in real time, or the
+speed in sim-minutes per wall-minute in lockstep; for the process, CPU, host
+CPU, RSS and wasm memory; per hub per minute, the plans, anomalies by kind,
+failures, NACKs, refusals, reaps, stalls, timeouts, traps and the hub's warn
+and error lines. A real-time step is healthy while its median minute's p99
+lateness stays at or under 4 ms with no trap, and the first unhealthy step is
+the knee; a lockstep step is healthy with no trap and has no knee. Results go
+to `test/evidence/cluster/<time>/` (gitignored): `step-<hubs>.json` per step,
+`long-<hubs>.json` for `--long`, and `summary.json` (its `mode` is `realtime`
+or `lockstep`), which also names the clean hubs with the most of each anomaly
+kind, the candidates for a hardware replay. `--replay SEED` reruns one hub
+alone with the same options and client seeds, in lockstep (the same run every
+time, but for the session ids the hub mints) unless `--realtime`, and writes
+its trace to `test/evidence/cluster/replay-*.json`.
+To compare a seed against hardware, the operator runs
+`--replay SEED --target ws://HUB:PORT/` on the real hub (hw-safe: trial writes
+only, no force home), then `--replay SEED --hw-safe --like HW.json` on
+Neutrino from that hub's settings, and
+`node test/cluster/compare.mjs NEUTRINO.json HW.json` scores the two traces
+(exit 0 when every row passes).
+
+Real time or lockstep:
+
+- Real time is the timing stress, the only mode whose tick lateness means
+  anything. It holds up to about 1,500 hubs on a 16-core, 32-thread PC; past
+  that a worker's work outgrows its core, and more workers than physical cores
+  lose the 1 ms tick.
+- Lockstep is for logic bugs at any hub count. Every hub runs exactly as
+  `--replay SEED` runs it (the replay's 45 Hz plan and 60 Hz motion
+  subscriptions, the seed's own Math.random stream and async context), so a
+  seed it flags replays alone to the same per-minute counters and flags. More
+  hubs only make it slower: 2048 hubs on 16 workers run about 0.5 sim-minutes
+  per wall-minute. Its counters do not compare with a real-time run's, which
+  subscribes at 10 Hz plan and 20 Hz motion.
 
 ## Builds
 

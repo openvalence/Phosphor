@@ -15,7 +15,7 @@
   const at = $derived(r ? r.posFrac : null);
 </script>
 
-<button type="button" class="mini" aria-label="Show rail" title="Show rail" aria-expanded={view.bucket <= 2 ? heroBar.popup : undefined} onclick={onshow}>
+<button type="button" class="mini" aria-label="Show rail" data-tip="Show rail" aria-expanded={view.bucket <= 2 ? heroBar.popup : undefined} onclick={onshow}>
   <span class="plate">
     <span class="band" style="left:{l}%; width:{w}%"></span>
     {#if at != null}<span class="pos" style="left:{at * 100}%"></span>{/if}

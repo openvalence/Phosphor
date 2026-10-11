@@ -208,6 +208,11 @@ ok('a stall here is never WiFi: no delay spike or WiFi cutout opened before the 
 ok('no cause guessed: no hub or unknown cutout', !all.some((i) => i.cond === 'cutout-hub' || i.cond === 'cutout-unknown'), all);
 ok('page hidden while streaming: "Phosphor is in the background"', all.some((i) => i.cond === 'background'), all);
 ok('the Link card shows how far ahead moves left', /\d+ ms/.test(await page.textContent('.health dl.pane-facts dd:nth-of-type(3)')));
+// Operator 2026-10-10: the address, the control list and the firmware are Health rows, not top bar chips.
+const moved = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.health dl.pane-facts dt')]
+  .filter((d) => /^(Address|Control list|Firmware)$/.test(d.textContent)).map((d) => [d.textContent, d.nextElementSibling.textContent.trim()])));
+ok('Health holds the address, the control list and the firmware', !!moved.Address && moved.Address !== '--'
+  && / B|KB|MB/.test(moved['Control list'] || '') && !!moved.Firmware, moved);
 
 if (!PLAN_DELAY) console.log('  [SKIP] hub late: valencesim has no --plan-delay-ms yet');
 else {
@@ -277,7 +282,7 @@ console.log('\n--- the status slot ---');
   const slot = () => o.page.evaluate(() => {
     const s = document.querySelector('.topstrip .status');
     const b = s && s.querySelector('.st-dismiss');
-    return { kind: s && s.dataset.kind, text: s ? s.textContent.trim() : '', title: b ? b.title : '' };
+    return { kind: s && s.dataset.kind, text: s ? s.textContent.trim() : '', title: b ? b.dataset.tip || '' : '' };
   });
   const pause = o.page.locator('.topstrip .btn-pause');
   const waitKind = async (kind, ms = 4000) => {
@@ -318,6 +323,32 @@ console.log('\n--- the status slot ---');
     && await o.page.getAttribute('[data-feed="health"]', 'aria-selected') === 'true');
   ok('slot: ...with its incident open', await o.page.evaluate(() => [...document.querySelectorAll('.incs > li')]
     .filter((li) => li.querySelector('details').open).map((li) => li.dataset.cond).join() === 'cutout-client'));
+  await o.ctx.close();
+}
+
+// ---- 2c. the rail's own census: clock drift in the slot, the bar untouched ----
+console.log('\n--- clock drift in the status slot ---');
+{
+  const o = await open();
+  const bar = () => o.page.evaluate(() => ({ rects: [...document.querySelectorAll('.linkbar .wordmark, .linkbar .chip')]
+    .map((e) => { const b = e.getBoundingClientRect(); return [b.left, b.top, b.width, b.height].map(Math.round).join(','); }).join(' | '),
+    fps: document.querySelector('.linkbar .fps')?.textContent.trim() || null }));
+  const slot = () => o.page.evaluate(() => {
+    const s = document.querySelector('.topstrip .status');
+    return { kind: s && s.dataset.kind, text: s ? s.textContent.trim() : '', title: s ? (s.querySelector('.st-dismiss')?.dataset.tip || s.dataset.tip || '') : '' };
+  });
+  await play(o.page, GENTLE);
+  await o.page.waitForTimeout(2500);
+  const b0 = await bar();
+  await o.page.evaluate(() => { const now = Date.now.bind(Date); Date.now = () => now() - 40; });
+  let s = await slot();
+  for (let t = Date.now(); !/^Clock drift \d+ ms$/.test(s.text) && Date.now() - t < 20000; ) { await o.page.waitForTimeout(500); s = await slot(); }
+  ok('clock drift: the status slot reads "Clock drift N ms" once it holds 10 s', /^Clock drift \d+ ms$/.test(s.text) && s.kind === 'health', s);
+  const tipL = s.title.split('\n');
+  ok('clock drift: its tooltip is the detail: why, since, threshold, action, the click', tipL.length >= 4 && /clocks disagree/.test(tipL[0]) && /^Since /.test(tipL[1])
+    && /2 ms/.test(tipL[2]) && tipL[tipL.length - 1] === 'Click to open this incident' && !/held|skew/i.test(s.title + s.text), s.title);
+  const b1 = await bar();
+  ok('clock drift: the top bar moves nothing and the fps chip still reads N fps', b0.rects === b1.rects && /^\d+ fps$/.test(b1.fps || ''), [b0, b1]);
   await o.ctx.close();
 }
 

@@ -1,0 +1,18 @@
+{
+  "name": "arcade",
+  "version": "0.1.0",
+  "api": 1,
+  "kind": "widget",
+  "entry": "index.js",
+  "description": "Three small games; their page opens in a theme you have to find",
+  "roles": [
+    "input.target",
+    "telemetry.position",
+    "window.min",
+    "window.max",
+    "limit.input.speed",
+    "limit.input.accel"
+  ],
+  "channels": [],
+  "permissions": ["motion"]
+}

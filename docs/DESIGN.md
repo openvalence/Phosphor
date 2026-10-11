@@ -539,7 +539,9 @@ question in §10.8).
   the planned position to the planned target, at the rail's own render
   instant, the marker amber while `plan.flags` names a bent plan (RFC-100; the readback's tooltip says which: shaped, stretched, fallback, clamped), else while the plan is stalled or past its
   duration. A control-owner slot held by another session keeps the
-  full-width plan strip. The plan readback (owner, style, velocity, timing)
+  full-width plan strip. Plan positions are shares of the window, drawn on
+  the travel and never clamped: a plan outside the window draws outside the
+  band, and the row clips what lies past the rail (`ph-t2jn`). The plan readback (owner, style, velocity, timing)
   rides the strip on the primary label's line, right of the numerals, while
   a source plays or a plan streams; stacked, a status condition outranks it.
   Seams: `src/ui/hero/RailWidget.svelte`, `src/ui/widgets/PlanStrip.svelte`,
@@ -601,6 +603,60 @@ question in §10.8).
   and a long text ellipsizes with its full form in `title`. A user's own act
   (the rail's hide tab, the sidebar collapse, a disclosure, a window resize)
   may change heights, because it cannot cause a misinput elsewhere.
+- The top bar (operator ruling 2026-10-10, `ph-6ydd`, amended the same day;
+  `src/ui/LinkBar.svelte`) carries what someone looks at when something goes
+  wrong: the activity heatmap, the hub name with the link dot right of it,
+  then the chips auth, data rate, loss and the frame rate, then the window
+  buttons. A reading that fails that test moves to the Health view (§10.14),
+  never deleted: the address, the firmware and the control list (its size,
+  and whether this device's saved copy or the machine served it).
+  - The link dot replaces the live chip. Its state is a class (`live`,
+    `connecting`, `stale`, `offline`) from the link phase and the freshness
+    rule, and is said in words in its tooltip and its status text, never by
+    color alone. Live: the reality color, a 2 s beat. Connecting (connecting,
+    handshaking, reconnecting): the intent color, a 1 s beat. Stale (live,
+    silent past the deadman): the warn tone, a slow dim, no ripple. Offline:
+    a hollow ring, still. A virtual session wears the warn tone in the live
+    state. Each beat swells the dot 18 % over its 6 px, softly, and the dot
+    sends a ripple on its own cycle (two beats long, started a fifth of a
+    beat late, so it reads as water spreading after the drop): a thin faint
+    ring (peak opacity .22) growing from the dot to a radius of about the
+    width of "nucleus-p4" on a slow-start, speed-up, slow-rest curve, clipped to the bar's row and drawn behind the name, the chips and every
+    other content. Transform and opacity only, pure CSS, no motion under
+    `html.still` or reduced motion, and no box moves.
+  - Auth reads `AUTH: <tier>` (`--` with no session), its value held to the
+    width of the longest tier name.
+  - The data rate reads `down up KB/s` (1 KB = 1000 B), arrows a step larger
+    than the digits: the bytes the hub session's socket carried
+    (`src/model/activity.js` totals; never the Stash or other traffic),
+    sampled every 250 ms and shown as the 1 s average of the last four
+    samples, the shown number stepping half way to it per sample. Each number
+    is three characters at most, right-aligned: one decimal under 10, whole
+    from 10, `999+` past it. The 250 ms interval runs only while the link is
+    live; otherwise the rate reads `--`. How long ago the last frame arrived
+    (the old rx) is the tooltip's last line. Phones drop the `KB/s` text (the
+    tooltip and the accessible name keep it) so the chip fits whole.
+  - The loss chip reads `loss <client> / <machine> %` from
+    `machine.stats.link` (`src/model/linkstats.js`): the share of TCP sent
+    again, never "packets lost". The client figure carries its scope and
+    unit: on Windows it is all TCP on this PC, in segments (the tooltip says
+    so); on macOS the unit is bytes. A value not reported reads `--`, never a
+    number invented (the Virtual reports none). The tooltip gives every
+    reported value in words: the client's, the machine's resent share, its
+    radio's transmit retries and its signal in dBm.
+  - The render readout is `N fps` (`-- fps` until a rail draws); its tooltip
+    says the frame rate and how far behind the rail draws, to smooth
+    arrivals, in words. The rail's stall share and the frame clock's drift
+    from the wall clock (which the rail's timing assumes is zero) are not on
+    the chip: they are Health conditions (§10.14), `rail-stalled` over 10 %
+    of frames and `clock-drift` over 2 ms, read in the status slot, which
+    holds its height. Under 30 fps the fps chip wears the warn tone.
+  - The fps number holds a fixed width and no slot is reserved for a warning,
+    so the bar has no gap. The order is rate, loss, fps, so where room runs
+    out the fps sheds before loss and loss before the rate; under 561 px fps
+    and loss are gone and the rate sheds whole where it does not fit, never a
+    sliver. Phones keep no fps: at 420 px the rate chip fits beside a
+    five-letter hub name.
 - The page footer (operator ruling 2026-10-02, `ph-vdk.60.12`;
   `src/ui/PageFoot.svelte`): one fixed 48 px bar at the bottom of the page
   area on every page with page controls (the advanced and diagnostic
@@ -609,6 +665,10 @@ question in §10.8).
   bottom safe-area inset. The UI scale is not in it (operator ruling
   2026-10-03, `ph-5q67`): it is the right end of the shell's bottom status
   row (`src/ui/ScaleControl.svelte` in `FootStrip`), compact, on every page.
+  Beside it, at the row's very end, sits the right dock's toggle (operator
+  ruling 2026-10-10, `ph-6ydd`; §10.13): its slot is held whether or not a
+  dock exists, so the toggle arriving with the first pin moves nothing; the
+  phone class has neither slot nor toggle.
   That row is one line at every width (operator ruling 2026-10-03,
   `ph-wt7r`): each value holds a fixed slot and a compact form (3.25k, 55.1k;
   clock offset and RTT as s.mmm; deadman in s) with the exact value on hover,
@@ -677,7 +737,12 @@ question in §10.8).
   moved, never a copy, at full size and hit target, half opacity at rest
   and full on hover, focus or any pointer movement. The mode persists
   (`prefs.js` `fullscreen`), the state never does. A page registered
-  `mediaFullscreen` offers both itself and its footer neither (`ph-n4t7`). Seams:
+  `mediaFullscreen` offers both itself and its footer neither (`ph-n4t7`).
+  Its bare fullscreen is edge to edge (no gutter, caret band or scroll
+  shade), and its caret is a corner hotspot, top left on the stop pair's
+  inset, shown on pointer movement or Tab and `display: none` at rest with
+  the stage overlay, so at rest only the stop pair sits over the video
+  (`ph-9t5l.7`). Seams:
   `src/model/fullscreen.js`, `isFull` in `src/App.svelte`, `bare` in
   `src/ui/TopStrip.svelte`.
   *(Superseded 2026-10-08 for `mediaFullscreen` pages, operator ruling
@@ -770,6 +835,50 @@ question in §10.8).
   `ph-5u0g` peeve 10): the plan readback beside the numeral is one line, or
   two where the width runs short, each ellipsized, ending short of the mini.
   Seam: `src/ui/widgets/PlanStrip.svelte`.
+- The channel heatmap (operator 2026-10-10, `ph-8yga`): the top bar's left
+  slot carries a block per catalog channel, in catalog order, grouped STATE,
+  STREAM, INTENT, EVENT, STORE with a hairline between groups, then five link
+  blocks: link traffic (every frame, control included), round trip, late
+  samples (the share of drawn frames with no newer sample; position gaps in
+  its tip), frame budget (event-loop lag) and Health (the status slot).
+  Brightness is a block's share of its own budget, mixed in oklab from the
+  empty token to reality: a channel's rate over its recent peak, the peak
+  capped at its grant or its declared max rate, so a channel at its own
+  steady rate reads full whatever that rate is; a link block's reading over
+  the limit that raises its health condition (50 ms round trip, 10 % held,
+  25 ms lag). A rate is the smoothed frames per arrival over the smoothed
+  interval between arrivals, held until the next arrival is late, then
+  falling as 1 / the silence, zero past 10 s. A steady channel and a bundle
+  of channels arriving together hold one level through their arrivals;
+  levels move on a 500 ms tick and glide by a CSS transition of the same
+  length, none under `html.still` (operator: "lerp pls, no need for
+  flashing"). The tick runs only while something arrived in the last 10 s;
+  idle, nothing runs. A refused channel (its newest word a NACK) and a link
+  block whose health condition is open wear the warn tint and a slash, and
+  the panel says why. Hover or keyboard focus opens ONE panel in the top
+  layer (a popover, so no page element can cover it), hung below the top
+  strip so it never covers the safety controls: the same blocks in the same
+  groups, each 18 px and labeled with its name, live, with group captions
+  (STATE, STREAM, INTENT, EVENT, STORE, Link; in the compact form the classes
+  and the link). A block in the panel highlights, with its twin in the bar,
+  and fills the details line at the panel's foot: name, class and id, rx and
+  tx in frames and bytes a second, last seen, the channel's role-bound speed,
+  current and bus power readings (read on the panel's own clock), and why a
+  warn block warns; no second tooltip is ever drawn. The pointer has 350 ms
+  to cross from the bar into it. One tab stop (a toolbar), the arrows move
+  among the bar's blocks and the panel follows, Enter opens, Escape closes.
+  The late-samples block's stalled-updates line shows, and warns, only while
+  the machine has been silent past 1 s, in that gap's own length. A click on
+  a channel opens the Link page with that channel selected and its
+  row brought into view (§10.15); Health opens the Health view; the other
+  blocks and a compact block open the Link page. The size reads the catalog
+  and the bucket only: four 5 px rows, or in buckets 1 and 2 (and past 32
+  columns) a block per class in two rows and one for the link, each block's
+  details naming the busiest member and the refused ones. Under a coarse pointer, whatever the
+  width, the map is one 40 px button that opens the Link page, its blocks
+  drawn only: no finger picks a 5 px block. Seams: `src/model/activity.js`
+  (counted at the socket, `machine.svelte.js`), `src/ui/ChannelHeat.svelte`
+  in `LinkBar`, the click in `TopStrip` (`openHeat`, `ph-8yga.1`).
 
 ### 10.4 Full width
 
@@ -889,7 +998,11 @@ Renderer classes (RENDERING §12.1, RFC-062; `src/model/rclass.js`), in CSS px:
   and casts its own shade. Chrome never selects text (`src/ui/select.css`).
 - Surfaces (same ruling): a card is one `--bg-card` surface with one frame, a
   nest one `--bg-sunken` surface holding cards, no third tint; titles are
-  text on the page. `src/style.css` `.surface-card`, `.surface-nest`.
+  text on the page. `src/style.css` `.surface-card`, `.surface-nest`. A
+  widget never paints a box of its own inside a card, and a roster shows a
+  fixed number of rows in slot order with an `N more` button that opens
+  every slot in the kit's sheet (the Advanced generator's presets: 4 rows;
+  `ph-e82.22.1`).
 - LAYOUTS are named and saved per user per client, stored locally, with the
   try/catch degrade `dashboard.svelte.js` already uses. Sync is a later
   maybe, not planned.
@@ -981,21 +1094,42 @@ connected, then merge the setting changes onto the machine, ticked per item.
   `connect()` and a token provider that mints at its `/uitoken`. It is a full
   hub: patterns, Kinetic, telemetry, and it moves. It boots homed and with the
   pairing window open (the twin's stand-in for the PAIR button tap), so the
-  shell's knock lands as push-to-pair. It opens no socket, so it never
-  broadcasts. Its state (settings, presets, pairings, `hub_instance_id`)
+  shell's knock lands as push-to-pair; with Open to LAN on it boots with the
+  window closed. It opens no socket, so it never broadcasts. Its state (settings, presets, pairings, `hub_instance_id`)
   persists as one blob in `phosphor.builtin.state`. The session is not marked
   virtual and is recorded in the vault like any hub; only its host
   (`builtin`) sets it apart: never saved, never the reconnect target, no
   RFC-053 datagram. Any disconnect stops it (the worker is terminated). Its
   log lines land in the Log tab under its name. The exe is standalone.
+- **Open to LAN** (operator rulings 2026-10-10, `ph-li30`): a desktop shell
+  setting, off by default (Settings, `openToLan`, port `lanPort` 82). While it
+  is on and Virtual runs, `src-tauri/src/lan.rs` listens for WebSocket on every
+  IPv4 interface and answers the SPEC 13.8 UDP port; `src/shell/lan.svelte.js`
+  carries each remote's frames and each datagram to the worker over one ordered
+  Channel and back by batched invoke. Every remote is one more session of the
+  same hub (`integral_connect`), so tiers, the trust ledger, pairing and
+  ownership are the hub's own; the hub also builds the discovery reply and
+  latches an RFC-053 ESTOP datagram (`integral_datagram`, the board's
+  responder). Nothing serves `/uitoken` on the LAN: a remote starts at
+  `watch` and pairs. Opened to the LAN, Virtual boots with its pairing window
+  closed; the section's Pairing window button is the twin's PAIR press
+  (`integral_pair_press`). A port it cannot bind (taken, or under 1024 without
+  privileges on Linux and macOS) falls back to one the OS assigns, and
+  discovery advertises the bound one. Off, a port change, Virtual stopping or
+  Phosphor exiting sends every remote GOODBYE `NORMAL_CLOSURE` and closes it;
+  while the hub lives on, each remote's session also gets that GOODBYE so the
+  hub releases what it owned. The status line reads `Open to LAN · <address>:<port>
+  · <n> connected`; this PC's own Virtual never appears among its LAN scan
+  results. Windows asks about the firewall the first time; the shell never
+  edits firewall rules.
 - **Picker**: the Hubs pane lists Virtual last, always, badged `ν virtual`;
   the subline reads `The hub as software`, then `Nucleus <version>` with a
   Stop while it runs; Connect boots it.
   Each saved hub with a vault record offers Sim (the replay above). Never
   auto-connected, never saved, never the reconnect target.
 - **Marking**: the hub title reads `<name> (virtual)`, the phase chip reads
-  `virtual` (warn) where a machine reads `live`, and the hub chip reads
-  `virtual`. The strip stays rendered and acts on the virtual hub.
+  `virtual` (warn) where a machine reads `live`. The strip stays
+  rendered and acts on the virtual hub.
   **(planned)** the strip's status slot carries a standing
   `Virtual: nothing moves` at the lowest priority (`ph-2eo`).
 - **Merge** (`src/model/merge.js`, the Merge pane): a replay's ECHO on a
@@ -1035,8 +1169,11 @@ LANDED 0c33da4). Tier and category ids come from the generated vocabulary
   The wire string is RENDERING §3's free-text subgroup, unchanged, and stays
   the card's key. A page draws its cards with no section first, then each
   section's cards together, sections in order of first appearance; catalog
-  order holds within each, diagnostic cards last (collapsed by default,
-  RENDERING §9). One header row heads a section's run: text and a hairline
+  order holds within each, diagnostic cards last in their section, and the
+  diagnostic cards with no section after every section under one
+  Diagnostics header row (collapsed by default, RENDERING §9). Shown, a
+  diagnostic group named like a live one is that card's tail, not a card of
+  its own (`ph-vrg`). One header row heads a section's run: text and a hairline
   on the page in the card titles' type step, never a band or a third tint
   (§10.6), a top-level grid row with no grip and no number. Each card is
   still promoted on its own (glance, handheld); the header stays. Seams:
@@ -1170,16 +1307,23 @@ derives from one unit, and no size is tuned by hand.
   follows `prefers-reduced-motion`; Reduced and Full override it. Every
   animation keys off one class, `html.still`, which the theme's motion 0
   also sets; no component reads the media query itself.
-- The context menu (operator 2026-10-09, `ph-kyjd`): the shell's own menu
-  replaces the webview's everywhere but text entry (Inspect stays behind
-  Shift in a dev build). A right-click, a long press, the menu key or
-  Shift+F10 lists the targets under it, innermost first: the field (Copy
-  path, Copy value, Paste value, Reset to default, Send to node editor, Show
-  in history), the module or card (Copy path, Send fields to node editor),
-  the page (Edit layout, Show advanced, Show diagnostic, Reset page to
-  defaults); plugins add items (docs/PLUGINS.md, Context menus). Copy path is
-  the Valence path, `valence://<hub>/<identity>` (Blender's Copy Data Path).
-  It opens in the top layer under the strip and moves nothing. Seams:
+- The context menu (operator 2026-10-09, `ph-kyjd`; 2026-10-10, `ph-hi4i`):
+  the shell's own menu replaces the webview's everywhere, text entry
+  included; a release build turns WebView2's off at the source and a dev
+  build keeps it behind Shift. A right-click, a long press, the menu key or
+  Shift+F10 lists the targets under it, innermost first: a plugin's own
+  element (`api.ui.menu`), the field (Copy path, Copy value, Paste value,
+  Reset to default, Send to node editor, Show in history), the module or
+  card (Copy path, Send fields to node editor), the page (Edit layout, Show
+  advanced, Show diagnostic, Reset page to defaults; on a plugin page
+  Fullscreen and Manage plugins); plugins add items (docs/PLUGINS.md,
+  Context menus). Text entry lists Undo, Cut, Copy, Paste and Select all
+  first, then the field's items when it is a field's input. No menu reads
+  the clipboard to open: Paste and Paste value read it on the pick, through
+  the native clipboard in the shell, and a value that does not fit is
+  refused in the status slot. Copy path is the Valence path,
+  `valence://<hub>/<identity>` (Blender's Copy Data Path). It opens in the
+  top layer under the strip and moves nothing. Seams:
   `src/ui/contextmenu.js`, `src/model/identity.js`.
 - Add to Dash (operator ruling 2026-10-10, `ph-hi4i.1`): a field or module
   item on the full class (§10.1) that opens a submenu: every Dash in sidebar
@@ -1191,12 +1335,23 @@ derives from one unit, and no size is tuned by hand.
   Enter, and ArrowLeft or Escape closes it back to its opener; a tap opens
   it inline under the opener. Seam: `src/plugins/kit.js` `menu` (`items`,
   `checked`, `ask`).
-- The right dock (operator 2026-10-09, `ph-kyjd`): a region plugins register,
-  hidden until a dock exists and closed until the user opens it from the top
-  bar; open on the desktop it is a column beside the content and narrows it,
-  on the phone class a drawer under the strip, never over the stop pair. The
-  quick access tray is a factory plugin on it (docs/PLUGINS.md, The dock).
-  Seam: `src/ui/Dock.svelte`.
+- The right dock (operator 2026-10-09, `ph-kyjd`; amended 2026-10-10,
+  `ph-6ydd`): a region plugins register, hidden until a dock exists and
+  closed until the user opens it from its toggle at the right end of the
+  bottom status row, beside the UI scale (§10.3). Open on the desktop it is a
+  column beside the content and narrows it; on the other non-phone classes a
+  drawer from the right edge between the top strip and the bottom bars, never
+  over the stop pair or its own toggle. One open state serves the dock, the
+  toggle and the stored pref; withdrawing the last dock closes it, so the
+  next one arrives closed. Quick access docks per connected hub: its toggle
+  exists while that hub has pins, and the last unpin there withdraws the dock
+  and closes it, whatever other hubs hold. The phone class
+  has no dock (operator: "unlikely to be used with mobile, have to cut some
+  things for space"): no toggle, no drawer, and a plugin's dock-bound menu
+  items (`needsDock`) are left out; what a plugin stored stays for the desktop
+  and the plugin stays installed. The quick access tray is a factory plugin
+  on it (docs/PLUGINS.md, The dock). Seams: `src/ui/Dock.svelte`, the toggle in
+  `src/ui/FootStrip.svelte`, `host.js` (`dockable`).
 
 ### 10.14 Health (operator rulings 2026-10-09, `ph-9t5l`, `ph-9t5l.1`)
 
@@ -1204,7 +1359,9 @@ When something degrades, Phosphor says what and why, in plain words, with
 one thing to do. Nothing degrades silently, and nothing leaves the device on
 its own: no continuous telemetry, ever.
 
-- Three areas: Link, This device, Machine. The 26 conditions, their
+- The Link card also lists the address and the control list, the Machine
+  card the firmware: the readings the top bar dropped (§10.3).
+- Three areas: Link, This device, Machine. The 29 conditions, their
   thresholds, holds and words are one table, `CONDITIONS` in
   `src/model/health/core.js`; the design survey is the `ph-9t5l` note. A
   condition's line is a measured fact with the number that raised it
@@ -1228,20 +1385,32 @@ its own: no continuous telemetry, ever.
   other verdict is marked likely. The hub's own word on a starvation is read
   from roles alone (`plan.duration`, `plan.elapsed`); the first second after
   a stream starts is the hub ramping in and is never a cutout.
+- Video drops (`ph-9t5l.7`): a playing video's counters
+  (`getVideoPlaybackQuality`) are read once a second while it plays and the
+  page shows, never per frame. Drops count only past what the screen can
+  show: a screen at hz shows at most hz frames a second, so a 120 fps file on
+  a 60 Hz screen skips half by design, and the judge is min(video fps x
+  speed, hz). The screen's refresh is the frame bursts' rate over 30 s (the
+  mean of those within 10% of the fastest); the video's frame rate is its
+  decoded frames over media time, never the presented cadence a slower
+  screen caps. Raised over 1% of the frames the screen could show in 30 s,
+  in 3 separate seconds or more, after 20 s of play, held 5 s; clears under
+  0.5%. A one-frame blip every few seconds stays under it ("Video dropped 42
+  frames in 30 s").
 - Hysteresis: a condition enters after its hold and clears after its clear
   hold; same-condition episodes within 10 s are one; a re-entry within 60 s
   of a clear reopens the incident (count + 1); severity rises inside an
   incident (warn to act by rate, 3 cutouts in 60 s) and falls only when it
   closes. A measured cause is never overwritten by an inferred one.
-- Where it shows: one Log line per incident (tag `health`), its text updated
-  in place, the plain sentence, action, evidence and Send report folded under
-  it; the Health view (Log page, Health tab) with the three cards, the Link
-  card's 2-minute strip (round trip, sent ahead, pauses) and the incident
-  list; the top strip's status slot takes act and warn, below link fault,
-  unattended, refusal, the jog note, the history message and the latch
-  notices, act above the safety edge, warn below it, a 5 s minimum dwell
-  (`health.slot`, drawn by TopStrip); the slot's line opens its incident on
-  the Health view.
+- Where it shows: one Log line per incident (source and tag `health`), its
+  text updated in place and its tooltip the detail; the row opens to an
+  Incident button that shows it on the Health view; the Health view (Log page,
+  Health tab) with the three cards, the Link card's 2-minute strip (round
+  trip, sent ahead, pauses) and the incident list; the top strip's status slot
+  takes act and warn, below link fault, unattended, refusal, the jog note, the
+  history message and the latch notices, act above the safety edge, warn below
+  it, a 5 s minimum dwell (`health.slot`, drawn by TopStrip); the slot's line
+  opens its incident on the Health view.
 - Local only: a 10-minute ring at 1 Hz, 10 Hz for the last 2 minutes of the
   stream signals; an incident keeps a snapshot of -60 to +30 s, the last 20
   in memory and the last 5 in `localStorage` so a reload keeps them.
@@ -1259,7 +1428,11 @@ issue the user submits under their own account; Phosphor sends nothing.
   leaves without a row. The builder is an allowlist: numbers, fixed enums
   and version-shaped strings only; times count from the incident; no script
   or video name, position, clock time or date, machine name, address,
-  session or instance id, token or log text.
+  session or instance id, token or log text. A report made while a video
+  played adds the optional media block (size, both rates, speed, the
+  window's frame counts, HDR screen, fullscreen, analyzer open) and the
+  dropped-frame history; without one neither appears, so the bundle stays
+  `/1`.
 - Hold to send (1.5 s, `hold.js`) opens
   `issues/new?template=diag-report.yml` with the title and the `bundle`
   field filled in; over 7,500 encoded characters the full bundle is saved as
@@ -1277,6 +1450,79 @@ issue the user submits under their own account; Phosphor sends nothing.
   Phosphor with Issues read/write (whether `deleteIssue` also wants
   Administration write is checked at setup). The workflow's run log is the
   audit trail.
+
+### 10.15 The Link page (operator rulings 2026-10-10, `ph-bszw`)
+
+- Sections, in order: Link health, Session and identity, Traffic, Channels
+  and map, Refusals. The first three share a row from 60 rem of page; from
+  36 rem Link health and Traffic stack beside Session and identity; below
+  that, one column. The page is the one scroller: no table or list scrolls
+  on its own. The channel list measures its own width: under 40 rem it drops
+  dir, category and offered, under 24 rem class and last; a grant under the
+  offer reads in emphasis, never amber. Copy identity sits in its card, not the
+  lifted head, so it holds 44 px under a coarse pointer.
+- Refusals: one row per NACK code, newest first: the registry name, its
+  family (the `nack_codes` range comment), its meaning (the code's registry
+  note, first sentence), the count since the hub was chosen, the age of the
+  last one, the channels that drew it with their counts (channel 0 and ids
+  outside the catalog read by their registry range), and the hub's last
+  `detail`. A safety-family row (0x04xx, which the registry says UIs SHOULD
+  render distinctly) wears `--warn`, never `--bad`. Log opens the Log page
+  with `logView.find` set to the code name (`ph-s5mu.1`). Refusals come last,
+  so a new code never moves anything else; the Link health row counts them
+  and jumps there. Counts live in `machine.stats.nacks`; the 60-deep
+  `events.nacks` ring stays for the Log.
+- The channel map (`src/ui/ChannelMap.svelte`): the 16-bit id space as a
+  256 x 256 grid, row the high byte, column the low byte. Device grid shows
+  rows 0x00 to 0x7F as the RFC-047 0xCDSS grid: bands by class nibble,
+  labeled from the registry, rules every 16 rows (class) and 16 slots
+  (family); the box stays square, so its cells are twice as tall. Ranges on
+  the neutral ramp: SESSION `--tx-mut`, spec-core `--line-4`, device-defined
+  `--line-2`, its experimental span `--line-1`, user `--line-3`, reserved
+  `--line-0`. Channels by class in the two accents, blue for what the hub
+  reports and violet for what clients command: STATE `--reality`, EVENT
+  `--reality` mixed half with `--tx-hi`, INTENT `--intent`, STREAM
+  `--intent` mixed half with `--tx-hi`, STORE `--tx-val`. `--highlight` rings
+  the selection only. The legend gives occupancy as allocated over range
+  size, per range and for all 65,536 ids, and the count per class.
+- Interaction: the pointer snaps to the nearest channel within 8 px (22 px
+  under a coarse pointer); a one-line readout gives id, name, class, offered
+  rate and subscribed state, or the range and `free` off a channel. A click
+  or Enter selects the channel's list row and scrolls it into view. The
+  selection is shared with the top bar's channel heatmap
+  (`src/ui/linkview.svelte.js`): a heatmap click selects the same way from
+  any page, its row centered when the click opens the page, and the page
+  opened from the nav starts with none. The map
+  is one tab stop, a listbox: the arrows step through the channels in id
+  order, Home and End jump. The map box, the readout and the legend keep
+  their size across hover and view, so nothing moves.
+- Registry data the Valence JS client does not emit (`channel_id_ranges`, the
+  grid's class nibbles and experimental span, the NACK families and
+  meanings) is `src/model/registry-tables.js`, generated by
+  `tools/registry-tables.mjs` from the sibling `registry.yaml`; `npm run
+  check` fails when it is stale. Its upstream home is the Valence codegen.
+- Guard: `test/link-page.test.mjs` (`npm run check:link`).
+
+### 10.16 Themes and variants (operator rulings 2026-10-10)
+
+A **Theme** is a whole style: chrome, controls, typography, icons, textures, motion. A
+**Variant** is one palette of a Theme; a pure recolor is a Variant, never a Theme. The color presets
+(Phosphor, Tracer, Synth, Ember, Arctic, Vapor, Ultra, Sakura, Stealth, Slate, Warm ink, Paper) are the Variants
+of the default Theme, **Phosphor**. The Display pane lists Themes first, then the active Theme's Variants.
+
+- A Theme lives in `src/themes/<id>/` (manifest, theme.css, icons, optional fonts) and joins by one line in
+  `src/themes/index.js`; its stylesheet is scoped by `html[data-style]`, loads by being in the folder, and
+  reaches only shipped Theme ids. The engine's theme object gains `style` (the Theme; the earlier `skin` reads
+  as it) and keeps `id` (a Variant's id): an old stored preset id maps to Phosphor plus that Variant.
+- The shell's own surfaces carry stable part names (`data-part`: `top`, `bar`, `strip`, `stop-frame`, `rail`,
+  `card`, `caption-btn` and the rest, `docs/THEMES.md`, Parts), the rail's glyphs an icon registry (`data-icon`),
+  and `style.css` a few Theme tokens (`--font-head`, `--tex-page`, `--tex-card`, `--frame-w`) a Theme's sheet sets.
+- Safety is not a Theme's to restyle (law 13): the stop pair, the safety edge, the write ladder, warn and error
+  states and the stale states look the same in every Theme; a Theme dresses their surroundings. The kit
+  (`node test/theme-skins.test.mjs --theme <id>`) lints and measures it.
+- A Theme may ask the window for an OS material (Mica, Acrylic, macOS vibrancy and `NSGlassEffectView`); the window
+  is created transparent on Windows and macOS, every other Theme paints an opaque body, and a fullscreen page is
+  always opaque. Without the material the Theme draws an opaque look of the same style.
 
 ## Amendments
 
@@ -1364,4 +1610,23 @@ issue the user submits under their own account; Phosphor sends nothing.
 | 2026-10-10 | §10.1, §10.6 | Add to Dash writes any named layout, the Dashes being §10.6's layouts with nothing parallel: the first free rect, written once measured; an unbuilt layout takes its seed as placements first (`ph-hi4i.1`). | operator ("opens a SUBMENU for picking which Dash"; the seed copy on an unbuilt Default, operator-accepted pick; corrected the same day: "Phosphor already has multiple Dashes ... build nothing parallel". The seed copy on every unbuilt layout and not only Default, New Dash… holding only the item, an add leaving the user on the page, and Add to Dash absent off the full class instead of read-only reflowed Dashes are the agent's, veto-able) |
 | 2026-10-10 | §10.13, plugins | The context menu's Add to Dash submenu: every Dash with a check on those holding the item, New Dash… naming in place, ArrowRight or Enter to open and ArrowLeft or Escape to close, a tap opening it inline; `kit.js` `menu` items take `items`, `checked` and `ask`, plugin items stay flat (`ph-hi4i.1`). | operator (the keys and the inline tap are the ruling's; hover opening the flyout with a 300 ms grace on the way to it, a checked Dash opening with the card's first control focused, the `Dash name` placeholder, and no submenu for `registerMenu` items are the agent's, veto-able; the review's: the check a mark on a row that stays a menu item, a flyout holding focus staying open when the pointer leaves, and a height-only resize keeping the New Dash… field open, also veto-able) |
 | 2026-10-10 | §10.3 | The hero numerals show the newest sample, not the rail's interpolated instant; the comet, tape cursor and mini rail keep the render delay. Measured against valencesim, wire to painted numeral 82 to 22 ms in Chromium and 63 to 19 ms in the shell's WebView2 (`test/latency-probe.mjs`, `ph-6vh`). | agent (the brief allowed raw numerals with smoothed motion drawing; keeping the rail's delay unchanged is the agent's, veto-able) |
+| 2026-10-10 | §10.5 | A field's write-state and gate words show whole at every rung (law 5): the compact head (under 22 rem) carries the label and the value chip on its first line and the words on a line of their own; under 13 rem the chip takes a line of its own between them, and a pair's two values take theirs under 28 rem. In the normal row the chip keeps its width and the label yields to the words down to its 3 em. The label text shortens before a tag drops, a tag that does not fit drops whole and never sets the label's floor; the unit yields last; heights follow the width alone (`ph-4j5f`). | operator (the bead, accepted on the board, and the 2026-10-05 §10.5 row's "never hiding the four-state reason"; the chip on the label's line, the 22, 28 and 13 rem breakpoints (measured in Chromium and WebKit: 22 rem keeps a terse field's longest words whole beside its info and reset buttons, a restart tag and a unit at UI scale 0.9 to 1.6 and falls 3 px short at 0.8; 28 rem does the same for a pair at every scale; 24 rem covered 0.8 too but its taller cards put Motion's diagnostic cards ahead of Planner), the label shortening while the words show, tags dropping whole and the unit yielding behind an ellipsis are the agent's, veto-able) |
 | 2026-10-10 | §10.3 | Close immediately when idle: a Settings switch, on by default, lets the X and an OS close request close with no hold while every connected machine is idle (at rest, no stream or player, no pattern, oscillator, homing or trial); anything busy or stale keeps the hold, and a machine not connected counts as idle. | operator ("the hold to close can be ignored when the machine is idle, make that a setting"; the idle list, stale reading busy and not connected reading idle are the ruling's; on by default is the coordinator's, veto-able. Not connected read as no frame since the hub was chosen, so a dropped link holds; any held control-owner slot, a jog or remote included, reading busy; a declared role never reported, or a position with no speed, holding; homing covered only by the speed until a registry role exists; the switch under a new Window heading, desktop only, are the agent's, veto-able) |
+| 2026-10-10 | §10.12, plugins | The funscript library pages as many scenes as its box holds at every size class, six or more: compact rows (a small 16:9 shot, title, meta, badges) side by side in columns where the box is wide (the kit list gains `row.min`), a 16:9 tile grid only where three tiles fit across and a page holds six; 44 px rows and targets under a coarse pointer (docs/plugins/FUNSCRIPT.md, Library browser; `ph-0hvq`). | operator ("the funscript player library being kinda useless? ... most sizes only 1 vid shows"; the density bar of six, the size classes, search, sort, a has-script filter, paging that never jumps and the now-playing and queued state per row are the ruling's. Rows winning wherever the grid pages fewer than six, the badges in the kit tile's slots, V8 V9 from parsed scripts only, Duration and Plays as the added sorts and the 560 px landscape drawer are the agent's, veto-able: FUNSCRIPT.md L1 to L5) |
+| 2026-10-10 | §10.11 | Diagnostic cards last: within their section after the live cards, and a diagnostic card with no section after every section under one Diagnostics header row; shown, a diagnostic group named like a live one rides that card instead of drawing a one-field card of its own (`ph-vrg`). | agent (the bead asks diagnostic groups last and the one-field card folded into its neighbor; keeping sections together, the header row and folding by group name are the agent's, veto-able) |
+| 2026-10-10 | §10.6 | Widgets drop their own card box at the source (Pattern, Limits, Advanced generator, Telemetry, the toy module's scroll); a roster shows 4 rows in slot order and an `N more` button opening every slot in the kit's sheet; the handheld drill-in page is one card under its title (`ph-e82.22.1`). | agent (the 2026-10-02 ruling's "fixed rows with More"; the row count, slot order and the kit sheet as its pane are the agent's, veto-able) |
+| 2026-10-10 | §10.12, §10.13, §10.14 | The Log page fits the window at every size, as the funscript page does: the tabs and tools stay put and the open feed is the one scroller, filling what the chrome leaves down to a 6 rem floor, under which the window scrolls. Repeated events (same source, level, tag, channel and message once numbers and ids read `#`; a digit inside a name, `axis1` or `E12`, stays) fold into one row with ×N; the newest repeat moves its row to the tail, and the row opens to its fields, first and last time, up to 20 instances and Copy row. Level toggles with counts (error, warn, info, debug), a source select (hub, client, plugin, health) and a search; the tail is followed until a scroll up or Pause, an `N new` pill jumps back, Clear empties the feed. A level is an icon and a color; time is absolute, relative on hover. F3 focuses the search; Up, Down, Home and End walk the rows; Enter opens one. A health row's tooltip is its incident's detail and its Incident button opens it on Health (the Details fold under health lines is gone, `ph-qf1s`). 5000 rows stay smooth: off-screen rows skip layout, the feed renders at most once a frame and never while idle (`ph-s5mu`, `ph-e1q`). | operator ("the contents of that page need to fit in the window, similar to the funscript ... combine duplicate log events", 2026-10-10, with the coordinator's seven-point brief the same day. Reading "bumps" as moving the row to the tail; two channels and a digit inside a name never folding; Safety and Session never folding, each edge being evidence; the 5000-row and 20-instance caps; the folded history outliving the 400-line ring until Clear or a new session; the tag select replaced by the search; Revert changes moved into the Changes feed; the status slot at the end of the tools row; a line with no level filing under info; F3's second press going on to Look for; a scroll back to the tail resuming while Pause holds; and `content-visibility` rows instead of a windowed list (measured headless: median 18 ms, p95 25 ms a frame scrolling 5000 rows) are the agent's, veto-able) |
+| 2026-10-10 | §10.13, plugins | No menu reads the clipboard to open (WebView2 asked the user for clipboard access on the first right-click): Paste value is always offered, reads once on the pick through `tauri-plugin-clipboard-manager` in the shell (read and write text only) and refuses a value that does not fit in the status slot. The shell menu replaces the webview's in text entry too (Undo, Cut, Copy, Paste, Select all, then the field's items), and a release build disables WebView2's default menus. Every plugin page gets the page menu; `api.ui.menu` puts a plugin's own items on its own elements; `api.net.open` opens a URL in the system browser inside the user's act; the funscript player's stage, timeline, scene rows and queue rows carry menus (`ph-hi4i`). | operator ("never read the clipboard just to open a menu"; the text-entry menu, the release switch, the three plugin layers and the player's item lists are the ruling's. Fullscreen and Manage plugins as the plugin page's items, a long press in text entry keeping the platform's selection bar, `net.open` behind `net.fetch` and the user's act, the keyboard's "here" being the playhead, Play next moving an already queued scene to the head, B before A swapping, and losing the webview's spelling suggestions are the agent's, veto-able) |
+| 2026-10-10 | §10.15 | The Link page: five sections in one scroller; refusals grouped by NACK code, newest first, with the registry family and meaning, count, last time, cause and a Log link; a map of the 16-bit channel id space (registry ranges on the neutral ramp, channels by class in the accents, occupancy per range) with a Device grid view on the RFC-047 0xCDSS grid; registry tables generated from registry.yaml (`ph-bszw`). | operator (2026-10-10: "the link tab is cool, but I don't know what the NACKS are ... I always loved a visual representation of the valence channel space ... the rest of the link page could be way better laid out and organized", and the coordinator's brief; the agent's calls, veto-able: refusals last with a jump from Link health; meanings are the note's first sentence trimmed by rule, not reworded; ranges neutral and classes in two accent families; NACK counts since the hub was chosen; publish grants as list rows) |
+| 2026-10-10 | §10.3, §10.13, plugins | The right dock's toggle leaves the top bar for the bottom status row's right end, beside the UI scale, in a slot held from the start so its arrival moves nothing; the top bar's under-560 px rx hide for it goes. The phone class drops quick access: no toggle, no drawer, no Pin item (the host leaves out `needsDock` menu items where it has no dock); pins stay stored and the plugin installed. One open state for the dock, the toggle and the stored pref; withdrawing the last dock closes it (the last unpin left the toggle reading open and the next pin reopened the dock, behind a teardown crash in the plugin slot) (`ph-6ydd`). | operator ("perhaps at the bottom, and fwiw, unlikely to be used with mobile, have to cut some things for space"; the unpin bug report. The toggle at the very end right of the scale, the build cell giving the held slot its room, the drawer kept for the non-phone handheld classes and now persisted with the column, and `needsDock` as the menu flag are the agent's, veto-able) |
+| 2026-10-10 | §10.3, §10.10, §10.14 | The top bar keeps what someone looks at when something goes wrong: heatmap, hub name, phase, tier, rx, fps. The catalog chip and the hub chip (address, firmware) move to the Health view's Link and Machine cards. Render reads `N fps`, its tooltip the smoothing delay, the held share and the clock skew in words; held over 10 % and skew over 2 ms show inline, warn toned, in a held slot; the fps and rx values hold fixed widths (`ph-6ydd`). | operator ("most of those indicators on the top can be condensed ... the fps keep"; the audit is the agent's, veto-able: the heatmap stays (activity at a glance, sheds first on handhelds), tier stays (why a control will not drive), the hub chip moves (the name says which machine; the address and firmware are for support), and the slot sits left of the fps with rx last so rx sheds whole) |
+| 2026-10-10 | §10.3, §10.14 | The top bar's reserved render-warning slot goes (it read as a big empty gap beside the fps): the fps chip reads only `N fps`, its tooltip the frame rate and how far behind the rail draws to smooth arrivals. The two render warnings are Health conditions, not bar chips: `rail-stalled` ("Rail stalled on 14% of frames", over 10 % for 10 s) and `clock-drift` ("Clock drift 12 ms", over 2 ms for 10 s), both warn, raised in the status slot, the Log and the Health list, and in diag reports like the rest. "Held" and "skew" leave every user-facing string (`ph-6ydd`). | operator ("big gap" screenshot; "don't know what held and skew mean"; the warnings in the health slot, not the fps chip. The condition names, the area (rail-stalled in Link, clock-drift in This device), warn severity, the 10 s hold, 30 s clear and the 5 % / 1 ms clear bands are the agent's, veto-able) |
+| 2026-10-10 | §10.3, §10.13, plugins | Quick access docks per connected hub: the toggle exists while that hub has pins, and the last unpin there withdraws and closes the dock whatever other hubs hold (`api.onHub` re-checks on a hub change; with no hub yet the dock stays as it is). The top bar orders rx, the warning slot, fps, so fps sheds before rx; the fps chip wears the warn tone with either warning. Phones keep no fps: measured at 420 px the freed room holds rx and leaves about 64 px, short of the fps chip's 69 beside a five-letter hub name (`ph-6ydd`). | coordinator picks, veto-able: emptying closes per connected hub, keep the drawer on narrow windows and tablets; fps on phones was picked and not applied (it would need the hub name to yield on phones, or a narrower tier chip), the operator's to rule |
+| 2026-10-10 | §10.3 | The channel heatmap replaces the top bar's activity decor: a block per catalog channel grouped by class, then link traffic, round trip, late samples, frame budget and Health blocks; brightness is each block's share of its own budget, levels glide on a 500 ms tick and never step per arrival, a refusal wears the warn tint and a slash; a channel block opens the Link page on that channel through a selection shared with the map, Health opens the Health view (`ph-8yga`, `ph-8yga.1`). | operator ("a heatmap showing how the channels are being used ... a block for every channel, + a few more, brightness based on activity etc, like netdata inspired", "lerp pls, no need for flashing"; STORE as a fifth group, the five link blocks and their full scales, the 10 s idle cut, the 30 s peak decay, the compact form per class and counting at the socket are the agent's, veto-able; the selection shared with the Link page and Health opening the Health view are the coordinator's) |
+| 2026-10-10 | §10.10 | Open to LAN: the desktop shell shares the running Virtual on the LAN as more sessions of the same hub, with discovery, a Pairing window button and GOODBYE on every ending; Windows' first-run firewall prompt is the only firewall step (`ph-li30`, Nucleus `val-0o5`). | operator (the name; the Rust listener, the page relay, the ABI additions, the port fallback, booting with the window closed when opened to the LAN, no `/uitoken` on the LAN and the hub-side GOODBYE teardown are the agent's, veto-able) |
+| 2026-10-10 | §10.15 | The Log feed lists the hub's refusals: one warn row per NACK from the hub, tagged `refusal`, reading the code's name with its code, channel and detail as fields, folded like any repeat (code and channel are its identity, never shaped). The Link page's Log link opens the Log feed searched for that name with the level and source filters cleared; the next visit starts with no search (`ph-s5mu.1`). | coordinator (the Link page's seam, ph-s5mu.1; the Log feed rather than a feed of its own, the warn level, the `refusal` tag and the filters clearing are the agent's, veto-able) |
+| 2026-10-10 | §10.14, plugins | Video drops: a playing video's dropped frames past what the screen can show, over 1% in 30 s in 3 separate seconds, a This device warn ("Video dropped 42 frames in 30 s"); the report's optional media block and dropped-frame history; the stage overlay hides as `display: none` and the bare strip drops the plan readback, so at rest only the stop pair sits over a fullscreen video; a media page's bare fullscreen goes edge to edge with the caret as a corner hotspot shown on pointer movement, and the player's analyzer stops painting its rows behind the fullscreen video (`ph-9t5l.7`). | coordinator (a friend's 4K HDR 120 fps fullscreen playback with the analyzer open, "we have no measurement of whether playback is actually smooth"; judging against min(video fps, screen refresh) is the brief's. The 1% / 30 s / 3 seconds / 5 s hold thresholds, warn, Close other apps as the action, the analyzer flag read from the player's `data-an`, and Tab showing the hidden overlay are the agent's, veto-able; edge to edge, the hotspot and the analyzer are the coordinator's follow-up, the top left corner on the pair's inset and the overlay's 2.5 s idle the agent's) |
+| 2026-10-10 | §10.3 | The top bar's live chip becomes a link dot right of the hub name (live 2 s, connecting 1 s, stale dim, offline hollow; a ripple behind the row on the write-ack ring's easing and glow); "tier control" becomes "AUTH: control"; "RX 0s" becomes the data rate, down and up in KB/s from the hub session's socket bytes (250 ms samples, 1 s average, smoothed), with the last frame's age in its tooltip; a resent chip (the share of TCP sent again, this client's and the machine's, labeled with the scope and unit the model reports) reads `machine.stats.link` and shows `--` for what is not reported (`src/model/linkbar.js`, `test/linkbar.test.mjs`, responsive-matrix `barstates`). | operator (the design as agreed 2026-10-10; the agent's calls, veto-able: the dot's reality color for live and the intent color for connecting; a virtual session wearing the warn tone; 1 KB = 1000 B; each number three characters wide with `999+` past it; the auth value held to the width of `configure`; the chip labeled `loss` (the operator renamed it from `resent` the same day; the tooltip says the figures are TCP sent again), showing the client's and the machine's share with the radio retries and signal strength in its tooltip only; phones dropping the `KB/s` text to keep the rate whole at 420 px; the ripple clipped to the bar's row rather than bleeding over the strip) |
+| 2026-10-10 | §10.3 | The link dot's ripple is a faint thin ring (peak opacity .22, about a third of before) on its own cycle, two beats long and started a fifth of a beat late (live 4 s after 0.4 s, connecting 2 s after 0.2 s), on a slow-start, speed-up, slow-rest curve; the swell is 18 %, not 36 %; the `resent` chip is labeled `loss`, its tooltip still saying TCP sent again (`src/ui/LinkBar.svelte`, `src/model/linkbar.js`, responsive-matrix `barstates`). | operator (feedback 2026-10-10: "resent sounds like a grudge indicator", the ripple "softer, slower at the start, more of a ripple in water than a pulse") |
+| 2026-10-10 | §10.3 | The channel heatmap's per-block tooltips become one enlarged, labeled panel in the top layer, below the top strip, with the details of the hovered block at its foot (the bar's block count, groups and live brightness, click routing and keyboard kept; 350 ms grace; coarse pointers keep the one button); the stalled-updates line shows only past a real 1 s gap (`src/ui/ChannelHeat.svelte`, `test/channel-heat.test.mjs`). | operator ("hovering brings a slightly larger labelled view of the same group of blocks instead of individually"; the tile size 18 px, the 350 ms grace, the 1 s gap and hanging below the strip rather than the bar are the agent's, veto-able) |
+| 2026-10-10 | §10.16, themes | Themes and variants: a Theme is a whole style (chrome, controls, type, icons, textures, motion), a Variant one palette of it; the twelve color presets become Variants of the default Theme Phosphor; each Theme is a folder (`src/themes/<id>/`) joined by one registry line, scoped by `html[data-style]`, with part names, an icon registry and Theme tokens as its hooks; an old stored preset id maps to Phosphor plus that Variant; a Theme may ask the window for an OS material, and a fullscreen page is always opaque; one command (`test/theme-skins.test.mjs --theme <id>`) checks a Theme (docs/THEMES.md). | operator |

@@ -13,20 +13,40 @@
 import { mount } from 'svelte';
 import App from './App.svelte';
 import './style.css';
+import './themes/fonts.css';
+// Each theme folder's stylesheet loads by being there (docs/THEMES.md, Adding a theme). Only the applied
+// Theme's sheet is in the document: every rule loaded weighs on each style recalc (docs/THEMES.md, Performance).
+const THEME_CSS = import.meta.glob('./themes/*/theme.css', { eager: true, query: '?inline', import: 'default' });
+// A theme folder's boot.js runs once at startup, whatever is applied: it may subscribe onTheme and load
+// the theme's behavior (docs/THEMES.md, Behavior). Nothing per frame here.
+import.meta.glob('./themes/*/boot.js', { eager: true });
 import { connect, machine, parseHost, recentHubs } from './model/machine.svelte.js';
-import { applyStoredTheme } from './model/theme.js';
+import { applyStoredTheme, onTheme } from './model/theme.js';
+import { installDynamicColor } from './model/dynamicColor.js';
 import './ui/still.svelte.js';
 import { loadPlugins } from './plugins/plugins.svelte.js';
 import { bindControls } from './plugins/kit.js';
 import { mountBound } from './ui/BoundControl.svelte';
+import { installTips } from './ui/tip.js';
 
 // api.ui.field and api.ui.module draw the shell's own controls (docs/PLUGINS.md, Field-bound controls).
 bindControls(mountBound);
+installTips();
 
 // Client preferences, applied before first paint so the page never flashes the
 // default palette. These are BROWSER state, not machine state — the
 // ground-truth doctrine does not apply and nothing here is sent to the device.
+const themeSheet = document.head.appendChild(document.createElement('style'));
+themeSheet.id = 'themeSheet';
+let sheetStyle = null;
+onTheme((t) => {
+  if (t.style === sheetStyle) return;
+  sheetStyle = t.style;
+  themeSheet.textContent = THEME_CSS['./themes/' + t.style + '/theme.css'] || '';
+});
 applyStoredTheme();
+// Android 12+: the Material Theme takes the system's palette (MainActivity.kt publishes it).
+installDynamicColor();
 try {
   if (localStorage.getItem('ui_hivis') === '1') document.documentElement.classList.add('hivis');
   if (localStorage.getItem('ui_terse') === '1') document.documentElement.classList.add('terse');
@@ -85,6 +105,19 @@ async function boot() {
         invoke, isVirtual: () => !!machine.link.virtual || v.onSim(), origin: () => machine.link.roles,
       }))
       .catch((e) => bootFault('datagram e-stop', e));
+    // The Mica and Liquid Glass Themes ask the window for its OS material (src-tauri/src/material.rs).
+    await Promise.all([import('@tauri-apps/api/core'), import('./model/material.svelte.js')])
+      .then(([{ invoke }, m]) => m.installMaterial(invoke))
+      .catch((e) => bootFault('window material', e));
+    // The Liquid Glass Theme's backdrop is the desktop wallpaper (src-tauri/src/wallpaper.rs).
+    await Promise.all([import('@tauri-apps/api/core'), import('./themes/glass/wallpaper.js')])
+      .then(([{ invoke }, m]) => m.installWallpaper(invoke))
+      .catch((e) => bootFault('wallpaper', e));
+    // The top bar's client loss: the OS's TCP counters for the hub socket
+    // (src-tauri/src/linkstats.rs; null on Android).
+    await Promise.all([import('@tauri-apps/api/core'), import('./model/machine.svelte.js')])
+      .then(([{ invoke }, m]) => m.setClientLinkSource((host, port) => invoke('link_tcp_counters', { host, port })))
+      .catch((e) => bootFault('link counters', e));
     // NO baked-in host: discovery IS the shell's front door (operator ruling,
     // 2026-07-28). Auto-connect only re-joins a saved hub, at its saved
     // host:port, when the reconnect preference is on (shell/settings-pane.js).

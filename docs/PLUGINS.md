@@ -218,11 +218,11 @@ throws like any bad `registerPage` field; absent, the page is found by
 name only. Seam: `registerPage` in `src/plugins/host.js`, `src/ui/LookFor.svelte`.
 
 **Density rungs** (DESIGN §10.5). A widget or hero has two rungs, compact and
-normal, picked by the width its card gives it: compact under 18rem, normal
+normal, picked by the width its card gives it: compact under 22rem, normal
 above, the line the built-in fields use (`src/ui/Field.svelte`); a widget
 whose content turns at another width may place its own line. The host sets
 no container on a plugin's element: the mount makes its root
-`container-type: inline-size` and writes `@container (max-width: 18rem)` for
+`container-type: inline-size` and writes `@container (max-width: 22rem)` for
 the compact form, or measures its own width (the reference plugin turns its
 narrow form at 480 px of its root). Compact never goes under the 40 px
 target and never hides the four-state reason (law 5).
@@ -260,26 +260,39 @@ slash included (`valence://a1b2c3d4e5f60718/role:pattern.speed`,
 it. Category and card are not part of it: they are presentation. Seam:
 `src/model/identity.js` (`pathOf`, `parsePath`, `resolveIdentity`).
 
-**Context menus** (experimental, `ph-kyjd`). The shell has one context menu
-(DESIGN §10.13); the webview's own (Print, Reload, Inspect) never shows outside
-text entry, where cut, copy and paste stay, and a dev build keeps it behind
-Shift+right-click. A right-click, a long press on touch, the menu key or
+**Context menus** (experimental, `ph-kyjd`, `ph-hi4i`). The shell has one
+context menu (DESIGN §10.13); the webview's own (Print, Reload, Inspect, its
+text menu) never shows: a release build turns it off in WebView2 itself
+(`src-tauri/src/lib.rs`), and a dev build keeps it behind Shift+right-click.
+A right-click, a long press on touch, the menu key or
 Shift+F10 on the focused control opens it at the pointer or the control's
 corner, in the top layer, below the top strip and the stop pair; it moves
 nothing. Arrows, Home and End move, Enter picks, Escape, Tab, a scroll and a
 tap outside close it, and focus returns where it was. A submenu (Add to
 Dash) opens beside it on hover, a click, ArrowRight or Enter, and ArrowLeft
 or Escape closes it back to its opener; a tap opens it inline. It lists the
-targets under the pointer, innermost first, each after a caption: the **field**
-(headed by its label and the hub's description), the **module** or card
-around it, and the **page**. A surface that takes its own right-click (the
-Dash's edit-mode add menu, the node editor) prevents the event first, and the
-shell stays out.
+targets under the pointer, innermost first, each after a caption: a plugin's
+**own element** (`ui.menu`, below), the **field** (headed by its label and the
+hub's description), the **module** or card around it, and the **page**. A
+surface that takes its own right-click (the Dash's edit-mode add menu, the
+node editor) prevents the event first, and the shell stays out.
+
+- Text entry: Undo, Cut, Copy, Paste, Select all, by the input's state
+  (read only: no Undo, Cut or Paste; no selection or a password: no Cut or
+  Copy; empty: no Select all), then the field's items
+  when the input is a field's own. Cut, Copy and Paste ride the clipboard
+  as Paste value does, Paste reading on the pick only. A long press on
+  touch keeps the platform's selection handles and bar. The webview's
+  spelling suggestions lived in its menu and are gone with it; the
+  underline stays.
 
 - Built-in field items: Copy path; Copy value (the reported value as text);
-  Paste value (enabled only while the clipboard holds a fitting value: a
-  number inside the field's bounds, an option's index, any text for a text
-  field; never a secret); Reset to default (where the catalog declares one,
+  Paste value (reads the clipboard once, on the pick, never to open the
+  menu; a value that does not fit is refused in the status slot. It fits as
+  a number inside the field's bounds, an option's index, any text for a text
+  field; never a secret. The shell reads and writes through the native
+  clipboard, which asks no permission; the served page reads the webview's,
+  falling back to the last in-app copy); Reset to default (where the catalog declares one,
   disabled at it); Send to node editor; Show in history (once this session
   wrote the field); Add to Dash. Module items: Copy path; Send fields to node
   editor; Add to Dash. Add to Dash is on the full class only and opens a
@@ -288,7 +301,8 @@ shell stays out.
   one in place. Page
   items: Edit layout on the Dash; Show advanced, Show diagnostic and Reset
   page to defaults on a category page (Show advanced on a card instead when
-  one was clicked). Writes take the plugin write door: the host's confirm,
+  one was clicked); on a plugin page, Fullscreen (the footer's; a media page
+  carries its own) and Manage plugins. Writes take the plugin write door: the host's confirm,
   the ladder and the refusal banner; a gated item is disabled with the gate's
   words as its title (law 3).
 - **Send to node editor** dispatches `phosphor-node-add` on `window`
@@ -305,33 +319,58 @@ shell stays out.
   id), `hub` the hub's key, `path` the Valence path. A label or run that
   throws is recorded on the plugin and never reaches the shell. Items follow
   the built-ins of their target, in plugin load order. A plugin item is one
-  row: it never opens a submenu.
-- Seams: `src/ui/contextmenu.js`, `kit.js` `menu`, `src/App.svelte`
-  (`menuItems`, the page's items), `host.js` `menus`.
+  row: it never opens a submenu. `needsDock: true` marks an item that only
+  makes sense beside the plugin's dock: the host leaves it out where the
+  shell has no dock (the phone class, DESIGN §10.13).
+- `api.ui.menu(el, items, {title})` puts the plugin's own items on its own
+  element and returns `off()`; no permission. A right-click, a long press,
+  or the menu key or Shift+F10 on a focused element inside `el` lists them
+  first, under `title`, innermost element first, before the field, module
+  and page items. `items` is an array or a function of the open `at`
+  `{x, y, keyboard, target}` (client px; `keyboard` true when a key opened
+  it at the focused element's corner, so a time or place "here" should be
+  the plugin's own cursor), called at each open. An item is `{label, run,
+  disabled, title, checked}`: `label` 1 to 40 characters, `disabled` '' or
+  the reason, shown as its tip; an item without a label or a run is left
+  out. One row each, never a submenu. The items function and every `run`
+  run under the plugin's guard: a throw is recorded on the plugin and lists
+  nothing or does nothing, never reaching the shell; a disabled plugin's
+  elements list nothing. Attaching again replaces. Keyboard access is the
+  element's: a focusable element inside `el` opens it with the menu key or
+  Shift+F10.
+- Seams: `src/ui/contextmenu.js`, `kit.js` `menu`, `attachMenu`,
+  `ownMenus`, `src/App.svelte` (`menuItems`, the page's items), `host.js`
+  `menus` and the `ui.menu` guard.
 
 **The dock** (experimental, `ph-kyjd`). `api.registerDock({id, label, icon,
 mount})` returns `withdraw()`: a panel in the shell's right dock. `id` follows
 the name rule, `label` is 1 to 24 characters, `icon` one SVG path `d` as a
 page's; `mount(el)` is a page's mount with no fields, driven the same way
 (`update()` on link and safety changes). The dock is closed until the user
-opens it from the top bar (the toggle at the bar's right end, named by the
-dock's label), and the toggle exists only while a dock is registered. On the
-desktop the open dock is a column right of the content, which it narrows
-(a user's act, DESIGN §10.3); its open state persists (`phosphor.dock`). On
-the phone class it is a drawer from the right edge under the top strip, over
-the page, never over the stop pair; Escape and a tap outside close it (the
-tap swallowed, the strip's never), and the quick rail's pop-up and its
-toggles work over it. With several docks a tab row picks one. Registering or
-withdrawing a dock reruns no claim pass, so no plugin hero remounts.
-Seams: `src/ui/Dock.svelte`, the toggle in `src/ui/LinkBar.svelte`,
-`host.js` `docks`.
+opens it from its toggle at the right end of the bottom status row, beside
+the UI scale (named by the dock's label); the toggle exists only while a
+dock is registered, in a slot held from the start, so it arriving moves
+nothing. On the desktop the open dock is a column right of the content,
+which it narrows (a user's act, DESIGN §10.3). On the other non-phone
+classes it is a drawer from the right edge between the top strip and the
+bottom bars, over the page, never over the stop pair or its toggle; Escape
+and a tap outside close it (the tap swallowed, the strip's never), and the
+quick rail's pop-up and its toggles work over it. One open state serves
+both forms, the toggle and the stored pref (`phosphor.dock`); withdrawing the
+last dock closes it, so the next one arrives closed. The phone class has no
+dock (DESIGN §10.13): `docks` is empty there and `needsDock` menu items are
+left out, while the plugin stays active and keeps what it stored. With
+several docks a tab row picks one. Registering or withdrawing a dock reruns
+no claim pass, so no plugin hero remounts. Seams: `src/ui/Dock.svelte`, the
+toggle in `src/ui/FootStrip.svelte`, `host.js` `docks` and `dockable`.
 
 **The worked example**: `plugins/factory/quick-access/` builds the quick
 access tray on these three capabilities and nothing else. Its `registerMenu`
-item reads Pin to quick access, or Unpin from quick access, in module and
-field menus; a pin is `{key, kind, title}` stored per hub in `api.prefs`
-(`pins`, keyed by `api.hub()`). It registers its dock, Quick access, once
-anything is pinned on any hub, so a user who never pins sees no toggle; each
+item (`needsDock`, so none on the phone class) reads Pin to quick access, or
+Unpin from quick access, in module and field menus; a pin is `{key, kind, title}` stored per hub in `api.prefs`
+(`pins`, keyed by `api.hub()`). It registers its dock, Quick access, while
+the connected hub has pins and re-checks on `api.onHub`, so a user who never
+pins sees no toggle and the last unpin on a hub closes the dock; each
 pin is a kit card with a grip (drag, or ArrowUp and ArrowDown) and an Unpin
 button around `ui.field(pin)` or `ui.module(pin)`. A row is built once per pin
 and moved on a reorder, so a control keeps its in-flight write.
@@ -345,13 +384,15 @@ and moved on a reorder, so a control keeps its in-flight write.
 | `field(role)` | first field carrying a registry role, or null | **freeze candidate** |
 | `value(field)` | the value a control must show (reported, or the in-flight request while pending) | **freeze candidate** |
 | `status(field)` | `confirmed` / `pending` / `overdue` / `fault` | **freeze candidate** |
-| `age(field)` | ms since the field's channel last reported (dim when stale, RENDERING §13 law 8) | **freeze candidate** |
+| `age(field)` | ms since the field's channel last reported: since its hub sample time where the channel carries a `telemetry.sample_time` field (RFC-113 draft), else since its arrival (dim when stale, RENDERING §13 law 8) | **freeze candidate** |
 | `catalog()` | the whole settings model (categories, `byRole`, `fields`, `actions`) for channel-bound plugins | **freeze candidate** |
 | `write(field, value)` | routes to `writeSetting` / `sendCommand` / `runAction` by field shape. Needs `intent` | **freeze candidate** |
 | `write`'s third argument `payload` and its confirm | an action's other schema keys, `{key: value}`. The host renders the confirm first (`source.background_run` enable, a confirm-tagged or destructive op, an `action.store` delete) and a cancel resolves `{ok: false, error: 'canceled'}` | experimental |
 | `writeTrial(field, value)` | a setting applied live and not stored until `commitTrial()` (Valence RFC-099, SPEC §9.3); same shadow lifecycle as `write`. `{ok: false, error}` on a hub without settings-trial or a field that is not a setting. Needs `intent` | experimental |
 | `commitTrial()` / `revertTrial()` | a Promise of `{ok, error?}`: store, or put back, every trial value this client holds. Needs `intent` | experimental |
 | `trialPending` | read-only property: true while any client holds a trial value on this hub, from the machine's `meta.trial_pending` fields | experimental |
+| `changed(channelOrRole)` | a plain number that moves whenever `value`, `status`, `gate`, `stale`, `reason` or `trialPending` could read differently for that channel id (or any channel carrying that role): its STATE landed, or a link, tier, latch, write, freshness or catalog change, or the motion lock. Compare it each frame and read only when it moved; reading it costs no reactive state. `NaN` where the host has no signal: read every frame | experimental |
+| `onChanged(channelsOrRoles, fn)` | calls `fn()` after `changed()` moves for any listed channel id or role: on a microtask, then at most once a frame while moves keep coming; idle it costs nothing. Returns the unsubscribe; deactivating the plugin drops what is left. Not told of the motion lock's lapse (`changed()` reads it). A no-op where the host has no signal. Use it to ask for a frame when nothing else would draw one | experimental |
 | `gate(field)` | `''` or why the field cannot be written now, in words (law 3: no link, not authorized, refused by the machine's mask, read-only). On a motion-input field (a c2h STREAM's, e.g. `input.duration`), in order: `no hub link`, `session not authorized`, the latch words, `stop the pattern first` (a generator runs), `motion input in use by <plugin>`. A foreign-held control-owner slot never gates; a stream holding the rail is the hub's `SOURCE_CONFLICT`, which `submitSegments` returns as `refused: rail owned by <source>` | experimental |
 | `stale(field)` | `''` or the stale reason in words, by the host's one freshness rule (law 8). `age` is raw and grows on an on-change channel that is quiet | experimental |
 | `reason(field)` | `''` or the last refusal of the field's write, as the host's ladder words it (`refused: SOURCE_CONFLICT`) | experimental |
@@ -365,14 +406,17 @@ and moved on a reorder, so a control keeps its in-flight write.
 | `submitSegments(list)` returning `{ok, sent, rateHz, reason}` | lookahead motion input: `[{atMs, norm, durationMs, endVel?}]`, `atMs` the `performance.now()` instant the machine starts each, ascending, `endVel` its end velocity in norm/s (absent: `unspecified`, a free knot the hub shapes and, on a stream, passes moving while it expects a successor; 0 for a real stop); advance by `sent`. Needs `motion` (`ph-smvd.2`) | experimental |
 | `submitSamples(role, list)` returning `{ok, sent, rateHz, latencyMs, reason}` | a c2h `samples` STREAM found by channel role (e.g. SPEC 9.7's `osc.drive`): `[{atMs, values}]`, `atMs` the `performance.now()` instant each sample describes, ascending, `values` in the role's layout order; one bundle per call, advance by `sent`; `latencyMs` the grant's `schedule_latency_us`, the least notice a point needs (RFC-110 item 4): send each that far ahead or more, never past the 250 ms lead cap; `reason` `NO_STREAM` when the hub has no such entry. Not motion input: no producer lock. Needs `motion` (`ph-6dr6`) | experimental |
 | `net.listenTcp(port, onLine)` returning `close()` | loopback TCP line service, shell only. Needs `net.listen:<port>` | experimental |
+| `net.open(url)` returning a `Promise<boolean>` | an http(s) URL in the system browser (the shell's OS launcher on desktop; a new tab on the served page); false where nothing could open it. Only inside the user's own act (a click, a menu pick: transient activation). Needs `net.fetch` | experimental |
+| `ui.menu(el, items, {title})` returning `off()` | the plugin's own items on its own element in the shell context menu (Context menus) | experimental |
 | `net.fetch(url, init)` returning a `Promise<Response>` | HTTP(S) to a non-machine service (a media library), CORS-free through the shell's HTTP plugin; vite dev uses the page's `fetch`. Refuses other schemes and the connected hub's own origins (its host on 80, 443 or its WS port). Needs `net.fetch` (ruling R-A, `ph-smvd.2`) | experimental |
 | `registerSettings(mount)` | a card on the plugin's row in the Plugins pane | experimental |
 | `icons.quickRail` | the quick rail's glyph, one SVG path `d` (Pages, The quick rail) | experimental |
 | `registerPage({id, label, icon, spec, mount, mediaFullscreen, fill, search, status, compactHero})` returning `withdraw()` | a tab under Plugins in the sidebar; `mount(el, fields)` as a hero's, `spec` resolved without claiming (Pages, above) | experimental |
-| `registerTheme(theme)` | a preset, kind `theme` only: the full object `{id, name, accents, chassis, look, overrides}` (docs/THEMES.md) or the old `{id, name, reality, intent}` pair. The id is namespaced; safety tokens are dropped (RENDERING law 13) | experimental |
+| `registerTheme(theme)` | a preset, kind `theme` only: the full object `{id, name, accents, chassis, look, overrides}` (docs/THEMES.md) or the old `{id, name, reality, intent}` pair. The id is namespaced; safety tokens are dropped (RENDERING law 13). A plugin theme is a Variant of the default Theme: it carries no CSS, no icons and no part rules | experimental |
 | `prefs.get(k)` / `prefs.set(k, v)` | per-plugin JSON in localStorage (browser state, never machine state) | experimental |
 | `hub()` | the connected hub's key (`hub_instance_id`, else `host:port`), null before a catalog: per-hub plugin state keys on it (Identities and paths) | experimental |
-| `registerMenu({id, targets, label, run})` returning `withdraw()` | an item in the shell's context menu of a field, a module or a page (Context menus). Needs `menu` | experimental |
+| `onHub(fn)` | calls `fn()` whenever `hub()` reads differently (a hub adopted, switched or forgotten). Returns the unsubscribe; deactivating the plugin drops what is left; a throw is recorded on the plugin | experimental |
+| `registerMenu({id, targets, label, run, needsDock})` returning `withdraw()` | an item in the shell's context menu of a field, a module or a page (Context menus); `needsDock` leaves it out where the shell has no dock. Needs `menu` | experimental |
 | `registerDock({id, label, icon, mount})` returning `withdraw()` | a panel in the right dock, closed until the user opens it (The dock) | experimental |
 | `ui` | the shell's controls and layout primitives in plain DOM, `ui.version` 1 (The UI kit, below) | **the kit only grows**: v1 is a contract; additive only |
 
@@ -482,6 +526,19 @@ in the top layer); one never appended is borrowed into `<body>` while open.
   a state change swaps text, never a box.
 - Targets: 40 px on a coarse pointer (law 12); a `bar` row is the tap height
   there.
+- Tooltips: the shell draws one tooltip, from an element's `data-tip`
+  (`src/ui/tip.js`); a native `title` tooltip never shows. A kit control
+  takes the text as its `tip` option (`title` on a `button` or a `segmented`
+  option is its name and its tip). Plugin markup that sets `title` anyway is
+  converted at the first hover or focus: the text moves to `data-tip`, the
+  attribute is removed, and where it was the element's only name it becomes
+  the `aria-label`. A tip that repeats the element is dropped: equal to its
+  visible text, or to its `aria-label` while it has visible text (case,
+  spacing and a trailing shortcut such as `(Ctrl+S)` or `, F11` do not
+  count). An icon-only element keeps its tip, its only visible name, and so
+  does text the element clips (the tip is the full text). Give a tip only
+  what the element does not say: a shortcut, a value, a reason, a disabled
+  reason. While shown, the tip is the element's `aria-describedby`.
 - Touch never adjusts by accident (`ph-5u0g` peeve 14): a slider, a scrub
   and a number's drag take a touch drag only after horizontal intent (8 px,
   more across than down) or a 400 ms hold; a tap never changes them and a
@@ -513,9 +570,9 @@ returns the `<svg>`; an `icon` option takes a name or a stroke path `d`.
 
 | factory | options | handle |
 |---|---|---|
-| `button` | `label`, `icon`, `title` (an icon-only button's name), `tone` (`'primary'`, `'danger'`), `pressed` (a boolean makes it a toggle: `aria-pressed` and the shell's on look; it flips before `onClick`), `onClick` | `label`, `icon`, `title`, `pressed`, `disabled` |
+| `button` | `label`, `icon`, `title` (an icon-only button's name, and its tip), `tip` (the tooltip when it is more than the name), `tone` (`'primary'`, `'danger'`), `pressed` (a boolean makes it a toggle: `aria-pressed` and the shell's on look; it flips before `onClick`), `onClick` | `label`, `icon`, `title`, `tip`, `pressed`, `disabled` |
 | `files` | `accept`, `multiple`, `onFiles(files)` (an array) | a hidden file input: `open()` shows the picker; append it anywhere in the mount |
-| `segmented` | `options: [{value, label, icon, title}]`, `value`, `tabs` (a tab list: `role=tab`, the open tab in `--highlight`), `onChange` | `value`, `disabled`, `options` (settable: the buttons are rebuilt) |
+| `segmented` | `options: [{value, label, icon, title, tip}]`, `value`, `tabs` (a tab list: `role=tab`, the open tab in `--highlight`), `onChange` | `value`, `disabled`, `options` (settable: the buttons are rebuilt) |
 | `switch` | `label` (beside the track), `value`, `onChange` | `value`, `disabled` |
 | `slider` | `min`, `max`, `step`, `value`, `label` (accessible name), `format(v)` (its value chip, `el.chip`, as wide as its widest reading), `onInput` (live), `onChange` (on release) | `value`, `disabled`, `chip`, `input` |
 | `stepper` | `min`, `max`, `step`, `value`, `unit`, `label`, `buttons` (default true: minus, number, plus with hold-repeat; false: the number box alone), `drag` (the box drags sideways, one step per 4 px; a press without a drag types), `onChange` | `value`, `disabled`, `input` |
@@ -531,13 +588,13 @@ returns the `<svg>`; an `icon` option takes a name or a stroke path `d`.
 | `rows` | `title` (its `card-sub` head) | the grid `row`s go in |
 | `row` | `label`, `control`, `chip` (default: the control's own `chip`), `tip` | label, control and chip on one line (the settings row) |
 | `bar` | `left`, `center`, `right` (element lists), `drop` (elements in the order they leave) | `left`, `center`, `right` (the groups), `refit()` (after a group's content changes width; a resize refits by itself). One row while it fits; else `center` takes its own row above; else the `drop` elements leave in order. A target never shrinks. |
-| `stage` | `overlay` (`'fullscreen'`, the default: the overlay exists in fullscreen only; `'always'`), `rotate` (on the phone class a turn to landscape enters fullscreen while `aspect` is set, and the turn back leaves), `onTap` (a single tap once the double window passes; a tap that only wakes a hidden overlay is none), `onDouble` (default: fullscreen), `onFullscreen(on)` | `media` (the video goes here, letterboxed), `empty` (a slot over the box; the plugin shows and hides what it puts there), `overlay` (hides after 2.5 s idle, kept while hovered, dragged or holding keyboard focus), `dock` (shown while the overlay hides), `aspect` (width / height; the stage sizes to it, at most `--ui-stage-max`, 60 % of the window height by default; null keeps 16:9), `fullscreen` (get/set: the shell's bare page fullscreen), `flash(icon)`, `center(icon or null)`, `poke()` (shows the overlay) |
+| `stage` | `overlay` (`'fullscreen'`, the default: the overlay exists in fullscreen only; `'always'`), `rotate` (on the phone class a turn to landscape enters fullscreen while `aspect` is set, and the turn back leaves), `onTap` (a single tap once the double window passes; a tap that only wakes a hidden overlay is none), `onDouble` (default: fullscreen), `onFullscreen(on)` | `media` (the video goes here, letterboxed), `empty` (a slot over the box; the plugin shows and hides what it puts there), `overlay` (hides after 2.5 s idle as `display: none`, nothing left over the video; kept while hovered, dragged or holding keyboard focus; Tab in fullscreen shows it), `dock` (shown while the overlay hides), `aspect` (width / height; the stage sizes to it, at most `--ui-stage-max`, 60 % of the window height by default; null keeps 16:9), `fullscreen` (get/set: the shell's bare page fullscreen), `flash(icon)`, `center(icon or null)`, `poke()` (shows the overlay) |
 | `scrub` | `max`, `value`, `buffered`, `step` (the arrows' step, default 1 % of `max`), `label`, `format(v)` (the hover readout and `aria-valuetext`), `onSeek(v, phase)` (`'start'`, `'move'`, `'end'`) | `value` (ignored mid-drag), `max`, `buffered`, `track` (paint a background here, e.g. a heat map) |
 | `split` | `min`, `max`, `value` (px of the region after the bar, or null), `size()` (that region's height while `value` is null), `label`, `onChange(px, commit)` | a horizontal resize bar: drag, arrows (8 px, Shift 1), a double-click asks for null |
 | `sheet` | `title`, `index`, `form` (`'auto'`, `'sheet'`, `'drawer'`, `'popover'`, `'slot'`), `slot` (an element of the plugin's: the slot form is a card there), `anchor` (its toggle: a popover opens under it, a tap on it is no outside tap; settable later), `onClose` (a user's close) | `body`, `open` (get/set), `form`, `anchor`; `data-open` while open. Auto: the right drawer in page fullscreen, the bottom sheet on a phone upright, else the slot when one is given, else the drawer; it follows a turn or a fullscreen while open, its content moving with it. The sheet drags down to close; the slot card closes on its close button. |
 | `status` | none | `set({text, tone, title})`, `tone` null, `'ok'`, `'warn'` or `'intent'` (sent as null). Inside the shell's pane (a page that registers `status`, a hero's card on the Dash or a category page), on every class, it is the top strip's status slot (Pages, above) and draws nothing in place; elsewhere it is a one-line row where the plugin placed it. Set conditions only; `{text: ''}` clears it. |
 | `quickRail` | none | the Rail button: it opens and closes the quick rail; `shown` (default true): it is hidden (the `hidden` attribute, so the shell counts it out and shows the footer's own icon) while the host offers no rail or `shown` is false |
-| `list` | `form` (`'grid'`, `'rows'`), `paged` (default true: as many whole items as fit, and a page foot; false: it scrolls with the shell's recess shades and asks for everything once), `tile: {min, max}` (grid tile widths in px), `count(total)` (the foot's count words), `onPage(page, perPage)` (show that page: call `show`), `onMove(from, to)` (rows drag to reorder: a mouse at once, a touch after a hold; the drag is no pick) | `show(items, total)`, `note(text, tone)` (loading, empty or an error, over the body), `busy`, `page`, `perPage`, `form` (settable: the page refits), `refit()` (measure the page size again) |
+| `list` | `form` (`'grid'`, `'rows'`), `paged` (default true: as many whole items as fit, and a page foot; false: it scrolls with the shell's recess shades and asks for everything once), `tile: {min, max}` (grid tile widths in px), `row: {min}` (rows fill side-by-side columns at least `min` px wide; one column with `onMove`), `count(total)` (the foot's count words), `onPage(page, perPage)` (show that page: call `show`), `onMove(from, to)` (rows drag to reorder: a mouse at once, a touch after a hold; the drag is no pick; one column) | `show(items, total)`, `note(text, tone)` (loading, empty or an error, over the body), `busy`, `page`, `perPage`, `form` (settable: the page refits), `refit()` (measure the page size again); a refit keeps the page's first item in view |
 | `tile` | `image`, `title`, `meta`, `current`, `actions` (kit buttons over the shot, or at a row's end), `onClick` | `current`, `button` (the tile's own button); the parent `list`'s form draws it as a tile or a row |
 
 **Helpers** for a plugin's own drawing, each returning `off()`:
@@ -832,8 +889,29 @@ Shipped:
   through the same geometry, so it never jumps on pickup.
 - `plugins/factory/quick-access/`: the quick access tray, the worked example
   of Context menus, The dock and Field-bound controls (above). Enabled by
-  default; its dock exists once something is pinned and opens only when the
-  user opens it. Declares `intent` and `menu`.
+  default; its dock exists while the connected hub has pins and opens only
+  when the user opens it; none on the phone class, where its pins wait for
+  the desktop. Declares `intent` and `menu`.
+- `plugins/factory/arcade/`: three small games in the TempleOS spirit (Road,
+  Bat, Song) on a page, `Arcade`, that is registered only while the hidden
+  Temple theme is applied (docs/THEMES.md, Hidden themes) and withdrawn when
+  it leaves. Every game plays with no machine. Each maps one game value to the
+  carriage: Road the car's place across the road, Bat the bat's height, Song
+  each note's pitch. Motion needs the card's **Allow motion** switch (off on
+  every mount, beside its one-line warning) and leaves only through
+  `submitSegments` (`drive.js`): 100 ms segments back to back, at most
+  160 ms queued, speed and acceleration capped at 0.5 and 2 of the window a
+  second and at 40 % of `limit.input.speed` and `limit.input.accel` where the
+  window is reported in mm; the first segment starts from the reported
+  position (no position, no motion). Any gate words or refusal (Pause, Halt,
+  a lost link, another producer) drop the consent and pause the game; it never
+  resumes on its own. Its own stops (game over, Stop, the window blurred or
+  hidden, the page left) send one braking hold. Never writes a setting. Keys
+  are the game screen's own, so Space on a focused stop button never reaches
+  a game. Sound is off until its Sound button. Declares `motion`.
+  `test/arcade.test.mjs` (in `npm run check`) drives the real games through
+  the drive against a stub; `test/theme-temple.test.mjs` plays them on the
+  built-in machine.
 - `plugins/factory/funscript-player/`: plays a local or Stash video and
   drives the rail from its main (L0) funscript. One hero, `player`
   (`absorb: false`), requires `input.target` and `input.duration`, so it
@@ -853,7 +931,11 @@ Shipped:
   Preview through `api.writeTrial` with Apply and Discard, so the manifest
   declares `intent`. Its settings card holds the Stash connect card,
   Scale and the playback rows (loop, auto-home, seek glide, automatic
-  latency); the hub shapes the curve between actions. The detail's A-B button loops a section. Operator values persist
+  latency); the hub shapes the curve between actions. The detail's A-B button loops a section.
+  Its context menus (`ui.menu`): the stage's Play or Pause, Fullscreen,
+  Open video and Open script; the timeline's Seek here, Set A here, Set B
+  here and Clear loop; a scene row's Play, Play next, Add to queue and
+  Open in Stash (`net.open`); a queue row's Remove and Move to top. Operator values persist
   through `api.prefs`; all but the Stash key are mirrored under
   `phosphor.funscript.*` for the prefs backup. Its page, `Funscript` under
   Plugins (`page.js`), mounts the same card full width. Every control,

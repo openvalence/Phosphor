@@ -1,0 +1,565 @@
+/* Boing: the desktop of a 16-bit home computer, in your own drawing. Three palettes of one
+   chrome: the gray 2.x gadgets (the theme's own), the blue and orange 1.3 screen, and the
+   3.1 gray with gradients. Pixel type; a title bar with a bouncing checkered ball; gadget
+   glyphs (close, zoom, depth) drawn as masks; two-line bevels, raised and sunken, built from
+   border colors and inset shadows so no box changes size; copper bars drifting behind the
+   page. Everything under text is a chassis token or a pinned surface the variant verifies.
+   The orange of 1.3 is the highlight and the plan accent only: it is never a state. */
+
+@font-face { font-family: 'Pixelify Sans'; src: url('./fonts/PixelifySans-400.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Pixelify Sans'; src: url('./fonts/PixelifySans-700.woff2') format('woff2'); font-weight: 700; font-display: swap; }
+
+/* ================= tokens: the 2.x gray is the base, the others redefine ================= */
+html:root[data-style="boing"] {
+  --font: 'Pixelify Sans', 'Lucida Console', Consolas, 'DejaVu Sans Mono', monospace;
+  --mono: 'Pixelify Sans', 'Lucida Console', Consolas, 'DejaVu Sans Mono', monospace;
+  --font-head: 'Silkscreen', 'Pixelify Sans', 'Lucida Console', monospace;
+  --frame-w: 2px;
+  --ease-out: steps(3, end);
+  /* surfaces of the kit: face, field, the two bevel pairs (outer, inner), the drop */
+  --bo-face: #AAAAAA;
+  --bo-face-up: #B8B8B8;
+  --bo-face-dn: #969696;
+  --bo-field: #FFFFFF;
+  --bo-hi: #FFFFFF;
+  --bo-lo: #000000;
+  --bo-hi2: #FFFFFF;
+  --bo-lo2: #000000;
+  --bo-drop: 0 0 0 0 transparent;
+  --bo-rule: #000000;
+  --bo-title: #4A68A4;
+  --bo-title-ink: #FFFFFF;
+  --bo-title-sub: #D6E2FA;
+  --bo-sel: #4A68A4;
+  --bo-sel-ink: #FFFFFF;
+  --bo-glyph: #000000;
+  --bo-cell: #AAAAAA;
+  --bo-tip: #FFFFC8;
+  --bo-tex: linear-gradient(rgba(96, 60, 150, .22) 1px, transparent 1px), linear-gradient(90deg, rgba(96, 60, 150, .22) 1px, transparent 1px);
+  --tex-page: var(--bo-tex);
+  --tex-page-size: 24px 24px;
+  --bo-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' shape-rendering='crispEdges'%3E%3Cpath fill='%23000' d='M2 6h2v2h1V7h1V6h1V5h1V4h1V3h1v2H9v1H8v1H7v1H6v1H4V8H2z'/%3E%3C/svg%3E");
+  --bo-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Cpath fill='%23000' d='M1 2h6v1H6v1H5v1H4v1H3V5H2V4H1z'/%3E%3C/svg%3E");
+  --bo-m-close: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' shape-rendering='crispEdges'%3E%3Cpath fill-rule='evenodd' d='M1 1h10v10H1zM3 3v6h6V3zM5 5h2v2H5z'/%3E%3C/svg%3E");
+  --bo-m-zoom: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' shape-rendering='crispEdges'%3E%3Cpath fill-rule='evenodd' d='M1 1h10v10H1zM2 2v8h8V2zM2 2h5v4H2z'/%3E%3C/svg%3E");
+  --bo-m-depth: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' shape-rendering='crispEdges'%3E%3Cpath fill-rule='evenodd' d='M5 1h6v6H5zM6 2v4h4V2zM1 5h6v6H1zM2 6v4h4V6z'/%3E%3C/svg%3E");
+  --bo-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Cpath fill='%23000' d='M7 5h2v1h1v1h1v1h1v1h1v1H3V9h1V8h1V7h1V6h1z'/%3E%3C/svg%3E");
+  --bo-dn: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Cpath fill='%23000' d='M3 5h10v1h-1v1h-1v1h-1v1H9v1H7V9H6V8H5V7H4V6H3z'/%3E%3C/svg%3E");
+  --bo-lf: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Cpath fill='%23000' d='M5 7h1V6h1V5h1v1h1v1h1v1H9v1H8v1H7v1H6V9H5z'/%3E%3C/svg%3E");
+  --bo-rt: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Cpath fill='%23000' d='M5 5h1v1h1v1h1v1h1v1H8v1H7v1H6v1H5z'/%3E%3C/svg%3E");
+  --bo-gl-close: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 18' shape-rendering='crispEdges'%3E%3Cpath fill='%23000000' fill-rule='evenodd' transform='translate(4 3)' d='M1 1h10v10H1zM3 3v6h6V3zM5 5h2v2H5z'/%3E%3C/svg%3E");
+  --bo-gl-pair: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 18' shape-rendering='crispEdges'%3E%3Cpath fill='%23000000' fill-rule='evenodd' transform='translate(4 3)' d='M1 1h10v10H1zM2 2v8h8V2zM2 2h5v4H2z'/%3E%3Crect x='19' width='2' height='18' fill='%23000000'/%3E%3Cpath fill='%23000000' fill-rule='evenodd' transform='translate(24 3)' d='M5 1h6v6H5zM6 2v4h4V2zM1 5h6v6H1zM2 6v4h4V6z'/%3E%3C/svg%3E");
+  --bo-ball: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Cpath fill='%232A1040' d='M5 0h1v1h-1zM6 0h1v1h-1zM7 0h1v1h-1zM8 0h1v1h-1zM9 0h1v1h-1zM10 0h1v1h-1zM3 1h1v1h-1zM4 1h1v1h-1zM11 1h1v1h-1zM12 1h1v1h-1zM2 2h1v1h-1zM3 2h1v1h-1zM12 2h1v1h-1zM13 2h1v1h-1zM1 3h1v1h-1zM2 3h1v1h-1zM13 3h1v1h-1zM14 3h1v1h-1zM1 4h1v1h-1zM14 4h1v1h-1zM0 5h1v1h-1zM15 5h1v1h-1zM0 6h1v1h-1zM15 6h1v1h-1zM0 7h1v1h-1zM15 7h1v1h-1zM0 8h1v1h-1zM15 8h1v1h-1zM0 9h1v1h-1zM15 9h1v1h-1zM0 10h1v1h-1zM15 10h1v1h-1zM1 11h1v1h-1zM14 11h1v1h-1zM1 12h1v1h-1zM2 12h1v1h-1zM13 12h1v1h-1zM14 12h1v1h-1zM2 13h1v1h-1zM3 13h1v1h-1zM12 13h1v1h-1zM13 13h1v1h-1zM3 14h1v1h-1zM4 14h1v1h-1zM11 14h1v1h-1zM12 14h1v1h-1zM5 15h1v1h-1zM6 15h1v1h-1zM7 15h1v1h-1zM8 15h1v1h-1zM9 15h1v1h-1zM10 15h1v1h-1z'/%3E%3Cpath fill='%23F4F4FF' d='M5 1h1v1h-1zM6 1h1v1h-1zM7 1h1v1h-1zM8 1h1v1h-1zM9 1h1v1h-1zM10 1h1v1h-1zM4 2h1v1h-1zM5 2h1v1h-1zM10 2h1v1h-1zM3 3h1v1h-1zM4 3h1v1h-1zM11 3h1v1h-1zM2 4h1v1h-1zM3 4h1v1h-1zM4 4h1v1h-1zM11 4h1v1h-1zM12 4h1v1h-1zM13 4h1v1h-1zM3 5h1v1h-1zM11 5h1v1h-1zM12 5h1v1h-1zM13 5h1v1h-1zM14 5h1v1h-1zM4 6h1v1h-1zM10 6h1v1h-1zM11 6h1v1h-1zM12 6h1v1h-1zM13 6h1v1h-1zM14 6h1v1h-1zM3 7h1v1h-1zM4 7h1v1h-1zM5 7h1v1h-1zM6 7h1v1h-1zM10 7h1v1h-1zM11 7h1v1h-1zM12 7h1v1h-1zM13 7h1v1h-1zM14 7h1v1h-1zM3 8h1v1h-1zM4 8h1v1h-1zM5 8h1v1h-1zM6 8h1v1h-1zM7 8h1v1h-1zM8 8h1v1h-1zM9 8h1v1h-1zM10 8h1v1h-1zM11 8h1v1h-1zM12 8h1v1h-1zM13 8h1v1h-1zM14 8h1v1h-1zM3 9h1v1h-1zM4 9h1v1h-1zM5 9h1v1h-1zM6 9h1v1h-1zM7 9h1v1h-1zM8 9h1v1h-1zM11 9h1v1h-1zM12 9h1v1h-1zM13 9h1v1h-1zM3 10h1v1h-1zM4 10h1v1h-1zM5 10h1v1h-1zM6 10h1v1h-1zM7 10h1v1h-1zM13 10h1v1h-1zM3 11h1v1h-1zM4 11h1v1h-1zM5 11h1v1h-1zM6 11h1v1h-1zM7 11h1v1h-1zM4 12h1v1h-1zM5 12h1v1h-1zM6 12h1v1h-1zM6 13h1v1h-1zM6 14h1v1h-1zM7 14h1v1h-1zM8 14h1v1h-1z'/%3E%3Cpath fill='%23D8284C' d='M6 2h1v1h-1zM7 2h1v1h-1zM8 2h1v1h-1zM9 2h1v1h-1zM11 2h1v1h-1zM5 3h1v1h-1zM6 3h1v1h-1zM7 3h1v1h-1zM8 3h1v1h-1zM9 3h1v1h-1zM10 3h1v1h-1zM12 3h1v1h-1zM5 4h1v1h-1zM6 4h1v1h-1zM7 4h1v1h-1zM8 4h1v1h-1zM9 4h1v1h-1zM10 4h1v1h-1zM1 5h1v1h-1zM2 5h1v1h-1zM4 5h1v1h-1zM5 5h1v1h-1zM6 5h1v1h-1zM7 5h1v1h-1zM8 5h1v1h-1zM9 5h1v1h-1zM10 5h1v1h-1zM1 6h1v1h-1zM2 6h1v1h-1zM3 6h1v1h-1zM5 6h1v1h-1zM6 6h1v1h-1zM7 6h1v1h-1zM8 6h1v1h-1zM9 6h1v1h-1zM1 7h1v1h-1zM2 7h1v1h-1zM7 7h1v1h-1zM8 7h1v1h-1zM9 7h1v1h-1zM1 8h1v1h-1zM2 8h1v1h-1zM1 9h1v1h-1zM2 9h1v1h-1zM9 9h1v1h-1zM10 9h1v1h-1zM14 9h1v1h-1zM1 10h1v1h-1zM2 10h1v1h-1zM8 10h1v1h-1zM9 10h1v1h-1zM10 10h1v1h-1zM11 10h1v1h-1zM12 10h1v1h-1zM14 10h1v1h-1zM2 11h1v1h-1zM8 11h1v1h-1zM9 11h1v1h-1zM10 11h1v1h-1zM11 11h1v1h-1zM12 11h1v1h-1zM13 11h1v1h-1zM3 12h1v1h-1zM7 12h1v1h-1zM8 12h1v1h-1zM9 12h1v1h-1zM10 12h1v1h-1zM11 12h1v1h-1zM12 12h1v1h-1zM4 13h1v1h-1zM5 13h1v1h-1zM7 13h1v1h-1zM8 13h1v1h-1zM9 13h1v1h-1zM10 13h1v1h-1zM11 13h1v1h-1zM5 14h1v1h-1zM9 14h1v1h-1zM10 14h1v1h-1z'/%3E%3C/svg%3E");
+  --bo-cu0: #2A3E6E; --bo-cu1: #3C5A9C; --bo-cu2: #7C9CD8; --bo-cu3: #E4EEFF;
+}
+
+/* ---- 1.3: the blue screen, white lines, orange for the pick ---- */
+html:root[data-style="boing"][data-variant="boing-13"] {
+  --bo-face: #003A78;
+  --bo-face-up: #0A4C94;
+  --bo-face-dn: #002E62;
+  --bo-field: #001A40;
+  --bo-hi: #FFFFFF;
+  --bo-lo: #FFFFFF;
+  --bo-hi2: #FFFFFF;
+  --bo-lo2: #FFFFFF;
+  --bo-drop: 2px 2px 0 #00122C;
+  --bo-rule: #FFFFFF;
+  --bo-title: #FFFFFF;
+  --bo-title-ink: #000000;
+  --bo-title-sub: #003A78;
+  --bo-sel: #FF9020;
+  --bo-sel-ink: #000000;
+  --bo-glyph: #000000;
+  --bo-cell: #FFFFFF;
+  --bo-tex: none;
+  --bo-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' shape-rendering='crispEdges'%3E%3Cpath fill='%23FF9020' d='M2 6h2v2h1V7h1V6h1V5h1V4h1V3h1v2H9v1H8v1H7v1H6v1H4V8H2z'/%3E%3C/svg%3E");
+  --bo-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Cpath fill='%23000' d='M1 2h6v1H6v1H5v1H4v1H3V5H2V4H1z'/%3E%3C/svg%3E");
+  --bo-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Cpath fill='%23fff' d='M7 5h2v1h1v1h1v1h1v1h1v1H3V9h1V8h1V7h1V6h1z'/%3E%3C/svg%3E");
+  --bo-dn: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Cpath fill='%23fff' d='M3 5h10v1h-1v1h-1v1h-1v1H9v1H7V9H6V8H5V7H4V6H3z'/%3E%3C/svg%3E");
+  --bo-lf: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Cpath fill='%23fff' d='M5 7h1V6h1V5h1v1h1v1h1v1H9v1H8v1H7v1H6V9H5z'/%3E%3C/svg%3E");
+  --bo-rt: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Cpath fill='%23fff' d='M5 5h1v1h1v1h1v1h1v1H8v1H7v1H6v1H5z'/%3E%3C/svg%3E");
+  --bo-cu0: #002E62; --bo-cu1: #0055AA; --bo-cu2: #4FA8F0; --bo-cu3: #FFFFFF;
+}
+
+/* ---- 3.1: cool gray with gradients and soft bevels ---- */
+html:root[data-style="boing"][data-variant="boing-31"] {
+  --bo-face: #C4C7D2;
+  --bo-face-up: #D2D5DF;
+  --bo-face-dn: #AEB2C0;
+  --bo-field: #FFFFFF;
+  --bo-hi: #FFFFFF;
+  --bo-lo: #3A3E55;
+  --bo-hi2: #E6E8F0;
+  --bo-lo2: #8A8FA8;
+  --bo-rule: #1A1E34;
+  --bo-title: #0F2766;
+  --bo-title-ink: #FFFFFF;
+  --bo-title-sub: #D6E2FA;
+  --bo-sel: #1F4FB8;
+  --bo-sel-ink: #FFFFFF;
+  --bo-glyph: #101830;
+  --bo-cell: #C4C7D2;
+  --bo-tex: linear-gradient(180deg, rgba(255, 255, 255, 0), rgba(30, 50, 120, .12));
+  --tex-page-size: 100% 100%;
+  --bo-cu0: #0F2766; --bo-cu1: #1F4FB8; --bo-cu2: #3FB4E0; --bo-cu3: #E0F8FF;
+  --bo-gl-close: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 18' shape-rendering='crispEdges'%3E%3Cpath fill='%23101830' fill-rule='evenodd' transform='translate(4 3)' d='M1 1h10v10H1zM3 3v6h6V3zM5 5h2v2H5z'/%3E%3C/svg%3E");
+  --bo-gl-pair: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 18' shape-rendering='crispEdges'%3E%3Cpath fill='%23101830' fill-rule='evenodd' transform='translate(4 3)' d='M1 1h10v10H1zM2 2v8h8V2zM2 2h5v4H2z'/%3E%3Crect x='19' width='2' height='18' fill='%23101830'/%3E%3Cpath fill='%23101830' fill-rule='evenodd' transform='translate(24 3)' d='M5 1h6v6H5zM6 2v4h4V2zM1 5h6v6H1zM2 6v4h4V6z'/%3E%3C/svg%3E");
+  --bo-gloss: linear-gradient(180deg, rgba(255, 255, 255, .55), rgba(255, 255, 255, 0) 52%, rgba(40, 50, 90, .10));
+}
+
+/* ================= copper: three bars under the title bar ================= */
+html:root[data-style="boing"] [data-part="strip"]::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 6px;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, .28), transparent 22%, transparent 78%, rgba(0, 0, 0, .28)),
+    linear-gradient(180deg, var(--bo-cu1) 0 1px, var(--bo-cu2) 1px 2px, var(--bo-cu3) 2px 3px, var(--bo-cu2) 3px 4px, var(--bo-cu1) 4px 5px, var(--bo-cu0) 5px 6px);
+}
+html:root[data-style="boing"]:not(.still):not(.hivis) [data-part="strip"]::before { animation: theme-boing-copper 6s ease-in-out infinite alternate; }
+@keyframes theme-boing-copper { from { opacity: .7; } to { opacity: 1; } }
+
+html:root[data-style="boing"] body { font-family: var(--font); font-size: 15px; }
+html:root[data-style="boing"] :focus-visible { outline: 2px dashed var(--highlight); outline-offset: 2px; }
+html:root[data-style="boing"] ::selection { background: var(--bo-sel); color: var(--bo-sel-ink); }
+
+/* ================= the title bar: the top bar ================= */
+html:root[data-style="boing"] [data-part="top"] { background-color: transparent; border-bottom: 0; }
+html:root[data-style="boing"] [data-part="bar"] {
+  background-color: var(--bo-title);
+  background-image: none;
+  color: var(--bo-title-ink);
+  box-shadow: inset 0 -2px 0 var(--bo-rule), inset 0 1px 0 rgba(255, 255, 255, .35);
+}
+html:root[data-style="boing"][data-variant="boing-13"] [data-part="bar"] { box-shadow: inset 0 -2px 0 #000; }
+html:root[data-style="boing"][data-variant="boing-31"] [data-part="bar"] {
+  background-image: linear-gradient(90deg, #0F2766 0, #1F4FB8 38%, #4F83E0 100%);
+  box-shadow: inset 0 -2px 0 var(--bo-rule), inset 0 1px 0 rgba(255, 255, 255, .45);
+}
+html:root[data-style="boing"] [data-part="bar"] .wordmark {
+  color: var(--bo-title-ink);
+  font-family: var(--font-head);
+  font-weight: 700;
+  font-size: .78rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+html:root[data-style="boing"][data-variant="boing-31"] [data-part="bar"] .wordmark { text-shadow: 1px 1px 0 #0A1A4A; }
+/* The ball: a 16 px sprite at the left of the bar, a slow hop with a squash at the floor. */
+html:root[data-style="boing"] [data-part="bar"] .header-left::before {
+  content: '';
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-left: 2px;
+  background: var(--bo-ball) center / 16px 16px no-repeat;
+  image-rendering: pixelated;
+  transform-origin: 50% 100%;
+  pointer-events: none;
+}
+html:root[data-style="boing"]:not(.still):not(.hivis) [data-part="bar"] .header-left::before { animation: theme-boing-hop 1.4s linear infinite; }
+@keyframes theme-boing-hop {
+  0%   { transform: translateY(0) scale(1.14, .86); }
+  7%   { transform: translateY(0) scale(1, 1); }
+  14% { transform: translateY(-2.1px); }
+  21% { transform: translateY(-3.9px); }
+  28% { transform: translateY(-5.2px); }
+  36% { transform: translateY(-6.2px); }
+  43% { transform: translateY(-6.8px); }
+  50% { transform: translateY(-7.0px); }
+  57% { transform: translateY(-6.8px); }
+  64% { transform: translateY(-6.2px); }
+  72% { transform: translateY(-5.2px); }
+  79% { transform: translateY(-3.9px); }
+  86% { transform: translateY(-2.1px); }
+  93%  { transform: translateY(0) scale(1, 1); }
+  100% { transform: translateY(0) scale(1.14, .86); }
+}
+/* Chips: small sunken readouts in the bar. */
+html:root[data-style="boing"] [data-part="bar"] .chip {
+  border-radius: 0;
+  border: 1px solid;
+  border-color: var(--bo-lo) var(--bo-hi) var(--bo-hi) var(--bo-lo);
+  background-color: var(--bo-field);
+  background-image: none;
+  box-shadow: inset 1px 1px 0 var(--bo-lo2), inset -1px -1px 0 var(--bo-hi2);
+}
+html:root[data-style="boing"][data-variant="boing-13"] [data-part="bar"] .chip { border-color: #000; box-shadow: none; background-color: #003A78; }
+
+/* Caption buttons: full-height gadget cells with the three drawn glyphs. */
+html:root[data-style="boing"] [data-part="caption-btn"] { position: relative; width: 32px; color: var(--bo-glyph); background: transparent; }
+html:root[data-style="boing"] [data-part="caption-btn"] svg { display: none; }
+html:root[data-style="boing"] [data-part="caption-btn"]::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 2px 0;
+  background-color: var(--bo-cell);
+  box-shadow: inset 1px 1px 0 var(--bo-hi), inset -1px -1px 0 var(--bo-lo), inset 2px 2px 0 var(--bo-hi2), inset -2px -2px 0 var(--bo-lo2), -2px 0 0 var(--bo-rule);
+}
+html:root[data-style="boing"] [data-part="caption-btn"]::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: calc(50% - 1px);
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  background-color: currentColor;
+  -webkit-mask: var(--bo-m-zoom) center / 12px 12px no-repeat;
+  mask: var(--bo-m-zoom) center / 12px 12px no-repeat;
+}
+html:root[data-style="boing"] [data-part="caption-btn"][data-cap="min"]::after { -webkit-mask-image: var(--bo-m-depth); mask-image: var(--bo-m-depth); }
+html:root[data-style="boing"] [data-part="caption-btn"][data-cap="close"]::after { -webkit-mask-image: var(--bo-m-close); mask-image: var(--bo-m-close); }
+html:root[data-style="boing"] [data-part="caption-btn"]:hover { background: transparent; color: var(--bo-glyph); }
+html:root[data-style="boing"] [data-part="caption-btn"]:hover::before { background-color: var(--bo-face-up); }
+html:root[data-style="boing"] [data-part="caption-btn"]:active::before,
+html:root[data-style="boing"] [data-part="caption-btn"][aria-expanded="true"]::before {
+  background-color: var(--bo-face-dn);
+  box-shadow: inset 1px 1px 0 var(--bo-lo), inset -1px -1px 0 var(--bo-hi), inset 2px 2px 0 var(--bo-lo2), inset -2px -2px 0 var(--bo-hi2), -2px 0 0 var(--bo-rule);
+}
+html:root[data-style="boing"][data-variant="boing-13"] [data-part="caption-btn"]::before { box-shadow: -2px 0 0 #000; }
+html:root[data-style="boing"][data-variant="boing-13"] [data-part="caption-btn"]:hover::before { background-color: #FF9020; }
+html:root[data-style="boing"][data-variant="boing-31"] [data-part="caption-btn"]::before { background-image: var(--bo-gloss); }
+
+/* ================= the strip, the scope, the status row ================= */
+html:root[data-style="boing"] [data-part="strip"] { background-color: var(--bg-raised); box-shadow: inset 0 -2px 0 var(--bo-lo2), inset 0 -3px 0 var(--bo-hi2); }
+html:root[data-style="boing"][data-variant="boing-13"] [data-part="strip"] { box-shadow: inset 0 -2px 0 #fff; }
+html:root[data-style="boing"][data-variant="boing-31"] [data-part="strip"] { background-image: var(--bo-gloss); }
+html:root[data-style="boing"] [data-part="numerals"] { background-color: var(--bg-sunken); box-shadow: -1px -1px 0 var(--bo-lo), 1px 1px 0 var(--bo-hi); }
+html:root[data-style="boing"][data-variant="boing-13"] [data-part="numerals"] { box-shadow: 0 0 0 1px #fff; }
+html:root[data-style="boing"] [data-part="stop-frame"] { outline: 2px solid var(--bo-rule); outline-offset: 3px; background-color: var(--bg-sunken); }
+html:root[data-style="boing"] [data-part="hero"] { box-shadow: inset 0 -2px 0 var(--bo-rule); }
+html:root[data-style="boing"] [data-part="status-row"],
+html:root[data-style="boing"] [data-part="page-foot"] {
+  background-color: var(--bg-raised);
+  border-top: 0;
+  box-shadow: inset 0 2px 0 var(--bo-rule), inset 0 3px 0 var(--bo-hi2);
+}
+html:root[data-style="boing"][data-variant="boing-13"] :is([data-part="status-row"], [data-part="page-foot"]) { box-shadow: inset 0 2px 0 #fff; }
+html:root[data-style="boing"][data-variant="boing-31"] :is([data-part="status-row"], [data-part="page-foot"]) { background-image: var(--bo-gloss); }
+
+/* ================= the rail: a drawer list ================= */
+html:root[data-style="boing"] [data-part="rail"] {
+  border-radius: 0;
+  border-style: solid;
+  border-width: 0 2px 0 0;
+  border-color: var(--bo-rule);
+  background-color: var(--bg-raised);
+  box-shadow: inset -1px 0 0 var(--bo-hi2);
+}
+html:root[data-style="boing"][data-variant="boing-13"] [data-part="rail"] { box-shadow: none; }
+html:root[data-style="boing"] [data-part="rail-label"] {
+  font-family: var(--font-head);
+  font-size: 10px;
+  letter-spacing: .12em;
+  box-shadow: 0 2px 0 var(--bo-lo2), 0 3px 0 var(--bo-hi2);
+  margin-bottom: 3px;
+}
+html:root[data-style="boing"][data-variant="boing-13"] [data-part="rail-label"] { box-shadow: 0 2px 0 #fff; }
+html:root[data-style="boing"] [data-part="rail-tab"] { border-radius: 0; font-size: .86rem; }
+html:root[data-style="boing"] [data-part="rail-tab"]:hover:not(.on) { background-color: transparent; color: var(--tx-hi); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 2px; }
+html:root[data-style="boing"] [data-part="rail-tab"].on {
+  background-color: var(--bo-sel);
+  color: var(--bo-sel-ink);
+  border-color: var(--bo-rule);
+}
+html:root[data-style="boing"] [data-part="rail-tab"].on .rail-glyph { color: var(--bo-sel-ink); }
+html:root[data-style="boing"][data-variant="boing-31"] [data-part="rail-tab"].on { background-image: linear-gradient(180deg, #3A6FD8, #1F4FB8); }
+html:root[data-style="boing"] .rail-sec.shell { border-radius: 0; }
+
+/* ================= windows: cards, nests, plugin panels ================= */
+html:root[data-style="boing"] :is([data-part="card"], [data-part="nest"], [data-part="panel"]) {
+  border-radius: 0;
+  border-style: solid;
+  border-width: 2px;
+  box-shadow: 0 0 0 1px var(--bo-rule);
+}
+html:root[data-style="boing"] :is([data-part="card"], [data-part="panel"]) { border-color: var(--bo-hi) var(--bo-lo) var(--bo-lo) var(--bo-hi); }
+html:root[data-style="boing"] [data-part="nest"] { border-color: var(--bo-lo) var(--bo-hi) var(--bo-hi) var(--bo-lo); }
+html:root[data-style="boing"][data-variant="boing-13"] :is([data-part="card"], [data-part="nest"], [data-part="panel"]) { border-color: #fff; box-shadow: 0 0 0 1px #000, 3px 3px 0 #00122C; }
+html:root[data-style="boing"][data-variant="boing-31"] [data-part="card"] { background-image: var(--bo-gloss); }
+html:root[data-style="boing"] .og-panel { outline: none; border-radius: 0; border: 2px solid; border-color: var(--bo-hi) var(--bo-lo) var(--bo-lo) var(--bo-hi); background-image: none; }
+html:root[data-style="boing"] .og-screen { border-radius: 0; border: 1px solid; border-color: var(--bo-lo) var(--bo-hi) var(--bo-hi) var(--bo-lo); box-shadow: inset 1px 1px 0 var(--bo-lo2), inset -1px -1px 0 var(--bo-hi2); }
+html:root[data-style="boing"][data-variant="boing-13"] .og-screen { border-color: #fff; box-shadow: none; }
+
+/* A window's title bar: the card head above the body, the plugin card's title row. */
+html:root[data-style="boing"] [data-part="card-head"]:not(.over),
+html:root[data-style="boing"] [data-part="panel-bar"] {
+  position: relative;
+  background-color: var(--bo-title);
+  color: var(--bo-title-ink);
+  padding: 0 44px 0 26px;
+  box-shadow: 0 0 0 1px var(--bo-rule), inset 0 -2px 0 var(--bo-rule), inset 0 1px 0 rgba(255, 255, 255, .35);
+}
+html:root[data-style="boing"][data-variant="boing-13"] :is([data-part="card-head"]:not(.over), [data-part="panel-bar"]) { box-shadow: 0 0 0 1px #000, inset 0 -2px 0 #000; }
+html:root[data-style="boing"][data-variant="boing-31"] :is([data-part="card-head"]:not(.over), [data-part="panel-bar"]) {
+  background-image: linear-gradient(90deg, #0F2766 0, #1F4FB8 40%, #4F83E0 100%);
+}
+html:root[data-style="boing"] [data-part="panel-bar"] { margin: calc(var(--sp-3) * -1) calc(var(--sp-4) * -1) 0; }
+html:root[data-style="boing"] :is([data-part="card-head"]:not(.over), [data-part="panel-bar"]) .dash-title { color: var(--bo-title-ink); font-size: .66rem; letter-spacing: .1em; }
+html:root[data-style="boing"] :is([data-part="card-head"]:not(.over), [data-part="panel-bar"]) .dash-title::before { color: var(--bo-title-sub); }
+html:root[data-style="boing"] :is([data-part="card-head"]:not(.over), [data-part="panel-bar"]) .ui-caret { color: var(--bo-title-ink); }
+/* The close gadget at the left and the zoom and depth gadgets at the right: pictures only. */
+html:root[data-style="boing"] [data-part="card-head"]:not(.over)::before,
+html:root[data-style="boing"] [data-part="card-head"]:not(.over):not(:has(.tools, .dash-open))::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 2px;
+  background-color: var(--bo-cell);
+  background-repeat: no-repeat;
+  background-position: center;
+  box-shadow: inset 1px 1px 0 var(--bo-hi), inset -1px -1px 0 var(--bo-lo), inset 2px 2px 0 var(--bo-hi2), inset -2px -2px 0 var(--bo-lo2);
+  pointer-events: none;
+}
+html:root[data-style="boing"] [data-part="card-head"]:not(.over)::before { left: 0; width: 20px; background-image: var(--bo-gl-close); background-size: 20px 18px; }
+html:root[data-style="boing"] [data-part="card-head"]:not(.over):not(:has(.tools, .dash-open))::after { right: 0; width: 40px; background-image: var(--bo-gl-pair); background-size: 40px 18px; }
+html:root[data-style="boing"][data-variant="boing-13"] [data-part="card-head"]:not(.over)::before,
+html:root[data-style="boing"][data-variant="boing-13"] [data-part="card-head"]:not(.over):not(:has(.tools, .dash-open))::after { box-shadow: 1px 0 0 #000; }
+html:root[data-style="boing"][data-variant="boing-31"] [data-part="card-head"]:not(.over)::before { background-image: var(--bo-gl-close), var(--bo-gloss); background-size: 20px 18px, 100% 100%; }
+html:root[data-style="boing"][data-variant="boing-31"] [data-part="card-head"]:not(.over):not(:has(.tools, .dash-open))::after { background-image: var(--bo-gl-pair), var(--bo-gloss); background-size: 40px 18px, 100% 100%; }
+
+/* ================= buttons ================= */
+html:root[data-style="boing"] :is(.og-btn, .og-seg button, .stepper button) {
+  font-family: var(--font);
+  font-weight: 400;
+  letter-spacing: .02em;
+  border-radius: 0;
+  background-color: var(--bo-face);
+}
+html:root[data-style="boing"] :is(.og-btn:not(.on):not(.primary):not(.running):not(.danger), .og-seg button:not(.active), .stepper button) {
+  border: 1px solid;
+  border-color: var(--bo-hi) var(--bo-lo) var(--bo-lo) var(--bo-hi);
+  box-shadow: inset 1px 1px 0 var(--bo-hi2), inset -1px -1px 0 var(--bo-lo2), var(--bo-drop);
+  color: var(--tx-hi);
+  transition: none;
+}
+html:root[data-style="boing"] :is(.og-btn:not(.on):not(.primary):not(.running):not(.danger):hover:not(:disabled), .og-seg button:not(.active):hover:not(:disabled), .stepper button:hover:not(:disabled)) {
+  background-color: var(--bo-face-up);
+  color: var(--tx-hi);
+}
+html:root[data-style="boing"] :is(.og-btn:not(.on):not(.primary):not(.running):not(.danger):active:not(:disabled), .og-seg button:not(.active):active:not(:disabled), .stepper button:active:not(:disabled)) {
+  background-color: var(--bo-face-dn);
+  border-color: var(--bo-lo) var(--bo-hi) var(--bo-hi) var(--bo-lo);
+  box-shadow: inset 1px 1px 0 var(--bo-lo2), inset -1px -1px 0 var(--bo-hi2), var(--bo-drop);
+  color: var(--tx-hi);
+}
+/* The pick: a pressed gadget in the accent. */
+html:root[data-style="boing"] :is(.og-btn.on, .og-btn.primary, .og-seg button.active) {
+  border-width: 2px;
+  border-style: inset;
+  background-color: var(--bo-face-dn);
+}
+html:root[data-style="boing"][data-variant="boing-13"] :is(.og-btn.on, .og-btn.primary, .og-seg button.active) { border-style: double; border-width: 3px; background-color: #002E62; }
+html:root[data-style="boing"][data-variant="boing-31"] :is(.og-btn, .og-seg button, .stepper button):not(.on):not(.primary):not(.running):not(.danger):not(.active):not(:active) { background-image: linear-gradient(180deg, #E6E8F0 0, var(--bo-face) 50%, #B2B6C6 100%); }
+html:root[data-style="boing"][data-variant="boing-31"] :is(.og-btn.on, .og-btn.primary, .og-seg button.active) { background-image: linear-gradient(180deg, #A4A8BA, #C4C7D2); }
+html:root[data-style="boing"] .og-seg { gap: 0; }
+html:root[data-style="boing"] .og-seg button { margin-left: -1px; }
+html:root[data-style="boing"] .og-btn.sm { font-size: .78rem; }
+
+/* ================= fields: a sunken white slot ================= */
+html:root[data-style="boing"] :is(.og-num, .value-input, .ui-menu-ask) {
+  border-radius: 0;
+  border: 1px solid;
+  border-color: var(--bo-lo) var(--bo-hi) var(--bo-hi) var(--bo-lo);
+  background-color: var(--bo-field);
+  box-shadow: inset 1px 1px 0 var(--bo-lo2), inset -1px -1px 0 var(--bo-hi2);
+  font-weight: 400;
+}
+html:root[data-style="boing"][data-variant="boing-13"] :is(.og-num, .value-input) { border-color: #fff; box-shadow: inset 2px 2px 0 #000; }
+html:root[data-style="boing"] :is(.og-num, .value-input):focus { border-color: var(--highlight); outline: none; }
+html:root[data-style="boing"] select {
+  border-radius: 0;
+  border: 1px solid;
+  border-color: var(--bo-lo) var(--bo-hi) var(--bo-hi) var(--bo-lo);
+  background-color: var(--bo-field);
+  box-shadow: inset 1px 1px 0 var(--bo-lo2), inset -1px -1px 0 var(--bo-hi2);
+  padding-right: 30px;
+  background-image: var(--bo-arrow), linear-gradient(var(--bo-cell), var(--bo-cell));
+  background-repeat: no-repeat, no-repeat;
+  background-position: right 6px center, right 0 center;
+  background-size: 10px 10px, 22px 100%;
+}
+html:root[data-style="boing"][data-variant="boing-13"] select { border-color: #fff; box-shadow: inset 2px 2px 0 #000; }
+html:root[data-style="boing"] select:focus { border-color: var(--highlight); }
+
+/* ================= switches, check boxes, option dots, sliders, progress ================= */
+html:root[data-style="boing"] .og-switch .track {
+  border-radius: 0;
+  height: 22px;
+  width: 42px;
+  border: 1px solid;
+  border-color: var(--bo-lo) var(--bo-hi) var(--bo-hi) var(--bo-lo);
+  box-shadow: inset 1px 1px 0 var(--bo-lo2), inset -1px -1px 0 var(--bo-hi2);
+  background-color: var(--bo-field);
+}
+html:root[data-style="boing"][data-variant="boing-13"] .og-switch .track { border-color: #fff; box-shadow: inset 2px 2px 0 #000; }
+html:root[data-style="boing"] .og-switch input:not(:checked) + .track { border-color: var(--bo-lo) var(--bo-hi) var(--bo-hi) var(--bo-lo); }
+html:root[data-style="boing"][data-variant="boing-13"] .og-switch input:not(:checked) + .track { border-color: #fff; }
+html:root[data-style="boing"] .og-switch .track::after {
+  border-radius: 0;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border: 2px solid;
+  border-color: var(--bo-hi) var(--bo-lo) var(--bo-lo) var(--bo-hi);
+  box-sizing: border-box;
+}
+html:root[data-style="boing"][data-variant="boing-13"] .og-switch .track::after { border-color: #fff; }
+html:root[data-style="boing"] .og-switch input:checked + .track::after { transform: translateX(20px); }
+html:root[data-style="boing"] .og-switch input:not(:checked) + .track::after { background: var(--bo-face); }
+
+html:root[data-style="boing"] input[type="checkbox"]:not([role="switch"]) {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 0;
+  border: 1px solid;
+  border-color: var(--bo-lo) var(--bo-hi) var(--bo-hi) var(--bo-lo);
+  background-color: var(--bo-field);
+  box-shadow: inset 1px 1px 0 var(--bo-lo2), inset -1px -1px 0 var(--bo-hi2);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 12px 12px;
+}
+html:root[data-style="boing"][data-variant="boing-13"] input[type="checkbox"]:not([role="switch"]) { border-color: #fff; box-shadow: inset 2px 2px 0 #000; }
+html:root[data-style="boing"] input[type="checkbox"]:not([role="switch"]):checked { background-image: var(--bo-check); }
+html:root[data-style="boing"] [role="radio"]::before {
+  content: '';
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 6px;
+  vertical-align: -3px;
+  border-radius: 50%;
+  border: 2px solid;
+  border-color: var(--bo-lo) var(--bo-hi) var(--bo-hi) var(--bo-lo);
+  background: var(--bo-field);
+  box-sizing: border-box;
+}
+html:root[data-style="boing"][data-variant="boing-13"] [role="radio"]::before { border-color: #fff; }
+html:root[data-style="boing"] [role="radio"][aria-checked="true"]::before { background: radial-gradient(circle, var(--tx-hi) 0 2.5px, var(--bo-field) 3px); }
+html:root[data-style="boing"][data-variant="boing-13"] [role="radio"][aria-checked="true"]::before { background: radial-gradient(circle, #FF9020 0 2.5px, var(--bo-field) 3px); }
+
+html:root[data-style="boing"] input[type="range"] {
+  height: calc(6px + 2 * var(--range-hit));
+  background: linear-gradient(180deg, var(--bo-lo) 0 1px, var(--bo-field) 1px 5px, var(--bo-hi) 5px 6px) content-box;
+}
+html:root[data-style="boing"][data-variant="boing-13"] input[type="range"] { background: linear-gradient(180deg, #fff 0 1px, #001A40 1px 5px, #fff 5px 6px) content-box; }
+html:root[data-style="boing"] input[type="range"]::-webkit-slider-thumb,
+html:root[data-style="boing"] input[type="range"]::-moz-range-thumb {
+  border-radius: 0;
+  border-width: 2px;
+  border-style: solid;
+  background-color: var(--bo-face);
+  box-shadow: none;
+}
+html:root[data-style="boing"] input[type="range"]:not(:active):not(:focus-visible)::-webkit-slider-thumb { border-color: var(--bo-hi) var(--bo-lo) var(--bo-lo) var(--bo-hi); }
+html:root[data-style="boing"] input[type="range"]:not(:active):not(:focus-visible)::-moz-range-thumb { border-color: var(--bo-hi) var(--bo-lo) var(--bo-lo) var(--bo-hi); }
+html:root[data-style="boing"][data-variant="boing-13"] input[type="range"]::-webkit-slider-thumb,
+html:root[data-style="boing"][data-variant="boing-13"] input[type="range"]::-moz-range-thumb { background-color: #FF9020; }
+html:root[data-style="boing"][data-variant="boing-13"] input[type="range"]:not(:active):not(:focus-visible)::-webkit-slider-thumb { border-color: #000; }
+html:root[data-style="boing"][data-variant="boing-13"] input[type="range"]:not(:active):not(:focus-visible)::-moz-range-thumb { border-color: #000; }
+
+html:root[data-style="boing"] progress {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 16px;
+  border: 1px solid;
+  border-color: var(--bo-lo) var(--bo-hi) var(--bo-hi) var(--bo-lo);
+  border-radius: 0;
+  background-color: var(--bo-field);
+  overflow: hidden;
+}
+html:root[data-style="boing"] progress::-webkit-progress-bar { background: var(--bo-field); }
+html:root[data-style="boing"] progress::-webkit-progress-value { background: repeating-linear-gradient(90deg, var(--bo-sel) 0 6px, transparent 6px 8px); }
+html:root[data-style="boing"] progress::-moz-progress-bar { background: repeating-linear-gradient(90deg, var(--bo-sel) 0 6px, transparent 6px 8px); }
+
+/* ================= tabs and chips ================= */
+html:root[data-style="boing"] :is([role="tab"]:not([data-part="rail-tab"]), .tabs button) {
+  border-radius: 0;
+  border: 1px solid;
+  border-color: var(--bo-hi) var(--bo-lo) transparent var(--bo-hi);
+  background-color: var(--bg);
+}
+html:root[data-style="boing"] :is([role="tab"][aria-selected="true"]:not([data-part="rail-tab"]), .tabs button.on) {
+  background-color: var(--bo-face);
+  box-shadow: inset 0 2px 0 var(--bo-sel);
+}
+html:root[data-style="boing"] .chip { border-radius: 0; }
+
+/* ================= menus and the bubble ================= */
+html:root[data-style="boing"] .ui-menu,
+html:root[data-style="boing"] .ui-sheet {
+  border-radius: 0;
+  border: 2px solid var(--bo-rule);
+  background-color: var(--bo-face);
+  background-image: none;
+  box-shadow: inset 1px 1px 0 var(--bo-hi), 4px 4px 0 rgba(0, 0, 0, .45);
+}
+html:root[data-style="boing"][data-variant="boing-13"] :is(.ui-menu, .ui-sheet) { border-color: #fff; background-color: #003A78; box-shadow: 3px 3px 0 #00122C; }
+html:root[data-style="boing"] .ui-menu-h { border-bottom: 2px solid var(--bo-rule); }
+html:root[data-style="boing"] .ui-menu-t { font-family: var(--font-head); font-size: .66rem; letter-spacing: .1em; text-transform: uppercase; }
+html:root[data-style="boing"] .ui-menu-sec { border-top: 2px solid var(--bo-lo2); font-family: var(--font-head); font-size: .56rem; }
+html:root[data-style="boing"] .ui-menu-i { border-radius: 0; }
+html:root[data-style="boing"] .ui-menu-i:hover:not(:disabled),
+html:root[data-style="boing"] .ui-menu-i:focus-visible,
+html:root[data-style="boing"] .ui-menu-i[aria-expanded="true"] { background: var(--bo-sel); color: var(--bo-sel-ink); }
+html:root[data-style="boing"] .ui-menu-i:hover:not(:disabled)::after,
+html:root[data-style="boing"] .ui-menu-i[aria-expanded="true"]::after { color: var(--bo-sel-ink); }
+html:root[data-style="boing"] #ph-tip {
+  border-radius: 0;
+  border: 1px solid #000;
+  outline: none;
+  background: var(--bo-tip);
+  color: #000;
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, .4);
+  font-size: .78rem;
+}
+
+/* ================= scrollbars: dithered trough, gadget knob, arrow cells ================= */
+html:root[data-style="boing"] * { scrollbar-width: auto; scrollbar-color: auto; }
+html:root[data-style="boing"] ::-webkit-scrollbar { width: 16px; height: 16px; }
+html:root[data-style="boing"] ::-webkit-scrollbar-track { background: repeating-conic-gradient(var(--bo-face) 0 25%, var(--bo-hi) 0 50%) 0 0 / 2px 2px; }
+html:root[data-style="boing"][data-variant="boing-13"] ::-webkit-scrollbar-track { background: repeating-conic-gradient(#003A78 0 25%, #0A4C94 0 50%) 0 0 / 2px 2px; }
+html:root[data-style="boing"] ::-webkit-scrollbar-thumb {
+  background-color: var(--bo-face);
+  border: 2px solid;
+  border-color: var(--bo-hi) var(--bo-lo) var(--bo-lo) var(--bo-hi);
+  border-radius: 0;
+}
+html:root[data-style="boing"][data-variant="boing-13"] ::-webkit-scrollbar-thumb { background-color: #FF9020; border-color: #000; }
+html:root[data-style="boing"] ::-webkit-scrollbar-button:single-button {
+  display: block;
+  width: 16px;
+  height: 16px;
+  background-color: var(--bo-face);
+  background-repeat: no-repeat;
+  background-position: center;
+  border: 2px solid;
+  border-color: var(--bo-hi) var(--bo-lo) var(--bo-lo) var(--bo-hi);
+  box-sizing: border-box;
+}
+html:root[data-style="boing"][data-variant="boing-13"] ::-webkit-scrollbar-button:single-button { background-color: #003A78; border-color: #fff; }
+html:root[data-style="boing"] ::-webkit-scrollbar-button:single-button:vertical:decrement { background-image: var(--bo-up); }
+html:root[data-style="boing"] ::-webkit-scrollbar-button:single-button:vertical:increment { background-image: var(--bo-dn); }
+html:root[data-style="boing"] ::-webkit-scrollbar-button:single-button:horizontal:decrement { background-image: var(--bo-lf); }
+html:root[data-style="boing"] ::-webkit-scrollbar-button:single-button:horizontal:increment { background-image: var(--bo-rt); }
+html:root[data-style="boing"] ::-webkit-scrollbar-corner { background: var(--bo-face); }
+
+/* ================= 3.1: gloss on the larger surfaces ================= */
+html:root[data-style="boing"][data-variant="boing-31"] .og-panel { background-image: var(--bo-gloss); }
+html:root[data-style="boing"][data-variant="boing-31"] [data-part="rail"] { background-image: linear-gradient(180deg, #D6D9E3, var(--bg-raised) 30%, #B6BAC8); }
+html:root[data-style="boing"][data-variant="boing-31"] [data-part="nest"] { background-image: linear-gradient(180deg, rgba(40, 50, 90, .14), rgba(255, 255, 255, .22)); }
+html:root[data-style="boing"][data-variant="boing-31"] :is([role="tab"][aria-selected="true"]:not([data-part="rail-tab"]), .tabs button.on) { background-image: linear-gradient(180deg, #F2F3F8, var(--bo-face)); }
+html:root[data-style="boing"][data-variant="boing-31"] .ui-menu { background-image: linear-gradient(180deg, #E6E8F0, var(--bo-face)); }
+html:root[data-style="boing"][data-variant="boing-31"] ::-webkit-scrollbar-thumb { background-image: linear-gradient(90deg, #E6E8F0, #B2B6C6); }
+html:root[data-style="boing"][data-variant="boing-31"] .og-switch input:not(:checked) + .track::after { background-image: linear-gradient(180deg, #E6E8F0, #B2B6C6); }

@@ -11,6 +11,12 @@ pub fn open_report_url(url: String) -> Result<(), String> {
   if !url.starts_with(REPO_URL) || url.chars().any(|c| c.is_whitespace() || c == '"') {
     return Err("not a Phosphor issue URL".into());
   }
+  launch(&url)
+}
+
+/// The OS launcher with `url` as its one argument, never through a shell.
+#[cfg(desktop)]
+pub(crate) fn launch(url: &str) -> Result<(), String> {
   let (cmd, pre): (&str, &[&str]) = if cfg!(windows) {
     ("rundll32", &["url.dll,FileProtocolHandler"])
   } else if cfg!(target_os = "macos") {
@@ -18,7 +24,7 @@ pub fn open_report_url(url: String) -> Result<(), String> {
   } else {
     ("xdg-open", &[])
   };
-  std::process::Command::new(cmd).args(pre).arg(&url).spawn().map(|_| ()).map_err(|e| e.to_string())
+  std::process::Command::new(cmd).args(pre).arg(url).spawn().map(|_| ()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

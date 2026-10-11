@@ -11,7 +11,7 @@
  */
 
 import {
-  formatParts, formatWithUnit, unitOf, setAutorange, compact, seconds, hubSecToWallMs, wallMsToHubSec, setHubClock,
+  formatParts, formatWithUnit, unitOf, setAutorange, compact, seconds, hubSecToWallMs, wallMsToHubSec, setHubClock, sinceShort,
 } from '../src/model/format.js';
 import { UNIT_ID } from '../../Valence/clients/js/index.js';
 
@@ -83,5 +83,11 @@ ok('compact: absent stays --', compact(null) === '--' && compact(NaN) === '--');
 ok('seconds: three decimals, signed', seconds(-1605299174) === '-1605.299 s' && seconds(118598) === '0.119 s' && seconds(0) === '0.000 s');
 ok('seconds: compact past 10000 s, absent stays --', seconds(2e10) === '20.0k s' && seconds(null) === '--', seconds(2e10));
 
-console.log(fails ? '\nFAIL -- ' + fails + ' check(s)' : '\nPASS -- unit ids, autorange, hub time');
+console.log('\nthe top bar rx age (sinceShort)');
+const ago = (s) => sinceShort(Date.now() - s * 1000);
+const ages = [0, 1, 59, 60, 61, 599, 3599, 3600, 86400, 359999, 360000, 1e7].map(ago);
+ok('at most 3 characters at any age, so its 3ch slot never grows', ages.every((a) => a.length <= 3), ages.join(' '));
+ok('whole units: 59s, 1m, 59m, 1h, 99h; none yet reads --', ago(59) === '59s' && ago(61) === '1m' && ago(3599) === '59m' && ago(3600) === '1h' && ago(1e7) === '99h' && sinceShort(0) === '--', ages.join(' '));
+
+console.log(fails ? '\nFAIL -- ' + fails + ' check(s)' : '\nPASS -- unit ids, autorange, hub time, rx age');
 process.exit(fails ? 1 : 0);

@@ -215,11 +215,11 @@ await rn.fill('Renamed'); await rn.press('Enter');
 ok('Enter keeps the new name', await rn.count() === 0 && (await nestTitle.textContent()).trim() === 'Renamed', await nestName());
 
 // F2 on the grip in edit mode focuses the name input (ph-mdqo.10).
-await page.click('button[title="Edit layout"]:visible');
+await page.click('button[data-tip="Edit layout"]:visible');
 await nest.locator(':scope > .dash-item > .dash-head .handle.grab').focus();
 await page.keyboard.press('F2');
 ok('edit mode: F2 on the grip focuses the name input', await rn.evaluate((el) => document.activeElement === el));
-await page.click('button[title="Done editing"]:visible');
+await page.click('button[data-tip="Done editing"]:visible');
 
 // The last member with a writable range: write it while the hub holds the echo.
 const target = await nest.evaluate((cell) => {
@@ -292,7 +292,7 @@ const topIds = () => page.$$eval('.dash-grid[data-view] > .dash-cell', (els) => 
   .then((ids) => ids.filter(notSection));
 const membersOf = (id) => page.$$eval('.dash-cell[data-id="' + id + '"] .nest-body .dash-cell', (els) => els.map((e) => e.getAttribute('data-id')));
 const stored = () => page.evaluate((k) => JSON.parse(localStorage.getItem(k)), STORE_KEY);
-await page.click('button[title="Edit layout"]:visible');
+await page.click('button[data-tip="Edit layout"]:visible');
 await nest.locator('button:has-text("Ungroup")').click();
 await page.waitForTimeout(150);
 ok('ungroup returns every card to the top level', (await topIds()).sort().join() === [...cards].sort().join(), await topIds());
@@ -314,7 +314,7 @@ for (let i = 0; i < 20; i++) { await nestGrip.focus(); await page.keyboard.press
 for (let i = 0; i < 200 && await page.locator('.dash-item.fault').count(); i++) { await nestGrip.focus(); await page.keyboard.press('Shift+ArrowDown'); }
 await page.waitForTimeout(150);
 ok('resized to hold them, it clears', await page.locator('.dash-item.fault').count() === 0,
-   await page.$$eval('.dash-item.fault', (els) => els.map((e) => [e.closest('.dash-cell').dataset.id, e.title, e.closest('.dash-cell').style.cssText])));
+   await page.$$eval('.dash-item.fault', (els) => els.map((e) => [e.closest('.dash-cell').dataset.id, e.dataset.tip, e.closest('.dash-cell').style.cssText])));
 await nest2.locator('button:has-text("Save module")').click();
 await page.waitForTimeout(100);
 ok('Save module stores the nest by its members\' ids', JSON.stringify(Object.keys((await stored()).modules.Nest.members)) === JSON.stringify(cards.slice(0, 2)));
@@ -333,7 +333,7 @@ await page.waitForTimeout(150);
 const nests = (await topIds()).filter((id) => id.startsWith('nest:'));
 const placedMod = nests.find((id) => id !== fresh);
 ok('Insert places the module as a new nest with its members', nests.length === 2 && (await membersOf(placedMod)).join() === cards.slice(0, 2).join(), nests);
-await page.click('button[title="Done editing"]:visible');
+await page.click('button[data-tip="Done editing"]:visible');
 
 // ph-e82.10: a view whose map does not exist yet still draws its first nest.
 await page.evaluate(([k, v]) => localStorage.setItem(k, v), [STORE_KEY, JSON.stringify({ active: 'Default', modules: {}, layouts: { Default: {} } })]);
@@ -342,11 +342,11 @@ await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
 await tabs.nth(0).click();
 await page.waitForTimeout(400);
 ok('the Dash has no stored map', !Object.prototype.hasOwnProperty.call((await stored()).layouts.Default, viewKey), viewKey);
-await page.click('button[title="Edit layout"]:visible');
+await page.click('button[data-tip="Edit layout"]:visible');
 await page.click('button:has-text("New nest")');
 await page.waitForTimeout(150);
 ok('New nest on a view with no map draws at once (ph-e82.10)', (await topIds()).some((id) => id.startsWith('nest:')), await topIds());
-await page.click('button[title="Done editing"]:visible');
+await page.click('button[data-tip="Done editing"]:visible');
 ok('no page errors', pageErrors.length === 0, pageErrors);
 
 await browser.close();

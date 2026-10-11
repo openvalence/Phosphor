@@ -15,6 +15,7 @@
  *   the default, a chassis-varied and the light preset.
  */
 import { goTab } from './nav.mjs';
+import { lowContrast } from './audit.mjs';
 import { DIST_HTML } from './dist.mjs';
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
@@ -22,7 +23,7 @@ import { readFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { cbMap, cbUint, cbBstr, cbTstr, cbArray, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
 import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, LIMITS } from '../../Valence/clients/js/frames.js';
-import { deriveTokens, THEMES, contrast } from '../src/model/theme.js';
+import { deriveTokens, THEMES, STYLES, contrast } from '../src/model/theme.js';
 import { formatWithUnit } from '../src/model/format.js';
 
 const SHOTS = process.argv[2] || null;
@@ -70,42 +71,7 @@ function fakeHub(ws) {
   });
 }
 
-// Same audit as a11y-basics.test.mjs section 9, the repo's text floor.
-/**
- * In-page WCAG audit: every element with its own text under `sel`, its color
- * blended by its ancestors' opacity over the first opaque background behind
- * it. Inactive controls are exempt (WCAG 1.4.3), and so is a stale value,
- * dimmed on purpose (law 8). Returns the failures in words. `[sel, floor]`
- * holds every match to one floor instead (3 for chrome keys); `[sel, 3, true]`
- * also takes matches with no text of their own (icons, drawn in their color).
- */
-const lowContrast = (arg) => {
-  const [sel, floor, glyph] = Array.isArray(arg) ? arg : [arg, 0, false];
-  const parse = (c) => { const s = /color\(srgb ([^)]+)\)/.exec(c); const m = s || /rgba?\(([^)]+)\)/.exec(c); if (!m) return null;
-    const p = m[1].split(/[\s,/]+/).filter(Boolean).map(Number); const k = s ? 255 : 1;
-    return [p[0] * k, p[1] * k, p[2] * k, p.length > 3 ? p[3] : 1]; };
-  const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
-    return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
-  const bgOf = (el) => { for (let e = el; e; e = e.parentElement) { const c = parse(getComputedStyle(e).backgroundColor);
-    if (c && c[3] > 0.5) return c; } return parse(getComputedStyle(document.documentElement).backgroundColor) || [0, 0, 0, 1]; };
-  const out = [];
-  for (const el of document.querySelectorAll(sel)) {
-    if (!glyph && ![...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())) continue;
-    if (el.closest('[disabled], .is-disabled, [aria-disabled="true"], .typeable.disabled, .sr-only, .stale')) continue;
-    const cs = getComputedStyle(el);
-    if (cs.visibility !== 'visible' || !el.getClientRects().length) continue;
-    let o = 1;
-    for (let e = el; e; e = e.parentElement) o *= Number(getComputedStyle(e).opacity);
-    if (o < 0.05) continue;
-    const fg = parse(cs.color), bg = bgOf(el), a = fg[3] * o;
-    const l1 = lum([0, 1, 2].map((i) => fg[i] * a + bg[i] * (1 - a))), l2 = lum(bg);
-    const ratio = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
-    const px = parseFloat(cs.fontSize);
-    const need = floor || (px >= 24 || (Number(cs.fontWeight) >= 700 && px >= 18.66) ? 3 : 4.5);
-    if (ratio < need) out.push((el.className || el.tagName) + ' "' + el.textContent.trim().slice(0, 24) + '" ' + ratio.toFixed(2));
-  }
-  return out;
-};
+// Same audit as a11y-basics.test.mjs section 9, the repo's text floor (test/audit.mjs).
 
 let fails = 0;
 const ok = (n, c, extra) => { console.log('  [' + (c ? 'PASS' : 'FAIL') + '] ' + n + (extra ? '  -- ' + extra : '')); if (!c) fails++; };
@@ -238,7 +204,7 @@ const canvasSums = (page) => page.$$eval('canvas', (cs) => cs.map((c) => {
   const gap = await page.evaluate(() => document.querySelector('.tokens li').getBoundingClientRect().top
     - document.querySelector('.adv summary').getBoundingClientRect().bottom);
   ok('advanced: no blank gap under the header', gap >= 0 && gap < 8, gap.toFixed(1) + ' px');
-  const cell = (k) => page.$eval('#tp-v' + k, (el) => [el.getBoundingClientRect().height, el.scrollWidth > el.clientWidth, el.title]);
+  const cell = (k) => page.$eval('#tp-v' + k, (el) => [el.getBoundingClientRect().height, el.scrollWidth > el.clientWidth, el.dataset.tip]);
   const [glowH, cut, glowTitle] = await cell('--glow-reality');
   ok('advanced: a long value is one line, whole in its title', glowH === (await cell('--bg'))[0] && cut && glowTitle.startsWith('0 0 18px'), glowH + ' ' + glowTitle);
   await page.fill('input[aria-label="Pin --radius"]', '1px;color:red');
@@ -331,7 +297,7 @@ for (const [width, height] of [[200, 390], [320, 568], [390, 844]]) {
 
 // ---- 3. chassis-varied and light presets: color-scheme follows, and under
 // hi-vis every category page clears the same WCAG floor the default does ------
-for (const id of ['slate', 'ink', 'paper']) {
+for (const id of ['slate', 'ink', 'paper', ...STYLES.filter((s) => s.id !== 'phosphor').map((s) => s.id)]) {
   const t = THEMES.find((x) => x.id === id);
   if (!t) continue;
   console.log('\n--- theme, ' + id + ' ---');
@@ -360,6 +326,17 @@ for (const id of ['slate', 'ink', 'paper']) {
   })));
   const inkRgb = async (k) => 'rgb(' + (await hexOf(page, k)).slice(1).match(/../g).map((x) => parseInt(x, 16)).join(', ') + ')';
   ok(id + ': running and danger buttons write in the inks', btn.running === await inkRgb('--warn-ink') && btn.danger === await inkRgb('--bad-ink'), JSON.stringify(btn));
+  // The fixture hub streams no STATE, so the Pattern card's own button is put in its running state by hand.
+  await openTab(page, 'cat1');
+  const ran = await page.evaluate(() => {
+    const b = document.querySelector('main.pane .run-btn');
+    if (!b || !b.classList.replace('primary', 'running')) return false;
+    b.disabled = false;
+    return [...document.querySelectorAll('main.pane .run-btn.running .run-text')].filter((t) => t.getClientRects().length).length === 1;
+  });
+  const stopLow = ran ? await page.evaluate(lowContrast, 'main.pane .run-btn.running .run-text') : ['no visible running run button'];
+  ok(id + ': the running Stop pattern label reads 4.5:1 on its card (ph-8pa1)', stopLow.length === 0, stopLow.join(' | '));
+  await openTab(page, 'machine');
   if (SHOTS) await page.screenshot({ path: join(SHOTS, 'home-' + id + '.png') });
   await openTab(page, 'display');
   if (SHOTS) await paneShot(page, 'display-' + id + '.png');

@@ -788,7 +788,7 @@ if (LIVE) {
       && lw[0].val[MAST.key] === 80 && lw[0].val[SPIN.key] === 50 && lw[0].val[SPOUT.key] === 50, lw);
     ok('link: the echo lands on the slider and both halves', Number(await speed.inputValue()) === 80
       && (await spIn.inputValue()) === '50' && (await spOut.inputValue()) === '50');
-    ok('link: the tooltip says the peak shifts', /peak shifts/.test(await link.getAttribute('title')), await link.getAttribute('title'));
+    ok('link: the tooltip says the peak shifts', /peak shifts/.test(await link.getAttribute('data-tip')), await link.getAttribute('data-tip'));
     if (SHOT) await page.locator('main.pane .ap').first().screenshot({ path: shot('1-link-on') });
 
     // A linked drag moves the peak and holds 1/in + 1/out, both halves in one intent.
@@ -833,7 +833,7 @@ if (LIVE) {
     await link.click();
     await page.waitForTimeout(250);
     ok('link: at master 100 with 100/100, linking writes nothing and says lower master', hub.intents.length === n4
-      && (await link.getAttribute('title')) === 'Lower master to shift the peak', await link.getAttribute('title'));
+      && (await link.getAttribute('data-tip')) === 'Lower master to shift the peak', await link.getAttribute('data-tip'));
     await link.click();
     await setRange(speed, 0);
     await page.waitForTimeout(250);
@@ -915,7 +915,7 @@ if (LIVE) {
     ok('inputs: shown on toggle, the strip above stays, the sections below move down',
       (await rows()) >= 2 && (await page.locator('main.pane .ap .ap-stroke').boundingBox()).y === strokeY
       && (await page.locator('main.pane .ap .ap-rhythm').boundingBox()).y > rhythmY + 20);
-    ok('inputs: the tooltip is terse', (await tog.getAttribute('title')) === 'Hide inputs');
+    ok('inputs: the tooltip is terse', (await tog.getAttribute('data-tip')) === 'Hide inputs');
     if (SHOT) await page.locator('main.pane .ap').first().screenshot({ path: shot('3-inputs-shown') });
     await page.reload();
     await toPatternPage(page);

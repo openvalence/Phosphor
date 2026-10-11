@@ -72,8 +72,8 @@ import { buildSettingsModel, placeableControls, minCells, WIDGET } from '../src/
 import { STORE_KEY, RESIZE_FLOOR } from '../src/model/grid.js';
 
 // The sidebar wrench drives edit mode (dashEdit); a layout is picked from the sidebar sub-items.
-const editBtn = (page) => page.locator('button[title="Edit layout"]:visible').first();
-const doneBtn = (page) => page.locator('button[title="Done editing"]:visible').first();
+const editBtn = (page) => page.locator('button[data-tip="Edit layout"]:visible').first();
+const doneBtn = (page) => page.locator('button[data-tip="Done editing"]:visible').first();
 const pickLayout = (page, name) => page.locator('nav.rail .sub-layout[data-layout="' + name + '"]').click();
 let fails = 0;
 const ok = (name, cond, extra) => {
@@ -170,7 +170,7 @@ async function drag(page, loc, dx, dy, during = null) {
 /** Red state: per key the card's fault tooltip (null when valid), the footer hint and Done. */
 const redState = async (page, keys) => ({
   faults: Object.fromEntries(await Promise.all(keys.map(async (k) => [k, await page.locator('.home .dash-cell[data-id="' + k + '"] > .dash-item')
-    .evaluate((el) => (el.classList.contains('fault') ? el.getAttribute('title') : null)).catch(() => 'missing')]))),
+    .evaluate((el) => (el.classList.contains('fault') ? el.getAttribute('data-tip') : null)).catch(() => 'missing')]))),
   hint: await page.locator('.home .dash-toolbar .dash-hint.red').textContent().catch(() => null),
   done: await page.locator('button[aria-label="Done editing"]:visible').first().isDisabled().catch(() => null),
 });
@@ -185,6 +185,14 @@ console.log('resize');
   ok('the fixture loads valid', Object.values((await redState(page, [SLIDER, F1])).faults).every((f) => f === null), await redState(page, [SLIDER, F1]));
 
   ok('edit mode offers every edge and corner beside the corner handle', await c.locator('.edge').count() === 7);
+  const stolen = await page.$$eval('.home .dash-item .tools > *', (els) => els.flatMap((t) => {
+    const r = t.getBoundingClientRect();
+    return [[1, 1], [r.width - 1, 1], [1, r.height - 1], [r.width - 1, r.height - 1], [r.width / 2, r.height / 2]]
+      .map(([x, y]) => document.elementFromPoint(r.left + x, r.top + y))
+      .filter((e) => e && !t.contains(e) && e.closest('.edge'))
+      .map((e) => (t.getAttribute('aria-label') || t.className) + ' under ' + e.className);
+  }));
+  ok('no resize edge covers a grip or a head tool, corners included (ph-gbuc)', stolen.length === 0, stolen);
   const g1 = await drag(page, c.locator('.edge-w'), -2 * cell, 0, () => ghost(page));
   ok('west edge: the ghost shows the live size', g1 && g1.text === '14 × ' + h0 && !g1.refused, g1);
   let s = (await stored())[SLIDER];
@@ -438,7 +446,7 @@ console.log('red');
   ok('red is the warn token: border and a tinted plate', paint.border === paint.warn && /gradient/.test(paint.plate), paint);
   ok('the store keeps the last valid layout', JSON.stringify(await stored()) === s0);
   ok('the edit footer names the count; Done is disabled and says why', r.hint === '2 cards red, not saved' && r.done === true
-     && await page.locator('button[aria-label="Done editing"]:visible').first().getAttribute('title') === '2 cards red, not saved', r);
+     && await page.locator('button[aria-label="Done editing"]:visible').first().getAttribute('data-tip') === '2 cards red, not saved', r);
   await drag(page, card(F2).locator('.handle.grab'), 14 * cell, 0);
   r = await redState(page, [F1, F2]);
   ok('resolving clears the red at once and Done returns', r.faults[F1] === null && r.faults[F2] === null && r.hint === null && r.done === false, r);

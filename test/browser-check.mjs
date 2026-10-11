@@ -9,7 +9,10 @@
  * defense against a hostile web page. So a locally-served page gets `watch`
  * tier and every write control correctly grays out. Useful for layout, useless
  * for proving the write plane. The bundle must be deployed and loaded from the
- * device for this to mean anything.
+ * device for this to mean anything. With no host it runs against its own
+ * private valencesim instead (test/live-sim.mjs: the built page, /uitoken
+ * proxied to the sim's mint) and SKIPS (exit 0) without the exe; it rides
+ * test:browser as check:browsercheck.
  *
  * What it checks:
  *   1. the page reaches LIVE and adopts the catalog
@@ -37,10 +40,13 @@ import { chromium, devices } from 'playwright';
 import { mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
+import { catalogTabs, goTab } from './nav.mjs';
+import { startSim, serveBundle, SIM } from './live-sim.mjs';
 
 const HOST = process.argv[2];
-if (!HOST) { console.error('usage: node test/browser-check.mjs <host> [...] -- no baked default, name the hub'); process.exit(1); }
-const PAGE_URL = 'http://' + HOST + '/';
+const own = HOST ? null : await startSim();
+if (!HOST && !own) { console.log('SKIP: no host given and no valencesim at ' + SIM); process.exit(0); }
+const PAGE_URL = HOST ? 'http://' + HOST + '/' : await serveBundle(own.port, own.http);
 const OUT = join(fileURLToPath(new URL('.', import.meta.url)), 'evidence');
 mkdirSync(OUT, { recursive: true });
 
@@ -64,28 +70,22 @@ async function run(label, contextOpts, shots) {
   await page.goto(PAGE_URL, { waitUntil: 'domcontentloaded', timeout: 20000 });
 
   // The page is useless until the catalog lands, so that is the real ready gate.
-  const gotTabs = await page.waitForSelector('nav.tabs button', { timeout: 25000 })
-    .then(() => true).catch(() => false);
-  ok('catalog adopted and tabs rendered', gotTabs);
+  const tabs = await catalogTabs(page);
+  ok('catalog adopted and tabs rendered', tabs.length > 0);
 
-  if (gotTabs) {
-    const tabs = await page.$$eval('nav.tabs button', (b) => b.map((x) => x.textContent.trim()));
-    ok('tabs came from the machine', tabs.length >= 3, tabs.join(' | '));
+  if (tabs.length) {
+    ok('tabs came from the machine', tabs.length >= 3, tabs.map((t) => t.label).join(' | '));
 
     // Navigate to the machine's FIRST CATEGORY tab before counting controls.
     // The landing view is a telemetry dashboard with no settings on it, so
     // counting fields there measured nothing. Clicking through also proves the
     // tabs the catalog produced are actually usable.
-    const tabNames = await page.$$eval('nav.tabs button', (b) => b.map((x) => x.textContent.trim()));
-    const settingsTab = tabNames.findIndex((t) =>
-      !['Dash', 'Pairing', 'Link', 'Log', 'Display'].includes(t));
-    if (settingsTab >= 0) {
-      await page.$$eval('nav.tabs button', (b, i) => b[i].click(), settingsTab);
-      await page.waitForTimeout(400);
-    }
+    const settingsTab = tabs.find((t) => t.id.startsWith('cat'));
+    await goTab(page, settingsTab.id);
+    await page.waitForTimeout(400);
     const fields = await page.$$eval('.field', (els) => els.length);
     ok('controls rendered on a catalog-built tab', fields > 0,
-       fields + ' fields on "' + (tabNames[settingsTab] || '?') + '"');
+       fields + ' fields on "' + settingsTab.label + '"');
 
     // Hero widgets CLAIM the fields they can draw better, so a machine whose
     // whole settings surface is claimed legitimately leaves few generic
@@ -141,11 +141,9 @@ async function groundTruthRoundTrip() {
   // The landing view is telemetry; settings live on the first catalog-built tab.
   async function openSettings() {
     await page.goto(PAGE_URL, { waitUntil: 'domcontentloaded', timeout: 20000 });
-    await page.waitForSelector('nav.tabs button', { timeout: 25000 });
-    const names = await page.$$eval('nav.tabs button', (b) => b.map((x) => x.textContent.trim()));
-    const i = names.findIndex((t) => !['Dash', 'Pairing', 'Link', 'Log', 'Display'].includes(t));
-    if (i >= 0) {
-      await page.$$eval('nav.tabs button', (b, n) => b[n].click(), i);
+    const cat = (await catalogTabs(page)).find((t) => t.id.startsWith('cat'));
+    if (cat) {
+      await goTab(page, cat.id);
       await page.waitForTimeout(500);
     }
   }
@@ -166,10 +164,14 @@ async function groundTruthRoundTrip() {
     return null;
   }, [ANY_NUM, label]);
 
+  // Every data-shadow the field wears from the write on, in window.__shadows: a
+  // local hub can answer inside one poll, so pending is observed, never sampled.
   const writeLabel = (label, v) => page.evaluate(([sel, want, val]) => {
     for (const el of document.querySelectorAll(sel)) {
       const f = el.closest('.field');
       if (f.querySelector('.field-label').textContent.trim() === want) {
+        window.__shadows = [];
+        new MutationObserver(() => window.__shadows.push(f.dataset.shadow)).observe(f, { attributes: true, attributeFilter: ['data-shadow'] });
         el.value = String(val);
         el.dispatchEvent(new Event('change', { bubbles: true }));
         return true;
@@ -226,9 +228,9 @@ async function groundTruthRoundTrip() {
               + ' (step ' + pick.step + '), restored afterwards');
 
   await writeLabel(pick.label, want);
-  const pending = await awaitShadow(pick.label, ['pending', 'overdue'], 600);
-  ok('write drives data-shadow to pending', pending === 'pending' || pending === 'overdue',
-     'data-shadow=' + pending);
+  const pending = await page.waitForFunction(() => window.__shadows.some((s) => s === 'pending' || s === 'overdue'), null, { timeout: 600 })
+    .then(() => true, () => false);
+  ok('write drives data-shadow to pending', pending, 'data-shadow seen: ' + (await page.evaluate(() => window.__shadows)).join(' -> '));
 
   const settled = await awaitShadow(pick.label, ['confirmed', 'fault'], 4000);
   ok('the echo confirms the write (no fault, no timeout)', settled === 'confirmed',
@@ -263,7 +265,7 @@ await groundTruthRoundTrip();
   const ctx = await browser.newContext({ viewport: { width: 360, height: 740 } });
   const page = await ctx.newPage();
   await page.goto(PAGE_URL, { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('nav.tabs button', { timeout: 25000 }).catch(() => {});
+  await catalogTabs(page);
   const overflow = await page.evaluate(() =>
     document.documentElement.scrollWidth - document.documentElement.clientWidth);
   console.log('\n--- overflow ---');

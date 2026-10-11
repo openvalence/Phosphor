@@ -73,7 +73,7 @@ function h(tag, attrs = {}, ...kids) {
     if (v == null || v === false) continue;
     if (k === 'class') e.className = v;
     else if (k === 'text') e.textContent = v;
-    else e.setAttribute(k, v === true ? '' : String(v));
+    else e.setAttribute(k === 'title' ? 'data-tip' : k, v === true ? '' : String(v));   // `title` is the tooltip: ui/tip.js draws data-tip
   }
   e.append(...kids.flat().filter((x) => x != null && x !== false && x !== ''));
   return e;
@@ -284,12 +284,15 @@ export function outside(el, onOutside, except = []) {
 // ---- controls ---------------------------------------------------------------------
 
 export function button(o = {}) {
-  check('button', o, ['label', 'icon', 'title', 'tone', 'pressed', 'disabled', 'onClick']);
+  check('button', o, ['label', 'icon', 'title', 'tip', 'tone', 'pressed', 'disabled', 'onClick']);
   if (o.tone != null && !['primary', 'danger'].includes(o.tone)) throw new Error('ui.button: tone is "primary" or "danger"');
   const b = h('button', { type: 'button', class: cls('og-btn sm ui-btn' + (o.tone ? ' ' + o.tone : ''), o) });
-  let ic = null, lb = null, name = null;
-  // An icon-only button is named by its title.
-  const sync = () => { if (lb) b.removeAttribute('aria-label'); else attr(b, 'aria-label', b.getAttribute('title') || null); };
+  let ic = null, lb = null, name = null, ti = '', tp = '';
+  // An icon-only button is named by its title; its tooltip is `tip`, else the title (ui/tip.js drops one that repeats the label).
+  const sync = () => {
+    attr(b, 'data-tip', tp || ti || null);
+    if (lb) b.removeAttribute('aria-label'); else attr(b, 'aria-label', ti || tp || null);
+  };
   def(b, {
     label: {
       get: () => (lb ? lb.textContent : ''),
@@ -302,7 +305,8 @@ export function button(o = {}) {
       get: () => name,
       set(v) { name = v || null; if (!v) { if (ic) ic.remove(); ic = null; } else if (!ic) b.prepend(ic = icon(v)); else setIcon(ic, v); },
     },
-    title: { get: () => b.getAttribute('title') || '', set(v) { attr(b, 'title', v || null); sync(); } },
+    title: { get: () => ti, set(v) { ti = v || ''; sync(); } },
+    tip: { get: () => tp, set(v) { tp = v || ''; sync(); } },
     pressed: {
       get: () => (b.hasAttribute('aria-pressed') ? b.getAttribute('aria-pressed') === 'true' : null),
       set(v) { attr(b, 'aria-pressed', v == null ? null : String(!!v)); b.classList.toggle('on', !!v); },
@@ -311,6 +315,7 @@ export function button(o = {}) {
   b.icon = o.icon;
   b.label = o.label;
   b.title = o.title;
+  b.tip = o.tip;
   b.pressed = o.pressed;
   b.disabled = !!o.disabled;
   // A toggle flips before onClick, so onClick reads the new state.
@@ -327,7 +332,7 @@ export function files(o = {}) {
 }
 
 export function segmented(o = {}) {
-  check('segmented', o, ['options', 'value', 'tabs', 'disabled', 'onChange']);
+  check('segmented', o, ['options', 'value', 'tabs', 'disabled', 'onChange']);   // an option: {value, label, icon, title, tip}
   const tabs = !!o.tabs;
   const el = h('div', { class: cls('og-seg ui-seg', o), role: tabs ? 'tablist' : 'radiogroup' });
   let value = o.value, btns = [], off = false;
@@ -344,7 +349,7 @@ export function segmented(o = {}) {
   const pick = (v, e) => { if (v === value) return; value = v; draw(); if (o.onChange) o.onChange(v, e); };
   const build = (list) => {
     btns = (list || []).map((x) => {
-      const b = h('button', { type: 'button', role: tabs ? 'tab' : 'radio', title: x.title || null }, x.icon ? icon(x.icon) : null,
+      const b = h('button', { type: 'button', role: tabs ? 'tab' : 'radio', title: x.tip || x.title || null }, x.icon ? icon(x.icon) : null,
         x.label ? h('span', { text: x.label }) : null);
       if (!x.label && x.title) b.setAttribute('aria-label', x.title);
       b._v = x.value;
@@ -383,7 +388,7 @@ function switchCtl(o = {}) {
   def(el, {
     value: { get: () => input.checked, set(v) { input.checked = !!v; } },
     disabled: { get: () => input.disabled, set(v) { input.disabled = !!v; el.classList.toggle('is-disabled', !!v); } },
-    label: { get: () => lab.textContent, set(v) { setText(lab, v); attr(input, 'aria-label', v ? null : el.title || null); } },
+    label: { get: () => lab.textContent, set(v) { setText(lab, v); attr(input, 'aria-label', v ? null : el.getAttribute('data-tip')); } },
     input: { value: input },
   });
   el.value = o.value;
@@ -608,9 +613,9 @@ export function card(o = {}) {
     caret = h('button', { type: 'button', class: 'ui-caret', 'aria-expanded': 'true' }, icon('caret'), t);
     lead = caret;
   }
-  const head = h('div', { class: 'ui-card-head' }, lead, act);
+  const head = h('div', { class: 'ui-card-head', 'data-part': 'panel-bar' }, lead, act);
   const body = h('div', { class: 'ui-card-body' });
-  const el = h('section', { class: cls('surface-card ui-card', o) }, head, body);
+  const el = h('section', { class: cls('surface-card ui-card', o), 'data-part': 'panel' }, head, body);
   const setOpen = (v) => { el.toggleAttribute('data-shut', !v); if (caret) caret.setAttribute('aria-expanded', String(!!v)); };
   if (caret) caret.addEventListener('click', (e) => { const v = el.hasAttribute('data-shut'); setOpen(v); if (o.onToggle) o.onToggle(v, e); });
   // `title` is the card's heading here, never a tooltip.
@@ -702,6 +707,8 @@ export function stage(o = {}) {
   const hide = () => { if (!overlay.matches(':hover') && !overlay.querySelector('[data-drag], :focus-visible')) el.removeAttribute('data-show'); };
   const poke = () => { el.setAttribute('data-show', ''); clearTimeout(idle); idle = setTimeout(hide, IDLE_MS); };
   el.addEventListener('pointermove', poke);
+  // A hidden overlay is display: none, out of the tab order: Tab in fullscreen shows it first.
+  winOn(el, 'keydown', (e) => { if (e.key === 'Tab' && full) poke(); });
   el.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse' && !overlay.querySelector('[data-drag]')) { clearTimeout(idle); el.removeAttribute('data-show'); } });
   // A touch on a hidden overlay only wakes it: no tap.
   el.addEventListener('pointerdown', (e) => { tapShow = live() && e.pointerType !== 'mouse' && !el.hasAttribute('data-show'); poke(); }, true);
@@ -952,7 +959,7 @@ export function status(o = {}) {
     el.toggleAttribute('data-routed', routed);
     setText(txt, cur.text);
     attr(el, 'data-tone', cur.tone || null);
-    attr(el, 'title', cur.title || cur.text || null);
+    attr(el, 'data-tip', cur.title || cur.text || null);
     if (!routed) { sent = ''; return; }
     const k = cur.text + '\n' + cur.tone + '\n' + cur.title;
     if (k === sent) return;
@@ -1010,10 +1017,11 @@ export function fitGrid(W, H, gap = 8, min = 150, max = 300, text = 44) {
 /**
  * Tiles or rows. Paged: as many whole items as fit, onPage(page, perPage) when
  * that changes, and a page foot; else the body scrolls with the recess shades.
- * onMove(from, to): rows drag to reorder (a mouse at once, a touch after a hold).
+ * row.min (px): rows fill columns at least that wide, side by side; one column without it.
+ * onMove(from, to): rows drag to reorder (a mouse at once, a touch after a hold); one column only.
  */
 export function list(o = {}) {
-  check('list', o, ['form', 'paged', 'tile', 'count', 'onPage', 'onMove']);
+  check('list', o, ['form', 'paged', 'tile', 'row', 'count', 'onPage', 'onMove']);
   if (!['grid', 'rows'].includes(o.form || 'grid')) throw new Error('ui.list: form is grid or rows');
   const paged = o.paged !== false;
   const items = h('div', { class: 'ui-list-items', role: 'list' });
@@ -1034,19 +1042,26 @@ export function list(o = {}) {
     setText(countOut, o.count ? o.count(total) : '');
     return pages;
   };
-  const fit = () => {
+  // force: ask again even when the page size holds (a form switch, a refit); the first item stays in view either way.
+  const fit = (force) => {
     if (!paged) return;
     const W = body.clientWidth, H = body.clientHeight;
     if (!W || !H) return;
     const gap = parseFloat(getComputedStyle(items).rowGap) || 0, rem = remPx();
     let f;
     if (form === 'rows') {
-      const v = getComputedStyle(el).getPropertyValue('--ui-row-h').trim(), rh = parseFloat(v) * (v.endsWith('rem') ? rem : 1) || 56;
+      // A probe resolves --ui-row-h as drawn: a calc(), max() or var() included.
+      const probe = h('div', { style: 'position: absolute; visibility: hidden; height: var(--ui-row-h)' });
+      el.append(probe);
+      const rh = probe.getBoundingClientRect().height || 56;
+      probe.remove();
       const n = Math.max(1, Math.floor((H + gap) / (rh + gap)));
-      f = { cols: 1, perPage: n };
+      const cg = parseFloat(getComputedStyle(items).columnGap) || gap;
+      const cols = o.row && o.row.min > 0 && !o.onMove ? Math.max(1, Math.floor((W + cg) / (o.row.min + cg))) : 1;
+      f = { cols, perPage: n * cols };
     } else f = fitGrid(W, H, gap, (o.tile && o.tile.min) || 150, (o.tile && o.tile.max) || 300, TILE_TEXT_REM * rem);
     items.style.gridTemplateColumns = 'repeat(' + f.cols + ', minmax(0, 1fr))';
-    if (f.perPage === per) return;
+    if (f.perPage === per && !force) return;
     const first = (page - 1) * (per || f.perPage);
     per = f.perPage;
     page = Math.floor(first / per) + 1;
@@ -1110,13 +1125,10 @@ export function list(o = {}) {
         el.dataset.form = v;
         if (!paged) return;
         if (v === 'rows') items.style.gridTemplateColumns = '';
-        const was = per;
-        per = 0;
-        fit();
-        if (per === 0) per = was;
+        fit(true);
       },
     },
-    refit: { value: () => { per = 0; fit(); } },
+    refit: { value: () => fit(true) },
   });
 }
 
@@ -1337,6 +1349,43 @@ export function menu(o = {}) {
   return def(el, { items: { value: btns }, close: { value: close } });
 }
 
+// ---- a plugin's own items in the shell context menu (ui.menu) ----------------------------
+
+const OWN = new WeakMap();
+/**
+ * Puts the plugin's own items on its own element in the shell context menu (docs/PLUGINS.md,
+ * Context menus): a right-click, a long press, the menu key or Shift+F10 inside `el` lists them
+ * first, innermost element first, before the field, module and page items. `items` is an array
+ * or a function of the open, `at` {x, y, keyboard, target}, returning one; each item {label,
+ * run, disabled, title, checked}, flat. `o.title` heads them. Attaching again replaces. -> off()
+ */
+export function attachMenu(el, items, o = {}) {
+  if (!el || el.nodeType !== 1) throw new Error('ui.menu takes an element');
+  if (typeof items !== 'function' && !Array.isArray(items)) throw new Error('ui.menu takes items: an array or a function returning one');
+  o = check('menu', o, ['title']);
+  const spec = { items, title: typeof o.title === 'string' ? o.title.trim().slice(0, 80) : '' };
+  OWN.set(el, spec);
+  return () => { if (OWN.get(el) === spec) OWN.delete(el); };
+}
+const ownItem = (it) => it && typeof it.label === 'string' && !!it.label.trim() && typeof it.run === 'function';
+/**
+ * The ui.menu targets from `node` up, innermost first: [{el, title, items}], each item checked
+ * and trimmed to 40 characters; an item without a label or a run is left out.
+ */
+export function ownMenus(node, at) {
+  const out = [];
+  for (let n = node; n; n = n.parentElement) {
+    const s = OWN.get(n);
+    if (!s) continue;
+    const list = typeof s.items === 'function' ? s.items(at) : s.items;
+    const items = (Array.isArray(list) ? list : []).filter(ownItem).map((it) => ({ label: it.label.trim().slice(0, 40), run: it.run,
+      disabled: typeof it.disabled === 'string' ? it.disabled : it.disabled ? 'unavailable' : '',
+      title: typeof it.title === 'string' ? it.title : null, checked: !!it.checked }));
+    out.push({ el: n, title: s.title, items });
+  }
+  return out;
+}
+
 /** The shell's recess shades on a scroller of the plugin's own (DESIGN 10.3). -> off() */
 export function shade(el) {
   return scrollshade(el).destroy;
@@ -1347,5 +1396,5 @@ export const KIT = Object.freeze({
   version: VERSION, icons: ICONS, icon,
   button, files, segmented, switch: switchCtl, slider, stepper, select, text,
   page, card, rows, row, bar, stage, scrub, split, sheet, status, quickRail, list, tile,
-  outside, gestures, drag, shade, field, module,
+  outside, gestures, drag, shade, field, module, menu: attachMenu,
 });

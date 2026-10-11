@@ -20,7 +20,7 @@
 </script>
 
 <span class="credit">{lead}{credit.name}{#if credit.license}{' · ' + credit.license}{/if}
-  {#if credit.url}<button type="button" class="og-btn sm copy" title={credit.url} onclick={copy}>{done ? 'Copied' : 'Copy link'}</button>{/if}</span>
+  {#if credit.url}<button type="button" class="og-btn sm copy" data-tip={credit.url} onclick={copy}>{done ? 'Copied' : 'Copy link'}</button>{/if}</span>
 
 <style>
   .credit { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }

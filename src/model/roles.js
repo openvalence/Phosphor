@@ -58,9 +58,14 @@ export const ROLE = {
   telemetryPosition: 'telemetry.position',
   telemetryVelocity: 'telemetry.velocity',
   telemetryCurrent: 'telemetry.current',
+  // RFC-109 (draft) narrows power.bus to the system (DC bus) voltage and adds
+  // the machine's total draw in watts beside it.
   telemetryPowerBus: 'telemetry.power.bus',
+  telemetryPowerDraw: 'telemetry.power.draw',
   telemetryTemp: 'telemetry.temp',
   telemetryUptime: 'telemetry.uptime',
+  // RFC-113 (draft): the hub time (SPEC 7.1, us) the fields of its layout were sampled.
+  telemetrySampleTime: 'telemetry.sample_time',
   // RFC-032: where the machine is currently COMMANDED to, as opposed to
   // telemetryPosition (where it is). Neither role says whether its number was
   // measured or computed — that is `provenance` (RFC-048 key 22), per FIELD,
@@ -132,6 +137,13 @@ export const ROLE = {
 
   // RFC-067: the store CRUD op select (an action tag, options = store_ops)
   actionStore: 'action.store',
+
+  // RFC-109 (draft): the hub's radio signal, dBm, 0 = no reading; the share
+  // of its TCP segments it sent again and its radio's transmit retries, both
+  // percent over a trailing window (linkstats.js)
+  linkRssi: 'link.rssi',
+  linkResent: 'link.resent',
+  linkRetries: 'link.retries',
 };
 
 /**
@@ -179,9 +191,11 @@ export const ROLE_LABEL = {
   [ROLE.telemetryTarget]: 'Target',
   [ROLE.telemetryVelocity]: 'Speed',
   [ROLE.telemetryCurrent]: 'Current',
-  [ROLE.telemetryPowerBus]: 'Bus power',
+  [ROLE.telemetryPowerBus]: 'Bus voltage',
+  [ROLE.telemetryPowerDraw]: 'Power draw',
   [ROLE.telemetryTemp]: 'Temperature',
   [ROLE.telemetryUptime]: 'Uptime',
+  [ROLE.telemetrySampleTime]: 'Sample time',
 
   [ROLE.identityName]: 'Machine name',
 
@@ -226,6 +240,10 @@ export const ROLE_LABEL = {
   [ROLE.modFall]: 'Fall',
   [ROLE.modRest]: 'Rest',
   [ROLE.modPhase]: 'Phase',
+
+  [ROLE.linkRssi]: 'Signal',
+  [ROLE.linkResent]: 'Resent',
+  [ROLE.linkRetries]: 'WiFi retries',
 };
 
 /** Open convention (RFC-019): `action.<name>` marks an INTENT field as a verb. */

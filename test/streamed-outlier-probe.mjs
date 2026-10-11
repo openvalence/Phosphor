@@ -325,8 +325,7 @@ function replay(samples, drawHz) {
   const frames = [];
   while (simT <= tEnd) {
     while (idx < samples.length && samples[idx].t <= simT) {
-      tele.push(samples[idx].v, samples[idx].t);
-      clock.noteArrival(samples[idx].t);
+      clock.noteLate(tele.push(samples[idx].v, samples[idx].t));
       idx++;
     }
     clock.update(dtMs);

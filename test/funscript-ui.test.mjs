@@ -4,7 +4,7 @@
  * a fake video element, a fake host API, the real media clock and the real
  * scheduler. No DOM, no network.
  *   (a) timeline   curvePoints, seekAt, traceLines, heatStops, heatColor, clampRange, zoomStep
- *   (b) helpers    compositionOf, clampOffset, windowShare, ceilingOf, localScene, extraNote
+ *   (b) helpers    compositionOf, clampOffset, windowShare, planShareOf, ceilingOf, localScene, extraNote
  *   (c) control    nothing before Play but the grant warm-up; preroll then video
  *                  start; tiled segments; a gate pauses in the same tick with one
  *                  hold and never auto-resumes; Pause is one hold then silence;
@@ -21,7 +21,7 @@ import { createScheduler, STOP_MS } from '../plugins/factory/funscript-player/sc
 import { curvePoints, seekAt, traceLines, heatStops, heatColor, HEAT_MID_UPS, HEAT_TOP_UPS, clampRange, zoomStep, ZOOMS, pinchZoom }
   from '../plugins/factory/funscript-player/timeline.js';
 import { toStored, fromStored, move } from '../plugins/factory/funscript-player/queue.js';
-import { createControl, compositionOf, pageClass, clampOffset, windowShare, ceilingOf, localScene, extraNote, COPY }
+import { createControl, compositionOf, pageClass, clampOffset, windowShare, planShareOf, ceilingOf, localScene, extraNote, COPY }
   from '../plugins/factory/funscript-player/ui.js';
 
 let fails = 0;
@@ -46,12 +46,64 @@ console.log('(a) timeline');
   ok('curve: invert and range applied', inv[0] === '0.0,40.0' && inv[1] === '500.0,80.0', inv);
   ok('curve: none without a script or window', curvePoints(null, 0, 1, 1, 1) === '' && curvePoints(script, 5, 5, 1, 1) === '');
   ok('seekAt: share of the width, clamped', seekAt(250, 1000, 8000) === 2000 && seekAt(-5, 1000, 8000) === 0 && seekAt(2000, 1000, 8000) === 8000 && seekAt(1, 0, 10) === 0);
+  // A line's parts joined: one path, a repeated moveTo at each join.
+  const TL = (...a) => traceLines(...a).map((l) => ({ ...l, d: l.parts.map((p) => p.d).join('') }));
   const tr = [{ m: 0, u: 0 }, { m: 100, u: 1 }, { m: 200, u: null }, { m: 300, u: 0.5 }, { m: 400, u: 0.5 },
     { m: 500, u: 0.5, stale: true }, { m: 600, u: 0, stale: true }];
-  const lines = traceLines(tr, 0, 1000, 1000, 100);
+  const lines = TL(tr, 0, 1000, 1000, 100);
   ok('trace: a null u is a gap, a stale change a new line', lines.length === 3 && !lines[0].stale && lines[2].stale
-    && lines[0].points === '0.0,100.0 100.0,0.0' && lines[2].points.startsWith('400.0,50.0'), lines);
-  ok('trace: outside the window is dropped', traceLines(tr, 250, 450, 1000, 100).length === 1);
+    && lines[0].d === 'M0.0,100.0C33.3,66.7 66.7,33.3 100.0,0.0' && lines[2].d.startsWith('M400.0,50.0'), lines);
+  ok('trace: outside the window is dropped', TL(tr, 250, 450, 1000, 100).length === 1);
+  // A path's on-curve points and its segments [x0, y0, c1x, c1y, c2x, c2y, x1, y1].
+  const parse = (d) => {
+    const segs = [];
+    let start = null;
+    for (const sub of d.split('M').filter(Boolean)) {
+      const n = sub.split(/[C ]/).map((p) => p.split(',').map(Number));
+      start = start || n[0];
+      for (let i = 1; i + 2 < n.length; i += 3) segs.push([...n[i - 1], ...n[i], ...n[i + 1], ...n[i + 2]]);
+    }
+    return { on: [start, ...segs.map((s) => [s[6], s[7]])], segs };
+  };
+  const xs = (lines) => lines.flatMap((l) => parse(l.d).segs.flatMap((s) => [s[0], s[2], s[4], s[6]]));
+  const forward = (lines) => lines.every((l) => { const x = parse(l.d).segs.flatMap((s) => [s[0], s[2], s[4], s[6]]); return x.every((v, i) => !i || v >= x[i - 1]); });
+  // 3 Hz at 20 ms samples; a clock that steps back 35 ms at 1 s and 16 ms at 2 s, and two samples swapped at 2.5 s.
+  const sine = (m) => 0.5 + 0.3 * Math.sin(2 * Math.PI * 3 * m / 1000);
+  const feed = [];
+  for (let k = 0, m = 0; k < 160; k++, m += 20) {
+    const back = (m > 1000 ? 35 : 0) + (m > 2000 ? 16 : 0);
+    feed.push({ m: m - back, u: sine(m), p: sine(m - 20) });
+  }
+  [feed[125], feed[126]] = [feed[126], feed[125]];
+  const stepped = TL(feed, 0, 3200, 1000, 100);
+  ok('trace: a clock step back or a swapped pair never draws backward (reality and plan)', stepped.length >= 1 && forward(stepped)
+    && forward(TL(feed, 0, 3200, 1000, 100, 'p')), xs(stepped).slice(0, 8));
+  const smooth = feed.slice(0, 45), sl = TL(smooth, 0, 1000, 1000, 100);
+  const on = parse(sl[0].d).on;
+  ok('trace: the curve passes through every sample', sl.length === 1 && on.length === smooth.length
+    && smooth.every((q, i) => near(on[i][0], q.m, 0.05) && near(on[i][1], 100 - q.u * 100, 0.05)), on.slice(0, 4));
+  const over = parse(sl[0].d).segs.filter((s) => [s[3], s[5]].some((y) => y < Math.min(s[1], s[7]) || y > Math.max(s[1], s[7])));
+  ok('trace: no segment leaves the range of its two samples (no overshoot)', over.length === 0, over[0]);
+  ok('trace: a monotone run stays monotone and a flat run stays flat', (() => {
+    const run = [0, 0.1, 0.5, 0.52, 0.9, 0.9, 0.9, 0.2].map((u, i) => ({ m: i * 40, u }));
+    const segs = parse(TL(run, 0, 400, 400, 100)[0].d).segs;
+    return segs.slice(4, 6).every((s) => s[1] === s[3] && s[3] === s[5] && s[5] === s[7]);
+  })());
+  ok('trace: samples over 250 ms apart are a gap', TL([{ m: 0, u: 0.1 }, { m: 40, u: 0.2 }, { m: 400, u: 0.8 }, { m: 440, u: 0.7 }], 0, 1000, 1000, 100).length === 2);
+  // The timeline's slide: the same trace in two frames of reference (spans 2.5 s apart) draws the same curve inside
+  // the window both hold, once the second is moved by the span's shift.
+  const long2 = Array.from({ length: 200 }, (_, k) => ({ m: k * 40, u: sine(k * 40) }));
+  const A = TL(long2, 0, 6000, 2000, 100), B = TL(long2, 2500, 8500, 2000, 100), dx = 2500 / 6000 * 2000;
+  const inWin = (lines, shift) => lines.flatMap((l) => parse(l.d).segs).filter((s) => s[0] + shift >= 1000 && s[6] + shift <= 1900)
+    .map((s) => s.map((v, i) => (i % 2 ? v : v + shift)));
+  const a = inWin(A, 0), b = inWin(B, dx);
+  ok('trace: a slide-span rebuild draws no seam (the same segments, within the 0.1 rounding)',
+    a.length > 20 && a.length === b.length && a.every((s, i) => s.every((v, j) => Math.abs(v - b[i][j]) <= 0.11)), [a[0], b[0]]);
+  const grow = long2.slice(0, 60), before = traceLines(grow, 0, 6000, 2000, 100)[0].parts;
+  const after = traceLines([...grow, { m: 60 * 40, u: sine(60 * 40) }], 0, 6000, 2000, 100)[0].parts;
+  const changed = after.filter((p) => { const o = before.find((q) => q.id === p.id); return !o || o.k0 !== p.k0 || o.k1 !== p.k1 || o.n !== p.n; });
+  ok('trace: a new sample changes only its own part and the one before (500 ms parts)', before.length >= 4 && changed.length <= 2
+    && changed.every((p) => p.id === after.at(-1).id || p.id === after.at(-2).id), changed.map((p) => p.id));
   // 0 -> 100 in 500 ms (200 units/s), a 1 s hold, 100 -> 0 in 250 ms (400), 0 -> 30 in 300 ms (100), from a 200 ms lead-in.
   const hs = parseFunscript({ actions: [{ at: 200, pos: 0 }, { at: 700, pos: 100 }, { at: 1700, pos: 100 }, { at: 1950, pos: 0 }, { at: 2250, pos: 30 }] });
   const runs = heatStops(hs);
@@ -94,6 +146,9 @@ console.log('(b) helpers');
     && clampOffset(-1000) === -500 && clampOffset('x') === 0);
   ok('windowShare: reported window only (law 9)', windowShare(50, 0, 100) === 0.5 && windowShare(150, 0, 100) === 1
     && windowShare(50, undefined, 100) === null && windowShare(50, 100, 100) === null);
+  ok('planShareOf: a plan outside the window reads outside 0..1, never pinned to the edge (ph-t2jn)',
+    planShareOf({ min: 0, max: 1000 }, -250) === -0.25 && planShareOf({ min: 0, max: 1000 }, 1500) === 1.5
+    && planShareOf({}, 1.25) === 1.25 && planShareOf({}, null) === null && planShareOf(null, 0.5) === null);
   const api = { value: (f) => f.v };
   const c = ceilingOf(api, { lo: { v: 10, unitId: 0 }, hi: { v: 110, unitId: 0 }, vmax: { v: 400, unitId: 1 } });
   ok('ceiling: mm window and mm/s limit', c.spanMm === 100 && c.vmax === 400, c);
@@ -130,7 +185,7 @@ function rig({ motion = true } = {}) {
       sent.push(list);
       return { ok: true, sent: list.length, rateHz: 50 };
     },
-    value: (f) => f.v, stale: () => '', log: () => {},
+    value: (f) => f.v, stale: () => '', log: () => {}, age: () => (st.sampleAt == null ? 0 : t - st.sampleAt),
     prefs: { get: (k) => (store.has(k) ? store.get(k) : null), set: (k, v) => store.set(k, v) },
   };
   const video = new FakeVideo();
@@ -380,6 +435,24 @@ const real = (sent) => sent.filter((l) => l.length);
   r.ctl.pause();
   for (let i = 0; i < 200; i++) r.frame();
   ok('pause home: off, a pause stays a hold', homes().length === 1);
+}
+
+{
+  // The trace: one point per telemetry sample at its arrival (the host's age), never a held copy per frame.
+  const r = rig();
+  r.ctl.load({ key: 'stash:t', title: 'T', stream: 'http://x/t' }, script, COPY.noScriptScene);
+  await flush();
+  r.playThrough();
+  for (let i = 0; i < 10; i++) r.frame();
+  r.ctl.trace.length = 0;
+  const arrivals = [];
+  for (let i = 0; i < 60; i++) {
+    if (i % 3 === 0) { r.st.sampleAt = r.now() + 5; arrivals.push(r.st.sampleAt); r.fields.pos.v = i; }   // 16 ms frames, a sample every 48 ms
+    r.frame();
+  }
+  const tr = r.ctl.trace;
+  ok('trace: one point per sample, at its arrival, time running forward', tr.length === arrivals.length
+    && tr.every((x, i) => x.at === arrivals[i] && (!i || x.m > tr[i - 1].m)), tr.slice(0, 3).map((x) => [x.at, Math.round(x.m)]));
 }
 
 console.log(fails ? '\nFAIL -- ' + fails + ' check(s)' : '\nPASS -- funscript card logic');

@@ -13,6 +13,8 @@
  * - The built-in machine is the Nucleus twin compiled to wasm (integral.worker.js), on every platform. It
  *   is a full hub joined by the normal connect over an in-page socket; only its host marks it (onSim). It
  *   stops on any disconnect; its state blob persists in localStorage under STATE_KEY.
+ * - Open to LAN (lan.svelte.js) shares this hub while it runs. Opened to the LAN, it boots with its pairing
+ *   window closed: the Pairing window button is the gesture, never a stranger's race to the boot window.
  */
 import { untrack } from 'svelte';
 import { createLocalHub } from '../../../Valence/clients/js/index.js';
@@ -24,6 +26,7 @@ import { connect, disconnect, machine } from '../model/machine.svelte.js';
 import { loadMachine, hubOptions, catalogStoreFor } from '../model/vault.js';
 import { loadStaging, saveStaging, stageEcho } from '../model/merge.js';
 import { hubs } from './hubs.svelte.js';
+import { lanAttach, lanDetach, lanFromHost, lanWanted } from './lan.svelte.js';
 
 const HOST = 'builtin';
 const STATE_KEY = 'phosphor.builtin.state';
@@ -39,6 +42,7 @@ export function onSim() {
 }
 
 function stopSim() {
+  lanDetach();
   if (worker) worker.terminate();
   worker = null;
   sim.info = null;
@@ -85,9 +89,10 @@ async function openSim() {
       else if (m.op === 'down') reject(new Error(m.error));
       else if (m.op === 'log') logLine(m.line);
       else if (m.op === 'state') saveState(m.blob);
+      else lanFromHost(m);
     });
   });
-  bridge.boot(Uint8Array.from(atob(WASM), (c) => c.charCodeAt(0)), loadState(), { homed: true, pairing_window: true });
+  bridge.boot(Uint8Array.from(atob(WASM), (c) => c.charCodeAt(0)), loadState(), { homed: true, pairing_window: !lanWanted() });
   let info;
   try { info = await up; } catch (e) {
     if (worker === w) stopSim();
@@ -99,6 +104,7 @@ async function openSim() {
   hubs.note = '';
   connect({ host: HOST, label: BUILTIN_MACHINE_NAME, WebSocketImpl: bridge.WebSocket, token: bridge.token });
   sim.info = { version: info.version, etag: info.etag };
+  lanAttach(bridge);
 }
 
 /** {machineKey: {uid: staged}}, persisted under merge.js MERGE_KEY. */

@@ -41,7 +41,7 @@
 </script>
 
 {#if heroes && heroes.length}
-  <div class="hero-strip" class:collapsed bind:offsetHeight={barH} style:height={heldH != null ? heldH + 'px' : null}>
+  <div class="hero-strip" data-part="hero" class:collapsed bind:offsetHeight={barH} style:height={heldH != null ? heldH + 'px' : null}>
     <div class="hero-inner" class:popup={heroBar.popup} class:quick={heroBar.quick} inert={collapsed && !heroBar.popup && !heroBar.quick}
          style:--rh={heroBar.slotH + 'px'} style:--qb={heroBar.quickBottom + 'px'} bind:this={inner}>
       {#each heroes as hero, i (hero.id)}

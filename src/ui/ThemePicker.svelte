@@ -31,7 +31,7 @@
   import { untrack } from 'svelte';
   import {
     KNOBS, TOKENS, LOCKED, SAFETY, DEFAULT_THEME,
-    applyTheme, currentTheme, editTheme, onTheme, deriveTokens, presetList,
+    applyTheme, currentTheme, editTheme, onTheme, deriveTokens, shownPresets, themeMeta, variantsOf, pickableStyles,
     saveAsPreset, deletePreset, exportTheme, importTheme, validOverride,
   } from '../model/theme.js';
   import { setPref, MOTION } from '../model/prefs.js';
@@ -39,13 +39,18 @@
   import { view } from '../model/viewport.svelte.js';
   import { FULL_UP, GLANCE_UP } from '../model/rclass.js';
   import { ACCENTS, KNOB_NAMES } from '../shell/themeCopy.js';
+  import { material } from '../model/material.svelte.js';
   import './pane.css';
 
   let theme = $state(currentTheme());
-  let presets = $state(presetList());
-  $effect(() => onTheme((t) => { theme = t; presets = presetList(); }));
+  let presets = $state(shownPresets(currentTheme()));
+  $effect(() => onTheme((t) => { theme = t; presets = shownPresets(t); }));
   const d = $derived(deriveTokens(theme));
-  const chips = $derived(presets.map((p) => ({ p, bg: deriveTokens(p).base['--bg'] })));
+  // Themes first (a whole style each, its swatch from its manifest), then the active Theme's
+  // Variants (palettes: the chassis and two accents), then the saved presets.
+  const styles = $derived(pickableStyles(theme).map((s) => ({ s, first: variantsOf(s.id)[0], tip: s.pitch + (s.note ? '. ' + s.note : '') })));
+  const variants = $derived(presets.filter((p) => !p.id.startsWith('user-')).map((p) => ({ p, bg: deriveTokens(p).base['--bg'] })));
+  const saved = $derived(presets.filter((p) => p.id.startsWith('user-')).map((p) => ({ p, bg: deriveTokens(p).base['--bg'] })));
 
   // The host's value-and-unit rule (format.js), never a local one.
   const unit = (u) => (v) => formatWithUnit({ unit: u, step: Number.isInteger(v) ? 1 : 0.1 }, v);
@@ -60,6 +65,11 @@
   const RAMP = ['--bg-sunken', '--bg', '--bg-raised', '--bg-card', '--line-0', '--line-1', '--line-2', '--line-3', '--line-4',
     '--tx-faint', '--tx-ghost', '--tx-mut', '--tx-val', '--tx', '--tx-hi'];
 
+  // A Theme that wants an OS material says where it has one, and what this window got (model/material.svelte.js).
+  const skinNote = $derived.by(() => {
+    const m = themeMeta(theme.style);
+    return m && m.note ? m.note + ' (now: ' + (material.applied === 'none' ? 'opaque look' : material.applied) + ')' : '';
+  });
   const near = $derived(ACCENTS.filter(([k]) => d.near[k]).map(([k, label]) => label + ' near safety ' + d.near[k]).join(' · '));
 
   const setAccent = (k, v) => editTheme((t) => { t.accents[k] = v.toUpperCase(); });
@@ -73,7 +83,7 @@
   }
   function remove(id) {
     deletePreset(id);
-    presets = presetList();
+    presets = shownPresets(theme);
   }
 
   // ---- advanced: pinned tokens ----
@@ -135,23 +145,54 @@
 <div class="pane-stack theme-picker">
   <section class="pane-sec og-panel" aria-labelledby="tp-theme">
     <div class="pane-head"><h2 id="tp-theme" data-search-key="theme">Theme</h2><span class="tp-active" data-testid="theme-active">{theme.name}</span></div>
-    <div class="swatches" role="group" aria-label="Theme presets">
-      {#each chips as { p, bg } (p.id)}
-        <span class="preset" data-search-key={'theme-' + p.id}>
-          <button type="button" class="swatch" class:active={theme.id === p.id} aria-pressed={theme.id === p.id}
-                  data-theme-id={p.id} onclick={() => applyTheme(p)}>
-            <span class="chassis" style="background:{bg}" aria-hidden="true">
-              <span class="dot" style="background:{p.accents.reality};box-shadow:0 0 6px {p.accents.reality}"></span>
-              <span class="dot" style="background:{p.accents.intent}"></span>
+    <div class="swatches" role="group" aria-label="Themes">
+      {#each styles as { s, first, tip } (s.id)}
+        <span class="preset" data-search-key={'style-' + s.id}>
+          <button type="button" class="swatch" class:active={theme.style === s.id} aria-pressed={theme.style === s.id}
+                  data-style-id={s.id} data-tip={tip} onclick={() => applyTheme(first)}>
+            <span class="chassis" style="background:{s.swatch}" aria-hidden="true">
+              <span class="dot" style="background:{first.accents.reality};box-shadow:0 0 6px {first.accents.reality}"></span>
+              <span class="dot" style="background:{first.accents.intent}"></span>
             </span>
-            <span class="name">{p.name}</span>
+            <span class="name">{s.name}</span>
           </button>
-          {#if p.id.startsWith('user-')}
-            <button type="button" class="og-btn sm del" aria-label={'Delete ' + p.name} title="Delete preset" onclick={() => remove(p.id)}>×</button>
-          {/if}
         </span>
       {/each}
     </div>
+    {#if variants.length}
+      <div class="swatches variants" role="group" aria-label="Variants of this theme">
+        {#each variants as { p, bg } (p.id)}
+          <span class="preset" data-search-key={'theme-' + p.id}>
+            <button type="button" class="swatch" class:active={theme.id === p.id} aria-pressed={theme.id === p.id}
+                    data-theme-id={p.id} onclick={() => applyTheme(p)}>
+              <span class="chassis" style="background:{bg}" aria-hidden="true">
+                <span class="dot" style="background:{p.accents.reality};box-shadow:0 0 6px {p.accents.reality}"></span>
+                <span class="dot" style="background:{p.accents.intent}"></span>
+              </span>
+              <span class="name">{p.name}</span>
+            </button>
+          </span>
+        {/each}
+      </div>
+    {/if}
+    {#if saved.length}
+      <div class="swatches variants" role="group" aria-label="Saved presets">
+        {#each saved as { p, bg } (p.id)}
+          <span class="preset" data-search-key={'theme-' + p.id}>
+            <button type="button" class="swatch" class:active={theme.id === p.id} aria-pressed={theme.id === p.id}
+                    data-theme-id={p.id} onclick={() => applyTheme(p)}>
+              <span class="chassis" style="background:{bg}" aria-hidden="true">
+                <span class="dot" style="background:{p.accents.reality};box-shadow:0 0 6px {p.accents.reality}"></span>
+                <span class="dot" style="background:{p.accents.intent}"></span>
+              </span>
+              <span class="name">{p.name}</span>
+            </button>
+            <button type="button" class="og-btn sm del" aria-label={'Delete ' + p.name} data-tip="Delete preset" onclick={() => remove(p.id)}>×</button>
+          </span>
+        {/each}
+      </div>
+    {/if}
+    <p class="pane-note tp-skin-note" data-testid="skin-note" data-tip={skinNote || undefined}>{skinNote}</p>
     <div class="row">
       <input class="og-num name-in" placeholder="Preset name" aria-label="Preset name" maxlength="40" bind:value={saveName} />
       <button type="button" class="og-btn" onclick={save}>Save as preset</button>
@@ -164,7 +205,7 @@
     <div class="accents">
       {#each ACCENTS as [k, label, tip] (k)}
         {@const v = k === 'highlight' ? (theme.accents.highlight || theme.accents.reality) : theme.accents[k]}
-        <label class="accent" title={tip} data-search-key={'accent-' + k}>
+        <label class="accent" data-tip={tip} data-search-key={'accent-' + k}>
           <span class="color-input"><input type="color" value={v.toLowerCase()} aria-label={label + ' color'}
                  oninput={(e) => setAccent(k, e.currentTarget.value)} /></span>
           <span class="accent-name">{label}</span><span class="mono hex">{v}</span>
@@ -173,7 +214,7 @@
     </div>
     <div class="locked" role="group" aria-label="Safety colors">
       {#each SAFETY as k (k)}
-        <span class="lock" title={'Locked: ' + LOCKED[k]}><i style="background:var({k})" aria-hidden="true"></i><span class="mono">{k}</span></span>
+        <span class="lock" data-tip={'Locked: ' + LOCKED[k]}><i style="background:var({k})" aria-hidden="true"></i><span class="mono">{k}</span></span>
       {/each}
       <span class="pane-note">Locked: safety colors (law 13)</span>
     </div>
@@ -183,7 +224,7 @@
     <div class="pane-head"><h2 id="tp-chassis" data-search-key="chassis">Chassis</h2></div>
     <div class="knobs">
       {#each Object.entries(KNOBS.chassis) as [k, [min, max, step]] (k)}
-        <label class="knob-row" title={KNOB_COPY[k][1]} data-search-key={'knob-' + k}>
+        <label class="knob-row" data-tip={KNOB_COPY[k][1]} data-search-key={'knob-' + k}>
           <span class="knob-name">{KNOB_COPY[k][0]}</span>
           <input type="range" {min} {max} {step} value={theme.chassis[k]} aria-label={KNOB_COPY[k][1]}
                  data-knob={'chassis.' + k} oninput={(e) => setKnob('chassis', k, Number(e.currentTarget.value))} />
@@ -192,14 +233,14 @@
       {/each}
     </div>
     <div class="ramp" aria-hidden="true">
-      {#each RAMP as k (k)}<i style="background:var({k})" title={k}></i>{/each}
+      {#each RAMP as k (k)}<i style="background:var({k})" data-tip={k}></i>{/each}
     </div>
     <div class="ratios" data-testid="theme-ratios">
       <div class="ratio-grid">
         <span class="ratio"><span class="rk">Text</span> <span class="mono">{ratio(d.ratios.text)}</span></span>
         <span class="ratio"><span class="rk">Labels</span> <span class="mono">{ratio(d.ratios.labels)}</span></span>
         <span class="ratio"><span class="rk">Reality</span> <span class="mono">{ratio(d.ratios.reality)}</span></span>
-        <span class="near" data-testid="theme-near" title={near}>{near}</span>
+        <span class="near" data-testid="theme-near" data-tip={near}>{near}</span>
       </div>
     </div>
   </section>
@@ -208,7 +249,7 @@
     <div class="pane-head"><h2 id="tp-look" data-search-key="look">Look</h2></div>
     <div class="knobs">
       {#each Object.entries(KNOBS.look) as [k, [min, max, step]] (k)}
-        <label class="knob-row" title={KNOB_COPY[k][1]} data-search-key={'knob-' + k}>
+        <label class="knob-row" data-tip={KNOB_COPY[k][1]} data-search-key={'knob-' + k}>
           <span class="knob-name">{KNOB_COPY[k][0]}</span>
           <input type="range" {min} {max} {step} value={theme.look[k]} aria-label={KNOB_COPY[k][1]}
                  data-knob={'look.' + k} oninput={(e) => setKnob('look', k, Number(e.currentTarget.value))} />
@@ -226,7 +267,7 @@
           {@const v = refused === k ? 'Not a single CSS value' : d.base[k]}
           <li class:pinned={k in theme.overrides}>
             <span class="mono tk">{k}</span>
-            <span class="mono derived" id={'tp-v' + k} data-phase={refused === k ? 'fault' : null} title={v}>{v}</span>
+            <span class="mono derived" id={'tp-v' + k} data-phase={refused === k ? 'fault' : null} data-tip={v}>{v}</span>
             <input class="og-num mono" placeholder="Derived" aria-label={'Pin ' + k} aria-describedby={'tp-v' + k}
                    aria-invalid={refused === k} spellcheck="false"
                    value={theme.overrides[k] ?? ''} onchange={(e) => pin(k, e.currentTarget.value)} />
@@ -311,6 +352,8 @@
   .name-in { width: 22ch; max-width: 100%; min-height: var(--tap); font-size: .8rem; }
 
   .swatches { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+  /* One fixed line, held whether or not a Theme has a note, so a pick moves nothing. */
+  .tp-skin-note { min-height: 1.45em; margin: 0; color: var(--tx-val); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .preset { display: inline-flex; align-items: center; gap: var(--sp-1); }
   .swatch {
     display: inline-flex;

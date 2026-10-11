@@ -714,7 +714,7 @@
   <div class="dash-selbar" class:over={!!given} role="group" aria-label="Selection">
     <span class="sel-n">{selSet.size} selected</span>
     <button type="button" class="og-btn sm" disabled={!selItems.some(canDup)} onclick={duplicateSel}
-            title={selItems.some(canDup) ? 'Place a copy' : 'Placed once per grid'}>Duplicate</button>
+            data-tip={selItems.some(canDup) ? 'Place a copy' : 'Placed once per grid'}>Duplicate</button>
     {#if selSet.size > 1}
       <button type="button" class="og-btn sm" onclick={() => arrangeSel('left')}>Align left</button>
       <button type="button" class="og-btn sm" onclick={() => arrangeSel('top')}>Align top</button>
@@ -738,7 +738,7 @@
       <div class="dash-cell" data-id={item.id} data-floor={given ? minOf(item)(item.w, item.h)[0] : null} use:registerCell={item.id}
            style={stack ? '' : 'grid-column:' + (item.x + 1) + ' / span ' + item.w + ';grid-row:' + (item.y + 1) + ' / span ' + item.h}>
         {#if item.kind === 'section'}
-          <h2 class="dash-section" title={item.title}><span>{item.title}</span></h2>
+          <h2 class="dash-section" data-tip={item.title}><span>{item.title}</span></h2>
         {:else}
           <DashItem
             {item}
@@ -795,11 +795,11 @@
       {/if}
     </div>
       <div class="edit-ops" role="group" aria-label="Layout editing">
-        <button type="button" class="og-btn sm" disabled={!undo.can} title="Undo last change (Ctrl+Z)"
+        <button type="button" class="og-btn sm" disabled={!undo.can} data-tip="Undo last change (Ctrl+Z)"
                 onclick={undoOnce}>Undo</button>
         <button type="button" class="og-btn sm" onclick={newNest}>New nest</button>
         {#if palette.shown}
-          <button type="button" class="og-btn sm palette-toggle" aria-pressed={palette.open} title="Module palette"
+          <button type="button" class="og-btn sm palette-toggle" aria-pressed={palette.open} data-tip="Module palette"
                   onclick={() => (palette.open = !palette.open)}>Modules</button>
         {/if}
         <button type="button" class="og-btn sm" popovertarget={menuId} style={'anchor-name: --' + menuId}>Layout…</button>

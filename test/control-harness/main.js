@@ -6,6 +6,7 @@ import '../../src/style.css';
 import '../../src/ui/still.svelte.js';
 import { connect, machine } from '../../src/model/machine.svelte.js';
 import { inFlight } from '../../src/model/shadow.svelte.js';
+import { history } from '../../src/model/history.svelte.js';
 import { placeableControls } from '../../src/model/settings.js';
 import Harness from './Harness.svelte';
 
@@ -15,6 +16,9 @@ window.__inFlight = (keys) => {
   const find = (k) => m.fields.find((f) => f.uid === k) || (placeableControls(m).find((c) => c.key === k) || {}).field;
   return inFlight(keys.map(find).filter(Boolean));
 };
+
+// The history ring and its redo list, as the test reads them (ph-buvu).
+window.__history = () => JSON.stringify([history.entries, history.redo]);
 
 const q = new URLSearchParams(location.search);
 const [host, port] = (q.get('hub') || '127.0.0.1').split(':');

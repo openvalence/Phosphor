@@ -42,8 +42,12 @@ import { CORE_CHANNEL, CORE_CHANNEL_NAME } from '../../../Valence/clients/js/gen
 import { buildSettingsModel } from './settings.js';
 import { MAX_SUBSCRIBE_HZ, regrow, telemetryChannelIds } from './wishes.js';
 import { ROLE } from './roles.js';
+import { filteredHubNowUs } from './motion.js';
 import { endpointLabel, setHubClock, unitOf } from './format.js';
 import { recorder } from './vault.js';
+import { bump } from './changes.js';
+import { countFrames } from './activity.js';
+import { blankLink, createLinkStats, machineLink } from './linkstats.js';
 
 /**
  * Core wishes carried in HELLO (session.js opts.subscriptions, SPEC §6.2).
@@ -102,14 +106,20 @@ function blankStats() {
     // sheds and paces each one separately, so a single total cannot tell
     // "position is stuttering" from "the plan channel is quiet".
     pushesByChannel: {},
-    // Published once a second by whatever widget owns the rAF loop, so the
-    // link bar can separate a render-cadence problem (the shell's webview)
-    // from an arrival-cadence one (the wire). Nulls until a loop runs.
-    render: { fps: null, delayMs: null, heldPct: null, skewMs: null },
+    // Published once a second by whatever widget owns the rAF loop: how far
+    // behind the rail draws and how many frames it held, to separate an
+    // arrival-cadence problem (the wire) from a render one. The frame rate is
+    // framerate.svelte.js's. Nulls until a loop runs.
+    render: { delayMs: null, heldPct: null, skewMs: null, at: null },
     lastRxMs: 0,
     clockOffsetUs: null,
     clockRttUs: null,
     reconnects: 0,
+    // NACK code -> {n, at, detail, channels: {id: n}}: the Link page's refusals.
+    // events.nacks is a 60-deep ring; this keeps every count.
+    nacks: {},
+    // The top bar's loss readout (linkstats.js says what each number is).
+    link: blankLink(),
   };
 }
 
@@ -123,7 +133,7 @@ export const machine = $state({
     since: 0,
     host: '',               // the hub this page is pointed at; '' = none chosen
     port: 82,
-    dialed: '',             // what the HUB chip shows: WS host:port or the BLE name
+    dialed: '',             // Health's Address row: WS host:port or the BLE name
     attempts: 0,            // consecutive failed opens since the last good one
     retryAt: 0,             // ms timestamp of the next automatic attempt; 0 = unknown
     sessionId: null,
@@ -159,8 +169,15 @@ export const machine = $state({
    * catalog still names retired bits.
    */
   safety: null,
-  /** channelId -> ms timestamp of that sample, for staleness display. */
+  /**
+   * channelId -> Date.now() ms that sample describes: its hub sample time (a
+   * telemetry.sample_time field, RFC-113 draft) through the CLOCK offset when
+   * the layout carries one and the clock is synced, else its arrival. Staleness
+   * and every age read it.
+   */
   sampleTs: {},
+  /** channelId -> arrival ms, only for samples sampleTs dates by hub time. */
+  sampleRxTs: {},
   /** channelId -> granted {rate, priority}, so the UI can show what it really gets. */
   grants: {},
 
@@ -204,6 +221,8 @@ let _lastOpts = {};
 let safetyMaxSeq = -1;
 let safetyLastLatch;
 let safetyEdgeSeen = false;
+// The device channels this session subscribed after its catalog (reset on WELCOME).
+let held = new Set();
 
 /** The live session handle, for the write plane. Null until connect(). */
 export function getSession() {
@@ -213,6 +232,11 @@ export function getSession() {
 /** The newest socket, or null (health.svelte.js's backlog reading). */
 export function currentSocket() {
   return _ws;
+}
+
+/** Did this session subscribe to the channel? A subscribed STATE sample is on its way (SPEC 6.8 retained). */
+export function subscribed(id) {
+  return held.has(id) || !!machine.grants[id];
 }
 
 /** Is the hub plane usable for writes right now? */
@@ -265,6 +289,52 @@ function checkFreshness() {
 }
 if (typeof setInterval === 'function') setInterval(checkFreshness, 100);
 
+// ---------------------------------------------------------------------------
+// Link loss (machine.stats.link)
+// ---------------------------------------------------------------------------
+
+const LINK_TICK_MS = 1000;
+let clientLinkSource = null;
+const linkStats = createLinkStats();
+
+/**
+ * The shell's client counters: (host, port) => Promise<{retrans, sent, scope,
+ * unit} | null> (main.js, src-tauri/src/linkstats.rs). Unset in the browser
+ * build, so clientLossPct stays null there.
+ */
+export function setClientLinkSource(fn) { clientLinkSource = fn; }
+
+let linkBusy = false;
+async function linkTick(s) {
+  if (linkBusy) return;
+  linkBusy = true;
+  try {
+    // Only a socket the webview itself opened has OS counters: never BLE,
+    // never the built-in machine (both ride a WebSocketImpl), never a replay.
+    const own = clientLinkSource && _lastOpts && !_lastOpts.WebSocketImpl && !_lastOpts.virtual;
+    const c = own ? await Promise.resolve(clientLinkSource(machine.link.host, machine.link.port)).catch(() => null) : null;
+    if (session !== s || machine.link.phase !== 'live') return;   // the link moved on while it was asked
+    machine.stats.link = linkStats.step(c, machineLink(machine.catalog.model, machine.samples));
+  } finally {
+    linkBusy = false;
+  }
+}
+
+// One tick a second while live, none otherwise; leaving live drops the
+// windows and the readout back to unknown.
+$effect.root(() => {
+  $effect(() => {
+    if (machine.link.phase !== 'live') return;
+    const s = session;
+    const timer = setInterval(() => linkTick(s), LINK_TICK_MS);
+    return () => {
+      clearInterval(timer);
+      linkStats.reset();
+      machine.stats.link = blankLink();
+    };
+  });
+});
+
 /**
  * Every inbound frame, PING and PONG included, is proof of life (SPEC Â§6.5).
  * The session answers those internally and emits nothing, so the activity
@@ -283,10 +353,11 @@ function stampingSocket(Impl, onData) {
       st.lastRxMs = Date.now();
       st.framesIn++;
       st.bytesIn += (ev && ev.data && (ev.data.byteLength ?? ev.data.length)) || 0;
+      if (ev) countFrames('rx', ev.data);
       if (onData && ev) onData(ev.data);
     };
     const send = ws.send;
-    ws.send = function (d) { machine.stats.framesOut++; return send.call(this, d); };
+    ws.send = function (d) { machine.stats.framesOut++; countFrames('tx', d); return send.call(this, d); };
     if (typeof ws.addEventListener === 'function') {
       ws.addEventListener('message', stamp);
     } else {
@@ -327,6 +398,41 @@ export function specSafetyAction() {
     optionAccess: f.optionAccess || null,
     access: f.access != null ? f.access : e.access,
   };
+}
+
+/**
+ * When a STATE sample was taken, in Date.now() ms: its telemetry.sample_time
+ * field (hub us, SPEC 7.2's STREAM wrap rule) through the filtered CLOCK
+ * offset, never after its arrival `rx`. Null when the layout has no such
+ * field, the clock is not synced, or the age is implausible (a missed resync):
+ * the caller dates the sample by arrival.
+ *
+ * Constraints:
+ * - Hub dating removes the link's arrival jitter from every consumer of
+ *   sampleTs (the rail's comet, the funscript trace); arrival stamps clump on
+ *   WiFi (telebuf.js, regression #5).
+ * - The CLOCK offset drifts with two crystals (motion.js CLOCK_DRIFT), so a
+ *   dated channel resyncs every clock_resync_interval_s (SPEC 7.1).
+ */
+const SAMPLE_AGE_MAX_MS = 2000;
+let lastClockMs = 0;   // the newest CLOCK reply, any exchange's
+function hubDated(channelId, sample, rx) {
+  const fields = machine.catalog.model && machine.catalog.model.byRole.get(ROLE.telemetrySampleTime);
+  const f = fields && fields.find((x) => x.channelId === channelId);
+  const t = f && sample && sample[f.name];
+  if (typeof t !== 'number' || !session || !session.state.clockSynced) {
+    if (f && session && !session.state.clockSynced) filteredHubNowUs(session);   // first use starts the CLOCK hunt
+    return null;
+  }
+  // Never over another exchange: the session holds one CLOCK in flight, and a
+  // second replaces it (motion.js's hunt stops on the lost one).
+  if (rx - lastClockMs >= LIMITS.clock_resync_interval_s * 1000) {
+    lastClockMs = rx;
+    session.syncClock().catch(() => {});
+  }
+  const ageMs = ((filteredHubNowUs(session) - t) | 0) / 1000;
+  if (!(ageMs > -SAMPLE_AGE_MAX_MS && ageMs < SAMPLE_AGE_MAX_MS)) return null;
+  return rx - Math.max(0, ageMs);
 }
 
 /**
@@ -435,12 +541,10 @@ export function connect(opts = {}) {
   machine.link.phase = 'connecting';
   machine.link.since = Date.now();
 
-  // Per session (reset on WELCOME): the ids subscribed, whether a catalog was
-  // already adopted (a second one is RFC-077 growth), the last 0x0001
-  // snapshot, and the channels already reported withdrawn.
-  let held = new Set();
+  // Per session (reset on WELCOME): whether a catalog was already adopted (a
+  // second one is RFC-077 growth) and the channels already reported withdrawn.
+  held = new Set();
   let adopted = false;
-  let catalogSnap;
   let withdrawn = new Set();
 
   // A replay is not evidence: a virtual session records nothing (vault.js).
@@ -509,7 +613,6 @@ export function connect(opts = {}) {
     machine.link.limits = w.limits || {};
     held = new Set();
     adopted = false;
-    catalogSnap = undefined;
     withdrawn = new Set();
     // §6.7 snapshot adoption: session.js rebuilt its grants from this WELCOME
     // and emits them as 'grant' right after 'welcome'; mirror the reset so a
@@ -546,7 +649,7 @@ export function connect(opts = {}) {
     const removed = grow(prev, entries);
     // RFC-077: survivors keep their samples, grants, shadows and confirms; a
     // vanished channel's go, so its placements resolve to nothing (inert, law 10).
-    for (const id of removed) { delete machine.samples[id]; delete machine.sampleTs[id]; delete machine.grants[id]; }
+    for (const id of removed) { delete machine.samples[id]; delete machine.sampleTs[id]; delete machine.sampleRxTs[id]; delete machine.grants[id]; }
     adopted = true;
   });
 
@@ -591,19 +694,15 @@ export function connect(opts = {}) {
 
   session.on('state', (channelId, sample, tsMs) => {
     machine.samples[channelId] = rawSample(sample);
-    machine.sampleTs[channelId] = tsMs || Date.now();
+    const rx = tsMs || Date.now();
+    const at = hubDated(channelId, sample, rx);
+    machine.sampleTs[channelId] = at ?? rx;
+    if (at != null) machine.sampleRxTs[channelId] = rx;
+    else delete machine.sampleRxTs[channelId];
+    bump(channelId);
     machine.stats.statePushes++;
     machine.stats.pushesByChannel[channelId] = (machine.stats.pushesByChannel[channelId] || 0) + 1;
     machine.stats.lastRxMs = Date.now();
-
-    // RFC-077: a changed catalog snapshot mid-session is a new etag; fetch it
-    // in the background and keep LIVE. Compared opaquely, never by field.
-    // TODO(rfc-58u): drop this once valence-js refetches on its own.
-    if (channelId === CORE_CHANNEL.catalog) {
-      const snap = JSON.stringify(sample);
-      if (catalogSnap !== undefined && snap !== catalogSnap && s.isLive) s.requestCatalog();
-      catalogSnap = snap;
-    }
 
     // ph-vdk.14: did the safety latch actually change, with nothing on its
     // EVENT twin (0x000E) to say so? Compared OPAQUELY -- this never reads a
@@ -663,6 +762,13 @@ export function connect(opts = {}) {
   });
 
   session.on('nack', (n) => {
+    // SPEC 8.6: the hub ends a catalog transfer its etag moved under with one
+    // CHUNK_UNAVAILABLE at the request's seq, 0 (store requests ride 1 and up),
+    // and the library restarts it. A restart, never a refusal.
+    if (n.code === NACK.CHUNK_UNAVAILABLE && !n.intentSeq) {
+      push(machine.events.session, { kind: 'catalog changed mid-transfer', detail: 'transfer restarted', at: Date.now() }, EVT_MAX);
+      return;
+    }
     // RFC-077: a withdrawn grant is said once per channel, never a refusal storm.
     if (n.code === NACK.CHANNEL_WITHDRAWN) {
       if (withdrawn.has(n.channel)) return;
@@ -671,6 +777,13 @@ export function connect(opts = {}) {
       delete machine.grants[n.channel];
     }
     push(machine.events.nacks, { ...n, at: Date.now() }, NACK_MAX);
+    // Re-read, never keep the assigned object: only the proxy is reactive.
+    machine.stats.nacks[n.code] ??= { n: 0, at: 0, detail: null, channels: {} };
+    const t = machine.stats.nacks[n.code];
+    t.n++;
+    t.at = Date.now();
+    t.detail = n.detail || t.detail;
+    t.channels[n.channel] = (t.channels[n.channel] || 0) + 1;
     // SUBSCRIBE_REJECTED (0x0204) means a client bug — this client sent a
     // SUBSCRIBE the hub could not process (RFC-033: usually more wishes than
     // max_subscriptions_per_frame). Every other NACK the link surfaces via
@@ -683,6 +796,7 @@ export function connect(opts = {}) {
   });
 
   session.on('clock', (c) => {
+    lastClockMs = Date.now();
     machine.stats.clockOffsetUs = c.offsetUs;
     machine.stats.clockRttUs = c.rttUs;
   });
@@ -770,6 +884,7 @@ function forgetDevice() {
   machine.catalog = blankCatalog();
   machine.samples = {};
   machine.sampleTs = {};
+  machine.sampleRxTs = {};
   machine.grants = {};
   machine.events = blankEvents();
   machine.stats = blankStats();

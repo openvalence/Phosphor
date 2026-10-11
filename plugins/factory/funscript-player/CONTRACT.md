@@ -26,6 +26,7 @@ Rules for every module:
 | core | ph-smvd.1 | `funscript.js`, `test/funscript-core.test.mjs` |
 | host | ph-smvd.2 | `src/model/motion.js`, `src/model/actions.js`, `src/model/shadow.svelte.js`, `src/plugins/host.js`, `src/plugins/plugins.svelte.js`, `src/plugins/PluginSlot.svelte`, `src-tauri/tauri.conf.json`, `src-tauri/capabilities/default.json`, `test/plugins.test.mjs`, `docs/PLUGINS.md` (API rows) |
 | stash | ph-smvd.3 | `stash.js`, `library.js`, `test/funscript-stash.test.mjs`, `test/fixtures/fake-stash.mjs` |
+| heat | ph-0hvq | `heat.js`, the heat strip in `library.js`, `asset()` in `stash.js`, `test/funscript-heat.test.mjs`, section (L2) of `test/funscript-player.test.mjs` |
 | scheduler | ph-smvd.4 | `clock.js`, `scheduler.js`, `test/funscript-scheduler.test.mjs`, `test/funscript-sync-live.mjs` |
 | player-ui | ph-smvd.5 | `ui.js`, `timeline.js` |
 | plugin | ph-smvd.6 | `index.js`, `prefs.js`, `manifest.json`, `src/plugins/factory.js`, `package.json`, `docs/PLUGINS.md` (Shipped, Module shape), `test/funscript-player.test.mjs` |
@@ -39,7 +40,7 @@ Bare file names live in `plugins/factory/funscript-player/`. Import graph,
 no cycles: `index -> ui, prefs, library, scale`; `ui -> funscript, clock,
 scheduler, stash, library, timeline, prefs, scale, analyzer, rows, axes, osc`; `axes -> funscript`; `osc -> funscript`; `scale -> rows`; `page -> prefs, ui`; `analyzer -> funscript, scheduler, kinetic`;
 `kinetic -> scheduler, bytes`; `scheduler -> funscript`;
-`timeline -> funscript`; `library -> stash`; `stash -> funscript`;
+`timeline -> funscript`; `heat -> funscript, timeline`; `library -> stash, heat`; `stash -> funscript`;
 `prefs -> scale`.
 
 ---
@@ -89,6 +90,7 @@ scheduler, stash, library, timeline, prefs, scale, analyzer, rows, axes, osc`; `
   stream: string,             // rebased onto base, apikey appended
   funscript: string | null,   // rebased onto base; fetched with the ApiKey header
   speed: number | null,       // interactive_speed
+  marker: string | null,      // updated_at + '|' + interactive_speed: the heat cache's change marker (A10)
   studio: string | null, performers: string[], tags: string[] }
 
 // LocalScene: ui.js from pairFiles
@@ -100,7 +102,7 @@ scheduler, stash, library, timeline, prefs, scale, analyzer, rows, axes, osc`; `
 
 // Prefs: api.prefs keys, stored as plugin.funscript-player.<key>; prefs.js owns the defaults
 { T: {offsetMs: 0, lo: 0, hi: 1, invert: false}, motion: true, audio: {vol: 1, muted: false},
-  stash: {base: '', key: ''}, lib: {q: '', sort: 'date', direction: 'DESC'}, view: 'player' (| 'queue' | 'library'), zoomMs: 10000, settingsOpen: false, libOpen: true, queue: [], autoplay: false, tlOpen: true,
+  stash: {base: '', key: ''}, lib: {q: '', sort: 'date', direction: 'DESC', scripted: true}, view: 'player' (| 'queue' | 'library'), zoomMs: 10000, settingsOpen: false, libOpen: true, queue: [], autoplay: false, tlOpen: true,
   interp: {scale: 1, scaleAuto: true},   // Scale (scale.js); any other stored field is dropped on read
   play: {loop: false, loopCount: 0, home: false, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33,   // ph-smvd.12
          seekMs: 500, autoLatency: false} }   // a stored lowLatency is dropped on read
@@ -553,8 +555,8 @@ rules.
 // stash.js
 export const SCENES_QUERY;   // GraphQL text: findScenes(filter, scene_filter) selecting what Scene needs,
                              // plus files.basename: the title of an untitled scene, else 'Scene <id>'
-export const SORTS;          // [['date','Date'], ['created_at','Added'], ['title','Title'], ['rating','Rating'],
-                             //  ['interactive_speed','Speed']]
+export const SORTS;          // [['date','Date'], ['created_at','Added'], ['title','Title'], ['duration','Duration'],
+                             //  ['play_count','Plays'], ['rating','Rating'], ['interactive_speed','Speed']]
 export const COPY;
 export function normalizeBase(text);   // -> 'http(s)://host[:port][/path]' without a trailing slash, or ''
 export function rebase(url, base);     // -> url carried onto base's origin
@@ -563,19 +565,29 @@ export function toScene(raw, base, key);   // -> Scene
 export function createStash({ fetch, base, key, timeoutMs = 8000 });   // -> StashClient
 // StashClient = {
 //   version() -> Promise<string>,                                        { version { version } }
-//   scenes({q, page, perPage, sort, direction}) -> Promise<Page>,        scene_filter {interactive: true}; cached per query
+//   scenes({q, page, perPage, sort, direction, scripted = true}) -> Promise<Page>,
+//                                    scene_filter {interactive: true}, or {} for scripted false; cached per query and filter
 //   script(scene) -> Promise<Script>,                                    GET scene.funscript with ApiKey; cached per id
-//   clear() }                                                            drops both caches
+//   asset(scene, {cond: {etag, lm}, signal}) -> Promise<{text, etag, lm} | {notModified: true}>,
+//                                    GET scene.funscript, uncached; If-None-Match / If-Modified-Since from cond; a 304 is notModified
+//   base,                                                                the normalized Stash base
+//   oscOf(scene) -> string[] | null,  the oscillator axes (V8, V9) of a script this client parsed; null before; no fetch
+//   clear() }                                                            drops the caches
 // Errors are Error(words): 'Stash not set', 'no answer from Stash', 'Stash refused the key' (401, 403),
 // 'refused: <status>', 'Stash: <errors[0].message cut to 50 chars>', 'not a Stash server'.
 // The key never reaches a log line.
 
 // library.js (the kit draws the list, its pager and tiles, the inputs and the rows: api.ui, docs/PLUGINS.md)
 export const CSS, COPY;
-export function mountLibrary(el, { ui, getStash, prefs, onPick, fetch, rows, onQueue });   // -> { refresh(), fit(), step(dir), canStep(dir), unmount() }
+export function formFor(W, H, rem = 16);   // -> 'grid' where tiles (150 px min) fit three across and page six, else 'rows'
+export function mountLibrary(el, { ui, getStash, prefs, onPick, fetch, onQueue, onNext, onOpen });   // -> { refresh(), step(dir), canStep(dir), mark(m), unmount() }
   // ui: api.ui; onQueue(scene): each tile and row carries Add to queue (+), a kit tile action
-  // rows: () -> boolean, the phone's row form (PR13: the kit list's rows, a 16:9 thumbnail beside the title and the
-  // meta, --ui-row-h high); fit() sets the form and the kit list refits its page
+  // each tile and row's context menu (ui.menu, headed by its title): Play (the pick), Play next (onNext(scene), the
+  // queue's head), Add to queue (onQueue), Open in Stash where onOpen(scene) returns a run, null without a page
+  // the form is formFor(the list body), set on a resize only; rows are the kit list's at --ui-row-h 2.5rem, side by
+  // side in columns 14rem or wider (the kit list's row.min)
+  // mark({now, playing, queued}): the loaded scene's key, whether it plays, the queue's keys (the player's render);
+  // the rows' current look and their badges follow it
   // getStash: () -> StashClient | null, the same client until base or key change (it holds the caches);
   // prefs: {get(k), set(k, v)}; onPick(scene); fetch: api.net.fetch, for the Test of
   // the connect card shown in its place (without it, Test stores the fields and tests getStash())
@@ -583,23 +595,58 @@ export function mountConnect(el, { ui, api, onSaved, client });   // -> unmount(
   // builds the client its Test asks; default createStash over api.net.fetch
 ```
 
-`mountLibrary` fills its box: a head row of `var(--tap)` (search, 300 ms
-debounce; sort; direction; the pickers are the player's, PR3), and a kit list
-that never scrolls (per page = the whole tiles that fit, the kit's fit) with
-its pager (Previous page, `page n / m`, Next page, `N scenes`). Tiles are the
-kit's: a 16:9 box with a lazy screenshot, a one-line title, `duration · speed`. With no
-base set it renders `mountConnect` in its place. `mountConnect`: Stash URL
+`mountLibrary` fills its box: a head row of `--ui-btn-h` (2.5rem under a
+coarse pointer: search, 300 ms debounce; sort; direction; Scripted only, a
+toggle in the on look; the pickers are the player's, PR3), and a kit list
+that never scrolls (per page = the whole rows or tiles that fit, the kit's
+fit) with its pager (Previous page, `page n / m`, Next page, `N scenes`).
+Rows and tiles are the kit's: a 16:9 shot (lazy), the title with the state
+badges (Playing or Loaded, Queued), then `duration · speed` with what the
+scene carries (V8 V9, Script), each badge whole or not drawn. With no
+base set it renders `mountConnect` in its place. Each shot carries the script heat (`heat.js`, below): a 6 px `fsp-heat` strip on its
+bottom edge, `aria-hidden`, shown while the row or tile is hovered, focused (keyboard) or the loaded scene.
+`mountConnect`: Stash URL
 (placeholder `http://host:9999`), API key (password), Save and Test
 (`Stash v<version>` or the error words), stored in `api.prefs` `stash`.
 
 `test/fixtures/fake-stash.mjs`:
-`startFakeStash({ key, scenes = 30, video = null })` resolves
+`startFakeStash({ key, scenes = 30, video = null })` (sorts as A8 lists them,
+`duration` and `play_count` included; scripts of ids 1 mod 6 embed V8 and V9) resolves
 `{ url, seen: Array<{method, path, headers, body}>, close() }`: POST /graphql
 (findScenes, version), GET /scene/:id/funscript, /scene/:id/stream with
 Range, /scene/:id/screenshot as SVG; 401 without the key; no binary
 committed. `test/funscript-stash.test.mjs` (node): request shape, header,
 mapping, rebase and withKey, caching, every error in words;
 `--live <base> --key <key>` prints what the assumptions need.
+
+---
+
+## heat: `heat.js` (no DOM) and the strip in `library.js`
+
+```js
+export const BUCKETS = 96, CAP = 2000, DAY_MS, MAX_AGE_MS = 30 * DAY_MS, LIMIT = 3, HOVER_MS = 250;
+export function crc32(bytes);              // IEEE CRC32 of a Uint8Array
+export function heatBuckets(script, n);    // -> number[n]: the fastest action span's units/s in each share (timeline.js heatStops)
+export function heatCss(ups);              // -> a CSS linear-gradient of hard runs in timeline.js heatColor's tokens
+export function memStore(), idbStore(name = 'fsp-heat');   // -> Store {get, put, clear, evictBefore(t), trim(cap), count}; idbStore null without IndexedDB
+export function heatOf(stash, opts);       // -> the Heat of that client (memoized: its session checks outlive a mount)
+export function createHeat(stash, {store, cap, maxAgeMs, now, limit, hoverMs});
+// Heat = { playing: () => bool,            true holds the prefetch (set by the library from mark({playing}))
+//          onStrip: (id, ups) => void,     a strip is known (set by the library)
+//          strip(id) -> number[] | null,   checked: Set of ids validated this session
+//          prime(scenes, append = false),  the scripted scenes of the page (then, appended, of the next page)
+//          resume(), whenIdle(), sweep(), hover(scene) -> leave(), dispose() }
+```
+
+An entry is `{k: sceneId, t: last seen, marker, ups, etag, lm, crc}`: the bucket speeds, never a color and never the
+script, so a theme change repaints (`heatCss` writes `var(--token)` colors) without a request. A page load `prime`s the
+page and the next one (scripted scenes only, `LIMIT` at a time, held while `playing()`): an entry whose marker equals
+the scene's is a hit with no request; otherwise one funscript GET, conditional on the entry's validators (a 304 or an
+equal CRC32 keeps the strip and takes the new marker). A hover (or keyboard focus; never a touch) waits `HOVER_MS`,
+then revalidates that one entry once per session, the same way, or fetches it if absent; leaving cancels it.
+`sweep()` (at a library load, never on a timer) drops entries unseen for 30 days, then the least recently seen
+beyond 2000. The store names its Stash base: another base empties it. A failure leaves the entry as it was.
+Stash's own heatmap PNG is never requested. `test/funscript-heat.test.mjs` (node, fake Stash).
 
 ---
 
@@ -630,7 +677,8 @@ export function pageClass(bucket, w, h);   // -> 'portrait' | 'landscape' | 'des
 //   dispose(),   hold, pause, revoke object URLs, stop the frame source; deactivate calls it
 //   setInterp(scale),    re-map the loaded Script (scale.js wire) and restart a playing scheduler
 //   setPlay(partial),    merge into prefs play, store it, apply it (setHome, setLatency, the loop)
-//   queue: {list(), add(scene), remove(i), next(i), move(from, to), play(i)},   stored as prefs queue (queue.js toStored)
+//   queue: {list(), add(scene), addNext(scene), remove(i), next(i), move(from, to), play(i)},   stored as prefs queue
+//     (queue.js toStored); addNext puts the scene at the head, an entry already queued moving there
 //   autoplay: {get(), set(on)},   prefs autoplay: the end of a scene plays the queue's first unless it loops
 //   volume: {get(), set(v)},      the video's volume (the phone's Settings row)
 //   scale,               the map in force, [lower, upper] (Auto's fit or scale.js mapOf), read by the settings card's Scale row
@@ -639,7 +687,8 @@ export function pageClass(bucket, w, h);   // -> 'portrait' | 'landscape' | 'des
 //   (motion only, PR4: a LocalScene {key 'script:...', title, stream: null}); attach(script) gives the loaded scene
 //   a script without touching its media (Open script on a video, PR3).
 // createControl deps gain loop (clock.js createLoop, injected for the node test); the controller gains
-//   setPlay(partial), markAB() (one A-B press: A at the playhead, then B, then clear) and get wire;
+//   setPlay(partial), markAB() (one A-B press: A at the playhead, then B, then clear), setAB(a, b) (both set
+//   directly, null clears either, B before A swaps them; the timeline's menu) and get wire;
 //   Auto Scale: get scale, get fit (under scaleAuto the script itself, the wire at scale 1, for the analyzer to
 //   measure; else null), fitKinetic(sc, extent) (the analyzer's measure of fit, [min, max]; sets the map to
 //   fitMap(extent)). A new script starts at [0, 1] until the measure lands. wakeIn() -> ms until tick() has work:
@@ -666,8 +715,13 @@ export function heatColor(ups);   // -> CSS color: --bg-sunken at rest, color-mi
 export function heatStops(script, T, ceiling);   // -> [{from, to (ms), ups, color, over}]: one run per action span by
   // |dpos| / dt in units/s (pos 0..100), equal neighbors merged, the lead-in before the first action at rest; over:
   // the chord speed through T's Range past ceiling.vmax
-export function traceLines(trace, fromMs, toMs, W, H, key = 'u'), clampRange(T, key, v), zoomStep(ms, dir);   // pure, node-tested;
-  // traceLines draws trace[i][key]: 'u' reality, 'p' the plan
+export function traceLines(trace, fromMs, toMs, W, H, key = 'u', clipFrom = fromMs, clipTo = toMs), clampRange(T, key, v), zoomStep(ms, dir);   // pure, node-tested;
+  // traceLines draws trace[i][key]: 'u' reality, 'p' the plan, the points inside [clipFrom, clipTo] over [fromMs, toMs],
+  // as lines [{stale, parts: [{id, d, k0, k1, n}]}]: a monotone cubic (PCHIP) through every point, no segment outside
+  // its two points' range; a point not after its line's last is dropped, points over 250 ms apart are a gap (ph-6eh7).
+  // A line is cut into SVG path parts per 500 ms of media time; a point's text and its segment's are kept on the point
+  // per frame of reference and neighbors, so a new point formats its segment and the one before, and the timeline
+  // sets only the parts whose k0, k1 or n moved
 export const PINCH_STEP = 1.25;
 export function pinchZoom(ms, scale);   // -> the zoom after a pinch whose finger distance moved by scale since the last
   // step: >= PINCH_STEP one step narrower, <= 1 / PINCH_STEP one wider, else ms (pure, node-tested)
@@ -683,7 +737,10 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, zoomMs = 10000
   // zoomMs: the starting window; onZoom(ms) on each zoom step (persisted as prefs zoomMs).
   // timeline.js may import only funscript.js, so its tf() restates applyT; the two must agree.
   // onSeek(ms); onScrub('start'|'move'|'end', ms); onRange(partialT, commit: boolean)
-  // -> { zoomEl, abEl, setScript(script, T, ceiling, raw?), frame(mediaMs, trace, kin?), setLoop({a, b}), unmount() }
+  // -> { zoomEl, abEl, setScript(script, T, ceiling, raw?), frame(mediaMs, trace, kin?), setLoop({a, b}), menuEls,
+  //      timeAt(clientX, node), unmount() }
+  // menuEls: [the detail with its lanes, the overview], the context menu's elements; timeAt: the media ms under
+  // clientX on the overview or the detail holding node, null without a script
   // kin: the analyzer's Kinetic render (analyzer.kinetic) or null: the intent curve (--intent, data-kin), moved back by
   // T.offsetMs; without it or during a Range drag, straight lines between the actions
   // script: the wire (scale.js wire()), its actions drawn as --intent dots; raw: the parsed one; the heat
@@ -758,13 +815,19 @@ export function tuningGroups(model);   // -> [{name, fields}]: writable slider, 
   // writable fields sharing a write channel with those (the kinetic ceilings); then limit.input.* by role
 export function lagOf(trace, script, T, key = 'u');   // -> ms in LAG_MIN_MS..LAG_MAX_MS minimizing the mean
   // |trace[key] - applyT(posAt(script, m - d))|, or null under LAG_MIN_POINTS fresh points or 0.1 of motion
+export function createLag(key = 'u');   // -> (trace, script, T) => lagOf(trace, script, T, key), to the bit, for a trace
+  // that grows and trims: each point's errors are kept from its first call (a new script or T starts over)
 export function toggled(f, v), fmtValue(f, v);   // pure, node-tested
 export function wideExtent(raw, t0, dtMs, fromMs, toMs, T);   // -> [min, max] in script units of a wall-free render's
   // raw (wide-window shares from media t0, one per dtMs) over [fromMs, toMs], back through WIDE_*, T's Range and invert
 export function kinText(state: 'wasm'|'fallback', render | {error} | null);   // -> 'Kinetic: wasm  n anomalies  clamped 250 ms'
 export function mountAnalyzer(el, { api, trace, script, T, fit, onRender });   // trace(), script() (the wire Script, ctl.wire),
   // T(): the player's; fit(): ctl.fit; onRender(): a render, the version, a failure or an Apply/Discard answer landed
-  // -> { frame(shown = true) (false: the render check alone, no row reads, no lag), mode: 'live'|'preview', kinetic: KineticRender | null, fit: {sc, key, extent} | null, unmount() }
+  // -> { frame(shown = true) (false: the render check alone, no row paint, no lag), mode: 'live'|'preview', kinetic: KineticRender | null, fit: {sc, key, extent} | null, unmount() }
+  // frame reads the hub (row values, status, gate, tooltip; limits, window; the trial mark) only when api.changed moved for a
+  // channel it reads, or after a draft, a write, Apply or Discard, a new catalog or an open; a frame where nothing changed reads
+  // nothing from the host; api.onChanged over the same channels calls onRender, so a change shows within a frame
+  // with nothing else drawing (the watch renewed per catalog, dropped on unmount)
   // kinetic: the latest render of the current script() (null while a newer script renders) through kinetic.wasm with limit.input.*, geometry.max_travel and
   // window.min/max by role and the Tuning rows as shown (drafts included), plus {t0, dtMs, lo, hi}
   // fit: once kinetic is current and fit() is a Script, one render of it with the same mm geometry in the middle
@@ -849,6 +912,7 @@ export function toStored(entry), fromStored(stored, key);   // pure: a Stash sce
 export function move(list, from, to);   // pure: the list with one item moved, indexes clamped
 export function mountQueue(el, { list, onPlay(i), onNext(i), onRemove(i), onMove(from, to), onReopen(i) }, ui);   // -> { render(), unmount() }
   // the kit's list in its row form: paged, a row drags to reorder (a mouse at once, a touch after the kit's hold)
+  // a row's context menu (ui.menu, headed by its title): Remove (onRemove), Move to top (onNext; off on the first)
   // Entry = {kind: 'stash', key, title, durationMs, scene} | {kind: 'file', key, title, name, durationMs, files: File[] | null}
 ```
 

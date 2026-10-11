@@ -89,6 +89,11 @@ class PermissionError extends Error {
  *   model()                       -> settings model or null
  *   sample(channelId)             -> last decoded STATE sample or undefined
  *   sampleAge(channelId)          -> ms since that sample, or Infinity
+ *   changed(channelId | role)     -> a plain sequence (model/changes.js) that moves on that
+ *                                    channel's STATE and on any gate, shadow, freshness or
+ *                                    catalog change; optional (api.changed is NaN without it)
+ *   onChanged(list, fn)           -> unwatch; fn() after any listed channel's (or role's) sequence
+ *                                    moves, batched to once a frame; optional
  *   display(field, sample)        -> shadow-aware display value
  *   status(field)                 -> confirmed|pending|overdue|fault
  *   write(field, value, payload)  -> routes to the right shadow entry point,
@@ -112,10 +117,12 @@ class PermissionError extends Error {
  *   registerTheme(theme)          -> adds a preset to the theme table
  *   listenTcp(port, onLine)       -> Promise<close()>  (absent outside the shell)
  *   fetch(url, init)              -> Promise<Response>, CORS-free in the shell; null where none
+ *   openUrl(url)                  -> Promise<bool>, the system browser on a page; absent where none
  *   isHub(URL)                    -> true for the connected hub's own origins
  *   hub()                         -> the connected hub's key (prefs.js hubKey), null without one
  *   prefs                         -> Storage-like {getItem, setItem} or null
  *   ui                            -> the plugin UI kit (kit.js KIT), one frozen object; null where none
+ *   dockable()                    -> false where the shell has no right dock (the phone class); absent, true
  *   log(pluginName, level, msg)   -> the log pane
  */
 export function createPluginHost(deps) {
@@ -131,6 +138,15 @@ export function createPluginHost(deps) {
   let noTrialSid = null;
   const busyFor =(name) => (lock.name && lock.name !== name && now() < lock.until
     ? 'motion input in use by ' + lock.name : '');
+  // api.changed's share of the lock: it moves when the holder changes and when the lock is taken or
+  // lapses, the lapse seen on the read itself (no timer).
+  let lockSeq = 0, lockHeld = false;
+  const takeLock = (name, until) => { if (lock.name !== name) lockSeq++; lock = { name, until }; };
+  const lockState = () => {
+    const held = !!lock.name && now() < lock.until;
+    if (held !== lockHeld) { lockHeld = held; lockSeq++; }
+    return lockSeq;
+  };
 
   function changed() {
     for (const fn of listeners) {
@@ -186,7 +202,9 @@ export function createPluginHost(deps) {
       note();
     };
   }
+  const dockable = () => !deps.dockable || deps.dockable();
   const dockListeners = new Set();
+  const hubListeners = new Set();
   const docksChanged = () => { for (const fn of dockListeners) { try { fn(); } catch (e) { /* a kernel listener */ } } };
 
   function makeApi(rec) {
@@ -194,12 +212,19 @@ export function createPluginHost(deps) {
     const prefix = 'plugin.' + name + '.';
     // A field-bound control writes through the shell path from the plugin surface: it needs intent.
     const bound = (kind) => (identity) => { need(rec, 'intent'); return deps.ui[kind](identity); };
+    // ui.menu: the items and every run under the plugin's guard; an inactive plugin lists nothing.
+    const ownMenu = (el, items, o) => deps.ui.menu(el, typeof items !== 'function' && !Array.isArray(items) ? items : (at) => {
+      if (rec.status !== 'active') return [];
+      const list = guard(rec, 'ui.menu', () => (typeof items === 'function' ? items(at) : items));
+      return Array.isArray(list) ? list.map((it) => (it && typeof it.run === 'function'
+        ? { ...it, run: () => guard(rec, 'ui.menu ' + it.label, it.run) } : it)) : [];
+    }, o);
     const api = {
       apiVersion: API_VERSION,
       // One glyph per shell surface a page draws itself (docs/PLUGINS.md, Pages).
       icons: Object.freeze({ quickRail: NAV_ICONS.quickRail }),
       // The shell's controls and layout primitives (docs/PLUGINS.md, The UI kit).
-      ui: deps.ui ? Object.freeze({ ...deps.ui, field: bound('field'), module: bound('module') }) : null,
+      ui: deps.ui ? Object.freeze({ ...deps.ui, field: bound('field'), module: bound('module'), menu: ownMenu }) : null,
       manifest: Object.freeze(JSON.parse(JSON.stringify(rec.manifest))),
 
       // ---- read: the model, never the wire ----
@@ -213,6 +238,27 @@ export function createPluginHost(deps) {
       value: (field) => (field ? deps.display(field, deps.sample(field.channelId)) : undefined),
       status: (field) => (field ? deps.status(field) : 'confirmed'),
       age: (field) => (field ? deps.sampleAge(field.channelId) : Infinity),
+      // Experimental (ph-uve3): a number that moves whenever value, status, gate, stale, reason or
+      // trialPending could read differently for that channel (or any channel carrying that role); NaN
+      // without the kernel's signal, so a caller that compares reads every frame.
+      changed: (channelOrRole) => (deps.changed ? deps.changed(channelOrRole) + lockState() : NaN),
+      // Experimental (ph-vo56): fn() after api.changed moves for any listed channel or role, on a microtask,
+      // then at most once a frame; not for the motion lock, which lapses on its own clock. Returns the
+      // unsubscribe; deactivation drops what is left. A no-op without the kernel's signal.
+      onChanged: (channelsOrRoles, fn) => {
+        if (!deps.onChanged || typeof fn !== 'function') return () => {};
+        const off = deps.onChanged([].concat(channelsOrRoles), () => guard(rec, 'onChanged', fn));
+        rec.closers.push(off);
+        return () => { off(); const i = rec.closers.indexOf(off); if (i >= 0) rec.closers.splice(i, 1); };
+      },
+      // Experimental (ph-6ydd): fn() whenever api.hub() reads differently (a hub adopted, switched or
+      // forgotten). Returns the unsubscribe; deactivation drops what is left.
+      onHub: (fn) => {
+        if (typeof fn !== 'function') return () => {};
+        const off = ((w) => { hubListeners.add(w); return () => hubListeners.delete(w); })(() => guard(rec, 'onHub', fn));
+        rec.closers.push(off);
+        return () => { off(); const i = rec.closers.indexOf(off); if (i >= 0) rec.closers.splice(i, 1); };
+      },
       gate: (field) => (field && deps.gate ? deps.gate(field, busyFor(name)) : ''),
       stale: (field) => (field && deps.stale ? deps.stale(field) : ''),
       reason: (field) => (field && deps.reason ? deps.reason(field) : ''),
@@ -253,7 +299,7 @@ export function createPluginHost(deps) {
         const busy = busyFor(name);
         if (busy) return { ok: false, sent: 0, reason: busy };
         const r = deps.submitMotion(norm, durationMs);
-        if (r && r.ok) lock = { name, until: now() + (durationMs || 0) + MOTION_HOLD_MS };
+        if (r && r.ok) takeLock(name, now() + (durationMs || 0) + MOTION_HOLD_MS);
         return r;
       },
       submitSegments: (list) => {
@@ -263,7 +309,7 @@ export function createPluginHost(deps) {
         const r = deps.submitSegments(list);
         if (r && r.ok && r.sent > 0) {
           const end = Math.max(...list.slice(0, r.sent).map((x) => x.atMs + x.durationMs));
-          lock = { name, until: end + MOTION_HOLD_MS };
+          takeLock(name, end + MOTION_HOLD_MS);
         }
         return r;
       },
@@ -321,6 +367,7 @@ export function createPluginHost(deps) {
         if (!(typeof def.label === 'function' || (typeof def.label === 'string' && def.label.trim() && def.label.length <= 40))) {
           throw new Error('registerMenu: label must be 1 to 40 characters or a function of the target');
         }
+        if (def.needsDock != null && typeof def.needsDock !== 'boolean') throw new Error('registerMenu: needsDock must be a boolean');
         if (rec.menus.some((m) => m.def.id === def.id)) throw new Error('registerMenu: id "' + def.id + '" is taken');
         return slotted(rec, rec.menus, def, () => {});
       },
@@ -364,6 +411,14 @@ export function createPluginHost(deps) {
           if (deps.isHub && deps.isHub(u)) throw new Error('net.fetch: the hub is reached through Valence');
           if (!deps.fetch) throw new Error('net.fetch needs the shell');
           return deps.fetch(u.href, init);
+        },
+        // Experimental: inside the user's own act only (a click, a menu pick).
+        open: async (url) => {
+          need(rec, 'net.fetch');
+          const u = new URL(String(url));
+          if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new Error('net.open: http or https only');
+          if (globalThis.navigator?.userActivation && !navigator.userActivation.isActive) throw new Error('net.open: only inside the user\'s act');
+          return deps.openUrl ? deps.openUrl(u.href) : false;
         },
         listenTcp: async (port, onLine) => {
           need(rec, 'net.listen:' + port);
@@ -578,14 +633,16 @@ export function createPluginHost(deps) {
   /**
    * Active plugins' context-menu items for `target` ({kind, key, hub, title,
    * path}), in load order: [{plugin, label, run}]. A label function that
-   * throws or returns nothing leaves its item out; run() is guarded.
+   * throws or returns nothing leaves its item out; run() is guarded. A
+   * needsDock item is left out where the shell has no dock.
    */
   function menus(target) {
     const out = [];
+    const noDock = !dockable();
     for (const rec of plugins.values()) {
       if (rec.status !== 'active') continue;
       for (const m of rec.menus) {
-        if (!m.def.targets.includes(target.kind)) continue;
+        if (!m.def.targets.includes(target.kind) || (m.def.needsDock && noDock)) continue;
         const label = typeof m.def.label === 'function' ? guard(rec, 'menu label', () => m.def.label(target)) : m.def.label;
         if (typeof label !== 'string' || !label.trim()) continue;
         out.push({ plugin: rec.manifest.name, label: label.trim().slice(0, 40),
@@ -595,9 +652,10 @@ export function createPluginHost(deps) {
     return out;
   }
 
-  /** Active plugins' docks, shaped as pages so PluginSlot mounts them. Id `plugin:<name>:<dock id>`. */
+  /** Active plugins' docks, shaped as pages so PluginSlot mounts them. Id `plugin:<name>:<dock id>`; none where the shell has no dock. */
   function docks() {
     const out = [];
+    if (!dockable()) return out;
     for (const rec of plugins.values()) {
       if (rec.status !== 'active') continue;
       for (const d of rec.docks) {
@@ -674,5 +732,7 @@ export function createPluginHost(deps) {
     add, remove, setEnabled, heroes, pages, menus, docks, pageShown, setPageShown, mountHero, updateHero, unmountHero, mountSettings, list,
     onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     onDocks(fn) { dockListeners.add(fn); return () => dockListeners.delete(fn); },
+    /** The kernel: the connected hub's key moved; every plugin's onHub runs. */
+    hubChanged() { for (const fn of [...hubListeners]) fn(); },
   };
 }

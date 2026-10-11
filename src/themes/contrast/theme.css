@@ -1,0 +1,487 @@
+/* Contrast: a wayfinding-sign theme. Text is 7:1 or better on every surface (the manifest pins
+   the tokens), frames are 3 px, the focus ring is 4 px, links are underlined, there is no
+   texture and no gradient, and every state is also a shape or a pattern: a flag, a bar, a word,
+   an inverse plate, a hatch. The Variants differ only in tokens, so one sheet serves all three.
+   Controls in a state (on, primary, running) keep their state colors; shapes are added beside them. */
+@font-face { font-family: 'Atkinson Next'; src: url('./fonts/AtkinsonNext.woff2') format('woff2'); font-weight: 200 800; font-display: swap; }
+@font-face { font-family: 'Atkinson Mono'; src: url('./fonts/AtkinsonMono.woff2') format('woff2'); font-weight: 200 800; font-display: swap; }
+
+html:root[data-style="contrast"] {
+  --font: 'Atkinson Next', 'Atkinson Hyperlegible', 'Segoe UI', Verdana, Arial, sans-serif;
+  --font-head: 'Atkinson Next', 'Atkinson Hyperlegible', 'Segoe UI', Verdana, Arial, sans-serif;
+  --mono: 'Atkinson Mono', 'Cascadia Mono', Consolas, 'DejaVu Sans Mono', monospace;
+  --frame-w: 3px;
+  --ct-w: 3px;
+  --ct-ring: 4px;
+  --ct-hit: 3rem;
+  --ct-inv-bg: var(--tx-hi);
+  --ct-inv-fg: var(--bg);
+}
+html:root[data-style="contrast"] body { font-weight: 500; letter-spacing: .01em; }
+html:root[data-style="contrast"] ::selection { background: var(--highlight); color: var(--bg); }
+html:root[data-style="contrast"] a,
+html:root[data-style="contrast"] .linklike { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: .22em; font-weight: 700; }
+html:root[data-style="contrast"] a:hover { text-decoration-thickness: 4px; }
+
+/* ---- focus: a 4 px ring held off the control by 3 px, on everything that takes focus ---- */
+html:root[data-style="contrast"] :focus-visible { outline: var(--ct-ring) solid var(--highlight); outline-offset: 3px; }
+html:root[data-style="contrast"] [data-part="caption-btn"]:focus-visible,
+html:root[data-style="contrast"] .menu-btn:focus-visible { outline-offset: -6px; }
+html:root[data-style="contrast"] .ui-menu-i:focus-visible { outline-offset: -5px; }
+
+/* ---- the title bar: black plate, a heavy rule, the hub name as a sign ---- */
+html:root[data-style="contrast"] [data-part="top"] { border-bottom-color: var(--line-4); }
+html:root[data-style="contrast"] [data-part="bar"] { background-color: var(--shell-bg); box-shadow: inset 0 calc(var(--ct-w) * -1) 0 var(--line-4); }
+html:root[data-style="contrast"] [data-part="bar"] .wordmark {
+  font-family: var(--font-head);
+  font-weight: 800;
+  letter-spacing: .02em;
+  color: var(--ct-inv-fg);
+  background-color: var(--ct-inv-bg);
+  padding: 0 .35rem;
+  line-height: 1.5;
+}
+html:root[data-style="contrast"] [data-part="bar"] .chip {
+  font-size: .74rem;
+  font-weight: 700;
+  border: 2px solid var(--line-3);
+  background-color: var(--bg);
+  color: var(--tx-hi);
+}
+html:root[data-style="contrast"] [data-part="bar"] .chip-lbl { font-size: .68rem; font-weight: 700; color: var(--tx-val); letter-spacing: .06em; }
+html:root[data-style="contrast"] [data-part="bar"] .chip.tone-good { border-style: solid; border-width: 2px 2px 2px 6px; }
+html:root[data-style="contrast"] [data-part="bar"] .chip.tone-dim { border-style: dashed; }
+html:root[data-style="contrast"] [data-part="bar"] .mono { font-weight: 700; letter-spacing: 0; }
+
+
+/* The channel heat blocks: a cell is outlined and fills from the bottom by its level, so a reading is a height as well as a tint. */
+html:root[data-style="contrast"] [data-part="bar"] .blk:not(.warn) { border-radius: 0; box-shadow: inset 0 0 0 1px var(--line-2); background-image: linear-gradient(to top, transparent var(--lv), var(--bg) var(--lv)); }
+/* The link dot: state is a shape, never a color. live = solid disc, connecting = ring around a dot,
+   offline = hollow square with a cross. */
+html:root[data-style="contrast"] .linkdot { width: 20px; height: 20px; }
+html:root[data-style="contrast"] .linkdot :is(.rclip, .ripple) { display: none; }
+html:root[data-style="contrast"] .linkdot .core { width: 12px; height: 12px; box-shadow: none; background: rgb(var(--lc)); border-radius: 50%; }
+html:root[data-style="contrast"] .linkdot.connecting .core { background: radial-gradient(circle, rgb(var(--lc)) 0 28%, transparent 30% 56%, rgb(var(--lc)) 58%); }
+html:root[data-style="contrast"] .linkdot.offline .core {
+  border-radius: 0;
+  background:
+    linear-gradient(45deg, transparent 43%, var(--tx-hi) 43% 57%, transparent 57%),
+    linear-gradient(-45deg, transparent 43%, var(--tx-hi) 43% 57%, transparent 57%);
+  box-shadow: inset 0 0 0 2.5px var(--tx-hi);
+}
+
+/* ---- the caption buttons: a ruled strip of three boxes, inverse under the pointer ---- */
+html:root[data-style="contrast"] [data-part="caption-btn"] {
+  width: 46px;
+  color: var(--tx-hi);
+  background: var(--shell-bg);
+  border-left: var(--ct-w) solid var(--line-4);
+  box-shadow: inset 0 calc(var(--ct-w) * -1) 0 var(--line-4);
+}
+html:root[data-style="contrast"] [data-part="caption-btn"] svg { width: 14px; height: 14px; stroke-width: 2.6; }
+html:root[data-style="contrast"] [data-part="caption-btn"]:hover { background: var(--ct-inv-bg); color: var(--ct-inv-fg); }
+html:root[data-style="contrast"] [data-part="caption-btn"]:active,
+html:root[data-style="contrast"] [data-part="caption-btn"][aria-expanded="true"] { background: var(--bg-sunken); color: var(--tx-hi); box-shadow: inset 0 -9px 0 var(--tx-hi); }
+html:root[data-style="contrast"] [data-part="caption-btn"][data-cap="close"]:hover { background: var(--ct-inv-bg); color: var(--ct-inv-fg); box-shadow: inset 0 0 0 4px var(--shell-bg), inset 0 0 0 7px var(--ct-inv-fg); }
+
+/* ---- the strip, the hero rail, the status row: ruled, not tinted ---- */
+html:root[data-style="contrast"] [data-part="strip"] { background-color: var(--bg); }
+html:root[data-style="contrast"] [data-part="hero"] { border-bottom: var(--ct-w) solid var(--line-4); background-color: var(--bg); }
+html:root[data-style="contrast"] [data-part="stop-frame"] { outline: var(--ct-w) solid var(--line-4); outline-offset: 4px; }
+html:root[data-style="contrast"] [data-part="numerals"] .hn-label { font-weight: 700; color: var(--tx-val); }
+html:root[data-style="contrast"] [data-part="numerals"] .hn-val { font-weight: 800; }
+html:root[data-style="contrast"] [data-part="numerals"] .hn-unit { font-weight: 700; color: var(--tx-val); }
+html:root[data-style="contrast"] [data-part="status-row"],
+html:root[data-style="contrast"] [data-part="page-foot"] { border-top-color: var(--line-4); box-shadow: inset 0 var(--ct-w) 0 var(--line-4); background-color: var(--bg); font-weight: 600; }
+html:root[data-style="contrast"] .rail-ghost { opacity: 1; }
+html:root[data-style="contrast"] .leg.off { opacity: 1; }
+html:root[data-style="contrast"] .leg.off .leg-label { text-decoration: line-through; text-decoration-thickness: 2px; }
+html:root[data-style="contrast"] ::placeholder { color: var(--tx-mut); opacity: 1; }
+html:root[data-style="contrast"] .rail-tape-micro,
+html:root[data-style="contrast"] .rail-endcap,
+html:root[data-style="contrast"] .rail-waiting,
+html:root[data-style="contrast"] .rail-ghost { color: var(--tx-val); font-weight: 700; }
+
+/* ---- the rail: wayfinding. The open page is an inverse plate pointing at the content ---- */
+html:root[data-style="contrast"] [data-part="rail"] { border-color: var(--line-4); border-width: var(--ct-w); border-left-width: 0; background-color: var(--bg); }
+html:root[data-style="contrast"] [data-part="rail-label"] {
+  font-weight: 800;
+  letter-spacing: .1em;
+  color: var(--tx-hi);
+  border-bottom: 2px solid var(--line-3);
+  padding-bottom: 2px;
+}
+html:root[data-style="contrast"] [data-part="rail-tab"] { position: relative; font-weight: 700; min-height: 2.5rem; border-radius: 0; border: 2px solid transparent; }
+html:root[data-style="contrast"] [data-part="rail-tab"]:hover { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; border-color: var(--line-3); }
+html:root[data-style="contrast"] [data-part="rail-tab"].on {
+  background-color: var(--ct-inv-bg);
+  color: var(--ct-inv-fg);
+  border-color: var(--ct-inv-bg);
+  padding-right: 1.6rem;
+}
+html:root[data-style="contrast"] [data-part="rail-tab"].on .rail-glyph { color: var(--ct-inv-fg); }
+html:root[data-style="contrast"] [data-part="rail-tab"].on::after {
+  content: '';
+  position: absolute;
+  right: .5rem;
+  top: 50%;
+  width: .7rem;
+  height: 1rem;
+  margin-top: -.5rem;
+  background: currentColor;
+  clip-path: polygon(100% 0, 0 50%, 100% 100%);
+}
+html:root[data-style="contrast"] .rail-collapse { border: 2px solid var(--line-3); }
+
+/* ---- cards: a heavy frame, the title a plate on top; a nest is dashed ---- */
+html:root[data-style="contrast"] [data-part="card"],
+html:root[data-style="contrast"] [data-part="panel"] { border-color: var(--line-3); border-style: solid; }
+html:root[data-style="contrast"] [data-part="nest"] { border-color: var(--line-3); border-style: dashed; }
+html:root[data-style="contrast"] .dash-title {
+  font-family: var(--font-head);
+  font-weight: 800;
+  letter-spacing: .1em;
+  color: var(--tx-hi);
+}
+html:root[data-style="contrast"] .dash-title:not(.ui-caret .dash-title) {
+  background-color: var(--ct-inv-bg);
+  color: var(--ct-inv-fg);
+  padding: .1rem .6rem .1rem .4rem;
+}
+html:root[data-style="contrast"] .ui-caret:hover .dash-title { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; }
+html:root[data-style="contrast"] .dash-title[data-pidx]::before,
+html:root[data-style="contrast"] .dash-title:not([data-pidx])::before { color: inherit; font-weight: 700; }
+html:root[data-style="contrast"] .pane-head h2 { font-family: var(--font-head); font-weight: 800; letter-spacing: .02em; text-decoration: underline; text-decoration-thickness: 4px; text-underline-offset: 6px; }
+html:root[data-style="contrast"] .card-sub { font-weight: 800; color: var(--tx-hi); letter-spacing: .08em; border-bottom: 2px solid var(--line-2); padding-bottom: 2px; }
+html:root[data-style="contrast"] .field-label { font-weight: 700; color: var(--tx-val); letter-spacing: .02em; }
+html:root[data-style="contrast"] .field-value { font-weight: 800; }
+html:root[data-style="contrast"] .field-value .unit,
+html:root[data-style="contrast"] .unit { color: var(--tx-val); font-weight: 700; }
+html:root[data-style="contrast"] .field-desc,
+html:root[data-style="contrast"] .hint { color: var(--tx-val); }
+html:root[data-style="contrast"] .og-panel { outline: none; border-width: var(--ct-w); border-color: var(--line-3); background-image: none; }
+html:root[data-style="contrast"] .og-screen { border-width: var(--ct-w); border-color: var(--line-3); box-shadow: none; }
+
+/* ---- buttons: a 3 px frame and a hard shadow; hover underlines; a press inverts and drops the shadow ---- */
+html:root[data-style="contrast"] :is(.og-btn, .og-seg button, .stepper button) {
+  position: relative;
+  border-width: var(--ct-w);
+  border-radius: 0;
+  font-weight: 700;
+  background-color: var(--bg);
+}
+html:root[data-style="contrast"] .og-btn:not(.on):not(.primary):not(.running):not(.danger) { border-color: var(--line-3); color: var(--tx-hi); box-shadow: 3px 3px 0 var(--line-2); }
+html:root[data-style="contrast"] .og-btn:not(.on):not(.primary):not(.running):not(.danger):hover:not(:disabled) { border-color: var(--line-4); }
+html:root[data-style="contrast"] :is(.og-btn, .og-seg button, .stepper button):hover:not(:disabled) { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; }
+html:root[data-style="contrast"] .og-btn:not(.on):not(.primary):not(.running):not(.danger):active:not(:disabled),
+html:root[data-style="contrast"] .og-seg button:not(.active):active:not(:disabled),
+html:root[data-style="contrast"] .stepper button:active:not(:disabled) { background-color: var(--ct-inv-bg); color: var(--ct-inv-fg); border-color: var(--ct-inv-bg); box-shadow: none; }
+html:root[data-style="contrast"] [data-part="pane"] .og-btn,
+html:root[data-style="contrast"] [data-part="pane"] .og-seg button { min-height: var(--ct-hit); }
+html:root[data-style="contrast"] [data-part="pane"] .og-btn.sm { min-height: 2.5rem; }
+html:root[data-style="contrast"] [data-part="pane"] .og-seg button { min-width: 3.25rem; }
+html:root[data-style="contrast"] [data-part="pane"] .stepper button { flex-basis: var(--ct-hit); min-height: var(--ct-hit); }
+html:root[data-style="contrast"] .og-seg { gap: .4rem; }
+html:root[data-style="contrast"] .og-seg button:not(.active) { color: var(--tx-val); border-color: var(--line-2); }
+/* On: the state colors stay; a flag in the corner and a bar along the foot say it again. */
+html:root[data-style="contrast"] :is(.og-btn.on, .og-seg button.active)::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 14px;
+  height: 14px;
+  background: currentColor;
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+  pointer-events: none;
+}
+html:root[data-style="contrast"] :is(.og-btn.on, .og-seg button.active)::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 6px;
+  background: currentColor;
+  pointer-events: none;
+}
+/* Primary: a second frame inside the first. */
+html:root[data-style="contrast"] .og-btn.primary::before { content: ''; position: absolute; inset: 3px; border: 2px solid currentColor; pointer-events: none; }
+/* Disabled: dashed frame, a hatch, the label in the quiet text step; opacity stays 1 so the label holds 7:1. */
+html:root[data-style="contrast"] :is(.og-btn, .og-seg button, .stepper button):disabled,
+html:root[data-style="contrast"] .og-btn[aria-disabled="true"] {
+  opacity: 1;
+  border-style: dashed;
+  border-color: var(--line-2);
+  color: var(--tx-ghost);
+  box-shadow: none;
+  background-image: repeating-linear-gradient(135deg, transparent 0 6px, var(--line-1) 6px 7px);
+}
+html:root[data-style="contrast"] :is(select, input, .og-num, .value-input):disabled { border-style: dashed; opacity: 1; color: var(--tx-ghost); background-image: repeating-linear-gradient(135deg, transparent 0 6px, var(--line-1) 6px 7px); }
+html:root[data-style="contrast"] .ui-switch.is-disabled,
+html:root[data-style="contrast"] .field.disabled { opacity: 1; }
+
+/* ---- fields: boxed, mono numerals, a 3 px frame; the ladder owns the border color inside a .field ---- */
+html:root[data-style="contrast"] :is(.og-num, .value-input, select, .chip-num) { border-width: var(--ct-w); border-radius: 0; box-shadow: none; background-color: var(--bg-sunken); color: var(--tx-hi); font-weight: 700; }
+html:root[data-style="contrast"] [data-part="pane"] :is(.og-num, .value-input, select) { min-height: var(--ct-hit); }
+html:root[data-style="contrast"] [data-part="pane"] :is(.ui-text, .ui-select, .ui-stepper > .og-num) { min-height: 2.5rem; }
+html:root[data-style="contrast"] [data-part="pane"] .ui-stepper > button { flex-basis: 2.5rem; min-height: 2.5rem; }
+html:root[data-style="contrast"] :is(.og-num, .value-input, select, .chip-num):focus { border-color: var(--highlight); }
+html:root[data-style="contrast"] :is(.og-num, .value-input, select):hover:not(:disabled):not(:focus) { border-style: double; }
+html:root[data-style="contrast"] select {
+  padding-right: 2.6rem;
+  font-family: var(--font);
+  font-size: .9rem;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--tx-hi) 50%),
+    linear-gradient(135deg, var(--tx-hi) 50%, transparent 50%),
+    linear-gradient(var(--tx-hi), var(--tx-hi));
+  background-position: calc(100% - 22px) 52%, calc(100% - 14px) 52%, calc(100% - 34px) 50%;
+  background-size: 8px 8px, 8px 8px, 3px 60%;
+  background-repeat: no-repeat;
+}
+html:root[data-style="contrast"] select option { background: var(--bg); color: var(--tx-hi); }
+
+/* ---- switches: a labeled slide. Off: hollow thumb at the left, OFF. On: solid thumb at the right, ON ---- */
+html:root[data-style="contrast"] .og-switch .track {
+  width: 64px;
+  height: 34px;
+  border-width: var(--ct-w);
+  border-radius: 0;
+  background-color: var(--bg);
+}
+html:root[data-style="contrast"] .og-switch .track::after {
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 0;
+  background: var(--bg);
+  box-shadow: inset 0 0 0 4px var(--tx-mut);
+}
+html:root[data-style="contrast"] .og-switch input:checked + .track::after { transform: translateX(30px); background: var(--reality); box-shadow: none; }
+html:root[data-style="contrast"] .og-switch .track::before {
+  content: 'OFF';
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  translate: 0 -50%;
+  font: 800 .6rem/1 var(--font);
+  letter-spacing: .04em;
+  color: var(--tx-val);
+}
+html:root[data-style="contrast"] .og-switch input:checked + .track::before { content: 'ON'; left: 8px; right: auto; color: var(--reality); }
+html:root[data-style="contrast"] .og-switch input:checked + .track { background-color: var(--bg-sunken); }
+html:root[data-style="contrast"] .og-switch input:focus-visible + .track { outline: var(--ct-ring) solid var(--highlight); outline-offset: 3px; }
+
+/* ---- check boxes and radios: a heavy frame, a drawn mark ---- */
+html:root[data-style="contrast"] input[type="checkbox"]:not([role="switch"]) {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  width: 1.6rem;
+  height: 1.6rem;
+  margin: 0;
+  flex: none;
+  border: var(--ct-w) solid var(--line-3);
+  border-radius: 0;
+  background: var(--bg);
+}
+html:root[data-style="contrast"] input[type="checkbox"]:not([role="switch"]):checked { border-color: var(--reality); }
+html:root[data-style="contrast"] input[type="checkbox"]:not([role="switch"]):checked::before {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  background: var(--reality);
+  clip-path: polygon(8% 52%, 22% 38%, 40% 56%, 80% 12%, 94% 26%, 40% 84%);
+}
+html:root[data-style="contrast"] [role="radio"] { font-weight: 700; }
+html:root[data-style="contrast"] [role="radio"]:not(.og-seg > *)::before {
+  content: '';
+  display: inline-block;
+  box-sizing: border-box;
+  width: 1.2rem;
+  height: 1.2rem;
+  margin-right: .5rem;
+  vertical-align: -.25rem;
+  border-radius: 50%;
+  border: var(--ct-w) solid var(--line-3);
+  background: var(--bg);
+}
+html:root[data-style="contrast"] [role="radio"][aria-checked="true"]:not(.og-seg > *) { text-decoration: underline; text-decoration-thickness: 3px; text-underline-offset: 4px; }
+html:root[data-style="contrast"] [role="radio"][aria-checked="true"]:not(.og-seg > *)::before { border-color: var(--reality); background: radial-gradient(circle, var(--reality) 0 38%, var(--bg) 42%); }
+
+/* ---- sliders: a 6 px track, a barred thumb ---- */
+html:root[data-style="contrast"] input[type="range"] { height: calc(6px + 2 * var(--range-hit)); background-color: var(--line-2); }
+html:root[data-style="contrast"] input[type="range"]::-webkit-slider-thumb {
+  border: var(--ct-w) solid var(--tx-hi);
+  border-radius: 0;
+  background-color: var(--bg);
+  background-image: linear-gradient(var(--tx-hi), var(--tx-hi));
+  background-size: 3px 55%;
+  background-position: center;
+  background-repeat: no-repeat;
+  box-shadow: none;
+}
+html:root[data-style="contrast"] input[type="range"]::-moz-range-thumb {
+  border: var(--ct-w) solid var(--tx-hi);
+  border-radius: 0;
+  background-color: var(--bg);
+  background-image: linear-gradient(var(--tx-hi), var(--tx-hi));
+  background-size: 3px 55%;
+  background-position: center;
+  background-repeat: no-repeat;
+  box-shadow: none;
+}
+html:root[data-style="contrast"] input[type="range"]:active::-webkit-slider-thumb,
+html:root[data-style="contrast"] input[type="range"]:focus-visible::-webkit-slider-thumb { background-color: var(--highlight); background-image: linear-gradient(var(--bg), var(--bg)); box-shadow: none; }
+html:root[data-style="contrast"] input[type="range"]:active::-moz-range-thumb,
+html:root[data-style="contrast"] input[type="range"]:focus-visible::-moz-range-thumb { background-color: var(--highlight); background-image: linear-gradient(var(--bg), var(--bg)); box-shadow: none; }
+html:root[data-style="contrast"] input[type="range"]:focus-visible { outline: var(--ct-ring) solid var(--highlight); outline-offset: 8px; }
+html:root[data-style="contrast"] progress { appearance: none; -webkit-appearance: none; height: 1rem; border: var(--ct-w) solid var(--line-3); border-radius: 0; background: var(--bg); }
+html:root[data-style="contrast"] progress::-webkit-progress-bar { background: var(--bg); }
+html:root[data-style="contrast"] progress::-webkit-progress-value { background: var(--reality); }
+html:root[data-style="contrast"] progress::-moz-progress-bar { background: var(--reality); }
+
+/* ---- tabs: the open one carries a bar and a notch as well as its color ---- */
+html:root[data-style="contrast"] [role="tab"]:not([data-part="rail-tab"]) { position: relative; font-weight: 700; border-radius: 0; }
+html:root[data-style="contrast"] [role="tab"][aria-selected="true"]:not([data-part="rail-tab"])::after,
+html:root[data-style="contrast"] .tabs button.on::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 6px;
+  background: currentColor;
+  pointer-events: none;
+}
+html:root[data-style="contrast"] [role="tab"][aria-selected="true"]:not([data-part="rail-tab"])::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 6px;
+  width: 12px;
+  height: 7px;
+  margin-left: -6px;
+  background: currentColor;
+  clip-path: polygon(0 100%, 50% 0, 100% 100%);
+  pointer-events: none;
+}
+
+/* ---- menus, sheets, the tooltip: inverse plates with a frame ---- */
+html:root[data-style="contrast"] .ui-menu,
+html:root[data-style="contrast"] .ui-sheet:not([data-form="slot"]) { background-color: var(--bg); border: var(--ct-w) solid var(--line-4); border-radius: 0; box-shadow: 6px 6px 0 var(--line-2); }
+html:root[data-style="contrast"] .ui-menu-h { border-bottom: 2px solid var(--line-3); }
+html:root[data-style="contrast"] .ui-menu-t { font-weight: 800; color: var(--tx-hi); }
+html:root[data-style="contrast"] .ui-menu-d { color: var(--tx-val); }
+html:root[data-style="contrast"] .ui-menu-sec { font-weight: 800; color: var(--tx-hi); border-top: 2px solid var(--line-3); letter-spacing: .12em; }
+html:root[data-style="contrast"] .ui-menu-i { min-height: 2.75rem; font-weight: 700; font-size: .9rem; color: var(--tx-hi); border-left: 6px solid transparent; }
+html:root[data-style="contrast"] .ui-menu-i:hover:not(:disabled),
+html:root[data-style="contrast"] .ui-menu-i:focus-visible,
+html:root[data-style="contrast"] .ui-menu-i[aria-expanded="true"] { background: var(--ct-inv-bg); color: var(--ct-inv-fg); border-left-color: var(--reality); text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; }
+html:root[data-style="contrast"] .ui-menu-i:disabled { color: var(--tx-ghost); text-decoration: line-through; text-decoration-thickness: 2px; }
+html:root[data-style="contrast"] .ui-menu-i[data-checked]::after,
+html:root[data-style="contrast"] .ui-menu-i[aria-haspopup]::after { color: inherit; font-weight: 800; }
+html:root[data-style="contrast"] .ui-menu-ask { border-width: var(--ct-w); border-radius: 0; font-weight: 700; color: var(--tx-hi); }
+html:root[data-style="contrast"] #ph-tip {
+  background-color: var(--ct-inv-bg);
+  color: var(--ct-inv-fg);
+  border: var(--ct-w) solid var(--line-4);
+  outline: 2px solid var(--ct-inv-fg);
+  outline-offset: -5px;
+  border-radius: 0;
+  font-size: .82rem;
+  font-weight: 700;
+  padding: .45rem .7rem;
+  box-shadow: 5px 5px 0 var(--line-2);
+}
+
+/* ---- the funscript player and the kit's stage, scrub and split ---- */
+html:root[data-style="contrast"] .ui-stage-box { border: var(--ct-w) solid var(--line-3); border-radius: 0; }
+html:root[data-style="contrast"] .ui-stage-center { background: var(--bg); border: var(--ct-w) solid var(--tx-hi); border-radius: 0; color: var(--tx-hi); }
+html:root[data-style="contrast"] .ui-stage-overlay { background: var(--bg); border-top: var(--ct-w) solid var(--line-3); padding-top: var(--sp-3); opacity: 1; }
+html:root[data-style="contrast"] .ui-scrub { min-height: 28px; }
+html:root[data-style="contrast"] .ui-scrub-track { height: 10px; border-radius: 0; background: var(--bg-sunken); border: 2px solid var(--line-3); }
+html:root[data-style="contrast"] .ui-scrub:is(:hover, [data-drag]) .ui-scrub-track { height: 14px; }
+html:root[data-style="contrast"] .ui-scrub-buf { background: var(--line-2); }
+html:root[data-style="contrast"] .ui-scrub-played { background: var(--highlight); }
+html:root[data-style="contrast"] .ui-scrub-played::after { width: 8px; height: 26px; right: -4px; translate: 0 -13px; border-radius: 0; transform: none; background: var(--highlight); outline: 2px solid var(--bg); }
+html:root[data-style="contrast"] .ui-scrub-tip { background: var(--ct-inv-bg); color: var(--ct-inv-fg); border: 2px solid var(--line-4); border-radius: 0; font-weight: 800; }
+html:root[data-style="contrast"] .ui-split::after { height: 8px; translate: 0 -4px; background: var(--line-3); border-radius: 0; }
+html:root[data-style="contrast"] .ui-split:is(:hover, [data-drag], :focus-visible)::after { background: var(--highlight); }
+html:root[data-style="contrast"] .ui-tile-shot { border-width: var(--ct-w); border-color: var(--line-3); border-radius: 0; }
+html:root[data-style="contrast"] .ui-tile-b[aria-current="true"] .ui-tile-shot { border-color: var(--highlight); box-shadow: 0 0 0 3px var(--bg), 0 0 0 6px var(--highlight); }
+html:root[data-style="contrast"] .ui-tile-m,
+html:root[data-style="contrast"] .ui-list-note,
+html:root[data-style="contrast"] .ui-list-page,
+html:root[data-style="contrast"] .ui-list-count { color: var(--tx-val); }
+html:root[data-style="contrast"] .ui-caret { font-weight: 800; }
+
+/* ---- scrollbars: wide, ruled, with arrow buttons and a solid thumb ---- */
+html:root[data-style="contrast"] * { scrollbar-width: auto; scrollbar-color: auto; }
+html:root[data-style="contrast"] ::-webkit-scrollbar { width: 22px; height: 22px; }
+html:root[data-style="contrast"] ::-webkit-scrollbar-track { background: var(--bg-sunken); border: 2px solid var(--line-3); }
+html:root[data-style="contrast"] ::-webkit-scrollbar-thumb { background: var(--tx-hi); border: 3px solid var(--bg-sunken); border-radius: 0; }
+html:root[data-style="contrast"] ::-webkit-scrollbar-thumb:hover { background: var(--reality); }
+html:root[data-style="contrast"] ::-webkit-scrollbar-button:single-button {
+  height: 22px;
+  width: 22px;
+  background-color: var(--bg-sunken);
+  border: 2px solid var(--line-3);
+  background-repeat: no-repeat;
+}
+html:root[data-style="contrast"] ::-webkit-scrollbar-button:single-button:vertical:decrement {
+  background-image: linear-gradient(to bottom right, transparent 50%, var(--tx-hi) 50%), linear-gradient(to bottom left, transparent 50%, var(--tx-hi) 50%);
+  background-size: 5px 8px; background-position: 4px 5px, 9px 5px;
+}
+html:root[data-style="contrast"] ::-webkit-scrollbar-button:single-button:vertical:increment {
+  background-image: linear-gradient(to top right, transparent 50%, var(--tx-hi) 50%), linear-gradient(to top left, transparent 50%, var(--tx-hi) 50%);
+  background-size: 5px 8px; background-position: 4px 5px, 9px 5px;
+}
+html:root[data-style="contrast"] ::-webkit-scrollbar-button:single-button:horizontal:decrement {
+  background-image: linear-gradient(to bottom right, transparent 50%, var(--tx-hi) 50%), linear-gradient(to top right, transparent 50%, var(--tx-hi) 50%);
+  background-size: 8px 5px; background-position: 5px 4px, 5px 9px;
+}
+html:root[data-style="contrast"] ::-webkit-scrollbar-button:single-button:horizontal:increment {
+  background-image: linear-gradient(to bottom left, transparent 50%, var(--tx-hi) 50%), linear-gradient(to top left, transparent 50%, var(--tx-hi) 50%);
+  background-size: 8px 5px; background-position: 5px 4px, 5px 9px;
+}
+
+@media (max-width: 560px) {
+  html:root[data-style="contrast"] [data-part="bar"] .chip { font-size: .66rem; }
+  html:root[data-style="contrast"] [data-part="caption-btn"] { width: 36px; }
+  html:root[data-style="contrast"] [data-part="bar"] .wordmark { padding: 0 .2rem; }
+}
+/* ---- Windows high contrast (forced colors): the system palette wins; shapes and borders carry the state ---- */
+@media (forced-colors: active) {
+  html:root[data-style="contrast"] :focus-visible { outline: var(--ct-ring) solid Highlight; outline-offset: 3px; }
+  html:root[data-style="contrast"] [data-part="bar"] .wordmark { forced-color-adjust: none; background-color: CanvasText; color: Canvas; }
+  html:root[data-style="contrast"] .dash-title:not(.ui-caret .dash-title) { forced-color-adjust: none; background-color: CanvasText; color: Canvas; }
+  html:root[data-style="contrast"] [data-part="rail-tab"].on { forced-color-adjust: none; background-color: Highlight; color: HighlightText; border-color: Highlight; }
+  html:root[data-style="contrast"] [data-part="rail-tab"].on .rail-glyph { color: HighlightText; }
+  html:root[data-style="contrast"] .og-btn:not(.on):not(.primary):not(.running):not(.danger) { border-color: ButtonText; box-shadow: none; }
+  html:root[data-style="contrast"] :is(.og-btn.on, .og-seg button.active)::before,
+  html:root[data-style="contrast"] :is(.og-btn.on, .og-seg button.active)::after,
+  html:root[data-style="contrast"] .og-btn.primary::before { background-color: Highlight; forced-color-adjust: none; }
+  html:root[data-style="contrast"] .og-btn.primary::before { background: none; border-color: Highlight; }
+  html:root[data-style="contrast"] :is(.og-btn, .og-seg button, .stepper button):disabled { border-color: GrayText; color: GrayText; background-image: none; }
+  html:root[data-style="contrast"] .og-switch .track { border-color: ButtonText; }
+  html:root[data-style="contrast"] .og-switch .track::after { forced-color-adjust: none; background: Canvas; box-shadow: inset 0 0 0 4px ButtonText; }
+  html:root[data-style="contrast"] .og-switch input:checked + .track { border-color: Highlight; }
+  html:root[data-style="contrast"] .og-switch input:checked + .track::after { background: Highlight; box-shadow: none; }
+  html:root[data-style="contrast"] .og-switch .track::before { color: ButtonText; }
+  html:root[data-style="contrast"] .og-switch input:checked + .track::before { color: Highlight; }
+  html:root[data-style="contrast"] input[type="checkbox"]:not([role="switch"]):checked::before { forced-color-adjust: none; background: Highlight; }
+  html:root[data-style="contrast"] [role="radio"][aria-checked="true"]::before { forced-color-adjust: none; background: radial-gradient(circle, Highlight 0 38%, Canvas 42%); border-color: Highlight; }
+  html:root[data-style="contrast"] input[type="range"]::-webkit-slider-thumb { border-color: ButtonText; background-color: Canvas; background-image: linear-gradient(ButtonText, ButtonText); }
+  html:root[data-style="contrast"] select { background-image: linear-gradient(45deg, transparent 50%, ButtonText 50%), linear-gradient(135deg, ButtonText 50%, transparent 50%), linear-gradient(ButtonText, ButtonText); }
+  html:root[data-style="contrast"] .ui-menu-i:hover:not(:disabled),
+  html:root[data-style="contrast"] .ui-menu-i:focus-visible { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+  html:root[data-style="contrast"] #ph-tip { forced-color-adjust: none; background: CanvasText; color: Canvas; border-color: CanvasText; }
+  html:root[data-style="contrast"] ::-webkit-scrollbar-thumb { background: ButtonText; }
+  html:root[data-style="contrast"] .linkdot .core { forced-color-adjust: none; background-color: CanvasText; }
+  html:root[data-style="contrast"] [data-icon]::before { forced-color-adjust: none; background-color: currentColor; }
+  html:root[data-style="contrast"] .blk { forced-color-adjust: none; }
+  html:root[data-style="contrast"] [data-part="rail-tab"]:not(.on) .rail-glyph { color: ButtonText; }
+}

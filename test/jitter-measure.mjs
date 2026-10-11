@@ -8,6 +8,7 @@
  * Run: node test/jitter-measure.mjs [host] [durationMs]
  */
 import { chromium } from 'playwright';
+import { catalogTabs } from './nav.mjs';
 
 const HOST = process.argv[2];
 if (!HOST) { console.error('usage: node test/jitter-measure.mjs <host> [...] -- no baked default, name the hub'); process.exit(1); }
@@ -41,7 +42,7 @@ await page.addInitScript(() => {
 });
 
 await page.goto(PAGE_URL, { waitUntil: 'domcontentloaded', timeout: 20000 });
-await page.waitForSelector('nav.tabs button', { timeout: 25000 }).catch(() => {});
+await catalogTabs(page);
 await page.waitForTimeout(1500); // let the link settle past HELLO/WELCOME/GRANTs
 
 // Sample the rendered position numeral text at rAF cadence for the window.

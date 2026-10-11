@@ -140,10 +140,10 @@ ok('footstrip: a value growing or shrinking moves no neighbor', fsMove.every((s)
 const footRow = () => page.evaluate(() => {
   const f = document.querySelector('.footstrip'), fb = f.getBoundingClientRect();
   const shown = [...f.querySelectorAll('.fact')].filter((c) => c.offsetParent);
-  const sc = f.querySelector('.foot-scale').getBoundingClientRect();
+  const sc = f.querySelector('.foot-scale').getBoundingClientRect(), end = f.querySelector('.foot-end').getBoundingClientRect();
   return { h: Math.round(fb.height), shown: shown.length, tops: new Set(shown.map((c) => Math.round(c.getBoundingClientRect().top))).size,
     out: shown.filter((c) => c.getBoundingClientRect().right > innerWidth + 0.5).length,
-    scaleRight: Math.round(fb.right - sc.right), scaleMid: Math.round(sc.top + sc.height / 2 - (fb.top + fb.height / 2)),
+    scaleRight: Math.round(fb.right - end.right), scaleInEnd: sc.right <= end.right + 0.5 && sc.left >= end.left - 0.5, scaleMid: Math.round(sc.top + sc.height / 2 - (fb.top + fb.height / 2)),
     scrollers: [...f.querySelectorAll(':scope, :scope *')].filter((e) => /(auto|scroll)/.test(getComputedStyle(e).overflowX)).length,
     wide: f.scrollWidth > f.clientWidth };
 });
@@ -153,14 +153,14 @@ for (const [fw, fh] of [[390, 844], [1280, 800], [1440, 900], [1920, 1080]]) {
   await page.waitForTimeout(250);
   const r = await footRow();
   fsH ??= r.h;
-  ok('footstrip: at ' + fw + ' one row, the scale control on it at the right end, no scroller',
-    r.tops === 1 && r.h === fsH && r.out === 0 && r.scrollers === 0 && !r.wide && Math.abs(r.scaleMid) <= 2 && r.scaleRight <= 14 && r.shown >= 1, JSON.stringify(r));
+  ok('footstrip: at ' + fw + ' one row, the scale control on it in the right end group (with the dock toggle slot), no scroller',
+    r.tops === 1 && r.h === fsH && r.out === 0 && r.scrollers === 0 && !r.wide && Math.abs(r.scaleMid) <= 2 && r.scaleRight <= 14 && r.scaleInEnd && r.shown >= 1, JSON.stringify(r));
   if (fw >= 1280) ok('footstrip: at ' + fw + ' every cell shows', r.shown === 8, JSON.stringify(r));
 }
 // Compact forms, exact value in the title; UI build and catalog etag are one cell.
 await page.setViewportSize({ width: 1440, height: 900 });
 const cells = await page.evaluate(() => [...document.querySelectorAll('.footstrip .fact')].map((c) =>
-  ({ k: c.querySelector('.k').textContent, v: c.querySelector('.v').textContent, t: c.title })));
+  ({ k: c.querySelector('.k').textContent, v: c.querySelector('.v').textContent, t: c.dataset.tip })));
 const cell = (k) => cells.find((c) => c.k === k);
 const pushes = cell('state pushes');
 ok('footstrip: counters are compact with the exact count on hover', cell('reconnects').v === '0' && cell('reconnects').t === '0 reconnects'
@@ -360,7 +360,7 @@ const heroClip = (p) => p.evaluate(() => {
   for (const el of document.querySelectorAll('.topstrip .strip *, .hero-strip *')) {
     if (!el.getClientRects().length || !el.textContent.trim()) continue;
     const cs = getComputedStyle(el);
-    if (cs.visibility === 'hidden' || !/(hidden|clip|auto|scroll)/.test(cs.overflowY) || cs.webkitLineClamp !== 'none' && el.closest('[title]')) continue;
+    if (cs.visibility === 'hidden' || !/(hidden|clip|auto|scroll)/.test(cs.overflowY) || cs.webkitLineClamp !== 'none' && el.closest('[data-tip]')) continue;
     if (el.scrollHeight > el.clientHeight + 1) out.push(el.className + ' ' + el.scrollHeight + '>' + el.clientHeight);
   }
   const nums = document.querySelector('.topstrip .nums')?.getBoundingClientRect();
@@ -411,16 +411,19 @@ for (const [w, h] of [[1440, 900], [390, 844], [420, 860], [860, 420]]) {
     const real = getComputedStyle(probe).color;
     probe.remove();
     const cs = [...document.querySelectorAll('.linkbar .chip')].filter((c) => c.getBoundingClientRect().width > 0);
-    const faces = new Set(cs.flatMap((c) => [...c.querySelectorAll(':scope > span:not(.chip-lbl):not(.chip-dot)')]
+    const faces = new Set(cs.flatMap((c) => [...c.querySelectorAll(':scope > span:not(.chip-lbl)')]
       .map((v) => getComputedStyle(v).fontFamily)));
     const word = document.querySelector('.linkbar .wordmark');
-    return { faces: [...faces], real: cs.filter((c) => getComputedStyle(c).color === real).map((c) => c.textContent.trim().split(/\s+/)[0]),
-      word: word.title === word.textContent, titles: cs.map((c) => c.title).filter(Boolean) };
+    return { faces: [...faces], real: cs.filter((c) => getComputedStyle(c).color === real).map((c) => c.classList.contains('chip-opt-last') ? 'rate' : c.textContent.trim()),
+      word: word.dataset.tip === word.textContent, titles: cs.map((c) => c.dataset.tip).filter(Boolean),
+      labels: [...document.querySelectorAll('.linkbar .chip-lbl')].filter((e) => e.getClientRects().length).map((e) => e.textContent.trim().toLowerCase()) };
   });
+  // Operator 2026-10-10: the address, firmware and control list are the Health view's, not the bar's.
+  ok(tag + ': the top bar chips are auth, the data rate, loss and fps only', chips.labels.every((l) => ['auth:', 'kb/s', 'loss', '%'].includes(l)), JSON.stringify(chips.labels));
   ok(tag + ': chip values share one face; reality only on liveness chips; no repeated tooltip', chips.faces.length === 1
-    && chips.real.every((t) => /^(live|rx)$/i.test(t)) && chips.word && !chips.titles.some((t) => /firmware|0\.0\.0-fixture/.test(t)),
+    && chips.real.every((t) => t === 'rate') && chips.word && !chips.titles.some((t) => /firmware|0\.0\.0-fixture/.test(t)),
     JSON.stringify(chips));
-  ok(tag + ': the tape carries the jog hint as its tooltip', await hp.locator('.rail-tape-track[title*="scrub"]').count() === 1);
+  ok(tag + ': the tape carries the jog hint as its tooltip', await hp.locator('.rail-tape-track[data-tip*="scrub"]').count() === 1);
 
   // ph-e82.21: nothing moves for 30 frames across each safety and pattern
   // edge. The sampler starts first, then the edge fires, so the press, its
@@ -529,9 +532,10 @@ for (const [w, h] of [[1280, 800], [390, 844], [420, 860], [860, 420]]) {
   ok(tag + ': the home has no page footer; the UI scale is in the status row', (!homeBox || homeBox.endsWith(',0'))
     && await fp.locator('.footstrip .foot-scale output').count() === 1 && await fp.locator('.page-foot .foot-scale').count() === 0, homeBox);
   const sbox = () => fp.evaluate(() => { const f = document.querySelector('.footstrip').getBoundingClientRect(), s = document.querySelector('.footstrip .foot-scale').getBoundingClientRect();
-    return { strip: [f.left, f.width, f.height].map(Math.round).join(','), right: Math.round(f.right - s.right), within: s.top >= f.top - 0.5 && s.bottom <= f.bottom + 0.5 }; });
+    const e = document.querySelector('.footstrip .foot-end').getBoundingClientRect();
+    return { strip: [f.left, f.width, f.height].map(Math.round).join(','), right: Math.round(f.right - e.right), within: s.top >= f.top - 0.5 && s.bottom <= f.bottom + 0.5 && s.right <= e.right + 0.5 }; });
   const sb0 = await sbox();
-  ok(tag + ': the scale sits at the status row end, inside it', sb0.right === 12 && sb0.within, JSON.stringify(sb0));
+  ok(tag + ': the scale sits in the status row end group, inside it', sb0.right === 12 && sb0.within, JSON.stringify(sb0));
   // ph-p43h: the top bar and the status row are full bleed; the status text keeps a --gap inset at both ends.
   const bleed = await fp.evaluate(() => { const r = (s) => document.querySelector(s).getBoundingClientRect(), t = r('.topstrip'), f = r('.footstrip');
     return { t: [t.left, t.width], f: [f.left, f.width], iw: innerWidth, ow: document.documentElement.scrollWidth }; });
@@ -666,8 +670,9 @@ for (const [w, h] of [[1280, 800], [390, 844], [420, 860], [860, 420]]) {
   if (w >= 960) {
     // Drift: every data-search-key on the Display pane has an F3 entry, and every entry resolves to a row.
     const dom = await fp.evaluate(() => ({ keys: [...document.querySelectorAll('main.pane [data-search-key]')].map((e) => e.dataset.searchKey),
-      presets: [...document.querySelectorAll('[data-theme-id]')].map((e) => ({ id: e.dataset.themeId, name: e.querySelector('.name').textContent.trim() })) }));
-    const want = settingsEntries(dom.presets).filter((e) => !e.shell).map((e) => e.key);
+      presets: [...document.querySelectorAll('[data-theme-id]')].map((e) => ({ id: e.dataset.themeId, name: e.querySelector('.name').textContent.trim() })),
+      styles: [...document.querySelectorAll('[data-style-id]')].map((e) => ({ id: e.dataset.styleId, name: e.querySelector('.name').textContent.trim() })) }));
+    const want = settingsEntries(dom.presets, dom.styles).filter((e) => !e.shell).map((e) => e.key);
     const lost = dom.keys.filter((k) => !want.includes(k)), dead = want.filter((k) => !dom.keys.includes(k));
     ok(tag + ': every Display row has an F3 entry and every entry has a row', dom.keys.length > 20 && !lost.length && !dead.length, 'rows without entry: ' + lost + ' entries without row: ' + dead);
     await fp.keyboard.press('F3');

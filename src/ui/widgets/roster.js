@@ -11,8 +11,12 @@
  * - EMPTY is only what the hub said: NACK CHUNK_UNAVAILABLE, or a slot past
  *   the roster's count (SPEC §8.7).
  * - Item payloads stay opaque (SPEC §8.7); only the item envelope is read.
+ * - The slot hint orders reads and never decides a slot's state: with no
+ *   roster count every slot is asked, and a stale hint costs NACKs, not items.
+ *   It persists in localStorage and degrades to in-memory on a throw.
  */
-import { cbDecodeFull, BLOB_K, BLOB_ERROR, NACK } from '../../../../Valence/clients/js/index.js';
+import { cbDecodeFull, BLOB_K, BLOB_ERROR, NACK, FIELD_ROLE } from '../../../../Valence/clients/js/index.js';
+import { STORE_OP } from '../../../../Valence/clients/js/generated/registry_vocab.js';
 
 export const SLOT = Object.freeze({
   pending: 'pending', item: 'item', empty: 'empty', locked: 'locked', error: 'error',
@@ -56,27 +60,71 @@ export function rosterCount(roster, sample) {
   return Number.isInteger(v) ? v : null;
 }
 
+// Per hub and store, the slots last seen holding an item, kept across launches (ph-2tjo).
+const HINT_KEY = 'phosphor.storeSlots';
+let hints = null;   // 'hub:storeId' -> Set of slots
+
+/** The slot hint for one hub's store: a Set enumerateStore and noteStoreOp keep current. */
+export function slotHint(hub, storeId) {
+  if (!hints) {
+    let raw = null;
+    try { raw = JSON.parse(globalThis.localStorage.getItem(HINT_KEY)); } catch (e) { /* in-memory only */ }
+    hints = new Map(Object.entries(raw && typeof raw === 'object' ? raw : {})
+      .map(([k, v]) => [k, new Set(Array.isArray(v) ? v.filter(Number.isInteger) : [])]));
+  }
+  const k = hub + ':' + storeId;
+  if (!hints.has(k)) hints.set(k, new Set());
+  return hints.get(k);
+}
+
+function saveHints() {
+  try {
+    globalThis.localStorage.setItem(HINT_KEY, JSON.stringify(Object.fromEntries([...hints].map(([k, s]) => [k, [...s]]))));
+  } catch (e) { /* in-memory only */ }
+}
+
 /**
- * Read every slot, one at a time (the hub runs one blob transfer per session).
+ * An action.store op's ECHO moves the hint: save fills its slot (the ECHO names
+ * the one the hub chose), delete empties it. `args` is the sent fields with the
+ * ECHO's applied keys over them; the slot is found by its RFC-089 role only.
+ */
+export function noteStoreOp(entries, action, op, args, hub) {
+  const writer = (entries || []).find((e) => e.id === action.channelId);
+  const p = (action.payload || []).find((x) => x.role === FIELD_ROLE.store_slot);
+  const slot = p && args ? args[p.key] : undefined;
+  if (!writer || writer.storeId == null || !Number.isInteger(slot)) return;
+  if (op !== STORE_OP.save && op !== STORE_OP.delete_item) return;
+  const known = slotHint(hub, writer.storeId);
+  if (op === STORE_OP.save) known.add(slot); else known.delete(slot);
+  saveHints();
+}
+
+/**
+ * Read the slots one at a time (the hub runs one blob transfer per session).
  * `onSlot(record)` fires per answer; slots not yet answered stay PENDING in the
  * caller's array. A locked store issues no request at all. With the roster's
- * `count`, slots after the count-th item read EMPTY unasked: an empty slot
- * costs the hub one NACK CHUNK_UNAVAILABLE.
+ * `count`, the reads stop at the count-th item and every slot not read is
+ * EMPTY unasked. An empty slot asked costs the hub one NACK CHUNK_UNAVAILABLE,
+ * so the slots the `known` hint names are read first and the hint follows
+ * every answer.
  *
  * @param {(o: Object) => Promise<Object>} fetchBlob session.fetchBlob
  * @param {Object} storeEntry a STORE-class catalog entry (`.store`, `.access`)
- * @param {{role: number, count?: number|null, signal?: AbortSignal, onSlot: Function}} o
+ * @param {{role: number, count?: number|null, known?: Set<number>|null, signal?: AbortSignal, onSlot: Function}} o
  */
-export async function enumerateStore(fetchBlob, storeEntry, { role, count = null, signal, onSlot }) {
+export async function enumerateStore(fetchBlob, storeEntry, { role, count = null, known = null, signal, onSlot }) {
   const n = storeEntry.store.capacity | 0;
   if (storeLocked(storeEntry, role)) {
     for (let slot = 0; slot < n; slot++) onSlot({ slot, state: SLOT.locked });
     return;
   }
+  const order = [...Array(n).keys()];
+  if (known) order.sort((a, b) => known.has(b) - known.has(a) || a - b);
+  const read = new Set();
   let found = 0;
-  for (let slot = 0; slot < n; slot++) {
+  for (const slot of order) {
     if (signal && signal.aborted) return;
-    if (count != null && found >= count) { onSlot({ slot, state: SLOT.empty }); continue; }
+    if (count != null && found >= count) break;
     let rec;
     try {
       rec = slotFrom(slot, await fetchBlob({ storeId: storeEntry.store.storeId, slot, signal }));
@@ -85,9 +133,17 @@ export async function enumerateStore(fetchBlob, storeEntry, { role, count = null
       rec = slotFrom(slot, null, err);
     }
     if (signal && signal.aborted) return;
-    if (rec.state === SLOT.item) found++;
+    if (rec.state === SLOT.item) { found++; known?.add(slot); }
+    if (rec.state === SLOT.empty) known?.delete(slot);
+    read.add(slot);
     onSlot(rec);
   }
+  for (let slot = 0; slot < n; slot++) {
+    if (read.has(slot)) continue;
+    known?.delete(slot);
+    onSlot({ slot, state: SLOT.empty });
+  }
+  if (known && hints) saveHints();
 }
 
 /**

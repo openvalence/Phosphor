@@ -1,0 +1,7 @@
+/* The display faces some themes share (docs/THEMES.md, Fonts): three OFL families, subset to
+   Latin (fonts/fetch.py, licenses in fonts/OFL.txt). A theme names one only inside its own scope;
+   a theme with a face of its own puts it in its folder and its own theme.css. */
+@font-face { font-family: 'VT323'; src: url('./fonts/VT323.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Silkscreen'; src: url('./fonts/Silkscreen-400.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Silkscreen'; src: url('./fonts/Silkscreen-700.woff2') format('woff2'); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'Orbitron'; src: url('./fonts/Orbitron.woff2') format('woff2'); font-weight: 400 900; font-display: swap; }

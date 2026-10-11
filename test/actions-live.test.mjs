@@ -354,7 +354,7 @@ if (UNHOMED_PORT) {
     if (up) {
       const card = dashItem(page, 'Pattern');
       // The run switch's gray reason rides the state line's title (PatternWidget reasonOf).
-      const reason = (await card.locator('.pattern-state').getAttribute('title').catch(() => null)) || '';
+      const reason = (await card.locator('.pattern-state').getAttribute('data-tip').catch(() => null)) || '';
       ok('unhomed: the pattern head says in words why it is gray', reason.length > 0, null, reason);
       ok('unhomed: run/stop is disabled', await card.getByRole('switch', { name: /pattern$/i }).isDisabled());
       const presetBtn = page.locator('.field.action .ops button').first();

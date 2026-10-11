@@ -1,0 +1,353 @@
+/* Mica: Fluent on Windows 11. Layers over the OS material: the base is Mica (or, without it,
+   an opaque stand-in that reads the same), the content sits on a lighter layer, cards on a
+   lighter one still, every control on a translucent fill with a 1 px stroke that is lighter
+   on top and darker on the bottom. One accent fills the primary button, the toggled button,
+   the switch, the check box, the option dot and the slider thumb's core; everything else
+   is neutral. Rounding is 4 px on controls and 8 px on cards, flyouts and the rail.
+
+   With the material (html[data-material], set by model/material.svelte.js once the window
+   has it) the page and body go clear and every surface that carries text is a tint over
+   it: 82% on the dark variants (Mica forced dark never reads lighter than about #3A3A3A,
+   and text clears AA over black and over that), 96% on Light (the window's Mica is always
+   the dark one: the tint hides it). Without it, the same look on opaque surfaces.
+
+   The variants: Dark (the Theme's own), Light, and Mica Alt, whose title bar is the darker
+   base with the title as a tab and everything under it on one lighter layer.
+
+   The pointer reveal: a control's hover fill is a soft light at (--mx, --my), which rests at
+   the top center. A pointer handler may set both on the hovered control; nothing here needs it.
+   States that carry meaning (on, primary, running, danger, the write ladder) are not
+   re-colored: the ladder's border and background-image on fields, track and thumb stay as the
+   shell draws them. */
+html:root[data-style="mica"] {
+  --font: 'Segoe UI Variable Text', 'Segoe UI Variable', 'Segoe UI', system-ui, -apple-system, Roboto, 'Helvetica Neue', sans-serif;
+  --font-head: 'Segoe UI Variable Display', 'Segoe UI Variable', 'Segoe UI', system-ui, -apple-system, Roboto, 'Helvetica Neue', sans-serif;
+  --mono: 'Cascadia Mono', 'Cascadia Code', Consolas, ui-monospace, 'DejaVu Sans Mono', monospace;
+  --ease-out: cubic-bezier(0, 0, 0, 1);
+  --frame-w: 1px;
+  --tint: 82%;
+  /* The fills: a little of the text color over whatever is under (a control on a card, a card on Mica). */
+  --m-ctl: color-mix(in srgb, var(--tx-hi) 6%, transparent);
+  --m-ctl-h: color-mix(in srgb, var(--tx-hi) 9%, transparent);
+  --m-ctl-p: color-mix(in srgb, var(--tx-hi) 4%, transparent);
+  --m-ctl-in: color-mix(in srgb, var(--bg-sunken) 55%, transparent);
+  --m-edge: color-mix(in srgb, var(--tx-hi) 9%, transparent);
+  --m-edge-b: color-mix(in srgb, var(--tx-hi) 14%, transparent);
+  --m-strong: color-mix(in srgb, var(--tx-hi) 54%, transparent);
+  --m-onacc: #000;
+  --m-card-shadow: 0 2px 4px rgba(0, 0, 0, .26);
+  --m-fly-shadow: 0 8px 16px rgba(0, 0, 0, .36), 0 0 2px rgba(0, 0, 0, .3);
+  --m-reveal: radial-gradient(circle 110px at var(--mx, 50%) var(--my, 0%), color-mix(in srgb, var(--tx-hi) 11%, transparent), transparent 80%);
+  --m-chev: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23C8CCD6' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 6l4.5 4.5L12.5 6'/%3E%3C/svg%3E");
+  --m-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.4 6.3l2.4 2.4 4.8-5.2'/%3E%3C/svg%3E");
+  /* The opaque stand-in for the wallpaper Mica samples: two soft washes of the accents over the base. */
+  --tex-page:
+    radial-gradient(70% 55% at 12% -8%, rgba(96, 205, 255, .12), transparent 70%),
+    radial-gradient(60% 60% at 104% 108%, rgba(203, 166, 255, .11), transparent 70%),
+    linear-gradient(160deg, var(--bg-raised) 0%, var(--bg) 60%);
+  --tex-page-size: 100% 100%;
+}
+html:root[data-style="mica"][data-variant="mica-light"] {
+  --tint: 96%;
+  --m-ctl: rgba(255, 255, 255, .72);
+  --m-ctl-h: rgba(249, 249, 249, .55);
+  --m-ctl-p: rgba(249, 249, 249, .3);
+  --m-ctl-in: rgba(255, 255, 255, .78);
+  --m-edge: rgba(0, 0, 0, .06);
+  --m-edge-b: rgba(0, 0, 0, .2);
+  --m-strong: rgba(0, 0, 0, .56);
+  --m-onacc: #fff;
+  --m-card-shadow: 0 2px 4px rgba(0, 0, 0, .06);
+  --m-fly-shadow: 0 8px 16px rgba(0, 0, 0, .16), 0 0 2px rgba(0, 0, 0, .12);
+  --m-reveal: radial-gradient(circle 110px at var(--mx, 50%) var(--my, 0%), rgba(255, 255, 255, .9), transparent 80%);
+  --m-chev: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23505050' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 6l4.5 4.5L12.5 6'/%3E%3C/svg%3E");
+  --m-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%23fff' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.4 6.3l2.4 2.4 4.8-5.2'/%3E%3C/svg%3E");
+  --tex-page:
+    radial-gradient(70% 55% at 12% -8%, rgba(0, 120, 212, .09), transparent 70%),
+    radial-gradient(60% 60% at 104% 108%, rgba(180, 120, 255, .08), transparent 70%),
+    linear-gradient(160deg, var(--bg-raised) 0%, var(--bg) 60%);
+}
+html:root[data-style="mica"][data-variant="mica-alt"] {
+  --m-base: color-mix(in srgb, var(--bg-sunken) 65%, #000);
+  --m-layer: var(--bg);
+  --m-card-shadow: 0 2px 4px rgba(0, 0, 0, .3);
+  --tex-page: none;
+}
+
+/* ---- the material shows ---- */
+html:root[data-style="mica"][data-material],
+html:root[data-style="mica"][data-material] body { background-color: transparent; background-image: none; }
+html:root[data-style="mica"][data-material] [data-part="bar"] { background-color: color-mix(in srgb, var(--bg) var(--tint), transparent); }
+html:root[data-style="mica"][data-material] [data-part="top"] { background-color: transparent; }
+html:root[data-style="mica"][data-material] [data-part="strip"],
+html:root[data-style="mica"][data-material] [data-part="hero"],
+html:root[data-style="mica"][data-material] [data-part="rail"],
+html:root[data-style="mica"][data-material] [data-part="status-row"],
+html:root[data-style="mica"][data-material] [data-part="page-foot"] { background-color: color-mix(in srgb, var(--bg-raised) var(--tint), transparent); }
+html:root[data-style="mica"][data-material] .surface-card,
+html:root[data-style="mica"][data-material] .og-panel { background-color: color-mix(in srgb, var(--bg-card) var(--tint), transparent); }
+html:root[data-style="mica"][data-material] .surface-nest { background-color: color-mix(in srgb, var(--bg-sunken) var(--tint), transparent); }
+html:root[data-style="mica"][data-material] #ph-tip,
+html:root[data-style="mica"][data-material] .ui-menu,
+html:root[data-style="mica"][data-material] .ui-sheet { background-color: color-mix(in srgb, var(--bg-card) 94%, transparent); }
+/* Light carries a base of its own: its window Mica is the dark one, the tint hides it. */
+html:root[data-style="mica"][data-material][data-variant="mica-light"] body { background-color: color-mix(in srgb, var(--bg) var(--tint), transparent); }
+
+/* ---- the title bar: the top bar, the wordmark in the title's voice ---- */
+html:root[data-style="mica"] [data-part="bar"] { background-color: var(--bg); box-shadow: inset 0 -1px 0 var(--line-0); }
+html:root[data-style="mica"] [data-part="bar"] .wordmark { font-family: var(--font-head); font-weight: 600; letter-spacing: 0; font-size: .85rem; }
+html:root[data-style="mica"] [data-part="bar"] .chip { border-radius: 4px; background-color: var(--m-ctl); border-color: var(--m-edge); }
+html:root[data-style="mica"] [data-part="top"] { border-bottom-color: var(--line-1); }
+/* Mica Alt: the title bar, strip, rail and status row are the deeper base; the content is the one lighter
+   layer, rounded and stroked, and the title is a tab sitting on the bar. */
+html:root[data-style="mica"][data-variant="mica-alt"] [data-part="bar"],
+html:root[data-style="mica"][data-variant="mica-alt"] [data-part="strip"],
+html:root[data-style="mica"][data-variant="mica-alt"] [data-part="hero"],
+html:root[data-style="mica"][data-variant="mica-alt"] [data-part="rail"],
+html:root[data-style="mica"][data-variant="mica-alt"] [data-part="status-row"],
+html:root[data-style="mica"][data-variant="mica-alt"] [data-part="page-foot"] { background-color: var(--m-base); }
+html:root[data-style="mica"][data-variant="mica-alt"] body { background-color: var(--m-base); }
+html:root[data-style="mica"][data-variant="mica-alt"] [data-part="strip"],
+html:root[data-style="mica"][data-variant="mica-alt"] [data-part="hero"] { background-image: none; }
+html:root[data-style="mica"][data-variant="mica-alt"] [data-part="rail"] { border-color: transparent; }
+html:root[data-style="mica"][data-variant="mica-alt"] [data-part="content"] { border: 1px solid var(--line-1); border-radius: 8px; background-color: var(--m-layer); }
+html:root[data-style="mica"][data-variant="mica-alt"] [data-part="bar"] > :first-child {
+  align-self: flex-end;
+  height: calc(100% - 4px);
+  padding: 0 12px;
+  margin-left: -4px;
+  border-radius: 8px 8px 0 0;
+  background-color: var(--m-layer);
+  box-shadow: 0 -1px 0 0 var(--line-1), -1px 0 0 0 var(--line-1), 1px 0 0 0 var(--line-1);
+}
+@media (max-width: 700px) {
+  html:root[data-style="mica"][data-variant="mica-alt"] [data-part="bar"] > :first-child { padding: 0 4px; margin-left: 0; }
+}
+html:root[data-style="mica"][data-material][data-variant="mica-alt"] body,
+html:root[data-style="mica"][data-material][data-variant="mica-alt"] [data-part="bar"],
+html:root[data-style="mica"][data-material][data-variant="mica-alt"] [data-part="strip"],
+html:root[data-style="mica"][data-material][data-variant="mica-alt"] [data-part="hero"],
+html:root[data-style="mica"][data-material][data-variant="mica-alt"] [data-part="rail"],
+html:root[data-style="mica"][data-material][data-variant="mica-alt"] [data-part="status-row"],
+html:root[data-style="mica"][data-material][data-variant="mica-alt"] [data-part="page-foot"] { background-color: color-mix(in srgb, var(--m-base) var(--tint), transparent); }
+html:root[data-style="mica"][data-material][data-variant="mica-alt"] [data-part="content"],
+html:root[data-style="mica"][data-material][data-variant="mica-alt"] [data-part="bar"] > :first-child { background-color: color-mix(in srgb, var(--m-layer) var(--tint), transparent); }
+
+/* The caption buttons: 46 px, the bar's height, a thin glyph; the close takes Fluent's red on hover. */
+html:root[data-style="mica"] [data-part="caption-btn"] { width: 46px; border-radius: 0; background: transparent; color: var(--tx-hi); transition: background-color .1s linear; }
+html:root[data-style="mica"] [data-part="caption-btn"] svg { width: 10px; height: 10px; stroke-width: 1; }
+html:root[data-style="mica"] [data-part="caption-btn"]:hover { background-color: var(--m-ctl-h); color: var(--tx-hi); }
+html:root[data-style="mica"] [data-part="caption-btn"]:active,
+html:root[data-style="mica"] [data-part="caption-btn"][aria-expanded="true"] { background-color: var(--m-ctl-p); color: var(--tx-mut); }
+html:root[data-style="mica"] [data-part="caption-btn"][data-cap="close"]:hover { background-color: #C42B1C; color: #fff; }
+html:root[data-style="mica"] [data-part="caption-btn"][data-cap="close"]:active,
+html:root[data-style="mica"] [data-part="caption-btn"][data-cap="close"][aria-expanded="true"] { background-color: #B02A1D; color: rgba(255, 255, 255, .8); }
+html:root[data-style="mica"] [data-part="caption-btn"]:focus-visible { outline: 2px solid var(--tx-hi); outline-offset: -3px; }
+
+/* ---- the command bar and the rail ---- */
+html:root[data-style="mica"] [data-part="strip"],
+html:root[data-style="mica"] [data-part="hero"] { background-image: linear-gradient(180deg, color-mix(in srgb, var(--tx-hi) 3%, transparent), transparent 60%); }
+html:root[data-style="mica"] [data-part="stop-frame"] { outline: 1px solid var(--line-2); outline-offset: 4px; border-radius: 8px; background-color: var(--bg-sunken); }
+html:root[data-style="mica"] [data-part="rail"] { border-radius: 0 8px 8px 0; border-color: var(--line-1); }
+html:root[data-style="mica"] [data-part="rail-label"] { font-family: var(--font-head); font-weight: 600; text-transform: none; letter-spacing: 0; font-size: 12px; color: var(--tx-val); }
+html:root[data-style="mica"] [data-part="rail-tab"] { position: relative; border-radius: 4px; font-size: .875rem; font-weight: 400; }
+html:root[data-style="mica"] [data-part="rail-tab"]:hover { background-color: var(--m-ctl-h); }
+html:root[data-style="mica"] [data-part="rail-tab"].on { background-color: var(--m-ctl-h); border-color: transparent; }
+/* The selection pill: three px, rounded, centered on the item's leading edge. */
+html:root[data-style="mica"] [data-part="rail-tab"].on::before { content: ''; position: absolute; left: 0; top: 50%; height: 16px; margin-top: -8px; width: 3px; border-radius: 2px; background: var(--reality); }
+html:root[data-style="mica"] [data-part="rail-tab"]:focus-visible { outline: 2px solid var(--tx-hi); outline-offset: -2px; }
+html:root[data-style="mica"] .rail-collapse { border-radius: 4px; }
+
+/* ---- cards: eight pixels round, a stroke, a soft lift; the title in Body Strong ---- */
+html:root[data-style="mica"] [data-part="card"],
+html:root[data-style="mica"] [data-part="nest"],
+html:root[data-style="mica"] [data-part="panel"] { border-radius: 8px; box-shadow: var(--m-card-shadow), 0 0 0 .5px rgba(0, 0, 0, .3); }
+html:root[data-style="mica"][data-variant="mica-light"] [data-part="card"],
+html:root[data-style="mica"][data-variant="mica-light"] [data-part="nest"],
+html:root[data-style="mica"][data-variant="mica-light"] [data-part="panel"] { box-shadow: var(--m-card-shadow); }
+html:root[data-style="mica"] [data-part="card"],
+html:root[data-style="mica"] [data-part="panel"] { background-image: linear-gradient(180deg, color-mix(in srgb, var(--tx-hi) 3%, transparent), transparent 30%); }
+html:root[data-style="mica"] .dash-title { font-family: var(--font-head); text-transform: none; letter-spacing: 0; font-weight: 600; font-size: .875rem; color: var(--tx-hi); }
+html:root[data-style="mica"] .dash-title[data-pidx]::before { font-family: var(--font); font-weight: 400; color: var(--tx-mut); }
+html:root[data-style="mica"] .card-sub { font-family: var(--font-head); text-transform: none; letter-spacing: 0; font-weight: 600; font-size: .75rem; color: var(--tx-mut); }
+html:root[data-style="mica"] .og-panel { outline: none; border-radius: 8px; background-image: none; }
+html:root[data-style="mica"] .pane-head h2 { font-family: var(--font-head); font-weight: 600; text-transform: none; letter-spacing: 0; font-size: 1.25rem; }
+html:root[data-style="mica"] .field-label { text-transform: none; letter-spacing: 0; font-size: .8125rem; font-weight: 400; color: var(--tx); }
+html:root[data-style="mica"] .field-value { border-radius: 4px; }
+/* Sentence case everywhere: no tracked capitals. */
+html:root[data-style="mica"] .pane-head h3 { font-family: var(--font-head); font-size: .9rem; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--tx-hi); }
+html:root[data-style="mica"] [data-part="status-row"] .k,
+html:root[data-style="mica"] [data-part="bar"] .chip-lbl,
+html:root[data-style="mica"] [data-part="pane"] .drill-title,
+html:root[data-style="mica"] .dash-section,
+html:root[data-style="mica"] [data-style-id] .name,
+html:root[data-style="mica"] [data-theme-id] .name { text-transform: none; letter-spacing: 0; }
+html:root[data-style="mica"] [data-part="bar"] .chip-lbl { font-size: .7rem; }
+html:root[data-style="mica"] .dash-section { font-family: var(--font-head); font-weight: 600; font-size: .875rem; }
+html:root[data-style="mica"] .og-screen { border-radius: 4px; border-color: var(--m-edge); }
+
+/* ---- buttons: a translucent fill, a stroke lighter on top, a lift on hover, a sink on press ---- */
+html:root[data-style="mica"] .og-btn,
+html:root[data-style="mica"] .og-seg button,
+html:root[data-style="mica"] .stepper button {
+  border-radius: 4px;
+  background-color: var(--m-ctl);
+  border-color: var(--m-edge);
+  box-shadow: inset 0 -1px 0 var(--m-edge-b);
+  font-weight: 400;
+  transition: background-color .1s linear, border-color .1s linear;
+}
+html:root[data-style="mica"] .og-btn:not(.on):not(.primary):not(.running):not(.danger):hover:not(:disabled),
+html:root[data-style="mica"] .og-seg button:not(.active):hover:not(:disabled),
+html:root[data-style="mica"] .stepper button:hover:not(:disabled) { background-color: var(--m-ctl-h); background-image: var(--m-reveal); }
+html:root[data-style="mica"] .og-btn:not(.on):not(.primary):not(.running):not(.danger):active:not(:disabled),
+html:root[data-style="mica"] .og-seg button:not(.active):active:not(:disabled),
+html:root[data-style="mica"] .stepper button:active:not(:disabled) { background-color: var(--m-ctl-p); background-image: none; box-shadow: none; }
+html:root[data-style="mica"] .og-btn:focus-visible,
+html:root[data-style="mica"] .og-seg button:focus-visible,
+html:root[data-style="mica"] .stepper button:focus-visible { outline: 2px solid var(--tx-hi); outline-offset: 1px; }
+/* The accent button: primary and toggled-on are the one filled look. */
+html:root[data-style="mica"] .og-btn.primary,
+html:root[data-style="mica"] .og-btn.on {
+  background-color: var(--reality);
+  color: var(--m-onacc);
+  border-color: color-mix(in srgb, var(--reality) 78%, #000);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22), inset 0 -1px 0 rgba(0, 0, 0, .22);
+}
+html:root[data-style="mica"] .og-btn.primary:hover:not(:disabled),
+html:root[data-style="mica"] .og-btn.on:hover:not(:disabled) { background-color: color-mix(in srgb, var(--reality) 88%, var(--bg)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22), inset 0 -1px 0 rgba(0, 0, 0, .22); }
+html:root[data-style="mica"] .og-btn.primary:active:not(:disabled),
+html:root[data-style="mica"] .og-btn.on:active:not(:disabled) { background-color: color-mix(in srgb, var(--reality) 76%, var(--bg)); color: var(--m-onacc); box-shadow: none; }
+/* The segmented control: the chosen segment lifts and wears the accent pill under its label. */
+html:root[data-style="mica"] .og-seg button { position: relative; }
+html:root[data-style="mica"] .og-seg button.active { background-color: var(--m-ctl-h); box-shadow: none; }
+html:root[data-style="mica"] .og-seg button.active:not([role="radio"])::after { content: ''; position: absolute; left: 50%; bottom: 3px; width: 16px; height: 3px; margin-left: -8px; border-radius: 2px; background: var(--reality); }
+/* The option dot: a ring that fills with the accent and keeps a core of the on-accent color. */
+html:root[data-style="mica"] [role="radio"] { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+html:root[data-style="mica"] [role="radio"]::before {
+  content: '';
+  flex: none;
+  box-sizing: border-box;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid var(--m-strong);
+  background-color: var(--m-ctl-in);
+  transition: background-color .1s linear, border-color .1s linear;
+}
+html:root[data-style="mica"] [role="radio"]:hover::before { border-color: var(--tx-hi); }
+html:root[data-style="mica"] [role="radio"][aria-checked="true"]::before { border-color: var(--reality); background-color: var(--reality); background-image: radial-gradient(circle, var(--m-onacc) 0 2.4px, transparent 2.9px); }
+
+/* ---- text boxes and the dropdown: a fill, a stroke, the accent line under the focus ---- */
+html:root[data-style="mica"] .og-num,
+html:root[data-style="mica"] .value-input,
+html:root[data-style="mica"] select,
+html:root[data-style="mica"] .ui-menu-ask { border-radius: 4px; background-color: var(--m-ctl-in); border-color: var(--m-edge); box-shadow: inset 0 -1px 0 var(--m-strong); transition: background-color .1s linear; }
+html:root[data-style="mica"] .og-num:hover,
+html:root[data-style="mica"] .value-input:hover,
+html:root[data-style="mica"] select:hover { background-color: var(--m-ctl-h); }
+html:root[data-style="mica"] .og-num:focus,
+html:root[data-style="mica"] .value-input:focus,
+html:root[data-style="mica"] select:focus,
+html:root[data-style="mica"] .ui-menu-ask:focus { background-color: var(--bg-card); box-shadow: inset 0 -2px 0 var(--reality); }
+html:root[data-style="mica"] select { padding-right: 32px; background-image: var(--m-chev); background-size: 12px 12px; background-position: right 10px center; background-repeat: no-repeat; }
+
+/* ---- the switch: a hollow track with a small dot; the accent fills it when on ---- */
+html:root[data-style="mica"] .og-switch .track { border-radius: 10px; background-color: transparent; }
+/* The off track wears the strong stroke; inside a field the ladder owns the border. */
+html:root[data-style="mica"] .og-switch .track:not(.field *) { border-color: var(--m-strong); }
+html:root[data-style="mica"] .og-switch input:checked + .track:not(.field *) { border-color: var(--reality); }
+html:root[data-style="mica"] .og-switch input:checked + .track { background-color: var(--reality); }
+html:root[data-style="mica"] .og-switch .track::after { top: 4px; left: 4px; width: 12px; height: 12px; border-radius: 50%; background: var(--tx-mut); box-shadow: none; transform-origin: left center; }
+html:root[data-style="mica"] .og-switch:hover .track::after { transform: scale(1.18); }
+html:root[data-style="mica"] .og-switch:active .track::after { transform: scaleX(1.5); }
+html:root[data-style="mica"] .og-switch input:checked + .track::after { background: var(--m-onacc); box-shadow: none; transform: translateX(18px); transform-origin: right center; }
+html:root[data-style="mica"] .og-switch:hover input:checked + .track::after { transform: translateX(18px) scale(1.18); }
+html:root[data-style="mica"] .og-switch:active input:checked + .track::after { transform: translateX(12px) scaleX(1.5); }
+html:root[data-style="mica"] .og-switch input:focus-visible + .track { outline: 2px solid var(--tx-hi); outline-offset: 2px; }
+
+/* ---- the check box ---- */
+html:root[data-style="mica"] input[type="checkbox"]:not([role="switch"]) {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border-radius: 4px;
+  border: 1px solid var(--m-strong);
+  background-color: var(--m-ctl-in);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 12px 12px;
+  cursor: pointer;
+  vertical-align: middle;
+  transition: background-color .1s linear, border-color .1s linear;
+}
+html:root[data-style="mica"] input[type="checkbox"]:not([role="switch"]):hover { background-color: var(--m-ctl-h); border-color: var(--tx-hi); }
+html:root[data-style="mica"] input[type="checkbox"]:not([role="switch"]):checked { background-color: var(--reality); border-color: var(--reality); background-image: var(--m-check); }
+html:root[data-style="mica"] input[type="checkbox"]:not([role="switch"]):checked:hover { background-color: color-mix(in srgb, var(--reality) 88%, var(--bg)); }
+html:root[data-style="mica"] input[type="checkbox"]:not([role="switch"]):disabled { opacity: .45; cursor: not-allowed; }
+html:root[data-style="mica"] input[type="checkbox"]:not([role="switch"]):focus-visible { outline: 2px solid var(--tx-hi); outline-offset: 2px; }
+@media (pointer: coarse) {
+  html:root[data-style="mica"] input[type="checkbox"]:not([role="switch"]) { width: 24px; height: 24px; background-size: 16px 16px; }
+}
+
+/* ---- the slider: a 4 px track, a round-cornered thumb with an accent core that grows on hover, shrinks on press ---- */
+html:root[data-style="mica"] input[type="range"] { height: calc(4px + 2 * var(--range-hit)); }
+html:root[data-style="mica"] input[type="range"]::-webkit-slider-thumb { border-radius: 999px; border-color: var(--m-strong); background: radial-gradient(circle, var(--reality) 0 4px, transparent 4.6px), var(--bg-card); box-shadow: 0 1px 3px rgba(0, 0, 0, .4); }
+html:root[data-style="mica"] input[type="range"]::-moz-range-thumb { border-radius: 999px; border-color: var(--m-strong); background: radial-gradient(circle, var(--reality) 0 4px, transparent 4.6px), var(--bg-card); box-shadow: 0 1px 3px rgba(0, 0, 0, .4); }
+html:root[data-style="mica"] input[type="range"]:hover::-webkit-slider-thumb { background: radial-gradient(circle, var(--reality) 0 5px, transparent 5.6px), var(--bg-card); }
+html:root[data-style="mica"] input[type="range"]:hover::-moz-range-thumb { background: radial-gradient(circle, var(--reality) 0 5px, transparent 5.6px), var(--bg-card); }
+html:root[data-style="mica"] input[type="range"]:active::-webkit-slider-thumb { border-color: var(--highlight); background: radial-gradient(circle, var(--reality) 0 3px, transparent 3.6px), var(--bg-card); box-shadow: 0 1px 3px rgba(0, 0, 0, .4); }
+html:root[data-style="mica"] input[type="range"]:active::-moz-range-thumb { border-color: var(--highlight); background: radial-gradient(circle, var(--reality) 0 3px, transparent 3.6px), var(--bg-card); box-shadow: 0 1px 3px rgba(0, 0, 0, .4); }
+html:root[data-style="mica"] input[type="range"]:focus-visible::-webkit-slider-thumb { border-color: var(--highlight); box-shadow: 0 1px 3px rgba(0, 0, 0, .4), 0 0 0 2px var(--tx-hi); }
+html:root[data-style="mica"] input[type="range"]:focus-visible::-moz-range-thumb { border-color: var(--highlight); box-shadow: 0 1px 3px rgba(0, 0, 0, .4), 0 0 0 2px var(--tx-hi); }
+
+/* ---- progress ---- */
+html:root[data-style="mica"] progress { appearance: none; -webkit-appearance: none; height: 4px; border: 0; border-radius: 2px; background-color: var(--m-strong); overflow: hidden; }
+html:root[data-style="mica"] progress::-webkit-progress-bar { background: color-mix(in srgb, var(--tx-hi) 22%, transparent); }
+html:root[data-style="mica"] progress::-webkit-progress-value { background: var(--reality); border-radius: 2px; }
+html:root[data-style="mica"] progress::-moz-progress-bar { background: var(--reality); border-radius: 2px; }
+
+/* ---- tabs: text with the accent pill under the chosen one ---- */
+html:root[data-style="mica"] [role="tab"]:not([data-part="rail-tab"]),
+html:root[data-style="mica"] .tabs button { border-radius: 4px; }
+html:root[data-style="mica"] [role="tab"]:not([data-part="rail-tab"]):hover,
+html:root[data-style="mica"] .tabs button:hover { background-color: var(--m-ctl-h); }
+html:root[data-style="mica"] [role="tab"][aria-selected="true"]:not([data-part="rail-tab"]),
+html:root[data-style="mica"] .tabs button.on { background-image: linear-gradient(var(--reality), var(--reality)); background-size: calc(100% - 20px) 3px; background-position: center bottom 2px; background-repeat: no-repeat; border-radius: 4px; }
+html:root[data-style="mica"] [role="tab"]:not([data-part="rail-tab"]):focus-visible,
+html:root[data-style="mica"] .tabs button:focus-visible { outline: 2px solid var(--tx-hi); outline-offset: -2px; }
+
+/* ---- flyouts: the context menu, the tooltip, the drawer and the sheets ---- */
+html:root[data-style="mica"] .ui-menu { padding: 4px; border: 1px solid var(--line-2); border-radius: 8px; box-shadow: var(--m-fly-shadow); }
+html:root[data-style="mica"] .ui-menu-i { margin: 1px 0; border-radius: 4px; }
+html:root[data-style="mica"] .ui-menu-i:hover:not(:disabled),
+html:root[data-style="mica"] .ui-menu-i:focus-visible,
+html:root[data-style="mica"] .ui-menu-i[aria-expanded='true'] { background-color: var(--m-ctl-h); }
+html:root[data-style="mica"] .ui-menu-i:focus-visible { outline: 2px solid var(--tx-hi); outline-offset: -2px; }
+html:root[data-style="mica"] .ui-menu-h { padding-inline: 8px; border-bottom-color: var(--line-1); margin-bottom: 2px; }
+html:root[data-style="mica"] .ui-menu-t { font-weight: 600; }
+html:root[data-style="mica"] .ui-menu-sec { padding-inline: 8px; font-size: .75rem; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--tx-mut); border-top-color: var(--line-1); }
+html:root[data-style="mica"] #ph-tip { border-color: var(--line-2); outline: none; border-radius: 4px; box-shadow: 0 4px 8px rgba(0, 0, 0, .28); font-size: .75rem; }
+html:root[data-style="mica"] .ui-sheet { border: 1px solid var(--line-2); border-radius: 8px; box-shadow: var(--m-fly-shadow); }
+html:root[data-style="mica"] .ui-sheet[data-form='drawer'] { border-radius: 8px 0 0 8px; border-right: 0; }
+html:root[data-style="mica"] .ui-sheet[data-form='sheet'] { border-radius: 8px 8px 0 0; border-bottom: 0; }
+html:root[data-style="mica"] .ui-sheet[data-form='slot'] { border-radius: 8px; box-shadow: none; }
+
+/* Acrylic: a flyout blurs what is behind it, only while the window has its material. */
+html:root[data-style="mica"][data-material] #ph-tip,
+html:root[data-style="mica"][data-material] .ui-menu,
+html:root[data-style="mica"][data-material] .ui-sheet { backdrop-filter: blur(24px) saturate(1.3); }
+
+/* ---- the status bar ---- */
+html:root[data-style="mica"] [data-part="status-row"],
+html:root[data-style="mica"] [data-part="page-foot"] { border-top-color: var(--line-1); }
+
+/* ---- scrollbars: a thin pill that thickens under the pointer ---- */
+html:root[data-style="mica"] * { scrollbar-width: auto; scrollbar-color: auto; }
+html:root[data-style="mica"] ::-webkit-scrollbar { width: 14px; height: 14px; }
+html:root[data-style="mica"] ::-webkit-scrollbar-track { background: transparent; }
+html:root[data-style="mica"] ::-webkit-scrollbar-thumb { background-color: var(--m-strong); background-clip: padding-box; border: 5px solid transparent; border-radius: 99px; }
+html:root[data-style="mica"] ::-webkit-scrollbar-thumb:hover { border-width: 3px; }
+html:root[data-style="mica"] ::-webkit-scrollbar-corner { background: transparent; }

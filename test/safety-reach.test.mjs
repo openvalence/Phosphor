@@ -66,6 +66,10 @@
  *            80 %), its gradient runs from the planned position to the
  *            target, a target past it ends at the edge, and the marker is
  *            reality while the plan streams, amber once it stalls
+ *   plan     ph-t2jn: a foreign owner's plan outside the window (a share
+ *            below 0 or past 1) draws where it is on the travel, never
+ *            pinned to the window's edge, normal and flipped; a plan past
+ *            the rail draws nothing
  *   target   ph-9kjh: the target numeral opens an entry in place, prefilled,
  *            one box at rest and typing; Enter writes the rail tap's channel
  *            and the hub's refusal reads as the tap's; past the window it
@@ -301,7 +305,7 @@ for (const catalog of ['none', 'hero']) {
 // ---- ph-e82.5: an emptied home still leaves the strip's stop pair ------------
 for (const catalog of ['none', 'hero']) {
   const { ctx, page } = await open(browser, { w: 1280, h: 720, touch: false, catalog });
-  await page.locator('button[title="Edit layout"]:visible').first().click();
+  await page.locator('button[data-tip="Edit layout"]:visible').first().click();
   // The palette overlays the grid's top right (ph-wia): put it away to reach the cards under it.
   await page.locator('.home .dash-toolbar .palette-toggle').click();
   for (let i = 0; i < 20 && await page.locator('.home .home-remove').count(); i++) {
@@ -566,7 +570,7 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
   // labels line, no mode words and no range text.
   const inTape = await page.evaluate(() => ({ micro: document.querySelector('.rail-hero .rail-tape .rail-tape-micro').textContent.trim(),
     lines: document.querySelectorAll('.rail-hero :is(.rail-tape-labels, .rail-tape-mode, .rail-tape-extent, .info-wrap)').length,
-    title: document.querySelector('.rail-hero .rail-tape-track').title }));
+    title: document.querySelector('.rail-hero .rail-tape-track').dataset.tip }));
   ok('override: the reason sits in the tape, the row has no labels line', inTape.micro === 'Paused: Override to jog'
     && inTape.lines === 0 && inTape.title === 'Paused: Override to jog', JSON.stringify(inTape));
   const n = wire.ops.length;
@@ -611,8 +615,8 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
     ok(cls + ': one Flip toggle in the strip', n === 1 && await page.locator('.rail-hero .rw-flip').count() === 0, n + ' found');
     if (n !== 1) { await ctx.close(); continue; }
     ok(cls + ': Flip is an icon over the word Flip, its state in the tooltip', await flip.locator('svg path').count() === 2
-      && (await flip.locator('.lbl').textContent()).trim() === 'Flip' && await flip.getAttribute('title') === 'Normal: home at left'
-      && await flip.getAttribute('aria-pressed') === 'false', JSON.stringify([await flip.textContent(), await flip.getAttribute('title')]));
+      && (await flip.locator('.lbl').textContent()).trim() === 'Flip' && await flip.getAttribute('data-tip') === 'Normal: home at left'
+      && await flip.getAttribute('aria-pressed') === 'false', JSON.stringify([await flip.textContent(), await flip.getAttribute('data-tip')]));
     await flip.click();
     await page.waitForTimeout(200);
     const asked = await page.locator('.overlay.hazard[role=alertdialog]').count() === 1;
@@ -638,7 +642,7 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
     await page.waitForTimeout(200);
     await page.locator('.overlay.hazard .og-btn.confirm').click();
     await page.waitForTimeout(600);
-    const text = (await (await reach()).getAttribute('title')).trim();
+    const text = (await (await reach()).getAttribute('data-tip')).trim();
     const banner = (await page.locator('.topstrip .recovery').textContent().catch(() => '')).trim();
     ok(cls + ': confirmed, the write goes out and the hub refusal is shown in its words',
       wire.writes.length === 1 && /SOURCE_CONFLICT/.test(text) && /SOURCE_CONFLICT/.test(banner),
@@ -823,6 +827,39 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
     ok('segment: a stalled plan turns the marker amber', near(stalled, warn), JSON.stringify([stalled, warn]));
     await ctx.close();
   }
+  // ph-t2jn: plan.* is a share of the window, below 0 or past 1 when the plan
+  // leaves it; the full-width strip draws it on the travel, clipped by the row.
+  // Flipped, the window 100..400 sits at 80 % to 20 % of the row.
+  // The lit span of the strip's middle row as row fractions; with `want`, false until it matches.
+  const planSpan = (want) => {
+    const c = document.querySelector('.rail-swap .plan-strip:not(.segment) .plan-lane canvas'), row = document.querySelector('.rail-swap').getBoundingClientRect();
+    if (!c || !c.width) return want ? false : null;
+    const r = c.getBoundingClientRect(), k = r.width / c.width;
+    const d = c.getContext('2d').getImageData(0, Math.floor(c.height / 2), c.width, 1).data;
+    const edge = Math.ceil(2 * devicePixelRatio);
+    let a = -1, b = -1;
+    for (let x = edge; x < c.width - edge; x++) if (d[x * 4 + 3] > 8) { if (a < 0) a = x; b = x; }
+    const f = (x) => Math.round(((r.left + x * k - row.left) / row.width) * 1000) / 1000;
+    const s = a < 0 ? [] : [f(a), f(b)];
+    if (!want) return s;
+    return (want.length ? s.length === 2 && Math.abs(s[0] - want[0]) < 0.01 && Math.abs(s[1] - want[1]) < 0.01 : !s.length) && s;
+  };
+  for (const flipped of [0, 1]) {
+    const run = stateOf(byRole('pattern.running'), { 'pattern.running': 1 }), flipE = byRole('axis.flipped');
+    const { ctx, page, wire } = await open(browser, { w: 1280, h: 720, touch: false, catalog: 'labeled', reducedMotion: 'reduce',
+      states: { [cfgE.id]: cfg, [CORE_CHANNEL.control_owner]: OWNER, [byRole('pattern.running').id]: run,
+        [flipE.id]: stateOf(flipE, { 'axis.flipped': flipped }),
+        [planE.id]: stateOf(planE, { 'plan.start': -0.25, 'plan.end': 0.5, 'plan.current': -0.1 }) } });
+    const spanIs = (want) => page.waitForFunction(planSpan, want, { timeout: 4000 }).then(() => true).catch(() => false);
+    const tag = flipped ? 'flipped' : 'normal';
+    const want = flipped ? [0.5, 0.95] : [0.05, 0.5];
+    ok('plan (' + tag + '): a plan below the window draws on the travel, 25 to 250 of a 500 rail (' + want.map((x) => x * 100 + ' %').join(' to ')
+      + ' of the row), not from the window edge', await spanIs(want), JSON.stringify(await page.evaluate(planSpan, null)));
+    wire.socket.send(Buffer.from(encodeFrame(FRAME.STATE, planE.id, stateOf(planE, { 'plan.start': 1.5, 'plan.end': 2, 'plan.current': 1.6 }))));
+    ok('plan (' + tag + '): a plan past the rail draws nothing in the row, never pinned at the window edge', await spanIs([]),
+      JSON.stringify(await page.evaluate(planSpan, null)));
+    await ctx.close();
+  }
   // RFC-098 (ph-6gj1): a foreign stream holding its slot owns the rail like a
   // generator, and the readback names the session. 216 B: pair i at 5i, slot
   // i's {kind, client_kind str16, client_name str32} at 20 + 49i. The hub's
@@ -876,7 +913,7 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
   await page.waitForTimeout(400);
   const tapCh = wire.writes[0], tapWords = await banner();
   await dismiss();
-  ok('target: at rest a button that says it is typeable', await btn.getAttribute('title') === 'Click to type a target'
+  ok('target: at rest a button that says it is typeable', await btn.getAttribute('data-tip') === 'Click to type a target'
     && await btn.getAttribute('aria-disabled') === 'false');
   const rest = await btn.boundingBox();
   await btn.click();
@@ -910,7 +947,7 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
   const reason = (await page.locator('.rail-hero .rail-reason').textContent().catch(() => '')).trim();
   await btn.click({ force: true });
   ok("target: paused, disabled with the tape's reason", await btn.getAttribute('aria-disabled') === 'true'
-    && await btn.getAttribute('title') === reason && reason === 'Paused: Override to jog' && await entry.count() === 0, reason);
+    && await btn.getAttribute('data-tip') === reason && reason === 'Paused: Override to jog' && await entry.count() === 0, reason);
   clearInterval(tick);
   await ctx.close();
 }
@@ -1013,7 +1050,7 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
         ghostClear: g.top >= hr.top + hr.height * 40 / 72 - 0.5, clip: cs.overflowX + ' ' + cs.overflowClipMargin };
     });
     const chip = page.locator('.topstrip .rw-flip');
-    const face = { title: await chip.getAttribute('title'), d: await chip.locator('svg path').first().getAttribute('d'),
+    const face = { title: await chip.getAttribute('data-tip'), d: await chip.locator('svg path').first().getAttribute('d'),
       text: (await chip.locator('.lbl').textContent()).trim(), w: (await chip.boundingBox()).width };
     const icons = await page.evaluate(() => [...document.querySelectorAll('.topstrip .strip .dock svg.ico')].map((s) => {
       const w = s.getBoundingClientRect().width;

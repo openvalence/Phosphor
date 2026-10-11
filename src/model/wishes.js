@@ -28,10 +28,10 @@ export const MAX_SUBSCRIBE_HZ = 30;
  * LATENCY knob: telebuf.js's render delay is sized from the p95 arrival gap,
  * so a shorter period is a shorter display lag.
  *
- * The hub paces a subscription on its 5 ms tick, pushing at the first tick at
- * least 1000/rate ms (truncated to whole ms) after the last push (Valence
- * subscription.hpp dueForPush). 50 Hz is four whole ticks. 60 Hz truncates to
- * 16 ms, which the tick rounds up to 20: 50 Hz delivered under a 60 Hz grant.
+ * The hub paces a subscription on a schedule that advances one grant period
+ * per push, checked on its 5 ms tick (Valence subscription.hpp markPushed),
+ * so the grant is met on average and never exceeded; each gap is whole ticks.
+ * 60 Hz gains little: its 20, 15, 15 ms gaps leave the p95 gap at 20 ms.
  *
  * Never a rate the hub refuses: SUBSCRIBE refuses per wish only on channel,
  * access or subscription count (SPEC §6.7), and a wish above the channel's

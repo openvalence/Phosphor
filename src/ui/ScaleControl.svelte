@@ -58,17 +58,17 @@
 <svelte:window {onkeydown} />
 
 <div class="foot-scale" role="group" aria-label="UI scale">
-  <button type="button" class="og-btn sm" aria-label="Smaller" title="Smaller, Ctrl+-"
+  <button type="button" class="og-btn sm" aria-label="Smaller" data-tip="Smaller, Ctrl+-"
           disabled={target(-1) == null} onclick={() => step(-1)}>
     <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10"/></svg>
   </button>
-  <output class="mono" title="UI scale">{pct}%</output>
-  <button type="button" class="og-btn sm" aria-label="Larger" title="Larger, Ctrl+="
+  <output class="mono" data-tip="UI scale">{pct}%</output>
+  <button type="button" class="og-btn sm" aria-label="Larger" data-tip="Larger, Ctrl+="
           disabled={target(1) == null} onclick={() => step(1)}>
     <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10M8 3v10"/></svg>
   </button>
   <button type="button" class="og-btn sm reset" class:off={pct === 100} aria-label="Reset scale"
-          title="Reset scale, Ctrl+0" onclick={() => setScale(DEF)}>
+          data-tip="Reset scale, Ctrl+0" onclick={() => setScale(DEF)}>
     <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6.5A5 5 0 1 1 3 9"/><path d="M3 3v3.5h3.5"/></svg>
   </button>
 </div>

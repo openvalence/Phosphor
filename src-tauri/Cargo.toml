@@ -26,6 +26,10 @@ tauri = { version = "2.11.3", features = ["devtools"] }
 tauri-plugin-log = "2"
 # Rust-side fetch: /uitoken minting from a native origin (main.js shell branch)
 tauri-plugin-http = "2"
+# Native clipboard for the context menu's Paste and Copy: a webview read asks
+# the user for clipboard permission, a native one does not (capabilities: read
+# and write text only).
+tauri-plugin-clipboard-manager = "2"
 # BLE central (RFC-043 client side): btleplug on desktop, native Kotlin on Android.
 # Also asks Android's Bluetooth permission before a toy scan (bp_scan_start).
 tauri-plugin-blec = "0.12"
@@ -51,6 +55,9 @@ async-trait = "0.1"
 futures = "0.3"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+# Open to LAN (src/lan.rs): the Virtual's WebSocket listener. Already in the
+# tree through the buttplug websocket transport.
+tokio-tungstenite = "0.30"
 buttplug_server_hwmgr_serial = { path = "../../ButtplugIO/crates/buttplug_server_hwmgr_serial" }
 buttplug_server_hwmgr_hid = { path = "../../ButtplugIO/crates/buttplug_server_hwmgr_hid" }
 
@@ -58,6 +65,22 @@ buttplug_server_hwmgr_hid = { path = "../../ButtplugIO/crates/buttplug_server_hw
 # takes jni 0.19's JNIEnv, and the runtime that attaches every thread to the JVM
 # needs rt-multi-thread (src/buttplug.rs, mod android). Its Java half is built
 # by src-tauri/android/btleplug.
+# Link loss counters (src/linkstats.rs): sock_diag on Linux, iphlpapi on
+# Windows. Both already in the tree; named here for their features.
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_NetworkManagement_IpHelper", "Win32_Networking_WinSock", "Win32_System_Registry", "Win32_UI_WindowsAndMessaging"] }
+
+# Liquid Glass (src/material.rs): NSGlassEffectView is looked up by name at run time,
+# so only the runtime and a rect type are needed. A transparent window on macOS needs
+# the private-api feature (tauri.macos.conf.json app.macOSPrivateApi).
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["NSGeometry"] }
+tauri = { version = "2.11.3", features = ["devtools", "macos-private-api"] }
+
 [target.'cfg(target_os = "android")'.dependencies]
 btleplug = "0.12"
 jni = "0.19"

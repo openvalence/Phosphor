@@ -8,9 +8,11 @@
  *   client after each tick, and stores the state blob when a tick reports it dirty.
  * - The state blob goes to the page: a worker has no localStorage.
  * - One machine per host; stopping it is terminating the worker.
- * - Port messages, page to host: boot {wasm, state, opts}, open/close {id}, send {id, data}, http {rid, method, path}.
- *   Host to page: up {version, etag}, down {error}, open/closed {id[, code]}, msg {id, data}, log {line},
- *   state {blob}, http {rid, code, body}.
+ * - Port messages, page to host: boot {wasm, state, opts}, open/close {id}, send {id, data}, http {rid, method, path},
+ *   pair {}, dgram {ip, port, data, wsPort}. Host to page: up {version, etag}, down {error}, open/closed {id[, code]},
+ *   msg {id, data}, log {line}, state {blob}, http {rid, code, body}, dgram {ip, port, data} (a reply to send).
+ * - Any socket id works: open/close/send/msg for an id the page half did not open go to `on` (Open to LAN's
+ *   remotes, shell/lan.svelte.js), the same hub sessions as the page's own.
  */
 
 // "[I] valencesim: Nucleus 0.1.32-p4hub, catalog 44 entries, 25309 B, etag 1156bca7f02f424a"
@@ -73,13 +75,22 @@ export function hostIntegral(port, createIntegral) {
     } else if (m.op === 'http') {
       const code = str(m.method, (me) => str(m.path, (pa) => M._integral_http(me, pa, 0, 0, cell, cell + 4)));
       post({ op: 'http', rid: m.rid, code, body: new TextDecoder().decode(out()) });
+    } else if (m.op === 'pair') {
+      M._integral_pair_press();
+    } else if (m.op === 'dgram') {
+      const p = M._malloc(Math.max(1, m.data.length));
+      M.HEAPU8.set(m.data, p);
+      const n = M._integral_datagram(p, m.data.length, m.ip, m.wsPort, cell);
+      M._free(p);
+      if (n > 0) post({ op: 'dgram', ip: m.ip, port: m.port, data: M.HEAPU8.slice(u32(cell), u32(cell) + n) });
     }
   };
 }
 
 /**
- * The page half. `on` receives the host's up, down, log and state messages.
- * @returns {{WebSocket: Function, token: () => Promise<Uint8Array|null>, boot: Function}}
+ * The page half. `on` receives the host's up, down, log, state and dgram messages, and every socket message for
+ * an id this half did not open.
+ * @returns {{WebSocket: Function, token: () => Promise<Uint8Array|null>, boot: Function, post: Function}}
  */
 export function bridgeIntegral(port, on) {
   const sockets = new Map(), calls = new Map();
@@ -116,7 +127,8 @@ export function bridgeIntegral(port, on) {
 
   port.onmessage = ({ data: m }) => {
     const s = sockets.get(m.id);
-    if (m.op === 'open') { if (s) { s.readyState = 1; if (s.onopen) s.onopen({}); } }
+    if (!s && m.id !== undefined) on(m);
+    else if (m.op === 'open') { if (s) { s.readyState = 1; if (s.onopen) s.onopen({}); } }
     else if (m.op === 'msg') { if (s && s.onmessage) s.onmessage({ data: m.data.buffer }); }
     else if (m.op === 'closed') { if (s) s._closed(m.code); }
     else if (m.op === 'http') { const done = calls.get(m.rid); calls.delete(m.rid); if (done) done(m); }
@@ -139,5 +151,6 @@ export function bridgeIntegral(port, on) {
       return Uint8Array.from(hex.match(/../g), (h) => parseInt(h, 16));
     },
     boot: (wasm, state, opts) => port.postMessage({ op: 'boot', wasm, state, opts }, [wasm.buffer]),
+    post: (m, transfer) => port.postMessage(m, transfer || []),
   };
 }

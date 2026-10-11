@@ -82,8 +82,10 @@ import { reportedValue, WIDGET } from './settings.js';
 import { labelFor } from './format.js';
 import { motionTarget, createMotionDoor, latchWords } from './motion.js';
 import { noteSend } from './health/health.svelte.js';
-import { noteEstopPress } from './actions.js';
-import { NACK, NACK_NAME, LOG_LEVEL_NAME } from '../../../Valence/clients/js/index.js';
+import { noteEstopPress, actionTag } from './actions.js';
+import { hubKey } from './prefs.js';
+import { noteStoreOp } from '../ui/widgets/roster.js';
+import { NACK, NACK_NAME, LOG_LEVEL_NAME, ACTION_TAG } from '../../../Valence/clients/js/index.js';
 
 const OVERDUE_MS = 500;
 const FAULT_MS = 2000;
@@ -229,7 +231,7 @@ async function sendQueued(session, channelId, entries, trial, mine) {
       // the echo the machine did not tell us what it did, and we must not
       // pretend it agreed — fall back to reported truth.
       if (Object.prototype.hasOwnProperty.call(applied, k)) {
-        if (sh) { sh.applied = applied[k]; settle(sh); }
+        if (sh) { sh.applied = applied[k]; sh.echoPushes = rec.field ? pushesOf(rec.field.channelId) : null; settle(sh); }
         // The machine applied it even when a newer write owns the shadow: history sees every one.
         if (rec.field && settledHook) settledHook({ field: rec.field, before: rec.before, after: applied[k], trial, ...rec.hist });
       } else if (sh) {
@@ -248,6 +250,9 @@ async function sendQueued(session, channelId, entries, trial, mine) {
     }
   }
 }
+
+/** STATE pushes taken on a channel so far: displayValue's "none since the ECHO" test. */
+const pushesOf = (channelId) => machine.stats.pushesByChannel[channelId] || 0;
 
 function schedule(channelId) {
   const q = queueFor(channelId);
@@ -329,6 +334,7 @@ function begin(sh, value) {
   clearTimers(sh);
   sh.status = STATUS.pending;
   sh.requested = value;
+  sh.echoPushes = null;
   sh.error = null;
   sh.settled = false;
   sh.seq = ++writeSeq;
@@ -416,6 +422,10 @@ export async function runAction(action, value = 1, extraFields = null) {
   try {
     const echo = await session.sendIntent(action.channelId, fields);
     const applied = (echo && echo.applied) || {};
+    if (actionTag(action) === ACTION_TAG.store) {
+      noteStoreOp(machine.catalog.entries, action, value, { ...fields, ...applied },
+        hubKey(machine.link.hubIdentity, machine.link.host, machine.link.port));
+    }
     if (sh.seq === seq) {
       sh.applied = Object.prototype.hasOwnProperty.call(applied, action.key) ? applied[action.key] : value;
       settle(sh);
@@ -541,14 +551,22 @@ export function statusOf(field) {
  * The value a control must display.
  *
  * In flight -> the requested value (so the control tracks the operator's hand).
+ * Confirmed, until the field's channel takes a STATE push after the ECHO -> the
+ * ECHO's applied value, the machine's own word (ph-f459).
  * Otherwise -> the device's reported value, always. Never a remembered request,
- * never a default, never a guess.
+ * never a default, never a guess. A secret is always its reported presence:
+ * its request is never handed back to a screen or a plugin (RFC-009.4, ph-buvu).
  */
 export function displayValue(field, sample) {
+  if (field.flagBits && field.flagBits.secret) return reportedValue(field, sample);
   const sh = shadowOf(field);
   if (sh && (sh.status === STATUS.pending || sh.status === STATUS.overdue)
       && sh.requested !== undefined) {
     return sh.requested;
+  }
+  if (sh && sh.status === STATUS.confirmed && sh.echoPushes != null && sh.applied !== undefined
+      && pushesOf(field.channelId) === sh.echoPushes) {
+    return sh.applied;
   }
   return reportedValue(field, sample);
 }

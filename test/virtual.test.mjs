@@ -134,7 +134,8 @@ const openTab = async (id) => {
   await page.click('[data-tab-id="' + id + '"]');
   await page.waitForTimeout(250);
 };
-const chip = () => page.locator('.linkbar .chips.pinned .chip').first().innerText();
+// The link dot's words: live, virtual, connecting...
+const chip = async () => (await page.locator('.linkbar .linkdot .sr').textContent()).replace(/^Link:\s*/, '').toLowerCase();
 async function until(fn, ms = 8000) {
   for (const end = Date.now() + ms; Date.now() < end; await page.waitForTimeout(50)) if (await fn()) return true;
   return false;
@@ -153,7 +154,6 @@ await sim.click();
 ok('Sim reaches LIVE on the virtual hub', await until(async () => (await chip()).includes('virtual')), await chip());
 ok('no socket was opened', wire.opens === 0, wire.opens);
 ok('the hub title reads virtual', (await page.locator('.linkbar .wordmark').innerText()) === 'Bench (virtual)');
-ok('the hub chip reads virtual', (await page.locator('.linkbar .chips.opt .chip').first().innerText()).includes('virtual'));
 ok('the safety strip is rendered', await page.locator('.strip').count() > 0);
 const remembered = await page.evaluate(() => [localStorage.getItem('shell_host'), JSON.parse(localStorage.getItem('phosphor.hubs')).length]);
 ok('the virtual hub is never remembered', remembered[0] === null && remembered[1] === 1, JSON.stringify(remembered));
@@ -237,6 +237,15 @@ await vrow().getByRole('button', { name: 'Stop' }).click();
 ok('Stop ends the session', await until(async () => vrow().getByRole('button', { name: 'Connect' }).isVisible()));
 await vrow().getByRole('button', { name: 'Connect' }).click();
 ok('a second boot from the saved state reaches LIVE', await until(async () => (await chip()) === 'live', 15000), await chip());
+// RFC-109: the twin's 0x1010, its modeled supply, on the Health view's Machine card.
+await openTab('log');
+await page.click('[data-feed="health"]');
+const power = () => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.health dl.pane-facts dt')]
+  .filter((d) => /^(Bus voltage|Power draw)$/.test(d.textContent)).map((d) => [d.textContent, d.nextElementSibling.textContent.trim()])));
+ok("the Machine card reads the twin's supply in V and its draw in W",
+  await until(async () => { const p = await power(); return /^36(\.0*)?\s?V$/.test(p['Bus voltage'] || '') && /^\d+(\.\d+)?\s?W$/.test(p['Power draw'] || ''); }),
+  JSON.stringify(await power()));
+await openTab('shell:hubs');
 await vrow().getByRole('button', { name: 'Stop' }).click();
 ok('no page errors', errors.length === 0, errors.join(' | '));
 

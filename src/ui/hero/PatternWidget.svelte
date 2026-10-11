@@ -73,7 +73,7 @@
 
 <div class="hero pattern-hero">
   <div class="pattern-topline">
-    <span class="pattern-state" data-shadow={statusOf(running)} title={headReason || undefined}>{headReason || patternStateText}</span>
+    <span class="pattern-state" data-shadow={statusOf(running)} data-tip={headReason || undefined}>{headReason || patternStateText}</span>
   </div>
 
   <div class="pattern-head">
@@ -117,11 +117,8 @@
 </div>
 
 <style>
+  /* No box of its own: the card it sits in is the box (DESIGN §10.6). */
   .hero {
-    background: var(--bg-card);
-    border: 1px solid var(--line);
-    border-radius: var(--r);
-    padding: var(--gap);
     display: flex;
     flex-direction: column;
     gap: var(--gap);

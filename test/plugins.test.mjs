@@ -48,7 +48,7 @@ import { ROLE, claimAll, claimRoles, ADVGEN_SPEC } from '../src/model/roles.js';
 import { motionTarget, createMotionDoor, bundleHead, recordBytes, motionStream, roleStream, streamGate, conflictWords, filteredHubNowUs, CLOCK_KEEP, CLOCK_HUNT, CLOCK_HUNT_GAP_MS } from '../src/model/motion.js';
 import { railOwners, railOwnerName, railOwned, foreignOwner } from '../src/model/actions.js';
 import { createPluginHost, validateManifest, MOTION_HOLD_MS, isHubUrl, PAGES_KEY } from '../src/plugins/host.js';
-import { KIT } from '../src/plugins/kit.js';
+import { KIT, ownMenus } from '../src/plugins/kit.js';
 import * as gauge from '../plugins/examples/stroke-gauge/index.js';
 import * as tcode from '../plugins/examples/tcode-adapter/index.js';
 import { FACTORY } from '../src/plugins/factory.js';
@@ -236,7 +236,7 @@ console.log('(c) the plugin API cannot reach the socket');
   ok('plugin received an api', !!api);
   ok('api is frozen', Object.isFrozen(api) && Object.isFrozen(api.net) && Object.isFrozen(api.prefs));
   const UI = ['button', 'files', 'segmented', 'switch', 'slider', 'stepper', 'select', 'text', 'page', 'card', 'rows', 'row', 'bar', 'stage',
-    'scrub', 'split', 'sheet', 'status', 'quickRail', 'list', 'tile', 'outside', 'gestures', 'drag', 'shade', 'icon', 'field', 'module'];
+    'scrub', 'split', 'sheet', 'status', 'quickRail', 'list', 'tile', 'outside', 'gestures', 'drag', 'shade', 'icon', 'field', 'module', 'menu'];
   ok('api.ui is the frozen kit, version 1, every documented factory a function (docs/PLUGINS.md, The UI kit)',
     Object.isFrozen(api.ui) && api.ui.version === 1 && UI.every((k) => typeof api.ui[k] === 'function') && Object.isFrozen(api.ui.icons)
     && ['play', 'pause', 'close', 'quickRail'].every((k) => Array.isArray(api.ui.icons[k])), UI.filter((k) => typeof api.ui[k] !== 'function'));
@@ -265,6 +265,37 @@ console.log('(c) the plugin API cannot reach the socket');
   let netErr = null;
   await api.net.listenTcp(8000, () => {}).catch((e) => { netErr = e; });
   ok('listenTcp without a declared port throws', netErr && netErr.name === 'PermissionError');
+  let openErr = null;
+  await api.net.open('https://example.com/').catch((e) => { openErr = e; });
+  ok('net.open without "net.fetch" permission throws', openErr && openErr.name === 'PermissionError');
+}
+
+// ---- (c1) ui.menu: a plugin's own context-menu items, under its guard --------
+console.log('(c1) ui.menu');
+{
+  const { host, logs } = makeHost();
+  let api = null;
+  host.add({ ...gaugeManifest, name: 'menus' }, { activate(a) { api = a; } });
+  const el = { nodeType: 1, parentElement: null };
+  let ran = 0;
+  api.ui.menu(el, (at) => [{ label: 'Go ' + at.x, run: () => { ran++; } }, { label: 'Boom', run: () => { throw new Error('boom'); } },
+    { label: ' ', run: () => {} }, { label: 'No run' }, { label: 'Off', disabled: 'not now', run: () => {} }], { title: 'Mine' });
+  const [t] = ownMenus(el, { x: 3 });
+  ok('ui.menu: the items of the open under the title; an item without a label or a run is left out',
+    t && t.title === 'Mine' && t.items.map((i) => i.label).join() === 'Go 3,Boom,Off' && t.items[2].disabled === 'not now', t);
+  t.items[0].run();
+  t.items[1].run();
+  ok('ui.menu: a run runs; a throwing run is caught and logged, never thrown', ran === 1 && logs.some((l) => /ui\.menu Boom: boom/.test(l.msg)), logs);
+  api.ui.menu(el, () => { throw new Error('items'); });
+  ok('ui.menu: a throwing items function lists nothing and is logged', ownMenus(el, {})[0].items.length === 0 && logs.some((l) => /ui\.menu: items/.test(l.msg)), logs);
+  let threw = '';
+  try { api.ui.menu(el, 'x'); } catch (e) { threw = e.message; }
+  ok('ui.menu: items are an array or a function', /array or a function/.test(threw), threw);
+  const off = api.ui.menu(el, [{ label: 'Kept', run: () => {} }]);
+  host.setEnabled('menus', false);
+  ok('ui.menu: a disabled plugin lists nothing', ownMenus(el, {})[0].items.length === 0);
+  off();
+  ok('ui.menu: off() takes the items back', ownMenus(el, {}).length === 0);
 }
 
 // ---- (d) TCode L0 parsing and the adapter path ------------------------------
@@ -771,11 +802,12 @@ console.log('(e3) role door: a samples STREAM by channel role');
 // ---- (i) the producer lock (ph-smvd.2) -------------------------------------
 console.log('(i) one motion producer at a time');
 {
-  let now = 0;
+  let now = 0, base = 0;
   const durField = model.byRole.get('input.duration')[0];
   const segs = [];
   const { host, calls } = makeHost({
     now: () => now,
+    changed: () => base,
     submitSegments: (list) => { segs.push(list); return { ok: true, sent: list.length, rateHz: 50 }; },
     gate: (f, busy) => streamGate({ live: true, roles: 1, access: 1, busy }),
   });
@@ -792,8 +824,13 @@ console.log('(i) one motion producer at a time');
   const { alpha: A, beta: B } = apis;
   ok('an empty list never takes the lock', A.submitSegments([]).ok && B.submitSegments([{ atMs: 0, norm: 0, durationMs: 50 }]).ok);
   now = 600;
+  const c0 = B.changed(durField.channelId);
   const ra = A.submitSegments([{ atMs: 700, norm: 0.2, durationMs: 200 }, { atMs: 900, norm: 0.8, durationMs: 100 }]);
   ok('the holder sends', ra.ok && ra.sent === 2);
+  const c1 = B.changed(durField.channelId);
+  ok('api.changed moves when another plugin takes the lock, then holds still', c1 > c0 && B.changed(durField.channelId) === c1, [c0, c1]);
+  base++;
+  ok('api.changed moves with the kernel\'s sequence', B.changed(durField.channelId) > c1);
   now = 1499;
   const n0 = segs.length;
   const rb = B.submitSegments([{ atMs: 1500, norm: 0.5, durationMs: 50 }]);
@@ -803,7 +840,29 @@ console.log('(i) one motion producer at a time');
     && segs.length === n0 && !calls.motion.length);
   ok('gate shows the busy words to the other plugin only', B.gate(durField) === 'motion input in use by alpha' && A.gate(durField) === '');
   now = 1500;
+  const c2 = B.changed(durField.channelId);
+  ok('api.changed moves when the lock lapses, seen on the read', c2 > c1 + 1, [c1, c2]);
   ok('released at the end + 500 ms', B.submitMotion(0.5, 100).ok && calls.motion.length === 1);
+  let bare = null;
+  makeHost().host.add({ ...gaugeManifest, name: 'bare' }, { activate(a) { bare = a; } });
+  ok('api.changed is NaN without the kernel\'s signal', Number.isNaN(bare.changed(1)));
+  const off0 = bare.onChanged([1], () => {});
+  ok('api.onChanged is a no-op without the kernel\'s signal', typeof off0 === 'function' && off0() === undefined);
+  // api.onChanged (ph-vo56): the kernel's watch behind it; unsubscribe and deactivation drop it, a throw is the plugin's.
+  const live = new Map();
+  const w = makeHost({ onChanged: (list, fn) => { const k = {}; live.set(k, { list, fn }); return () => live.delete(k); } });
+  let wa = null;
+  w.host.add({ ...gaugeManifest, name: 'watcher' }, { activate(a) { wa = a; } });
+  let told = 0;
+  const offA = wa.onChanged(7, () => { told++; });
+  wa.onChanged(['telemetry.position', 8], () => { throw new Error('boom'); });
+  ok('api.onChanged hands the kernel its list', live.size === 2 && [...live.values()].map((x) => x.list.join()).join('|') === '7|telemetry.position,8');
+  for (const x of live.values()) x.fn();
+  ok('...the kernel\'s call reaches fn; a throw lands on the plugin, not the kernel', told === 1 && w.logs.some((l) => /boom/.test(l.msg)));
+  offA();
+  ok('the unsubscribe drops its watch', live.size === 1);
+  w.host.remove('watcher');
+  ok('removing the plugin drops what is left: no leak', live.size === 0);
   now = 2099;
   ok('submitMotion holds for its duration + 500 ms', A.submitSegments([{ atMs: 2100, norm: 0, durationMs: 50 }]).reason === 'motion input in use by beta'
     && A.gate(durField) === 'motion input in use by beta');
@@ -1099,6 +1158,20 @@ console.log('(l) context menus, the dock, field-bound controls, identities, quic
   items[1].run();
   ok('run gets the target; a throw is recorded on the plugin, never propagated, and no claim pass reruns', same(ran, ['role:pattern.speed'])
     && /boom/.test(h.host.list()[0].error) && gen === 1);
+  // No dock (the phone class): needsDock items and every dock are left out; the plugin stays active.
+  let docked = true;
+  const hn = makeHost({ dockable: () => docked });
+  hn.host.add(m('docky', ['menu']), { activate(api) {
+    api.registerMenu({ id: 'pin', targets: ['field'], needsDock: true, label: 'Pin', run() {} });
+    api.registerMenu({ id: 'copy', targets: ['field'], label: 'Copy', run() {} });
+    api.registerDock({ id: 'tray', label: 'Tray', mount() { return {}; } });
+  } });
+  const withDock = hn.host.menus(t).map((i) => i.label), docksWith = hn.host.docks().length;
+  docked = false;
+  ok('dockable() false: a needsDock item and every dock are left out, other items stay; true again, both return',
+    same(withDock, ['Pin', 'Copy']) && docksWith === 1 && same(hn.host.menus(t).map((i) => i.label), ['Copy']) && hn.host.docks().length === 0
+    && hn.host.list()[0].status === 'active' && (docked = true, hn.host.docks().length === 1));
+  ok('registerMenu refuses a needsDock that is not a boolean', bad({ needsDock: 'yes' }));
 
   // registerDock
   let dockNotes = 0;
@@ -1149,9 +1222,41 @@ console.log('(l) context menus, the dock, field-bound controls, identities, quic
   ok('quick-access: pins by identity, per hub, in plugin prefs; the dock registers on the first pin',
     same(saved.hubA.map((p) => p.key), ['hero:rail', 'role:pattern.speed']) && same(saved.hubB.map((p) => p.key), ['hero:rail'])
     && saved.hubA[1].kind === 'field' && same(hq.host.docks().map((d) => d.id), ['plugin:quick-access:tray']));
+  const hp = makeHost({ prefs, hub: () => 'hubA', dockable: () => false });
+  hp.host.add(qa.manifest, qa.module, { source: 'factory' });
+  ok('quick-access: no Pin or Unpin item where the shell has no dock (the phone class); the pins stay stored',
+    !hp.host.menus(tq('hero:rail')).length && !hp.host.menus(tq('role:pattern.speed', 'field')).length && JSON.parse(store.get('plugin.quick-access.pins')).hubA.length === 2);
   ok('quick-access: a pinned target reads Unpin; unpinning everything withdraws the dock', pinItem(tq('hero:rail')).label === 'Unpin from quick access'
     && (pinItem(tq('hero:rail')).run(), pinItem(tq('role:pattern.speed', 'field')).run(), pinItem(tq('hero:rail', 'module', 'hubB')).run(), hq.host.docks().length === 0));
   const L3 = [{ key: 'a' }, { key: 'b' }, { key: 'c' }];
+  // Per connected hub (ph-6ydd): the dock follows the connected hub's pins, and api.onHub re-syncs it.
+  let at = 'hubA';
+  const store2 = new Map();
+  const hh = makeHost({ prefs: { getItem: (k) => (store2.has(k) ? store2.get(k) : null), setItem: (k, v) => store2.set(k, String(v)) }, hub: () => at });
+  hh.host.add(qa.manifest, qa.module, { source: 'factory' });
+  const pin2 = (key, hub) => hh.host.menus(tq(key, 'module', hub)).find((i) => /quick access/.test(i.label)).run();
+  const dockN = () => hh.host.docks().length;
+  pin2('hero:rail', 'hubA');
+  const d1 = dockN();
+  pin2('hero:rail', 'hubB');
+  pin2('hero:rail', 'hubA');
+  const d2 = dockN();
+  ok('quick-access: the last unpin on the connected hub withdraws the dock though another hub keeps pins', d1 === 1 && d2 === 0
+    && JSON.parse(store2.get('plugin.quick-access.pins')).hubB.length === 1, [d1, d2]);
+  at = 'hubB'; hh.host.hubChanged();
+  const d3 = dockN();
+  at = null; hh.host.hubChanged();
+  const d4 = dockN();
+  at = 'hubA'; hh.host.hubChanged();
+  ok('quick-access: a hub with pins docks, no hub yet leaves it as it is, a hub without pins withdraws it', d3 === 1 && d4 === 1 && dockN() === 0, [d3, d4, dockN()]);
+  let heard = 0;
+  const ho = makeHost();
+  ho.host.add(m('hubber', []), { activate(api) { api.onHub(() => { heard++; }); api.onHub(() => { throw new Error('hub boom'); }); } });
+  ho.host.hubChanged();
+  const h1 = heard, err = ho.host.list()[0].error || '';
+  ho.host.setEnabled('hubber', false);
+  ho.host.hubChanged();
+  ok('api.onHub: hubChanged reaches it, a throw is recorded on the plugin, deactivation drops it', h1 === 1 && /hub boom/.test(err) && heard === 1, [h1, err, heard]);
   ok('quick-access: movePin moves by places and clamps at the ends', same(movePin(L3, 'a', 1).map((p) => p.key), ['b', 'a', 'c'])
     && same(movePin(L3, 'c', -5).map((p) => p.key), ['c', 'a', 'b']) && movePin(L3, 'a', -1) === L3 && movePin(L3, 'z', 1) === L3);
 }

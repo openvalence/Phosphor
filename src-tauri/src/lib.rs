@@ -2,8 +2,13 @@
 mod buttplug;
 mod discovery;
 mod estop_udp;
+#[cfg(desktop)]
+mod lan;
+mod linkstats;
+mod material;
 mod plugins;
 mod report;
+mod wallpaper;
 
 /// The webview's own errors (window.onerror, unhandled rejections, console.error)
 /// land in the log plugin's file so a field failure is readable without devtools.
@@ -41,16 +46,32 @@ pub fn run() {
   }
   let builder = tauri::Builder::default()
     .plugin(tauri_plugin_http::init())
+    .plugin(tauri_plugin_clipboard_manager::init())
     .plugin(tauri_plugin_blec::init())
     .manage(plugins::TcpListeners::default());
+  #[cfg(desktop)]
+  let builder = builder.manage(lan::Lan::default());
   builder
     .invoke_handler(tauri::generate_handler![
       js_log,
+      material::window_material,
+      material::glass_style,
+      wallpaper::wallpaper_info,
+      wallpaper::wallpaper_image,
       discovery::discover_hubs,
       estop_udp::estop_broadcast,
+      linkstats::link_tcp_counters,
       plugins::plugins_list,
       plugins::plugin_tcp_listen,
       plugins::plugin_tcp_close,
+      #[cfg(desktop)]
+      plugins::plugin_open_url,
+      #[cfg(desktop)]
+      lan::lan_start,
+      #[cfg(desktop)]
+      lan::lan_send,
+      #[cfg(desktop)]
+      lan::lan_stop,
       report::save_report,
       #[cfg(desktop)]
       report::open_report_url,
@@ -111,9 +132,29 @@ pub fn run() {
         use tauri::Manager;
         app.manage(buttplug::init(app.handle()));
       }
+      // Release: WebView2 never draws its own context menu (Print, Reload,
+      // Inspect, its text menu); the shell's covers every surface
+      // (src/ui/contextmenu.js). A debug build keeps it for Shift+right-click.
+      #[cfg(all(windows, not(debug_assertions)))]
+      {
+        use tauri::Manager;
+        if let Some(w) = app.get_webview_window("main") {
+          let _ = w.with_webview(|wv| unsafe {
+            if let Ok(s) = wv.controller().CoreWebView2().and_then(|c| c.Settings()) {
+              let _ = s.SetAreDefaultContextMenusEnabled(false);
+            }
+          });
+        }
+      }
       Ok(())
     })
     .build(tauri::generate_context!())
     .expect("error while running tauri application")
-    .run(|_, _| {});
+    .run(|_app, _event| {
+      #[cfg(desktop)]
+      if let tauri::RunEvent::Exit = _event {
+        use tauri::Manager;
+        lan::exit(&_app.state::<lan::Lan>());
+      }
+    });
 }

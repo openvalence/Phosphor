@@ -20,6 +20,8 @@
  * Run: node test/funscript-player.test.mjs --unit   (KINETIC_WASM=<path> renders through that build, not bytes.js)
  *      node test/funscript-player.test.mjs [--shot out.png] [--webkit]
  *      node test/funscript-player.test.mjs --osc   (only (o), the oscillator axes)
+ *      node test/funscript-player.test.mjs --library [--shots <dir>]   (only (L), the library browser)
+ *      node test/funscript-player.test.mjs --menus   (only (M), the context menus)
  *      node test/funscript-player.test.mjs --live --port P --http P+7
  *      node test/funscript-player.test.mjs --stash-live <file.json>
  *      node test/funscript-player.test.mjs --live-playback --port P --http P+7 [--shots <dir>]
@@ -50,7 +52,8 @@ const CONTRACT = {
     'HOME_MIN_MS', 'COMP_MAX_MS', 'COMP_STEP_MS', 'LAG_WINDOW', 'LAG_MIN', 'LAG_MATCH_MS', 'EXPECT_MS', 'applyT', 'knotVel', 'strokeSpeed',
     'createScheduler'],
   [P + 'stash.js']: ['SCENES_QUERY', 'SORTS', 'COPY', 'normalizeBase', 'rebase', 'withKey', 'toScene', 'createStash'],
-  [P + 'library.js']: ['CSS', 'COPY', 'mountLibrary', 'mountConnect'],
+  [P + 'heat.js']: ['BUCKETS', 'CAP', 'DAY_MS', 'MAX_AGE_MS', 'LIMIT', 'HOVER_MS', 'crc32', 'heatBuckets', 'heatCss', 'memStore', 'idbStore', 'heatOf', 'createHeat'],
+  [P + 'library.js']: ['CSS', 'COPY', 'formFor', 'mountLibrary', 'mountConnect'],
   [P + 'ui.js']: ['CSS', 'COPY', 'FULL_UP', 'GLANCE_UP', 'HOVER_IDLE_MS', 'createPlayer', 'createControl', 'compositionOf', 'clampOffset',
     'windowShare', 'ceilingOf', 'localScene', 'extraNote', 'PLAY_CSS', 'mountPlay', 'pageClass'],
   [P + 'timeline.js']: ['ZOOMS', 'HEAT_BINS', 'HEAT_MID_UPS', 'HEAT_TOP_UPS', 'TRACE_MS', 'MIN_SPAN', 'CSS', 'COPY', 'curvePoints', 'dotPath', 'kinPoints',
@@ -59,7 +62,7 @@ const CONTRACT = {
   [P + 'prefs.js']: ['PREFS', 'readPrefs', 'writePref'],
   [P + 'queue.js']: ['COPY', 'toStored', 'fromStored', 'move', 'mountQueue'],
   [P + 'analyzer.js']: ['TUNING', 'LIMIT_ROLES', 'LAG_MIN_MS', 'LAG_MAX_MS', 'LAG_STEP_MS', 'LAG_MIN_POINTS', 'LAG_EVERY_MS',
-    'KIN_MAX_SAMPLES', 'WIDE_AT', 'WIDE_SPAN', 'COPY', 'CSS', 'tuningGroups', 'lagOf', 'toggled', 'fmtValue', 'wideExtent', 'kinText', 'mountAnalyzer'],
+    'KIN_MAX_SAMPLES', 'WIDE_AT', 'WIDE_SPAN', 'COPY', 'CSS', 'tuningGroups', 'lagOf', 'createLag', 'toggled', 'fmtValue', 'wideExtent', 'kinText', 'mountAnalyzer'],
   [P + 'kinetic/kinetic.js']: ['LEAD_MS', 'PREROLL_MS', 'TAIL_MS', 'EVERY', 'FREE', 'TUNING', 'FLAGS', 'ANOMALIES', 'tuningOf',
     'segmentsOf', 'renderCore', 'instantiate', 'versionOf', 'createKinetic'],
   [P + 'index.js']: ['HERO', 'activate'],
@@ -113,7 +116,7 @@ if (prefs) {
     return { m, prefs: { get: (k) => (m.has(k) ? JSON.parse(m.get(k)) : null), set: (k, v) => m.set(k, JSON.stringify(v)) } };
   };
   const want = { T: { offsetMs: 0, lo: 0, hi: 1, invert: false }, motion: true, audio: { vol: 1, muted: false },
-    stash: { base: '', key: '' }, lib: { q: '', sort: 'date', direction: 'DESC' }, view: 'player', zoomMs: 10000, settingsOpen: false, libOpen: true, queue: [], autoplay: false, tlOpen: true, split: 0,
+    stash: { base: '', key: '' }, lib: { q: '', sort: 'date', direction: 'DESC', scripted: true }, view: 'player', zoomMs: 10000, settingsOpen: false, libOpen: true, queue: [], autoplay: false, tlOpen: true, split: 0,
     interp: { scale: 1, scaleAuto: true },
     play: { loop: false, loopCount: 0, home: false, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33, seekMs: 500, autoLatency: false } };
   {
@@ -245,6 +248,28 @@ if (an) {
   ok('lagOf declines a flat trace, a short one and stale points',
     an.lagOf(tr.map((x) => ({ ...x, u: 0.5 })), sc, T) === null && an.lagOf(tr.slice(0, 10), sc, T) === null
       && an.lagOf(tr.map((x) => ({ ...x, stale: true })), sc, T) === null);
+  if (an.createLag) {
+    // The trace as the player keeps it: points pushed at the end, trimmed at the front, some stale or null, a reset,
+    // a new T; createLag must answer lagOf's every time (ph-jem5).
+    const lu = an.createLag('u'), lp = an.createLag('p');
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const live = [];
+    let same2 = true, calls = 0, T2 = T, where = null;
+    for (let m = 2000; m <= 9000 && same2; m += 16) {
+      live.push({ m, u: rnd() < 0.02 ? null : applyT(posAt(sc, m - 42), T) + (rnd() - 0.5) * 0.02, p: applyT(posAt(sc, m - 14), T), stale: rnd() < 0.03 });
+      while (live.length && live[0].m < m - 3000) live.shift();
+      if (m === 5008) live.length = 0;
+      if (m === 7008) T2 = { ...T, lo: 0.2 };
+      if (m % 160 !== 0) continue;
+      calls++;
+      const a = [lu(live, sc, T2), lp(live, sc, T2)], b = [an.lagOf(live, sc, T2, 'u'), an.lagOf(live, sc, T2, 'p')];
+      if (a[0] !== b[0] || a[1] !== b[1]) { same2 = false; where = { m, a, b }; }
+    }
+    ok('createLag answers lagOf\'s over a growing, trimmed, reset trace and a new T', same2 && calls > 40, where || calls);
+    ok('createLag declines what lagOf declines', an.createLag('u')(tr.slice(0, 10), sc, T) === null
+      && an.createLag('u')(tr.map((x) => ({ ...x, u: 0.5 })), sc, T) === null && an.createLag('u')(tr, null, T) === null);
+  }
   const kn = mods[P + 'kinetic/kinetic.js'];
   if (kn) {
     const tuned = kn.tuningOf(fs.map((f) => [f, f.name.endsWith('_ms') ? 20 : 1]));
@@ -353,6 +378,9 @@ if (UNIT || fails) {
 //              wears --bad; copy within docs/COPY.md; glance at 220 px
 //   stash      the connect card, tiles keyed with apikey, a pick fetching the
 //              script with the ApiKey header and playing
+//   library    (L) six sizes: at least six scenes in view and in the drawer,
+//              no scroller, no shift on load; search, sort, Scripted only,
+//              paging in place and the row badges
 //   settings   the page's Settings mounts the plugin settings card without
 //              moving the card; a change there reads back in the Plugins
 //              pane and the reverse; open/closed persists ([--shots <dir>])
@@ -361,11 +389,18 @@ if (UNIT || fails) {
 //              156 ms latency ahead (one lead, RFC-110 item 4), no INTENT written (osc.enabled
 //              never set), nothing after a pause; two lanes under the detail; a hub without the
 //              role: one status line, no stream
+//   menus      (M) every element takes the right-click; the plugin page's page
+//              menu; the stage's Play/Pause, Fullscreen, Open video, Open script;
+//              the timeline's Seek here, Set A here, Set B here, Clear loop
+//              (pointer and Shift+F10); a scene row's Play, Play next, Add to
+//              queue, Open in Stash; a queue row's Remove, Move to top
 //   hover      the bar over the video shows on a move and hides on idle and
 //              leave; its play, pause, seek and the keys act only through
 //              the controller; volume and mute persist; media fullscreen is
-//              page fullscreen bare with the stage alone, Escape returns; the
-//              analyzer column at 1280 and 1920 ([--shots <dir>])
+//              page fullscreen bare with the stage alone, edge to edge,
+//              Escape returns; at rest nothing but the stop pair over the
+//              playing video, the caret a hotspot on movement; the analyzer
+//              column at 1280 and 1920 ([--shots <dir>])
 // Stash live (--stash-live <file.json>, a local {base, apiKey}, never
 // committed): only the stash section, against that real Stash, read-only,
 // under the shell CSP's img-src and media-src: every tile's screenshot
@@ -566,6 +601,7 @@ function makeHub(cat, { horizonMs = HORIZON_MS } = {}) {
           const q = cbDecodeFull(payload);
           const ch = q.get(K.channel_id), val = q.get(K.value) || new Map(), trial = q.get(K.trial) === true;
           hub.intents.push({ ch, value: Object.fromEntries(val), trial });
+          if (hub.unanswered) continue;   // a write the hub never answers: no ECHO, no STATE
           const st = cat.entries.find((e) => e.settingChannel === ch && e.layout);
           if (st) for (const [k, v] of val) { const f = st.layout.find((x) => x.settingKey === k); if (f) hub.values[st.id + ':' + f.name] = v; }
           if (ch === CH_TRIAL) hub.values[CH_PLANNER + ':trial_mask'] = 0;
@@ -843,6 +879,517 @@ function intended(asked, obs, rate) {
 
 const BAD_WORDS = [/\. /, /\bso that\b/i, /\ballows you\b/i, /\bsimply\b/i, /\bjust\b/i, /\bin order to\b/i];
 const copyOk = (t) => t.length <= 60 && t.split(/\s+/).filter(Boolean).length <= 8 && !BAD_WORDS.some((b) => b.test(t));
+
+// ---- (M) the context menus (ph-hi4i): the page's, the stage's, the timeline's, the scene and queue rows' ----
+// Every item does what it says; no element on the page leaves its right-click to the webview.
+const MENUS_ONLY = args.includes('--menus');
+if (!LIVE && !STASH_LIVE && !OSC_ONLY && !args.includes('--library')) {
+  console.log('(M) context menus');
+  const cat = advgenCatalog();
+  cat.entries = decodeCatalog(cat.bytes);
+  const stash = await startFakeStash({ key: KEY, video: VIDEO });
+  const hub = makeHub(cat);
+  hub.values[CH.config + ':window_min'] = 0;
+  hub.values[CH.config + ':window_max'] = 100;
+  const { ctx, page, errors } = await open({ cat, hub, width: 1428, height: 900 });
+  // A right-click as the webview sends it, at a share of the element's width: -> whether it was taken.
+  const rc = (sel, fx = 0.5) => page.locator(sel).first().evaluate((el, f) => {
+    const r = el.getBoundingClientRect();
+    const ev = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: r.left + r.width * f, clientY: r.top + r.height / 2 });
+    el.dispatchEvent(ev);
+    return ev.defaultPrevented;
+  }, fx);
+  const menuOf = () => page.evaluate(() => {
+    const m = document.querySelector('.ui-menu:popover-open');
+    return m ? { title: m.querySelector('.ui-menu-t')?.textContent || '', sections: [...m.querySelectorAll('.ui-menu-sec')].map((s) => s.textContent),
+      items: [...m.querySelectorAll('.ui-menu-i')].map((b) => (b.disabled ? '-' : '') + b.textContent) } : null;
+  });
+  const pickM = (label) => page.locator('.ui-menu:popover-open .ui-menu-i', { hasText: new RegExp('^' + label + '$') }).first().click();
+  if (await toPluginPage(page)) {
+    await page.waitForTimeout(400);
+    // The shell's: api.net.open's command, answered here.
+    await page.evaluate(() => {
+      const inner = window.__TAURI_INTERNALS__.invoke;
+      window.__opened = [];
+      window.__TAURI_INTERNALS__.invoke = (cmd, a, o) => (cmd === 'plugin_open_url' ? (window.__opened.push(a.url), Promise.resolve(null)) : inner(cmd, a, o));
+    });
+    const loose = await page.evaluate(() => {
+      const out = [];
+      for (const el of document.querySelectorAll('body *')) {
+        if (!el.getClientRects().length || el.closest('.ui-menu')) continue;
+        const ev = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 });
+        el.dispatchEvent(ev);
+        if (!ev.defaultPrevented) out.push(el.tagName.toLowerCase() + '.' + String(el.className).slice(0, 40));
+      }
+      return out;
+    });
+    await page.keyboard.press('Escape');
+    ok('menus: every element of the Funscript page takes the right-click (the webview\'s menu never shows)', loose.length === 0, loose.slice(0, 5));
+
+    // the page: the shell's page menu on a plugin page
+    await rc(C + ' .fsp-libh .fsp-h');
+    const pm = await menuOf();
+    ok('page: a plugin page has the shell\'s page menu (Manage plugins), its media Fullscreen left to the stage', !!pm && pm.items.join() === 'Manage plugins', pm);
+    await pickM('Manage plugins');
+    ok('page: Manage plugins opens the Plugins pane', await page.locator('[data-tab-id="plugins"][aria-selected="true"]').count() === 1);
+    await toPluginPage(page);
+    await page.waitForTimeout(300);
+
+    // the stage, empty: Play off with words, Open video and Open script take the file pickers
+    await rc(C + ' .fsp-stage');
+    const s0 = await menuOf();
+    ok('stage: Player, Play off with its reason, Fullscreen, Open video, Open script, then the page\'s', !!s0 && s0.title === 'Player'
+      && s0.items.join() === '-Play,Fullscreen,Open video,Open script,Manage plugins' && same(s0.sections, ['Funscript']), s0);
+    const [fv] = await Promise.all([page.waitForEvent('filechooser', { timeout: 3000 }).catch(() => null), pickM('Open video')]);
+    ok('stage: Open video opens the video picker', !!fv && fv.isMultiple());
+    if (fv) await fv.setFiles([{ name: 'clip.webm', mimeType: 'video/webm', buffer: VIDEO }]);
+    await page.waitForTimeout(400);
+    await rc(C + ' .fsp-stage');
+    const [fs] = await Promise.all([page.waitForEvent('filechooser', { timeout: 3000 }).catch(() => null), pickM('Open script')]);
+    ok('stage: Open script opens the script picker', !!fs);
+    if (fs) await fs.setFiles([{ name: 'clip.funscript', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(SCRIPT)) }]);
+    const ready = await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-play').disabled, C, { timeout: 5000 }).then(() => true, () => false);
+    ok('stage: the picked video and script load', ready);
+    await rc(C + ' .fsp-stage');
+    await pickM('Play');
+    await page.waitForTimeout(600);
+    const playing = await video(page, (v) => !v.paused);
+    await rc(C + ' .fsp-stage');
+    const s1 = await menuOf();
+    await pickM('Pause');
+    await page.waitForTimeout(300);
+    ok('stage: Play plays, and the menu then reads Pause, which pauses', playing && s1?.items[0] === 'Pause' && await video(page, (v) => v.paused), s1);
+    await rc(C + ' .fsp-stage');
+    await pickM('Fullscreen');
+    await page.waitForTimeout(400);
+    const inFull = await page.locator(C).evaluate((r) => r.hasAttribute('data-media'));
+    await rc(C + ' .fsp-stage');
+    const s2 = await menuOf();
+    await pickM('Exit fullscreen');
+    await page.waitForTimeout(400);
+    ok('stage: Fullscreen enters media fullscreen; Exit fullscreen leaves it', inFull && s2?.items.includes('Exit fullscreen')
+      && !await page.locator(C).evaluate((r) => r.hasAttribute('data-media')), { inFull, s2 });
+
+    // the timeline: Seek here, Set A here, Set B here, Clear loop, on the overview and the detail
+    const OV = C + ' .fsp-ov';
+    const dur = await video(page, (v) => v.duration * 1000);
+    await rc(OV, 0.5);
+    const t0 = await menuOf();
+    ok('timeline: Seek here, Set A here, Set B here (off until A), Clear loop (off without one)', !!t0 && t0.title === 'Timeline'
+      && t0.items.slice(0, 4).join() === 'Seek here,Set A here,-Set B here,-Clear loop', t0);
+    await pickM('Seek here');
+    await page.waitForTimeout(300);
+    const at = await video(page, (v) => v.currentTime * 1000);
+    ok('timeline: Seek here on the overview seeks to the time under the pointer', Math.abs(at - dur / 2) < dur * 0.02, { at, half: dur / 2 });
+    await rc(OV, 0.2);
+    await pickM('Set A here');
+    await rc(OV, 0.6);
+    await pickM('Set B here');
+    await page.waitForTimeout(200);
+    const band = () => page.locator(OV + ' rect.ab').evaluate((r) => [+r.getAttribute('x') / r.ownerSVGElement.viewBox.baseVal.width, +r.getAttribute('width') / r.ownerSVGElement.viewBox.baseVal.width]);
+    const b1 = await band();
+    ok('timeline: Set A here and Set B here loop 20 % to 60 % (the band, the A-B button on)', Math.abs(b1[0] - 0.2) < 0.02 && Math.abs(b1[1] - 0.4) < 0.02
+      && await page.locator(C + ' .fsp-ab').getAttribute('aria-pressed') === 'true', b1);
+    await rc(OV, 0.1);
+    await pickM('Set B here');
+    await page.waitForTimeout(200);
+    const b2 = await band();
+    ok('timeline: a B before A swaps them (10 % to 20 %)', Math.abs(b2[0] - 0.1) < 0.02 && Math.abs(b2[1] - 0.1) < 0.02, b2);
+    await rc(C + ' .fsp-dt', 0.5);
+    const t1 = await menuOf();
+    await pickM('Clear loop');
+    await page.waitForTimeout(200);
+    ok('timeline: the detail carries the same menu; Clear loop clears it', !!t1 && t1.items.includes('Clear loop')
+      && await page.locator(C + ' .fsp-ab').getAttribute('aria-pressed') === 'false', t1);
+    await page.locator(C + ' .fsp-scrub').focus();
+    await page.keyboard.press('Shift+F10');
+    const tk = await menuOf();
+    await pickM('Set A here');
+    await rc(OV, 0.9);
+    await pickM('Set B here');
+    await page.waitForTimeout(200);
+    const b3 = await band();
+    const head = await video(page, (v) => v.currentTime * 1000 / (v.duration * 1000));
+    ok('timeline: Shift+F10 on the scrub opens it at the playhead (Set A here there)', !!tk && tk.title === 'Timeline' && Math.abs(b3[0] - head) < 0.02, { tk, b3, head });
+    await rc(OV, 0.5);
+    await pickM('Clear loop');
+
+    // the scene rows: Play, Play next, Add to queue, Open in Stash
+    const lib = (t) => page.locator(C + ' .fsp-libseg button', { hasText: new RegExp('^' + t + '$') }).click();
+    await lib('Library');
+    await page.locator(C + ' .fsp-connect input[type=url]').fill(stash.url);
+    await page.locator(C + ' .fsp-connect input[type=password]').fill(KEY);
+    await page.locator(C + ' .fsp-connect button', { hasText: 'Save' }).click();
+    await page.waitForSelector(C + ' .fsp-tile', { timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(400);
+    const tt = (i) => page.locator(C + ' .fsp-tile .fsp-tt').nth(i).textContent();
+    const T = [await tt(0), await tt(1), await tt(2)];
+    await rc(C + ' .ui-tile:has(.fsp-tile) >> nth=0');
+    const r0 = await menuOf();
+    ok('scene: the row\'s menu heads with its title: Play, Play next, Add to queue, Open in Stash', !!r0 && r0.title === T[0]
+      && r0.items.slice(0, 4).join() === 'Play,Play next,Add to queue,Open in Stash', r0);
+    await pickM('Add to queue');
+    await rc(C + ' .ui-tile:has(.fsp-tile) >> nth=1');
+    await pickM('Add to queue');
+    await rc(C + ' .ui-tile:has(.fsp-tile) >> nth=2');
+    await pickM('Play next');
+    await lib('Queue');
+    await page.waitForTimeout(300);
+    const rows = () => page.$$eval(C + ' .fsp-q-row .ui-tile-t', (e) => e.map((x) => x.textContent));
+    ok('scene: Add to queue appends, Play next puts the scene at the head', same(await rows(), [T[2], T[0], T[1]]), await rows());
+    await lib('Library');
+    await page.waitForTimeout(200);
+    await rc(C + ' .ui-tile:has(.fsp-tile) >> nth=0');
+    await pickM('Open in Stash');
+    await page.waitForTimeout(200);
+    const id0 = await page.evaluate(() => (window.__opened || [])[0] || '');
+    ok('scene: Open in Stash opens the scene\'s page on the Stash server in the system browser', /\/scenes\/[^/]+$/.test(id0) && id0.startsWith(stash.url.replace(/\/$/, '')), id0);
+    await rc(C + ' .ui-tile:has(.fsp-tile) >> nth=1');
+    await pickM('Play');
+    const loaded = await page.waitForFunction(([c, t]) => document.querySelector(c + ' .fsp-title').textContent === t, [C, T[1]], { timeout: 5000 }).then(() => true, () => false);
+    ok('scene: Play loads the scene', loaded, await page.locator(C + ' .fsp-title').textContent());
+
+    // the queue rows: Remove, Move to top
+    await lib('Queue');
+    await page.waitForTimeout(300);
+    await rc(C + ' .fsp-q-row >> nth=0');
+    const q0 = await menuOf();
+    ok('queue: the row\'s menu heads with its title: Remove, Move to top (off on the first)', !!q0 && q0.title === T[2] && q0.items.slice(0, 2).join() === 'Remove,-Move to top', q0);
+    await page.keyboard.press('Escape');
+    await rc(C + ' .fsp-q-row >> nth=2');
+    await pickM('Move to top');
+    await page.waitForTimeout(200);
+    const qa = await rows();
+    await rc(C + ' .fsp-q-row >> nth=1');
+    await pickM('Remove');
+    await page.waitForTimeout(200);
+    ok('queue: Move to top moves the row first; Remove takes it out', same(qa, [T[1], T[2], T[0]]) && same(await rows(), [T[1], T[0]]), { qa, after: await rows() });
+  } else ok('menus: the page mounts the card', false);
+  ok('menus: no page error', errors.length === 0, errors.slice(0, 3));
+  clearInterval(hub.timer);
+  await ctx.close();
+  await stash.close();
+  if (MENUS_ONLY) {
+    await browser.close();
+    srv.close();
+    console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');
+    process.exit(fails ? 1 : 0);
+  }
+}
+
+// ---- (H) the card heads (ph-1qs5.12): 01 PLAYER, 02 LIBRARY and 03 SETTINGS on one baseline; nothing moves ----
+if (!LIVE && !STASH_LIVE && !OSC_ONLY) {
+  console.log('(H) card heads');
+  const cat = advgenCatalog();
+  cat.entries = decodeCatalog(cat.bytes);
+  const hub = makeHub(cat);
+  const { ctx, page, errors } = await open({ cat, hub, width: 1428, height: 900 });
+  // Each shown head's text baseline, window px: a zero-size inline-block sits on it.
+  const lines = () => page.evaluate(() => Object.fromEntries([['player', '.fsp-src > .fsp-h'], ['library', '.fsp-libh > .fsp-h'], ['settings', '.fsp-psec[data-open] .ui-sheet-t']]
+    .map(([k, q]) => [k, document.querySelector('main.pane ' + q)]).filter(([, e]) => e && e.getClientRects().length)
+    .map(([k, e]) => {
+      const m = document.createElement('i');
+      m.style.cssText = 'display:inline-block;width:0;height:0';
+      e.append(m);
+      const y = m.getBoundingClientRect().bottom;
+      m.remove();
+      return [k, Math.round(y * 10) / 10];
+    })));
+  const one = (o, keys) => keys.every((k) => k in o && Math.abs(o[k] - o.player) <= 0.5);
+  if (await toPluginPage(page)) {
+    await page.waitForTimeout(400);
+    const shut = await lines();
+    await page.locator(C + ' .fsp-set').click();
+    await page.waitForTimeout(300);
+    const open1 = await lines();
+    console.log('  baselines  closed ' + JSON.stringify(shut) + '  Settings open ' + JSON.stringify(open1));
+    ok('heads 1428x900: closed, 01 PLAYER and 02 LIBRARY share one baseline', one(shut, ['player', 'library']), shut);
+    ok('heads 1428x900: Settings open, 03 SETTINGS on that baseline, 01 PLAYER unmoved', one(open1, ['player', 'settings']) && open1.player === shut.player, { shut, open: open1 });
+    await page.locator(C + ' .fsp-set').click();
+    await page.locator(C + ' .fsp-expand').click();
+    await page.waitForTimeout(400);
+    const an = await lines();
+    ok('heads 1428x900: the analyzer open, 01 PLAYER unmoved', an.player === shut.player, { shut, analyzer: an });
+  } else ok('heads 1428x900: the page mounts the card', false);
+  ok('heads: no page error', errors.length === 0, errors.slice(0, 3));
+  clearInterval(hub.timer);
+  await ctx.close();
+}
+
+// ---- (L) the library as a browser (ph-0hvq): scenes in view per size, search, sort, the script filter, paging, no shift ----
+// Every size shows at least LIB_MIN whole scenes in its library view and its fullscreen drawer. Named exception: the
+// 1024 x 768 desktop opens with the column shut for the session (the bar keeps its one row, PR5 as built); the caret
+// opens it. Run alone: --library [--shots <dir>] (dark and Paper at every size).
+const LIB_ONLY = args.includes('--library');
+if (!LIVE && !STASH_LIVE && !OSC_ONLY) {
+  console.log('(L) library browser');
+  const LIB_MIN = 6;
+  const cat = advgenCatalog();
+  cat.entries = decodeCatalog(cat.bytes);
+  const { THEMES } = await import('../src/model/theme.js');
+  const stash = await startFakeStash({ key: KEY, video: VIDEO, scenes: 72 });
+  const COUNTS = [];
+  // Scenes whose whole row or tile lies inside the list's box and the window, and shows.
+  const inView = (page) => page.evaluate((c) => {
+    const lst = document.querySelector(c + ' .fsp-lib'), body = lst.querySelector('.ui-list-body').getBoundingClientRect();
+    const n = [...lst.querySelectorAll('.ui-list-items > .ui-tile')].filter((t) => {
+      const b = t.getBoundingClientRect();
+      return t.checkVisibility({ visibilityProperty: true }) && b.height > 0 && b.top >= Math.max(0, body.top) - 1
+        && b.bottom <= Math.min(innerHeight, body.bottom) + 1 && b.left >= -1 && b.right <= innerWidth + 1;
+    }).length;
+    const box = document.querySelector(c + ' .fsp-libbox'), items = lst.querySelector('.ui-list-items');
+    return { n, form: lst.dataset.form, cols: getComputedStyle(items).gridTemplateColumns.split(' ').filter(Boolean).length,
+      body: [Math.round(body.width), Math.round(body.height)], scroll: box.scrollHeight - box.clientHeight, spill: items.scrollHeight - items.clientHeight,
+      sideways: document.scrollingElement.scrollWidth - innerWidth };
+  }, C);
+  // The boxes that must never move, against the card (a page taller than the window scrolls): the list's head row,
+  // its body, its pager and its first row.
+  const frame = (page) => page.evaluate((c) => {
+    const o = document.querySelector(c).getBoundingClientRect();
+    const r = (q) => { const e = document.querySelector(c + ' ' + q); if (!e) return null; const b = e.getBoundingClientRect(); return [b.x - o.x, b.y - o.y, b.width, b.height].map(Math.round); };
+    return { head: r('.fsp-lib-head'), body: r('.fsp-lib .ui-list-body'), foot: r('.fsp-lib .ui-list-foot'), row0: r('.fsp-lib .ui-list-items > .ui-tile') };
+  }, C);
+  const countText = (page) => page.locator(C + ' .fsp-lib .ui-list-count').textContent();
+  const titles = (page) => page.$$eval(C + ' .fsp-lib .fsp-tt', (e) => e.map((x) => x.textContent));
+  const pillsOf = (page, i) => page.locator(C + ' .fsp-lib .ui-list-items > .ui-tile').nth(i).evaluate((t) => [...t.querySelectorAll('.fsp-bdg')].map((b) => b.textContent));
+  // The list idle, with rows unless an empty answer is the point.
+  const settle = (page, rows = true) => page.waitForFunction(([c, rows]) => { const l = document.querySelector(c + ' .fsp-lib .ui-list-items');
+    return l && l.getAttribute('aria-busy') !== 'true' && (!rows || l.children.length > 0); }, [C, rows], { timeout: 8000 }).catch(() => {});
+  const want = (pred) => stash.scenes.filter((s) => s.interactive && pred((s.title || s.files[0].basename.replace(/\.[^.]+$/, '')).toLowerCase())).length;
+
+  /** Opens the page at a size and theme, connects the fake Stash and shows the library; the drawer when asked. */
+  async function visit(w, hh, cls, theme, body) {
+    const hub = makeHub(cat);
+    hub.values[CH.config + ':window_min'] = 0;
+    hub.values[CH.config + ':window_max'] = 100;
+    const { ctx, page, errors } = await open({ cat, hub, width: w, height: hh, coarse: cls !== 'desktop', prefs: theme ? { 'phosphor.theme': theme } : {} });
+    const at = w + 'x' + hh;
+    try {
+      if (!await toPluginPage(page)) { ok('library ' + at + ': the page mounts the card', false); return; }
+      await page.waitForTimeout(400);
+      if (cls === 'portrait') await page.locator(C + ' .fsp-tabs button', { hasText: 'Library' }).click();
+      const shut = await page.locator(C).evaluate((r) => r.hasAttribute('data-libshut'));
+      if (shut) await page.locator(C + ' .fsp-libcaret').click();
+      const head0 = (await frame(page)).head;
+      await page.locator(C + ' .fsp-connect input[type=url]').fill(stash.url);
+      await page.locator(C + ' .fsp-connect input[type=password]').fill(KEY);
+      FETCH_DELAY.re = /graphql/; FETCH_DELAY.ms = 1200;
+      await page.locator(C + ' .fsp-connect button', { hasText: 'Save' }).click();
+      await page.waitForTimeout(500);
+      const loading = { f: await frame(page), note: await page.locator(C + ' .fsp-lib .ui-list-note').textContent() };
+      await settle(page);
+      FETCH_DELAY.re = null;
+      await page.waitForTimeout(400);
+      await body({ page, hub, at, shut, head0, loading, errors });
+    } finally {
+      FETCH_DELAY.re = null;
+      clearInterval(hub.timer);
+      await ctx.close();
+    }
+  }
+  /** Loads the first scene, enters fullscreen and opens the library drawer. */
+  async function toDrawer(page) {
+    await page.locator(C + ' .fsp-tile').first().click();
+    await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-play').disabled, C, { timeout: 5000 }).catch(() => {});
+    if (!await page.locator(C).evaluate((r) => r.hasAttribute('data-media'))) await page.locator(C + ' .fsp-full').evaluate((e) => e.click());
+    await page.waitForTimeout(700);
+    await page.mouse.move(300, 200);
+    await page.locator(C + ' .fsp-hb .fsp-libb').evaluate((e) => e.click());
+    await page.waitForTimeout(700);
+  }
+  const shotsOf = (tag) => async (page, name) => { if (SHOTS) await page.screenshot({ path: join(SHOTS, 'library-' + name + '-' + tag + '.png') }); };
+
+  const SIZES = [[1428, 900, 'desktop'], [1024, 768, 'desktop'], [844, 390, 'landscape'], [412, 915, 'portrait'], [390, 844, 'portrait'], [360, 780, 'portrait']];
+  for (const [w, hh, cls] of SIZES) {
+    await visit(w, hh, cls, null, async ({ page, at, shut, head0, loading, errors }) => {
+      const where = cls === 'portrait' ? 'Library tab' : cls === 'landscape' ? 'page, no video' : 'column';
+      const l = await inView(page), loaded = await frame(page);
+      COUNTS.push([at, where, l]);
+      ok('library ' + at + ': the ' + where + ' shows at least ' + LIB_MIN + ' scenes', l.n >= LIB_MIN, l);
+      ok('library ' + at + ': it pages, never scrolls, no row spills, and nothing goes sideways (D19, ph-5u0g.15)', l.scroll <= 0 && l.spill <= 0 && l.sideways <= 0, l);
+      ok('library ' + at + ': loading draws inside the boxes it fills; the head, list and pager hold still', loading.note === 'Loading scenes'
+        && same(head0, loaded.head) && same(loading.f.head, loaded.head) && same(loading.f.body, loaded.body) && same(loading.f.foot, loaded.foot),
+      { head0, loading, loaded });
+      if (at === '1024x768') ok('library 1024x768: the column opens shut for the session and the caret opens it (the named exception)', shut);
+      if (cls !== 'desktop') {
+        const small = await page.evaluate((c) => [...document.querySelectorAll(c + ' :is(.fsp-lib-head > *, .fsp-lib .og-btn, .fsp-lib .ui-list-items > .ui-tile)')]
+          .filter((e) => e.getClientRects().length).map((e) => { const b = e.getBoundingClientRect(); return [e.className || e.tagName, Math.round(b.width), Math.round(b.height)]; })
+          .filter(([, bw, bh]) => bh < 44 || bw < 44), C);
+        ok('library ' + at + ': every library target and row is 44 px or more under a coarse pointer', small.length === 0, small.slice(0, 4));
+        if (at === '360x780') {
+          // The smallest Look: rows and targets hold 44 px, the page still fits whole rows.
+          await page.evaluate(() => document.documentElement.style.setProperty('--s', '0.8'));
+          await page.waitForTimeout(600);
+          await settle(page);
+          const lk = await inView(page);
+          const tiny = await page.evaluate((c) => [...document.querySelectorAll(c + ' :is(.fsp-lib-head > *, .fsp-lib .og-btn, .fsp-lib .ui-list-items > .ui-tile)')]
+            .filter((e) => e.getClientRects().length).map((e) => Math.round(Math.min(e.getBoundingClientRect().width, e.getBoundingClientRect().height))).filter((v) => v < 44), C);
+          const per = await page.locator(C + ' .fsp-lib').evaluate((l) => [l.perPage, l.querySelectorAll('.ui-list-items > .ui-tile').length]);
+          ok('library 360x780: at Look 0.8 rows and targets hold 44 px, every row whole, none spilling', tiny.length === 0 && lk.spill <= 0 && lk.n === per[1] && per[0] === per[1], { tiny, lk, per });
+          await page.evaluate(() => document.documentElement.style.removeProperty('--s'));
+          await page.waitForTimeout(600);
+          await settle(page);
+        }
+      }
+      await shotsOf('dark')(page, at);
+      await toDrawer(page);
+      const d = await inView(page);
+      COUNTS.push([at, 'fullscreen drawer', d]);
+      ok('library ' + at + ': the fullscreen drawer shows at least ' + LIB_MIN + ' scenes', d.n >= LIB_MIN, d);
+      if (at === '1428x900') {
+        // A Look change while open: the columns follow the new rem (row.min is 14rem as drawn, not as mounted).
+        await page.evaluate(() => document.documentElement.style.setProperty('--s', '0.8'));
+        await page.waitForTimeout(600);
+        await settle(page);
+        const lk = await inView(page), want = await page.evaluate((c) => {
+          const items = document.querySelector(c + ' .fsp-lib .ui-list-items'), W = items.parentElement.clientWidth;
+          const rem = parseFloat(getComputedStyle(document.documentElement).fontSize), cg = parseFloat(getComputedStyle(items).columnGap);
+          return Math.max(1, Math.floor((W + cg) / (14 * rem + cg)));
+        }, C);
+        ok('library 1428x900: at Look 0.8 the drawer columns follow the new 14rem', lk.cols === want && want !== d.cols && lk.spill <= 0, { want, lk, d });
+        await page.evaluate(() => document.documentElement.style.removeProperty('--s'));
+        await page.waitForTimeout(600);
+        await settle(page);
+      }
+      await shotsOf('dark')(page, 'drawer-' + at);
+      ok('library ' + at + ': no page error', errors.length === 0, errors.slice(0, 3));
+    });
+  }
+
+  // Paging, search, sort, the script filter and the row badges, on the desktop column and the phone's tab.
+  const lastQuery = () => JSON.parse([...stash.seen].reverse().find((r) => r.path === '/graphql' && /findScenes/.test(r.body)).body).variables;
+  for (const [w, hh, cls] of [[1428, 900, 'desktop'], [390, 844, 'portrait']]) {
+    await visit(w, hh, cls, null, async ({ page, at, errors }) => {
+      const head = (q) => page.locator(C + ' .fsp-lib-head ' + q);
+      const ask = async (fn) => { await fn(); await page.waitForTimeout(350); await settle(page, false); };
+      const search = (t) => ask(() => head('input').fill(t).then(() => head('input').press('Enter')));
+      const libTab = async () => { if (cls === 'portrait') { await page.locator(C + ' .fsp-tabs button', { hasText: 'Library' }).click(); await page.waitForTimeout(300); } };
+      const f0 = await frame(page), t0 = await titles(page);
+      FETCH_DELAY.re = /graphql/; FETCH_DELAY.ms = 1000;
+      await page.locator(C + ' .fsp-lib .ui-list-next').click();
+      await page.waitForTimeout(400);
+      const busy = await frame(page);
+      await settle(page);
+      FETCH_DELAY.re = null;
+      const f1 = await frame(page), t1 = await titles(page), pg = await page.locator(C + ' .fsp-lib .ui-list-page').textContent();
+      ok('library ' + at + ': Next pages in place: page 2, other scenes as many, nothing moves while it loads or after',
+        /^page 2 \//.test(pg) && t1.length === t0.length && !t1.some((t) => t0.includes(t)) && same(f0, busy) && same(f0, f1), { pg, f0, busy, f1 });
+
+      await search('title 1');
+      const n1 = want((t) => t.includes('title 1')), ts = await titles(page), cnt = await countText(page);
+      ok('library ' + at + ': Search is Stash\'s own query; the count and every row match', lastQuery().filter.q === 'title 1' && cnt === n1 + ' scenes'
+        && ts.length > 0 && ts.every((t) => t.toLowerCase().includes('title 1')), { cnt, n1, ts });
+      await search('');
+
+      const secs = () => page.$$eval(C + ' .fsp-lib .fsp-mt', (e) => e.map((x) => { const [m, s] = x.textContent.split(' · ')[0].split(':').map(Number); return m * 60 + s; }));
+      await ask(() => head('select').selectOption({ label: 'Duration' }));
+      const desc = await secs();
+      await ask(() => head('.fsp-dir').click());
+      const asc = await secs();
+      await ask(() => head('select').selectOption({ label: 'Plays' }));
+      const plays = lastQuery().filter;
+      ok('library ' + at + ': Sort Duration both ways orders the rows; Plays asks play_count', desc.length > 1 && desc.every((v, i, a) => !i || a[i - 1] >= v)
+        && asc.every((v, i, a) => !i || a[i - 1] <= v) && asc[0] < desc[0] && plays.sort === 'play_count' && plays.direction === 'ASC', { desc, asc, plays });
+      await ask(() => head('select').selectOption({ label: 'Date' }));
+      await ask(() => head('.fsp-dir').click());
+
+      await ask(() => head('.fsp-only').click());
+      const all = await countText(page);
+      await search('title 10');
+      const off = { cnt: await countText(page), rows: await titles(page), pills: await pillsOf(page, 0) };
+      await ask(() => head('.fsp-only').click());
+      const on = { note: await page.locator(C + ' .fsp-lib .ui-list-note').textContent(), rows: (await titles(page)).length, filter: lastQuery().scene_filter };
+      ok('library ' + at + ': Scripted only off lists every scene, an unscripted one without the Script pill; on drops it',
+        all === stash.scenes.length + ' scenes' && off.cnt === '1 scene' && off.rows[0] === 'Scene title 10' && !off.pills.includes('Script')
+        && on.note === 'No scenes match' && on.rows === 0 && on.filter.interactive === true, { all, off, on });
+      await search('');
+
+      await page.locator(C + ' .fsp-lib .fsp-qadd').nth(1).click();
+      await page.waitForTimeout(200);
+      const q1 = await pillsOf(page, 1);
+      await page.locator(C + ' .fsp-tile').first().click();
+      await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-play').disabled, C, { timeout: 5000 }).catch(() => {});
+      await libTab();
+      const p0 = await pillsOf(page, 0), cur = await page.locator(C + ' .fsp-tile').first().getAttribute('aria-current');
+      await playBtn(page).click();
+      await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-stage video').paused, C, { timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(300);
+      const p1 = await pillsOf(page, 0);
+      await playBtn(page).click();
+      ok('library ' + at + ': rows read Queued once queued, Loaded on the loaded scene (the current look), Playing while it plays, Script on each',
+        q1.includes('Queued') && q1.includes('Script') && p0.includes('Loaded') && cur === 'true' && p1.includes('Playing'), { q1, p0, cur, p1 });
+      await search('title 13');
+      const before = await pillsOf(page, 0);
+      await page.locator(C + ' .fsp-tile').first().click();
+      await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-play').disabled, C, { timeout: 5000 }).catch(() => {});
+      await libTab();
+      await page.waitForTimeout(300);
+      const after = await pillsOf(page, 0);
+      ok('library ' + at + ': V8 V9 shows once the scene\'s script parsed with those axes', !before.includes('V8 V9') && after.includes('V8 V9'), { before, after });
+      await shotsOf('dark')(page, 'badges-' + at);
+      ok('library ' + at + ': no page error in the browse checks', errors.length === 0, errors.slice(0, 3));
+    });
+  }
+
+  // (L2) the script heat on the tiles (the cache itself is test/funscript-heat.test.mjs): painted for the page and the
+  // next one only, an overlay that moves nothing, hidden from assistive tech, shown on hover, repainted by a token change
+  // without a request, and kept in IndexedDB across a reload.
+  const m0 = stash.seen.length;
+  await visit(1428, 900, 'desktop', null, async ({ page, errors }) => {
+    const tiles = C + ' .fsp-lib .ui-list-items > .ui-tile';
+    const painted = () => page.$$eval(tiles + ' .fsp-heat', (e) => e.filter((x) => x.style.backgroundImage).length);
+    const n = await page.locator(tiles).count();
+    await page.waitForFunction(([q, k]) => [...document.querySelectorAll(q)].filter((x) => x.style.backgroundImage).length >= k, [tiles + ' .fsp-heat', n], { timeout: 8000 }).catch(() => {});
+    // The next page's prefetch follows the painted page.
+    for (let i = 0; i < 40 && new Set(stash.seen.slice(m0).filter((r) => /\/scene\/\d+\/funscript/.test(r.path)).map((r) => r.path.split("?")[0])).size < n * 2; i++) await page.waitForTimeout(250);
+    await page.waitForTimeout(400);
+    const asked = stash.seen.slice(m0).filter((r) => /\/scene\/\d+\/funscript/.test(r.path));
+    const ids = new Set(asked.map((r) => r.path.match(/scene\/(\d+)/)[1]));
+    ok('heat: every tile on the page is painted, the requests are this page and the next only, none for the Stash heatmap',
+      (await painted()) === n && ids.size === n * 2 && stash.seen.slice(m0).every((r) => !/heatmap/.test(r.path)), { n, painted: await painted(), asked: ids.size });
+    const geo = await page.locator(tiles).nth(1).evaluate((t) => {
+      const s = t.querySelector('.ui-tile-shot').getBoundingClientRect(), h = t.querySelector('.fsp-heat'), b = h.getBoundingClientRect(), r = t.getBoundingClientRect();
+      return { inside: b.left >= s.left - 1 && b.right <= s.right + 1 && b.bottom <= s.bottom + 1 && b.height > 0 && b.height <= 8, hidden: h.getAttribute('aria-hidden'),
+        op: getComputedStyle(h).opacity, rect: [r.x, r.y, r.width, r.height].map(Math.round), bg: getComputedStyle(h).backgroundImage };
+    });
+    ok('heat: an overlay on the shot bottom edge, hidden from assistive tech (the row meta carries the speed), invisible at rest',
+      geo.inside && geo.hidden === 'true' && geo.op === '0', geo);
+    await page.locator(tiles).nth(1).locator('.fsp-tile').hover();
+    await page.waitForTimeout(500);
+    const on = await page.locator(tiles).nth(1).evaluate((t) => ({ op: getComputedStyle(t.querySelector('.fsp-heat')).opacity, rect: (() => { const r = t.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(Math.round); })() }));
+    ok('heat: hovering shows the strip and nothing moves', on.op === '1' && same(on.rect, geo.rect), { on, geo: geo.rect });
+    await page.mouse.move(5, 5);
+    // A token change repaints with no request.
+    const hits = stash.seen.length;
+    await page.evaluate(() => document.documentElement.style.setProperty('--reality', '#ff00ff'));
+    await page.waitForTimeout(200);
+    const bg2 = await page.locator(tiles).nth(1).evaluate((t) => getComputedStyle(t.querySelector('.fsp-heat')).backgroundImage);
+    await page.evaluate(() => document.documentElement.style.removeProperty('--reality'));
+    ok('heat: a changed theme token repaints the strip and makes no request', bg2 !== geo.bg && stash.seen.length === hits, { hits, now: stash.seen.length, bg: bg2 === geo.bg, late: stash.seen.slice(hits).map((r) => r.path) });
+    const stored = await page.evaluate(() => new Promise((ok) => { const r = indexedDB.open('fsp-heat'); r.onsuccess = () => { const q = r.result.transaction('e').objectStore('e').count(); q.onsuccess = () => ok(q.result); q.onerror = () => ok(-1); }; r.onerror = () => ok(-1); }));
+    ok('heat: the strips are in IndexedDB (the page, the next page and the server record)', stored >= n + 1, stored);
+    ok('heat: no page error', errors.length === 0, errors.slice(0, 3));
+  });
+
+  if (SHOTS) {
+    const paper = THEMES.find((t) => t.id === 'paper');
+    for (const [w, hh, cls] of SIZES) {
+      await visit(w, hh, cls, paper, async ({ page, at }) => {
+        await shotsOf('paper')(page, at);
+        await toDrawer(page);
+        await shotsOf('paper')(page, 'drawer-' + at);
+      });
+    }
+  }
+  for (const [at, where, l] of COUNTS) console.log('  scenes in view  ' + at.padEnd(9) + ' ' + where.padEnd(18) + ' ' + String(l.n).padStart(3) + '  ' + l.form + ' x' + l.cols);
+  await stash.close();
+  if (LIB_ONLY) {
+    await browser.close();
+    srv.close();
+    console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');
+    process.exit(fails ? 1 : 0);
+  }
+}
 
 // ---- (o) the oscillator axes (ph-6dr6, SPEC 9.7): V8/V9 to the osc.drive STREAM, by role ----
 if (!LIVE && !STASH_LIVE) {
@@ -1380,9 +1927,9 @@ if (!LIVE && !STASH_LIVE) {
       });
       ok('library ' + at + ': the now-playing row sits at the tab\'s bottom, the scene count whole', foot.gap <= 1 && foot.toCard <= 12 && !foot.countCut, foot);
     } else if (cls === 'desktop') {
-      const col = await page.locator(C).evaluate((r) => ({ caret: !!r.querySelector('.fsp-libcaret').getClientRects().length, tiles: r.querySelector('.fsp-lib').dataset.form === 'grid',
-        head: r.querySelector('.fsp-libbox > .fsp-h').dataset.pidx + r.querySelector('.fsp-libbox > .fsp-h').textContent }));
-      ok('library ' + at + ': the side column with its caret, tiles, under 02 LIBRARY', col.caret && col.tiles && col.head === '02Library' && l0.n > 0, col);
+      const col = await page.locator(C).evaluate((r) => ({ caret: !!r.querySelector('.fsp-libcaret').getClientRects().length, rows: r.querySelector('.fsp-lib').dataset.form === 'rows',
+        head: r.querySelector('.fsp-libh > .fsp-h').dataset.pidx + r.querySelector('.fsp-libh > .fsp-h').textContent }));
+      ok('library ' + at + ': the side column with its caret, compact rows (ph-0hvq), under 02 LIBRARY', col.caret && col.rows && col.head === '02Library' && l0.n > 0, col);
     } else {
       await page.locator(C + ' .fsp-tile').first().click();
       await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-play').disabled, C, { timeout: 5000 }).catch(() => {});
@@ -1435,14 +1982,13 @@ if (!LIVE && !STASH_LIVE) {
     await page.locator(C + ' .fsp-connect input[type=password]').fill(KEY);
     await page.locator(C + ' .fsp-connect button', { hasText: 'Save' }).click();
     await page.waitForSelector(C + ' .fsp-qadd', { timeout: 5000 }).catch(() => {});
-    // The column may hold one scene a page: add the first of each of three pages.
+    // Rows 1 to 3 of the first page (the library pages six or more at every size, ph-0hvq).
     const titles = [];
+    await page.waitForSelector(C + ' .fsp-qadd', { timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(400);
     for (let i = 0; i < 3; i++) {
-      await page.waitForSelector(C + ' .fsp-qadd', { timeout: 5000 }).catch(() => {});
-      await page.waitForTimeout(400);
-      titles.push(await page.locator(C + ' .fsp-tile .ui-tile-t').first().textContent());
-      await page.locator(C + ' .fsp-qadd').first().click();
-      await page.locator(C + ' .fsp-lib .ui-list-next').click();
+      titles.push(await page.locator(C + ' .fsp-tile .fsp-tt').nth(i).textContent());
+      await page.locator(C + ' .fsp-qadd').nth(i).click();
     }
     await tab('Queue');
     await page.waitForTimeout(300);
@@ -1491,11 +2037,10 @@ if (!LIVE && !STASH_LIVE) {
       // Two more scenes for Loop and the Halt between scenes.
       await tab('Library');
       const more = [];
-      for (let i = 0; i < 2; i++) {
-        await page.waitForTimeout(400);
-        more.push(await page.locator(C + ' .fsp-tile .ui-tile-t').first().textContent());
-        await page.locator(C + ' .fsp-qadd').first().click();
-        await page.locator(C + ' .fsp-lib .ui-list-next').click();
+      await page.waitForTimeout(400);
+      for (let i = 3; i < 5; i++) {
+        more.push(await page.locator(C + ' .fsp-tile .fsp-tt').nth(i).textContent());
+        await page.locator(C + ' .fsp-qadd').nth(i).click();
       }
       await tab('Queue');
       await page.waitForTimeout(300);
@@ -1832,7 +2377,7 @@ if (!LIVE) {
   const ORDER = bar.comp === 'full' ? BAR_DESK.filter((c) => !/fsp-(full|set)/.test(c)) : BAR_PHONE[0].concat(BAR_PHONE[1]).filter((c) => !/fsp-(full|set)/.test(c));
   ok('bar: the dash card\'s bar in the PR5 order (no Fullscreen or Settings: page only), ' + (bar.comp === 'full' ? 'one row' : 'two rows'),
     same(bar.rows.flat(), ORDER) && bar.rows.length === (bar.comp === 'full' ? 1 : 2), bar);
-  ok('bar: Graph names its key and sits in the timeline head', await page.locator(C + ' .fsp-tlh .fsp-expand').evaluate((e) => /\(g\)/.test(e.title)));
+  ok('bar: Graph names its key and sits in the timeline head', await page.locator(C + ' .fsp-tlh .fsp-expand').evaluate((e) => /\(g\)/.test(e.dataset.tip)));
   const rt = [];
   for (let i = 0; i < 6; i++) { await page.locator(C + ' .fsp-rate').click(); rt.push(await page.locator(C + ' .fsp-rate').textContent()); }
   ok('transport: rate cycles 1.25x, 1.5x, 2x, 0.5x, 0.75x, 1x', rt.join() === '1.25x,1.5x,2x,0.5x,0.75x,1x', rt);
@@ -2089,8 +2634,8 @@ if (!LIVE) {
     const out = [];
     const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     for (let n; (n = w.nextNode());) if (n.parentElement.tagName !== 'STYLE' && n.textContent.trim()) out.push(n.textContent.trim());
-    for (const e of root.querySelectorAll('[title], [aria-label], [placeholder]')) {
-      for (const a of ['title', 'aria-label', 'placeholder']) if (e.getAttribute(a)) out.push(e.getAttribute(a));
+    for (const e of root.querySelectorAll('[data-tip], [aria-label], [placeholder]')) {
+      for (const a of ['data-tip', 'aria-label', 'placeholder']) if (e.getAttribute(a)) out.push(e.getAttribute(a));
     }
     return out;
   }, C);
@@ -2399,9 +2944,51 @@ if (!LIVE && !args.includes('--stash-live')) {
   const revert = hub.intents.at(-1);
   ok('Discard reverts: settings-trial op 2, the notice clears', !!revert && revert.ch === CH_TRIAL && revert.value[1] === 2
     && (await statusText(page)) !== 'Preview: not saved', { revert, slot: await statusText(page) });
+  // ---- the hub's own changes reach the open rows through api.changed, never a poll (ph-uve3; the exact
+  // next-frame and no-read bars are test/analyzer-reads.test.mjs's) ----
+  const sm = groups.flatMap((g) => g.fields).find((f) => f.name === 'smoothness');
+  const smRow = () => page.evaluate(([c, l]) => {
+    const r = [...document.querySelectorAll(c + ' .fsa-row')].find((x) => x.querySelector('.fsa-k').textContent === l);
+    return { v: r.querySelector('.fsa-v').textContent, off: r.querySelector('.fsa-c input').disabled, tip: r.dataset.tip };
+  }, [C, sm.label || sm.name]);
+  const within = async (ms, pred) => {
+    for (const t = Date.now(); Date.now() - t < ms; await sleep(20)) { const s = await smRow(); if (pred(s)) return s; }
+    return null;
+  };
+  hub.set(sm.channelId, sm.name, 0.4);
+  ok('hub: another client\'s write shows in the open row', !!(await within(500, (s) => s.v === '0.4')), await smRow());
+  hub.set(sm.channelId, sm.maskFieldName, 0xff & ~(1 << sm.maskBit));
+  ok('hub: the machine\'s mask greys the row, in words', !!(await within(500, (s) => s.off && s.tip === 'disabled by the machine')), await smRow());
+  hub.set(sm.channelId, sm.maskFieldName, 0xff);
+  ok('...and gives it back', !!(await within(500, (s) => !s.off)), await smRow());
+  hub.setLatch(PAUSE_BIT);
+  await sleep(300);
+  ok('hub: a Halt leaves the tuning rows writable (law 3: a setting\'s gate names no latch)', !(await smRow()).off, await smRow());
+  hub.setLatch(0);
+  // A write the hub never answers turns overdue on the shadow's own clock: no STATE, only the kernel's sequence moves.
+  await modeBtn('Live').click();
+  hub.unanswered = true;
+  await nudge();
+  const nudgedSt = () => page.evaluate((c) => document.querySelector(c + ' .fsa-row input[type=range]').closest('.fsa-row').getAttribute('data-st'), C);
+  let st = '';
+  for (const t = Date.now(); Date.now() - t < 1500 && st !== 'overdue'; await sleep(20)) st = await nudgedSt();
+  ok('shadow: a write the hub never answers turns its row overdue (a shadow change, no STATE)', st === 'overdue', st);
+  hub.unanswered = false;
+  await modeBtn('Preview').click();
+  // Parked (ph-vo56): no telemetry moving, no player loop, so nothing else frames the card; another client's write
+  // still reaches the open row, the frame asked for by api.onChanged (the one-frame bar is analyzer-reads.test.mjs's).
+  clearInterval(hub.timer);
+  await sleep(500);
+  const parked = await video(page, (v) => v.paused);
+  const tPush = Date.now();
+  hub.set(sm.channelId, sm.name, 0.65);
+  const seenParked = await within(1000, (s) => s.v === '0.65');
+  ok('parked: another client\'s write reaches the open row with no loop and no telemetry', parked && !!seenParked,
+    { paused: parked, ms: Date.now() - tPush, row: await smRow() });
+  hub.timer = setInterval(() => hub.state(CH.motion), 50);
   // ---- Kinetic: the machine's own planner renders the preview in a worker ----
   const kinRead = () => page.evaluate((c) => { const o = document.querySelector(c + ' .fsa-kin');
-    return { text: o.textContent, tip: o.title, pts: document.querySelector(c + ' .fsp-dt .int[data-kin]')?.getAttribute('points') || '' }; }, C);
+    return { text: o.textContent, tip: o.dataset.tip, pts: document.querySelector(c + ' .fsp-dt .int[data-kin]')?.getAttribute('points') || '' }; }, C);
   const kinUp = await page.waitForFunction((c) => /^Kinetic: wasm {2}\d+ anomalies/.test(document.querySelector(c + ' .fsa-kin').textContent)
     && (document.querySelector(c + ' .fsp-dt .int[data-kin]')?.getAttribute('points') || '').split(' ').length > 50, C, { timeout: 10000 }).then(() => true, () => false);
   const k0 = await kinRead();
@@ -2453,6 +3040,30 @@ if (!LIVE && !args.includes('--stash-live')) {
   if (SHOT) await page.locator(C).screenshot({ path: SHOT.replace(/[^/\\]+$/, 'analyzer-handheld.png') });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.waitForTimeout(600);
+  // ---- fullscreen (ph-9t5l.7): behind the video the open analyzer never repaints its rows ----
+  if (!await page.locator(C + '[data-an]').count()) await expandBtn.click();
+  await playBtn(page).click();
+  await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-stage video').paused, C, { timeout: 4000 }).catch(() => {});
+  /** DOM writes inside the analyzer over ms (every attribute set counts, a same-value one too). */
+  const anWrites = (ms) => page.evaluate(([c, t]) => new Promise((done) => {
+    let n = 0;
+    const mo = new MutationObserver((l) => { n += l.length; });
+    mo.observe(document.querySelector(c + ' .fsp-anbox'), { subtree: true, childList: true, characterData: true, attributes: true });
+    setTimeout(() => { mo.disconnect(); done(n); }, t);
+  }), [C, ms]);
+  const wIn = await anWrites(1500);
+  await page.locator(C + ' .fsp-full').evaluate((e) => e.click());
+  await page.waitForTimeout(400);
+  const wFs = await anWrites(1500);
+  const fsAn = await page.locator(C).evaluate((r) => ({ media: r.hasAttribute('data-media'), an: r.hasAttribute('data-an'), playing: !r.querySelector('.fsp-stage video').paused }));
+  const back = anWrites(1200);
+  await page.waitForTimeout(100);
+  await page.keyboard.press('Escape');
+  const wBack = await back;
+  ok('fullscreen: the open analyzer makes no row writes behind the playing video; inline it does, and again on the way out',
+    fsAn.media && fsAn.an && fsAn.playing && wIn > 0 && wFs === 0 && wBack > 0, { wIn, wFs, wBack, fsAn });
+  if (await video(page, (v) => !v.paused)) await playBtn(page).click();
+  await page.waitForTimeout(300);
   // ---- collapse ----
   if (await page.locator(C + '[data-an]').count()) await expandBtn.click();
   await page.waitForTimeout(300);
@@ -2642,14 +3253,14 @@ if (!LIVE && !args.includes('--stash-live')) {
   await playBtn(page).click();
   await page.waitForTimeout(2500);
   const ab = page.locator(C + ' .fsp-ab');
-  ok('A-B: the first press reads Set loop start', (await ab.getAttribute('title')) === 'Set loop start');
+  ok('A-B: the first press reads Set loop start', (await ab.getAttribute('data-tip')) === 'Set loop start');
   await ab.click();
   await page.waitForTimeout(3000);
   await ab.click();
   const n0 = hub.bundles.length;
 
   ok('A-B: the second press starts the loop, the button pressed and reading Clear loop',
-    (await ab.getAttribute('aria-pressed')) === 'true' && (await ab.getAttribute('title')) === 'Clear loop');
+    (await ab.getAttribute('aria-pressed')) === 'true' && (await ab.getAttribute('data-tip')) === 'Clear loop');
   const band = await page.locator(C + ' .fsp-ov rect.ab').evaluate((r) => +r.getAttribute('width'));
   ok('A-B: the section is a band on the heat', band > 0, band);
   await page.waitForTimeout(7000);
@@ -2668,7 +3279,7 @@ if (!LIVE && !args.includes('--stash-live')) {
   if (SHOT) await page.locator(C + ' .fsp-tlbox').screenshot({ path: SHOT.replace(/[^/\\]+$/, 'timeline-ab.png') });
   await ab.click();
   await page.waitForTimeout(300);
-  ok('A-B: the third press clears it', (await ab.getAttribute('aria-pressed')) === 'false' && (await ab.getAttribute('title')) === 'Set loop start'
+  ok('A-B: the third press clears it', (await ab.getAttribute('aria-pressed')) === 'false' && (await ab.getAttribute('data-tip')) === 'Set loop start'
     && await page.locator(C + ' .fsp-ov rect.ab').evaluate((r) => +r.getAttribute('width')) === 0);
   ok('playback: no page error', errors.length === 0, errors.slice(0, 3));
   clearInterval(hub.timer);
@@ -2719,7 +3330,7 @@ if (!LIVE && !args.includes('--stash-live')) {
     ok('search: F3 ' + k + ' then Enter, focus lands on that control (not BODY)', await page.evaluate(([c, key]) => { const a = document.activeElement, t = document.querySelector(c + ' [data-search-key="' + key + '"]'); return !!t && a !== document.body && (a === t || t.contains(a)); }, [C, k]), await page.evaluate(() => document.activeElement.tagName + '.' + document.activeElement.className));
   }
   ok('page settings: closed by default, one Settings button, nothing mounted',
-    (await page.locator(SUM).getAttribute('title')) === 'Settings' && same(await rows(), [0, 0, 0]), await rows());
+    (await page.locator(SUM).getAttribute('data-tip')) === 'Settings' && same(await rows(), [0, 0, 0]), await rows());
   await pageShot('page-settings-closed-1280x800');
   const before = await cardBox();
   const stageH = () => page.locator(C + ' .fsp-stage').evaluate((e) => Math.round(e.getBoundingClientRect().height));
@@ -2926,8 +3537,10 @@ if (!LIVE && !args.includes('--stash-live')) {
   ok('hover: no floating chevrons in the card (PR10)', await page.locator(C).evaluate((r) => !r.querySelector('[class*=chevron], [class*=caret]:not(.fsp-libcaret):not(.fsp-tlcaret)')));
   await page.waitForTimeout(IDLE + 400);
   ok('hover: hidden after ' + IDLE + ' ms idle', !(await shown()));
+  // The stage fills the window: the pointer leaves it for the stop pair (outside the stage).
   await overVideo(10);
-  await page.mouse.move(2, 400);
+  const pairBox = await page.locator('.topstrip .pair').boundingBox();
+  await page.mouse.move(pairBox.x + pairBox.width / 2, pairBox.y + pairBox.height / 2);
   await page.waitForTimeout(100);
   ok('hover: hidden on pointer leave', !(await shown()));
 
@@ -2942,6 +3555,47 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-stage video').paused, C, { timeout: 3000 }).catch(() => {});
   await page.waitForTimeout(1500);
   ok('hover play: the video plays after the preroll, started by the controller', await video(page, (v) => !v.paused) && await vids('play') === 1);
+  // ph-9t5l.7: at rest over the playing fullscreen video nothing of the page is laid out but the bare top strip (the
+  // stop pair, never hidden: RENDERING 8.4 row 11): the hover bar and the caret are display: none, never a transparent
+  // layer, and no ancestor draws a pseudo-element (a scroll shade) over it. The video fills the window edge to edge.
+  await page.mouse.move(2, 400);
+  await page.waitForTimeout(IDLE + 400);
+  const over = await page.evaluate((c) => {
+    const v = document.querySelector(c + ' .fsp-stage video'), r = v.getBoundingClientRect();
+    const st = document.head.appendChild(document.createElement('style'));
+    st.textContent = '* { pointer-events: auto !important; }';
+    const found = new Set();
+    for (let i = 0; i <= 12; i++) for (let j = 0; j <= 12; j++) {
+      const s = document.elementsFromPoint(r.left + (r.width - 1) * i / 12, r.top + (r.height - 1) * j / 12), k = s.indexOf(v);
+      if (k < 0) found.add('video not hit');
+      for (const e of s.slice(0, Math.max(0, k))) if (!e.contains(v) && !e.closest('.topstrip')) found.add(e.className || e.tagName);
+    }
+    st.remove();
+    // The fixed pane paints over everything under it: its own and its descendants' pseudo-elements are what could cover the video.
+    const pseudo = [], pane = v.closest('main.pane');
+    for (let a = v.parentElement; a; a = a === pane ? null : a.parentElement) {
+      for (const p of ['::before', '::after']) {
+        const cs = getComputedStyle(a, p);
+        if (cs.content !== 'none' && cs.content !== 'normal' && cs.display !== 'none') pseudo.push((a.className || a.tagName) + p);
+      }
+    }
+    return { found: [...found], pseudo, bar: getComputedStyle(document.querySelector(c + ' .ui-stage-overlay')).display,
+      caret: getComputedStyle(document.querySelector('.full-caret')).display, playing: !v.paused,
+      rect: [r.left, r.top, r.width, r.height], win: [innerWidth, innerHeight] };
+  }, C);
+  ok('fullscreen at rest: nothing over the playing video but the stop pair; the hover bar and the caret display: none (ph-9t5l.7)',
+    over.playing && !over.found.length && !over.pseudo.length && over.bar === 'none' && over.caret === 'none', over);
+  ok('fullscreen: the video fills the window edge to edge, no gutter or caret band (ph-9t5l.7)',
+    same(over.rect, [0, 0, ...over.win]), { rect: over.rect, win: over.win });
+  await page.mouse.move(300, 300);
+  await page.waitForTimeout(150);
+  const hot = await page.evaluate(() => {
+    const c = document.querySelector('.full-caret'), r = c.getBoundingClientRect(), p = document.querySelector('.topstrip .pair').getBoundingClientRect();
+    return { display: getComputedStyle(c).display, rect: [r.left, r.top, r.right, r.bottom].map(Math.round),
+      clear: r.right <= p.left || r.left >= p.right || r.bottom <= p.top || r.top >= p.bottom, label: c.getAttribute('aria-label') };
+  });
+  ok('fullscreen: a pointer move shows the caret, a corner hotspot top left over the video, clear of the stop pair (ph-9t5l.7)',
+    hot.display !== 'none' && hot.rect[0] < 24 && hot.rect[1] < 24 && hot.rect[2] > hot.rect[0] && hot.clear && hot.label === 'Show bar', hot);
   await overVideo(-10);
   await page.click(C + ' .fsp-hb .fsp-play');
   await page.waitForTimeout(200);

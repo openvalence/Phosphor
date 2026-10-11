@@ -130,11 +130,12 @@ const PROBE_SRC = `export function activate(api) {
       ui.tile({ title: 'Item ' + ((p - 1) * per + i + 1), meta: '1:00', onClick: () => log.push([form, (p - 1) * per + i]) }));
     K.list = ui.list({ form: 'grid', count: (n) => n + ' items', onPage: (p, per) => K.list.show(items(p, per, 23, 'tile'), 23) });
     K.rlist = ui.list({ form: 'rows', onPage: (p, per) => K.rlist.show(items(p, per, 5, 'row'), 5), onMove: (a, b) => log.push(['move', a, b]) });
+    K.clist = ui.list({ form: 'rows', row: { min: 120 }, onPage: (p, per) => K.clist.show(items(p, per, 40, 'row'), 40) });
     const box = (l) => { const d = document.createElement('div'); d.style.height = '360px'; d.append(l); return d; };
     K.card = ui.card({ index: '01', title: 'Probe', actions: [K.menuB] });
     K.card.body.append(K.stage, K.bar, K.rows, K.tabs, K.txt, K.split, K.status);
     K.card2 = ui.card({ index: '02', title: 'List', caret: true });
-    K.card2.body.append(box(K.list), box(K.rlist));
+    K.card2.body.append(box(K.list), box(K.rlist), box(K.clist));
     K.slot = document.createElement('div');
     K.slotSheet = ui.sheet({ title: 'Slot', index: '03', slot: K.slot, class: 'p-slot', onClose: () => log.push(['slotclose']) });
     K.slotSheet.body.append(ui.button({ label: 'In slot' }));
@@ -240,6 +241,14 @@ console.log('\n--- desktop 1428x900 dark ---');
       qr: K.qr.hasAttribute('data-quick-rail-toggle'),
       list: K.list.querySelectorAll('.ui-tile').length === K.list.perPage && K.list.querySelector('.ui-list-count').textContent === '23 items',
       rlist: K.rlist.dataset.form === 'rows' && K.rlist.querySelectorAll('.ui-tile').length === Math.min(5, K.rlist.perPage),
+      // row.min: rows side by side in columns at least that wide, the page all of them.
+      clist: (() => {
+        const items = K.clist.querySelector('.ui-list-items'), body = K.clist.querySelector('.ui-list-body'), cs = getComputedStyle(items);
+        const cols = cs.gridTemplateColumns.split(' ').length, cg = parseFloat(cs.columnGap), g = parseFloat(cs.rowGap);
+        const rh = K.clist.querySelector('.ui-tile').getBoundingClientRect().height;
+        return cols >= 2 && cols === Math.floor((body.clientWidth + cg) / (120 + cg))
+          && K.clist.perPage === cols * Math.floor((body.clientHeight + g) / (rh + g)) && items.children.length === K.clist.perPage;
+      })(),
       stage: !!K.stage.querySelector('.ui-stage-box .ui-stage-media') && !K.stage.hasAttribute('data-full'),
     };
   });
@@ -427,6 +436,23 @@ console.log('\n--- desktop 1428x900 dark ---');
   const fm = await k(page, async () => { const l = window.__k.list, per0 = l.perPage; l.form = 'rows'; await new Promise((r) => setTimeout(r, 50));
     const r = { form: l.dataset.form, per: l.perPage, rows: l.querySelectorAll('.ui-tile').length }; l.form = 'grid'; await new Promise((x) => setTimeout(x, 50)); return { ...r, per0, back: l.perPage }; });
   ok('list: the form switches live (grid to rows and back), the page refitted', fm.form === 'rows' && fm.per > 0 && fm.per !== fm.per0 && fm.rows === fm.per && fm.back === fm.per0, fm);
+  // A form switch or a refit on a later page keeps its first item in view: the page index follows it, never stays put.
+  const fk = await k(page, async () => {
+    const l = window.__k.list, wait = () => new Promise((r) => setTimeout(r, 50));
+    const shown = () => [...l.querySelectorAll('.ui-tile-t')].map((t) => +t.textContent.replace('Item ', ''));
+    while (!l.querySelector('.ui-list-next').disabled) { l.querySelector('.ui-list-next').click(); await wait(); }
+    const first = shown()[0], p0 = l.page;
+    l.form = 'rows'; await wait();
+    const rows = shown();
+    l.refit(); await wait();
+    const refit = shown();
+    l.form = 'grid'; await wait();
+    const back = shown();
+    while (!l.querySelector('.ui-list-prev').disabled) { l.querySelector('.ui-list-prev').click(); await wait(); }
+    return { first, p0, rows, refit, back };
+  });
+  ok('list: a form switch and a refit keep the first item in view (no jump to another page)', fk.p0 > 1
+    && fk.rows.includes(fk.first) && fk.refit.includes(fk.rows[0]) && fk.back.includes(fk.refit[0]), fk);
 
   // the slot form: a card in the plugin's slot on the desktop, in flow, no shadow, never in the top layer
   await clearLog(page);

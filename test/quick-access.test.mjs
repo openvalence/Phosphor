@@ -3,23 +3,43 @@
  * kit controls and the quick-access factory plugin (ph-kyjd, ph-5wsk.6), on
  * the shell bundle with the stub Tauri runtime and a fake hub that echoes,
  * holds or refuses writes on the recorded valencesim catalog. Asserts:
- *   native     a right-click outside text entry is prevented and opens the shell
- *              menu; in a text input it is left to the webview (cut, copy, paste)
- *   field      the description heads it; Copy path, Copy value, Paste value (a
- *              fitting clipboard value only), Reset to default, Send to node
- *              editor (phosphor-node-add, else the queue), Show in history
+ *   native     a right-click is prevented everywhere (every element of a page
+ *              and of Hubs: the webview's menu never shows) and opens the shell menu
+ *   text       in text entry: Undo, Cut, Copy, Paste, Select all by the input's
+ *              state, then the field's items when it is a field's input; Cut,
+ *              Copy and Paste through the native clipboard, Paste read on the pick
+ *   field      the description heads it; Copy path, Copy value, Paste value,
+ *              Reset to default, Send to node editor (phosphor-node-add, else
+ *              the queue), Show in history
+ *   clipboard  through the native plugin (a fake: __clip); opening a menu reads
+ *              no clipboard, native or webview; Paste reads once, on the pick,
+ *              and a value that does not fit is refused in the status slot
  *   keys       Shift+F10 opens it on the focused control, arrows and End move,
  *              Escape closes and returns focus
  *   page       Edit layout on the Dash, Show advanced on a category page
- *   plugin     Pin to quick access in module and field menus; the dock appears
- *              closed (nothing moves), opens on the user's act beside the
- *              content, never over the stop pair; pins persist per hub
- *              across a reload, reorder by keys and drag, unpin by menu and x,
- *              a vanished control is a quiet row; the rail pins as the mini
+ *   plugin     Pin to quick access in module and field menus; the toggle arrives
+ *              in its held slot at the status row's right end beside the scale
+ *              control and the dock stays closed (nothing moves); the toggle
+ *              opens and closes it beside the content, never over the stop
+ *              pair; pins persist per hub across a reload, reorder by keys and
+ *              drag, unpin by menu and x, a vanished control is a quiet row;
+ *              the rail pins as the mini
+ *   unpin      one of several keeps the dock open and the toggle active; the
+ *              last closes it, the toggle goes and the stored open state is
+ *              closed, across a reload; the next pin arrives closed
  *   laws       a pinned field: pending while held, the refusal, the gate words
  *              at watch tier, stale dims on a silent link
- *   phone      420x860: a drawer under the strip, the stop pair clear, nothing
- *              shifted, the quick rail pop-up over it, an outside tap closes it
+ *   perhub     the toggle follows the connected hub's pins: pins on another hub
+ *              only draw no toggle; the last unpin on the connected hub closes
+ *              the dock and the toggle goes, though another hub keeps its pins
+ *   drawer     420x860 with a fine pointer (a narrow window, not the phone
+ *              class): the toggle in the status row opens a drawer from the
+ *              right edge between the top strip and the status row, the stop
+ *              pair clear and unmoved, the page not shifted; a tap outside
+ *              closes it, the toggle inactive and the stored state closed
+ *   phone      420x860: no quick access (DESIGN §10.13): no toggle or slot, no
+ *              dock, no Pin or Unpin item; text entry keeps its own menu; the
+ *              pins stay stored; the top bar keeps its rx chip
  * Screenshots: 1428x900, 1024x768, 420x860, dark and Paper (test/evidence or --shots <dir>).
  *
  * Run: node test/quick-access.test.mjs [--shots <dir>]   (no device needed)
@@ -39,7 +59,7 @@ import { EVIDENCE } from './dist.mjs';
 const args = process.argv.slice(2);
 const SHOTS = args.includes('--shots') ? args[args.indexOf('--shots') + 1] : EVIDENCE;
 mkdirSync(SHOTS, { recursive: true });
-const ONLY = args.includes('--only') ? args[args.indexOf('--only') + 1] : '';   // desk | gate | mid | phone
+const ONLY = args.includes('--only') ? args[args.indexOf('--only') + 1] : '';   // desk | gate | mid | perhub | drawer | phone
 const run = (name) => !ONLY || ONLY === name;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let fails = 0;
@@ -142,6 +162,15 @@ async function boot(viewport, { touch = false, theme = null, pins = null, keep =
   if (!keep) {
     await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: PAGE.slice(0, -1) });
     await ctx.addInitScript(TAURI_STUB);
+    // The native clipboard plugin, and a spy on the webview's own read (which must never run).
+    await ctx.addInitScript(() => {
+      const clip = window.__clip = { text: '', reads: 0, webReads: 0 };
+      const inner = window.__TAURI_INTERNALS__.invoke;
+      window.__TAURI_INTERNALS__.invoke = (cmd, args, o) => (cmd === 'plugin:clipboard-manager|read_text' ? (clip.reads++, Promise.resolve(clip.text))
+        : cmd === 'plugin:clipboard-manager|write_text' ? ((clip.text = args.text), Promise.resolve(null)) : inner(cmd, args, o));
+      const web = navigator.clipboard && navigator.clipboard.readText.bind(navigator.clipboard);
+      if (web) navigator.clipboard.readText = () => { clip.webReads++; return web(); };
+    });
     await ctx.addInitScript(([etag, bytes, th, pinsJson]) => {
       try {
         if (!sessionStorage.getItem('booted')) {
@@ -183,10 +212,26 @@ const menuState = (page) => page.evaluate(() => {
     focus: document.activeElement?.textContent || '' };
 });
 const pick = async (page, label) => { await page.locator('.ui-menu:popover-open .ui-menu-i', { hasText: label }).first().click(); await page.waitForTimeout(150); };
-const clip = (page) => page.evaluate(() => navigator.clipboard.readText());
+const clip = (page) => page.evaluate(() => window.__clip.text);
+const reads = (page) => page.evaluate(() => [window.__clip.reads, window.__clip.webReads]);
 const rect = (page, sel) => page.locator(sel).first().evaluate((e) => { const r = e.getBoundingClientRect(); return { l: Math.round(r.left), t: Math.round(r.top), r: Math.round(r.right), b: Math.round(r.bottom), w: Math.round(r.width) }; });
 const overlap = (a, b) => a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
 const pins = (page) => page.evaluate((k) => (JSON.parse(localStorage.getItem(k) || 'null') || {})['127.0.0.1:82'] || [], PIN_PREF);
+// The dock toggle: count, place (the status row's right end, beside the scale control) and state.
+const toggle = (page) => page.evaluate(() => {
+  const b = document.querySelector('.dock-btn'), slot = document.querySelector('.footstrip .dock-slot');
+  const out = { n: document.querySelectorAll('.dock-btn').length, slot: !!(slot && slot.offsetParent) };
+  if (!b) return out;
+  const r = b.getBoundingClientRect(), s = document.querySelector('.footstrip .foot-scale').getBoundingClientRect(), f = document.querySelector('.footstrip').getBoundingClientRect();
+  return { ...out, foot: !!b.closest('.footstrip'), exp: b.getAttribute('aria-expanded'),
+    beside: r.left >= s.right && r.left - s.right < 24 && f.right - r.right < 24 && Math.abs((r.top + r.bottom) / 2 - (s.top + s.bottom) / 2) <= 2 };
+});
+const prefOpen = (page) => page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.dock') || '{}').open === true);
+// What must not move when the toggle arrives: the content, the scale control and every status row cell.
+const still = (page) => page.evaluate(() => ['.content', '.footstrip .foot-scale', ...[...document.querySelectorAll('.footstrip .fact')].map((_, i) => '.footstrip .fact:nth-child(' + (i + 1) + ')')]
+  .map((q) => { const e = document.querySelector(q), b = e && e.getBoundingClientRect(); return b ? [b.left, b.top, b.width, b.height].map(Math.round).join(',') : '-'; }).join(' | '));
+// The connected hub's catalog is in (api.hub() set), so the plugin has synced against it.
+const page2wait = async (page) => { await page.waitForSelector('.footstrip .dock-slot', { state: 'attached', timeout: 15000 }); await page.waitForTimeout(500); };
 const shot = async (page, name) => { await page.waitForTimeout(300); return page.screenshot({ path: join(SHOTS, 'quick-access-' + name + '.png') }); };
 
 // ---- desktop 1428x900 ---------------------------------------------------------------
@@ -197,6 +242,7 @@ if (run('desk')) {
   await page.waitForSelector(F(FREQ));
   ok('no dock toggle and no dock before anything is pinned (hidden by default)', await page.locator('.dock-btn').count() === 0 && await page.locator('.side-dock').count() === 0,
     await page.evaluate(() => [document.querySelectorAll('.dock-btn').length, document.querySelectorAll('.side-dock').length, document.querySelector('.side-dock')?.outerHTML.slice(0, 200)]));
+  ok('the toggle slot is held at the status row right end before any pin', (await toggle(page)).slot, await toggle(page));
 
   // native
   const onLabel = await rclick(page, F(FREQ) + ' .field-label');
@@ -211,11 +257,21 @@ if (run('desk')) {
     && m1.rect[1] >= (await rect(page, '.topstrip')).b && m1.rect[2] <= 1428 && m1.rect[3] <= 900, m1);
   await shot(page, '1428x900-dark-menu');
   await page.keyboard.press('Escape');
-  const TXT = '.field input.chip-num, .field input[type=number], .field input[type=text]';
+  const TXT = F(FREQ) + ' input.chip-num';
   if (await page.locator(TXT).count()) {
     const inText = await rclick(page, TXT);
-    ok('native: in a text input the webview keeps its own menu (cut, copy, paste)', !inText.prevented && !inText.menu, inText);
-  } else ok('native: a text input exists to check', false);
+    const mt = await menuState(page);
+    ok('text: a right-click in a field\'s input is prevented and opens the shell menu', inText.prevented && inText.menu, inText);
+    ok('text: Undo, Cut, Copy, Paste, Select all first, then the field\'s items under its label, no head',
+      !!mt && mt.title === '' && mt.items.slice(0, 5).map((l) => l.replace(/^-/, '')).join() === 'Undo,Cut,Copy,Paste,Select all'
+      && mt.sections[0] === label && mt.items.includes('Copy path') && mt.items.includes('Paste value'), mt);
+    await pick(page, 'Select all');
+    await rclick(page, TXT);
+    ok('text: Copy and Cut enabled once Select all selected the text', (await menuState(page)).items.slice(1, 3).join() === 'Cut,Copy', await menuState(page));
+    await pick(page, 'Copy');
+    ok('text: Copy puts the selection on the clipboard, natively', await clip(page) === await page.locator(TXT).inputValue(), await clip(page));
+    await page.keyboard.press('Escape');
+  } else ok('text: a field input exists to check', false);
 
   // Copy path (uid and role identities), Copy value, Paste value only when it fits, Reset to default
   await rclick(page, F(FREQ) + ' .field-label');
@@ -228,19 +284,24 @@ if (run('desk')) {
   await rclick(page, F(FREQ) + ' .field-label');
   await pick(page, 'Copy value');
   ok('Copy value: the reported value', await clip(page) === '10', await clip(page));
+  ok('clipboard: Copy wrote through the native plugin, and the menus so far read nothing', (await reads(page)).join() === '0,0', await reads(page));
   await rclick(page, F(DWELL) + ' .field-label');
   await page.waitForTimeout(500);
-  ok('Paste value: a value past the field\'s bounds leaves it disabled with the reason', (await menuState(page)).items.includes('-Paste value')
-    && await page.locator('.ui-menu-i', { hasText: 'Paste value' }).getAttribute('title') === 'no fitting value on the clipboard', await menuState(page));
-  await page.keyboard.press('Escape');
-  await page.evaluate(() => navigator.clipboard.writeText('3'));
+  ok('clipboard: opening a menu with Paste value reads no clipboard, native or webview', (await reads(page)).join() === '0,0', await reads(page));
+  ok('Paste value: enabled whatever the clipboard holds', (await menuState(page)).items.includes('Paste value'), await menuState(page));
+  const before = hub.intents.length;
+  await pick(page, 'Paste value');
+  await page.waitForTimeout(300);
+  ok('Paste value: reads the clipboard once, natively, on the pick', (await reads(page)).join() === '1,0', await reads(page));
+  ok('Paste value: a value past the field\'s bounds (10 into 0..4) is refused in the status slot and writes nothing',
+    /Paste: no fitting value on the clipboard/.test(await page.locator('.topstrip').innerText()) && hub.intents.length === before,
+    [await page.locator('.topstrip').innerText(), hub.intents.slice(before)]);
+  await page.evaluate(() => { window.__clip.text = '3'; });
   await rclick(page, F(DWELL) + ' .field-label');
-  await page.waitForTimeout(500);
-  ok('Paste value: enabled once the clipboard holds a fitting value', (await menuState(page)).items.includes('Paste value'), await menuState(page));
   await pick(page, 'Paste value');
   await page.waitForTimeout(400);
-  ok('Paste value: writes it through the normal path (an intent of 3, echoed)', lastWrite(DWELL) === 3
-    && await page.locator(F(DWELL)).getAttribute('data-shadow') === 'confirmed', hub.intents.slice(-2));
+  ok('Paste value: a fitting value writes through the normal path (an intent of 3, echoed), one read', lastWrite(DWELL) === 3
+    && await page.locator(F(DWELL)).getAttribute('data-shadow') === 'confirmed' && (await reads(page)).join() === '2,0', [hub.intents.slice(-2), await reads(page)]);
   await page.waitForTimeout(1100);
   await rclick(page, F(DWELL) + ' .field-label');
   await pick(page, 'Show in history');
@@ -322,25 +383,39 @@ if (run('desk')) {
   // pin a card (module) and a field; the dock appears closed, nothing moves
   await goTab(page, 'cat2');
   await page.waitForSelector(F(FREQ));
-  const content0 = await rect(page, '.content');
+  const content0 = await rect(page, '.content'), still0 = await still(page);
   await rclick(page, '.dash-cell[data-id="' + OSC + '"] .dash-title');
   ok('plugin: Pin to quick access in a card\'s menu', (await menuState(page))?.items.includes('Pin to quick access'), await menuState(page));
   await pick(page, 'Pin to quick access');
   await page.waitForTimeout(200);
   ok('plugin: the pin lands in prefs by identity, per hub', JSON.stringify(await pins(page)) === JSON.stringify([{ key: OSC, kind: 'module', title: 'Oscillator' }]), await pins(page));
-  ok('dock: the toggle appears, the dock stays closed and the content does not move', await page.locator('.dock-btn').count() === 1
-    && await page.locator('.side-dock').count() === 0 && JSON.stringify(await rect(page, '.content')) === JSON.stringify(content0));
+  const t1 = await toggle(page);
+  ok('dock: the toggle arrives in the status row beside the scale control, inactive; the dock stays closed', t1.n === 1 && t1.foot && t1.beside && t1.exp === 'false'
+    && await page.locator('.side-dock').count() === 0, t1);
+  ok('dock: nothing moves when the first pin arrives (content, scale control, status row cells)', await still(page) === still0, [still0, await still(page)]);
   await rclick(page, F(FREQ) + ' .field-label');
   await pick(page, 'Pin to quick access');
   const pair0 = await rect(page, '.topstrip .pair');
-  await page.click('.dock-btn');
+  await page.click('.footstrip .dock-btn');
   await page.waitForSelector('.side-dock .qa-pin');
+  ok('dock: the toggle opens it and reads active', (await toggle(page)).exp === 'true' && await prefOpen(page));
   const dk = await rect(page, '.side-dock');
   ok('dock: opening narrows the content (the user\'s act), sits beside it, never over the stop pair', (await rect(page, '.content')).w < content0.w
     && dk.l >= (await rect(page, '.content')).r && !overlap(dk, await rect(page, '.topstrip .pair')) && JSON.stringify(pair0) === JSON.stringify(await rect(page, '.topstrip .pair')), { dk, pair0 });
   const tray = await page.evaluate(() => [...document.querySelectorAll('.side-dock .qa-pin')].map((c) => c.dataset.pin + '|' + (c.querySelector('.field') ? 'live' : 'none')));
   ok('tray: one column of the pinned modules, live, in pin order', JSON.stringify(tray) === JSON.stringify([OSC + '|live', FREQ_KEY + '|live']), tray);
   await shot(page, '1428x900-dark-dock');
+  await page.click('.footstrip .dock-btn');
+  await page.waitForTimeout(150);
+  ok('dock: the toggle closes it, inactive, the content back to its width', await page.locator('.side-dock').count() === 0 && (await toggle(page)).exp === 'false'
+    && (await rect(page, '.content')).w === content0.w && !(await prefOpen(page)));
+  await page.click('.footstrip .dock-btn');
+  await page.waitForSelector('.side-dock .qa-pin');
+  await rclick(page, '.side-dock .qa-pin[data-pin="' + FREQ_KEY + '"] .field-label');
+  const dm = await menuState(page);
+  ok('bound: a field drawn by api.ui.field on a plugin surface gets the field menu (Copy path, Copy value, Paste value)',
+    !!dm && ['Copy path', 'Copy value', 'Paste value'].every((l) => dm.items.includes(l)), dm);
+  await page.keyboard.press('Escape');
 
   // laws on a pinned field
   const tf = '.side-dock .qa-pin[data-pin="' + FREQ_KEY + '"] .field';
@@ -391,13 +466,84 @@ if (run('desk')) {
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForSelector('.side-dock .qa-pin', { timeout: 15000 });
   await page.waitForTimeout(300);
-  ok('persist: pins and the open dock survive a reload', (await page.locator('.side-dock .qa-pin').count()) === 3);
+  ok('persist: pins and the open dock survive a reload, the toggle active', (await page.locator('.side-dock .qa-pin').count()) === 3 && (await toggle(page)).exp === 'true');
   await rclick(page, '.side-dock .qa-pin[data-pin="hero:rail"] .mini');
   ok('unpin: a pinned module\'s menu offers Unpin from quick access', (await menuState(page))?.items.includes('Unpin from quick access'), await menuState(page));
   await pick(page, 'Unpin from quick access');
   await page.locator('.side-dock .qa-pin[data-pin="' + FREQ_KEY + '"] .qa-unpin').click();
   await page.waitForTimeout(150);
   ok('unpin: the menu and the x each remove one', JSON.stringify((await pins(page)).map((p) => p.key)) === JSON.stringify([OSC]), await pins(page));
+  ok('unpin one of several: the dock stays open, the toggle active', await page.locator('.side-dock .qa-pin').count() === 1 && (await toggle(page)).exp === 'true' && await prefOpen(page));
+
+  // the last unpin closes the dock: one open state for the dock, the toggle and the stored pref (ph-6ydd)
+  const scale0 = await rect(page, '.footstrip .foot-scale');
+  await page.locator('.side-dock .qa-pin[data-pin="' + OSC + '"] .qa-unpin').click();
+  await page.waitForTimeout(250);
+  const t2 = await toggle(page);
+  ok('unpin the last: the dock closes, the toggle goes (nothing pinned), its slot stays, the stored state is closed',
+    await page.locator('.side-dock').count() === 0 && t2.n === 0 && t2.slot && !(await prefOpen(page))
+    && JSON.stringify(await rect(page, '.footstrip .foot-scale')) === JSON.stringify(scale0), { t2, pref: await prefOpen(page) });
+  ok('unpin the last: no page error on the way out', errors.length === 0, errors);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('.footstrip .dock-slot', { state: 'attached', timeout: 15000 });
+  await page.waitForTimeout(800);
+  ok('reload after the last unpin: no toggle, no dock, closed', (await toggle(page)).n === 0 && await page.locator('.side-dock').count() === 0 && !(await prefOpen(page)));
+  await goTab(page, 'cat2');
+  await page.waitForSelector(F(FREQ));
+  const content1 = await rect(page, '.content');
+  await rclick(page, '.dash-cell[data-id="' + OSC + '"] .dash-title');
+  await pick(page, 'Pin to quick access');
+  await page.waitForTimeout(250);
+  const t3 = await toggle(page);
+  ok('pin again: the toggle arrives inactive and the dock stays closed, the content unmoved', t3.n === 1 && t3.exp === 'false'
+    && await page.locator('.side-dock').count() === 0 && JSON.stringify(await rect(page, '.content')) === JSON.stringify(content1), t3);
+
+  // text entry outside a field: its edits only; Cut, Paste on the pick (one native read), Undo
+  await goTab(page, 'shell:hubs');
+  const HE = '.he-host';
+  await page.waitForSelector(HE);
+  await page.locator(HE).fill('');
+  await page.locator(HE).click();
+  await page.keyboard.type('abc');
+  // The caret's own scroll into view lands a frame later and would close the menu (a scroll closes it).
+  await page.waitForTimeout(200);
+  await rclick(page, HE);
+  const mh = await menuState(page);
+  ok('text: an input outside a field lists its edits only, by its state (typed: Undo; no selection: no Cut or Copy)',
+    !!mh && mh.items.join() === 'Undo,-Cut,-Copy,Paste,Select all' && !mh.sections.length, mh);
+  await pick(page, 'Select all');
+  await rclick(page, HE);
+  await pick(page, 'Cut');
+  ok('text: Cut takes the selection onto the clipboard', await page.locator(HE).inputValue() === '' && await clip(page) === 'abc', [await page.locator(HE).inputValue(), await clip(page)]);
+  const r0 = await reads(page);
+  await rclick(page, HE);
+  ok('text: opening the menu reads no clipboard', (await reads(page)).join() === r0.join(), [r0, await reads(page)]);
+  await pick(page, 'Paste');
+  await page.waitForTimeout(150);
+  ok('text: Paste reads the clipboard once, natively, on the pick, and inserts it', await page.locator(HE).inputValue() === 'abc'
+    && (await reads(page))[0] === r0[0] + 1 && (await reads(page))[1] === 0, [await page.locator(HE).inputValue(), await reads(page)]);
+  await rclick(page, HE);
+  await pick(page, 'Undo');
+  ok('text: Undo takes the paste back', await page.locator(HE).inputValue() === '', await page.locator(HE).inputValue());
+
+  // release: no element on a category page or on Hubs leaves its right-click to the webview
+  const loose = () => page.evaluate(() => {
+    const out = [];
+    for (const el of document.querySelectorAll('body *')) {
+      if (!el.getClientRects().length || el.closest('.ui-menu')) continue;
+      const ev = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 });
+      el.dispatchEvent(ev);
+      if (!ev.defaultPrevented) out.push(el.tagName.toLowerCase() + '.' + String(el.className).slice(0, 40));
+    }
+    return out;
+  });
+  const onHubs = await loose();
+  await page.keyboard.press('Escape');
+  await goTab(page, 'cat2');
+  await page.waitForSelector(F(FREQ));
+  const onCat = await loose();
+  await page.keyboard.press('Escape');
+  ok('release: every element on Hubs and a category page takes the right-click (the webview\'s menu never shows)', !onHubs.length && !onCat.length, { onHubs: onHubs.slice(0, 5), onCat: onCat.slice(0, 5) });
   ok('no page errors', errors.length === 0, errors);
   await ctx.close();
 }
@@ -425,55 +571,112 @@ if (run('gate')) {
   await ctx.close();
 }
 
-// ---- 1024x768 and Paper ---------------------------------------------------------------
-console.log('\n--- 1024x768 ---');
-for (const theme of run('mid') ? [null, PAPER] : []) {
-  const { ctx, page, errors } = await boot({ width: 1024, height: 768 }, { theme, pins: { [HUB]: [
+// ---- 1428x900 and 1024x768, dark and Paper ---------------------------------------------------------------
+console.log('\n--- 1428x900 and 1024x768 ---');
+for (const [w, h, theme] of run('mid') ? [[1428, 900, null], [1428, 900, PAPER], [1024, 768, null], [1024, 768, PAPER]] : []) {
+  const { ctx, page, errors } = await boot({ width: w, height: h }, { theme, pins: { [HUB]: [
     { key: 'group:2:Oscillator', kind: 'module', title: 'Oscillator' }, { key: FREQ_KEY, kind: 'field', title: 'Frequency' }, { key: 'hero:rail', kind: 'module', title: 'Rail' }] } });
   const pair0 = await rect(page, '.topstrip .pair');
-  await page.click('.dock-btn');
+  const tm = await toggle(page);
+  ok(w + 'x' + h + (theme ? ' Paper' : '') + ': the toggle sits in the status row beside the scale control', tm.n === 1 && tm.foot && tm.beside && tm.exp === 'false', tm);
+  await page.click('.footstrip .dock-btn');
   await page.waitForSelector('.side-dock .qa-pin');
   const over = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
-  ok('1024x768' + (theme ? ' Paper' : '') + ': the dock opens beside the content, no horizontal overflow, the stop pair unmoved and clear',
+  ok(w + 'x' + h + (theme ? ' Paper' : '') + ': the dock opens beside the content, no horizontal overflow, the stop pair unmoved and clear',
     over <= 0 && !overlap(await rect(page, '.side-dock'), pair0) && JSON.stringify(pair0) === JSON.stringify(await rect(page, '.topstrip .pair')), { over });
   await rclick(page, '.side-dock .qa-pin[data-pin="' + FREQ_KEY + '"] .field-label');
-  await shot(page, '1024x768-' + (theme ? 'paper' : 'dark'));
+  await shot(page, w + 'x' + h + '-' + (theme ? 'paper' : 'dark'));
   await page.keyboard.press('Escape');
+  await page.click('.footstrip .dock-btn');
+  await page.waitForTimeout(150);
+  ok(w + 'x' + h + (theme ? ' Paper' : '') + ': the toggle closes it', await page.locator('.side-dock').count() === 0 && (await toggle(page)).exp === 'false');
   ok('no page errors', errors.length === 0, errors);
   await ctx.close();
 }
 
-// ---- phone 420x860 ----------------------------------------------------------------------
+// ---- per connected hub (ph-6ydd) ---------------------------------------------------------
+console.log('\n--- per connected hub ---');
+if (run('perhub')) {
+  const OTHER = { 'bench.local:82': [{ key: 'hero:rail', kind: 'module', title: 'Rail' }] };
+  let b = await boot({ width: 1428, height: 900 }, { pins: OTHER });
+  await page2wait(b.page);
+  await goTab(b.page, 'cat2');
+  await b.page.waitForSelector(F(FREQ));
+  await rclick(b.page, '.dash-cell[data-id="' + OSC + '"] .dash-title');
+  const known = (await menuState(b.page))?.items.includes('Pin to quick access');
+  await b.page.keyboard.press('Escape');
+  ok('perhub: pins on another hub only: the hub is known (Pin offered), yet no toggle (its slot held) and no dock', known && (await toggle(b.page)).n === 0
+    && (await toggle(b.page)).slot && await b.page.locator('.side-dock').count() === 0, { known, t: await toggle(b.page) });
+  await b.ctx.close();
+  b = await boot({ width: 1428, height: 900 }, { pins: { ...OTHER, [HUB]: [{ key: OSC, kind: 'module', title: 'Oscillator' }] } });
+  await page2wait(b.page);
+  await b.page.click('.footstrip .dock-btn');
+  await b.page.waitForSelector('.side-dock .qa-pin');
+  await b.page.locator('.side-dock .qa-pin[data-pin="' + OSC + '"] .qa-unpin').click();
+  await b.page.waitForTimeout(250);
+  const tp = await toggle(b.page);
+  const kept = await b.page.evaluate((k) => Object.keys(JSON.parse(localStorage.getItem(k) || '{}')), PIN_PREF);
+  ok('perhub: the last unpin on the connected hub closes the dock and the toggle goes; the other hub keeps its pins',
+    await b.page.locator('.side-dock').count() === 0 && tp.n === 0 && !(await prefOpen(b.page)) && JSON.stringify(kept) === JSON.stringify(['bench.local:82']), { tp, kept });
+  ok('no page errors', b.errors.length === 0, b.errors);
+  await b.ctx.close();
+}
+
+// ---- a narrow window 420x860, fine pointer: the drawer ------------------------------------
+console.log('\n--- narrow window 420x860 (drawer) ---');
+if (run('drawer')) {
+  const { ctx, page, errors } = await boot({ width: 420, height: 860 }, { pins: { [HUB]: [
+    { key: FREQ_KEY, kind: 'field', title: 'Frequency' }, { key: 'hero:rail', kind: 'module', title: 'Rail' }] } });
+  const pair0 = await rect(page, '.topstrip .pair'), main0 = await rect(page, 'main.pane');
+  const td = await toggle(page);
+  ok('drawer: the toggle sits in the status row beside the scale control, inactive', td.n === 1 && td.foot && td.beside && td.exp === 'false', td);
+  await page.click('.footstrip .dock-btn');
+  await page.waitForSelector('.side-dock.drawer .qa-pin');
+  const dk = await rect(page, '.side-dock.drawer'), strip = await rect(page, '.topstrip'), foot = await rect(page, '.footstrip');
+  ok('drawer: from the right edge between the top strip and the status row; the stop pair clear and unmoved; the page not shifted', dk.r === 420 && dk.t >= strip.b - 1
+    && dk.b <= foot.t + 1 && !overlap(dk, pair0) && JSON.stringify(pair0) === JSON.stringify(await rect(page, '.topstrip .pair'))
+    && JSON.stringify(main0) === JSON.stringify(await rect(page, 'main.pane')), { dk, strip, foot, pair0 });
+  ok('drawer: the toggle reads active, the state stored open', (await toggle(page)).exp === 'true' && await prefOpen(page));
+  await shot(page, '420x860-fine-drawer');
+  await page.mouse.click(40, 600);
+  await page.waitForTimeout(200);
+  ok('drawer: a tap outside closes it, the toggle inactive, the stored state closed', await page.locator('.side-dock').count() === 0
+    && (await toggle(page)).exp === 'false' && !(await prefOpen(page)));
+  ok('no page errors', errors.length === 0, errors);
+  await ctx.close();
+}
+
+// ---- phone 420x860: no quick access (DESIGN §10.13) ------------------------------------
 console.log('\n--- phone 420x860 ---');
 for (const theme of run('phone') ? [null, PAPER] : []) {
-  const { ctx, page, errors } = await boot({ width: 420, height: 860 }, { touch: true, theme, pins: { [HUB]: [
-    { key: FREQ_KEY, kind: 'field', title: 'Frequency' }, { key: 'hero:rail', kind: 'module', title: 'Rail' }] } });
+  const stored = [{ key: FREQ_KEY, kind: 'field', title: 'Frequency' }, { key: 'hero:rail', kind: 'module', title: 'Rail' }];
+  const { ctx, page, errors } = await boot({ width: 420, height: 860 }, { touch: true, theme, pins: { [HUB]: stored } });
   const t = (theme ? 'Paper' : 'dark');
-  const pair0 = await rect(page, '.topstrip .pair'), main0 = await rect(page, 'main.pane');
-  ok(t + ': the toggle sits in the top bar, the drawer closed', await page.locator('.linkbar .dock-btn').count() === 1 && await page.locator('.side-dock').count() === 0);
-  await page.locator('.dock-btn').tap();
-  await page.waitForSelector('.side-dock.drawer .qa-pin');
-  const dk = await rect(page, '.side-dock.drawer'), strip = await rect(page, '.topstrip');
-  ok(t + ': a drawer from the right edge under the strip; the stop pair clear and unmoved; the page not shifted', dk.r === 420 && dk.t >= strip.b - 1
-    && !overlap(dk, pair0) && JSON.stringify(pair0) === JSON.stringify(await rect(page, '.topstrip .pair'))
-    && JSON.stringify(main0) === JSON.stringify(await rect(page, 'main.pane')), { dk, strip, pair0 });
-  ok(t + ': 40 px targets in the drawer', await page.evaluate(() => [...document.querySelectorAll('.side-dock .og-btn, .side-dock .qa-grip, .side-dock .qa-unpin')]
-    .every((b) => { const r = b.getBoundingClientRect(); return r.height >= 39.5 && r.width >= 39.5; })));
-  await page.locator('.side-dock .qa-pin[data-pin="hero:rail"] .mini').tap();
-  await page.waitForTimeout(300);
-  ok(t + ': the pinned mini opens the hero rail pop-up over the drawer, which stays open', await page.locator('.hero-inner.popup').count() === 1
-    && await page.locator('.side-dock.drawer').count() === 1);
-  await shot(page, '420x860-' + t.toLowerCase());
-  await page.locator('.side-dock .qa-pin[data-pin="hero:rail"] .mini').tap();
-  await page.waitForTimeout(200);
-  await rclick(page, '.side-dock .qa-pin[data-pin="' + FREQ_KEY + '"] .field-label');
-  const pm = await menuState(page);
-  ok(t + ': the field menu opens over the drawer inside the window', !!pm && pm.rect[0] >= 0 && pm.rect[2] <= 420 && pm.items.includes('Unpin from quick access'), pm);
+  const tg = await toggle(page);
+  ok(t + ': no toggle and no held slot in the status row, no dock, with pins stored', tg.n === 0 && !tg.slot && await page.locator('.side-dock').count() === 0, tg);
+  const rx = await page.evaluate(() => { const o = document.querySelector('.linkbar .chips.opt').getBoundingClientRect(), x = document.querySelector('.linkbar .chip-opt-last').getBoundingClientRect();
+    return x.top >= o.bottom - 0.5 || (x.left >= o.left - 0.5 && x.right <= o.right + 0.5); });
+  ok(t + ': the top bar rx chip is whole or shed whole beside the window buttons, never cut', rx);
+  await rclick(page, '.hero-slot[data-hero="rail"]');
+  const rm = await menuState(page);
+  ok(t + ': the rail menu offers no Pin or Unpin', !!rm && !rm.items.some((l) => /quick access/.test(l)), rm);
+  await page.keyboard.press('Escape');
+  await goTab(page, 'cat2');
+  await page.waitForSelector('main.pane .field .field-label');
+  await rclick(page, 'main.pane .field .field-label');
+  const fm = await menuState(page);
+  ok(t + ': a field menu offers no Pin or Unpin', !!fm && fm.items.length > 0 && !fm.items.some((l) => /quick access/.test(l)), fm);
   await shot(page, '420x860-' + t.toLowerCase() + '-menu');
   await page.keyboard.press('Escape');
-  await page.mouse.click(40, 700);
-  await page.waitForTimeout(200);
-  ok(t + ': a tap outside closes the drawer', await page.locator('.side-dock').count() === 0);
+  await goTab(page, 'shell:hubs');
+  await page.waitForSelector('.he-host');
+  await rclick(page, '.he-host');
+  const xm = await menuState(page);
+  ok(t + ': text entry keeps its own menu (Paste, Select all) on the phone', !!xm && xm.items.some((l) => /Paste$/.test(l)) && xm.items.some((l) => /Select all$/.test(l))
+    && !xm.items.some((l) => /quick access/.test(l)), xm);
+  await page.keyboard.press('Escape');
+  ok(t + ': the pins stay stored for the desktop', JSON.stringify(await pins(page)) === JSON.stringify(stored), await pins(page));
+  await shot(page, '420x860-' + t.toLowerCase());
   ok('no page errors', errors.length === 0, errors);
   await ctx.close();
 }

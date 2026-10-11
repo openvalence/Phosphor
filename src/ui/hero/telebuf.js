@@ -1,14 +1,13 @@
 /**
  * telebuf.js — a tiny ring-buffer interpolator for smoothing ONE live scalar.
  *
- * This is a deliberately shrunk port of the pre-refactor `core/telebuf.js`.
- * The original also did WS-frame parsing and dual-clock (device/client) sync
- * because it fed off a raw binary telemetry plane; that plane is gone. Here,
- * `machine.svelte.js` already timestamps every decoded STATE sample
- * (`machine.sampleTs[channelId]`) with `Date.now()` — the epoch-ms domain set
- * at `session.js`'s `emit('state', ..., Date.now())` — so there is nothing
- * left to synchronize — a caller just pushes {value, tsMs} pairs as they
- * arrive off `machine.samples`/`machine.sampleTs`.
+ * `machine.svelte.js` stamps every decoded STATE sample
+ * (`machine.sampleTs[channelId]`) in the Date.now() epoch-ms domain: by its hub
+ * sample time through the CLOCK offset where the layout carries a
+ * telemetry.sample_time field (RFC-113 draft; `machine.sampleRxTs` then holds
+ * the arrival), else by its arrival. A caller pushes {value, tsMs} pairs as
+ * they arrive off `machine.samples`/`machine.sampleTs`, with the arrival for a
+ * hub-dated one.
  *
  * CLOCK-DOMAIN TRAP (bit us once, guard stays): `sampleAt(tMs)` must be
  * called with a timestamp in that SAME Date.now() epoch-ms domain. A
@@ -26,9 +25,10 @@
  * What is kept, because it is still true at ~20-30 Hz STATE cadence rendered
  * at 60 fps rAF: samples arrive slower than frames are drawn, so a caller
  * wanting a smooth line needs to interpolate BETWEEN real samples and briefly
- * extrapolate PAST the newest one along its last velocity rather than
- * snapping/holding — the same policy the original used for the rail's comet
- * (the hero numerals read the newest sample instead, ph-6vh). `sampleAt()`
+ * extrapolate PAST the newest one along its last secant rather than
+ * snapping/holding (the hero numerals read the newest sample instead, ph-6vh).
+ * Between samples the curve is the monotone cubic of src/model/interp.js: it
+ * passes through every sample and never overshoots one. `sampleAt()`
  * never fabricates a value out of nothing: with zero samples it reports
  * `fresh:false` and a null value, which callers must treat as "withhold",
  * not "draw at zero" (Ground Truth Doctrine).
@@ -38,46 +38,25 @@
  * would fire the whole reactivity graph for no reason. Callers push the
  * handful of *derived* display numbers they actually render into `$state`.
  *
- * ── The render-delay bug (jitter regression #3) ─────────────────────────────
+ * ── The render delay (jitter regressions #3 and #4, measured) ────────────────
  *
- * The pre-refactor `core/telebuf.js` never sampled at raw "now". It sampled at
- * `nowSynced - renderDelay`, where renderDelay was an adaptively-slewed buffer
- * (20-120ms, `p95_jitter*1.5 + frame_dt`) whose whole job was to keep the
- * render instant reliably BEHIND the newest real sample, so `sampleAt()`
- * almost always finds two real bracketing samples to interpolate between.
- * That delay was dropped in the port (its header now says so explicitly) —
- * the reasoning given was "there is nothing left to synchronize" (true: the
- * old delay's OTHER job, device/client clock-offset sync, really is gone now
- * that machine.svelte.js stamps every sample in one epoch-ms domain). But the
- * delay had a second, independent job the port's reasoning missed: it was
- * also a JITTER BUFFER against irregular sample arrival, which is still very
- * much a live problem — Valence STATE pushes arrive at ~20-30 Hz with real
- * gaps (measured on-device: mean ~20-45ms, p95 45-55ms, occasional gaps past
- * 100ms). Sampling at raw "now" with no buffer means any push arriving a
- * little late leaves "now" sitting PAST the newest sample, past the
- * extrapolate window, so the display FREEZES (the `pastMs > EXTRAPOLATE_MS`
- * hold branch) until the next push arrives and it SNAPS forward to catch up —
- * a visible stutter, worse the larger the gap. `createRenderClock` below is a
- * single-clock re-derivation of the old technique: no device/client offset
- * (nothing to sync), but the same "buffer by a bit more than the typical gap
- * between samples" idea, driven by the MEASURED gap between real pushes
- * instead of a removed network-clock jitter estimate.
+ * Sampling at raw "now" outruns the newest sample whenever a push lands late,
+ * and the display freezes then snaps (regression #3). So callers sample at
+ * `now - delay` from `createRenderClock`, a jitter buffer and the whole of the
+ * comet's display lag, so it is sized to what it buffers and no more: push()
+ * returns how far its arrival ran past the newest STORED sample (`lateness`),
+ * and the delay is the p95 of that over the last 32 arrivals plus a small
+ * margin. That is exactly the run the render instant would otherwise make past
+ * the newest sample, measured on the reconstructed timeline below, so a
+ * schedule that leads arrival buys back its lead. Do not size it from the
+ * arrival GAP: that counts the schedule's lead twice, and on a clumped feed
+ * (three samples per 90 ms) pegs the delay at its 120 ms ceiling.
  *
- * ── jitter regression #4: 50/2 outrun by hub-pacing bursts ──────────────────
- *
- * EXTRAPOLATE_MS=50 / SLEW_MS_PER_FRAME=2 (the values regression #3 above
- * landed with) held for steady ~20-45ms gaps but were sized to the p95, not
- * the tail: the hub's 5ms tick pacing occasionally strings together several
- * >100ms real gaps in a row (a burst, not one straggler). A single >100ms gap
- * already outruns a 50ms extrapolate window (hold-then-snap for that frame);
- * a BURST of them also outruns delayMs's ability to slew up fast enough — at
- * 2ms/frame, closing even a 60ms shortfall takes 30 frames (~0.5s at 60fps),
- * so the display sits in hold/snap for the whole burst instead of buffering
- * through it. EXTRAPOLATE_MS=80 covers a single straggler outright;
- * SLEW_MS_PER_FRAME=4 acquires a safe delay within ~1s of a burst starting
- * instead of chasing it for the burst's whole duration. Do not lower either
- * without re-measuring the on-device gap distribution — these are sized to
- * the worst observed tail, not the mean.
+ * Past the newest sample, sampleAt() extrapolates along the last secant for at
+ * most EXTRAPOLATE_MS (80 ms covers one >100 ms hub-pacing straggler, regression
+ * #4), never past `limit` (the caller's planned end), then holds. SLEW 4 ms per
+ * frame acquires a burst's delay within about a second. Do not lower either
+ * without re-measuring the on-device gap distribution.
  *
  * ── jitter regression #5: arrival-time stamping (TRAPS T18, measured) ─────
  *
@@ -106,6 +85,8 @@
  * regression #5.
  */
 
+import { pchipSlope, hermite } from '../../model/interp.js';
+
 // Client display latency on a steady stream is the render delay plus however
 // far the push() schedule leads arrival. The knobs for both are here.
 
@@ -123,40 +104,27 @@ const SCHEDULE_MAX_LEAD_MS = 60;
  */
 const SCHEDULE_PERIOD_TRIM = 0.98;
 
-/** createRenderClock's clamp on p95_gap * 1.5 + frame_dt. */
-const RENDER_DELAY_MIN_MS = 20;
+/** createRenderClock's clamp on the p95 lateness plus RENDER_DELAY_MARGIN_MS. */
+const RENDER_DELAY_MIN_MS = 5;
 const RENDER_DELAY_MAX_MS = 120;
+const RENDER_DELAY_MARGIN_MS = 3;
 
 /**
- * @param {{capacity?: number, holdMs?: number, extrapolateMs?: number}} [opts]
+ * @param {{capacity?: number, holdMs?: number, extrapolateMs?: number, reschedule?: boolean}} [opts]
  *   capacity: ring depth. holdMs: how long a value is considered "fresh" once
  *   no newer sample has arrived. extrapolateMs: how far past the newest real
- *   sample to project along its last velocity before holding flat.
+ *   sample to project along its last secant before holding flat.
  */
 export function createTelebuf(opts = {}) {
   const CAP = opts.capacity || 256;
   const HOLD_MS = opts.holdMs != null ? opts.holdMs : 1200;
-  // 80ms: covers a single >100ms hub-pacing straggler outright (see this
-  // file's header, "jitter regression #4") without falling into the
-  // hold-then-snap branch below.
   const EXTRAPOLATE_MS = opts.extrapolateMs != null ? opts.extrapolateMs : 80;
 
   const bufT = new Float64Array(CAP);
   const bufV = new Float64Array(CAP);
-  // Per-sample INCOMING velocity (value units/ms, from the previous real
-  // sample to this one across the RECONSTRUCTED schedule — the same bufT
-  // timeline sampleAt() interpolates on), stored at push time so it can Hermite-
-  // interpolate rather than linearly interpolate. NaN means "no prior
-  // sample" (the first push ever, or the first after reset()) — sampleAt()
-  // must fall back to linear for any span touching such an entry. Reusing
-  // the SAME stored value as both a span's outgoing tangent (v1) and the
-  // next span's incoming tangent (v0) is what makes the curve velocity-
-  // continuous across sample boundaries: it is one number read twice, not
-  // two independent estimates that happen to agree.
-  const bufVel = new Float64Array(CAP);
   let head = 0;
   let len = 0;
-  let lastVelPerMs = 0;      // value units per ms, from the last two real samples
+  let lastVelPerMs = 0;      // value units per ms: the newest secant, on the stored timeline
   let lastPushTs = 0;
 
   // Timestamp reconstruction (jitter regression #5, header): arrival time is
@@ -168,15 +136,26 @@ export function createTelebuf(opts = {}) {
   let periodMs = 40;         // EMA of arrival gaps — zero-gap bursts average out
   let lastArrivalTs = 0;
 
-  /** Push one ground-truth sample. `tsMs` is the ARRIVAL hint (see header). */
-  function push(value, tsMs) {
-    if (value == null || !isFinite(value) || !isFinite(tsMs)) return;
+  /**
+   * Push one ground-truth sample. `tsMs` is the ARRIVAL hint (see header), or
+   * with `arrivalMs` the instant the sample was TAKEN (a hub-dated sample,
+   * machine.sampleRxTs), stored as is: no reschedule, since its spacing is the
+   * truth. Returns the lateness: how far this arrival ran past the newest
+   * stored sample (negative while the schedule leads), NaN for the first
+   * sample, a stall or a dwell. Feed it to createRenderClock's noteLate().
+   */
+  function push(value, tsMs, arrivalMs) {
+    if (value == null || !isFinite(value) || !isFinite(tsMs)) return NaN;
 
     const newestIdx = len ? (head + len - 1) % CAP : -1;
+    const trusted = !RESCHEDULE || arrivalMs != null;
     let ts;
-    if (!RESCHEDULE) {
-      if (newestIdx >= 0 && tsMs <= bufT[newestIdx]) return; // trusted stamps: not newer, drop
+    let late = NaN;
+    if (trusted) {
+      if (newestIdx >= 0 && tsMs <= bufT[newestIdx]) return NaN; // trusted stamps: not newer, drop
       ts = tsMs;
+      if (newestIdx >= 0) late = (arrivalMs ?? tsMs) - bufT[newestIdx];
+      lastArrivalTs = arrivalMs ?? tsMs;
     } else {
       const gapSinceLast = lastArrivalTs > 0 ? tsMs - lastArrivalTs : -1;
       // Only plausible STREAMING gaps teach the period. Idle/dwell gaps (the
@@ -185,9 +164,8 @@ export function createTelebuf(opts = {}) {
       // ballooned the period and made the first spans after motion resumed
       // garbage: the operator-reported "random position for one tick on
       // first movement / direction change."
-      if (gapSinceLast >= 0 && gapSinceLast < Math.min(4 * periodMs, 200)) {
-        periodMs += 0.05 * (gapSinceLast - periodMs);
-      }
+      const streaming = gapSinceLast >= 0 && gapSinceLast < Math.min(4 * periodMs, 200);
+      if (streaming) periodMs += 0.05 * (gapSinceLast - periodMs);
       lastArrivalTs = tsMs;
 
       if (newestIdx < 0) {
@@ -197,6 +175,7 @@ export function createTelebuf(opts = {}) {
         // arrival instead of extending the old cadence across the hole.
         ts = Math.max(tsMs, bufT[newestIdx] + 1);
       } else {
+        if (streaming) late = tsMs - bufT[newestIdx];
         ts = Math.max(tsMs, bufT[newestIdx] + Math.max(1, periodMs * SCHEDULE_PERIOD_TRIM));
         // Cap schedule-ahead-of-arrival drift, but NEVER drop a sample for
         // it — monotonic +1ms is always available (dropping data was the
@@ -210,96 +189,67 @@ export function createTelebuf(opts = {}) {
     bufT[idx] = ts;
     bufV[idx] = value;
     len++;
-
-    if (newestIdx >= 0) {
-      // Against the RECONSTRUCTED schedule (both ends bufT), never the arrival
-      // stamps: sampleAt() divides this tangent by a bufT span, and a clump
-      // shares one arrival, so an arrival-delta tangent is both in the wrong
-      // time base and undefined inside a clump (webui.md T18).
-      const dt = ts - bufT[newestIdx];
-      bufVel[idx] = dt > 0 ? (value - bufV[newestIdx]) / dt : NaN;
-      if (dt > 0) lastVelPerMs = bufVel[idx];
-    } else {
-      bufVel[idx] = NaN; // no prior sample to derive a tangent from
-    }
-    lastPushTs = tsMs;
+    // Against the RECONSTRUCTED schedule, never the arrival stamps: a clump
+    // shares one arrival, so an arrival-delta slope is undefined inside it (T18).
+    if (newestIdx >= 0) lastVelPerMs = (value - bufV[newestIdx]) / (ts - bufT[newestIdx]);
+    lastPushTs = arrivalMs ?? tsMs;
+    return late;
   }
 
-  /**
-   * Interpolate/extrapolate the display value at client time `tMs`.
-   * @returns {{value: number|null, velPerMs: number, fresh: boolean, extrapolating: boolean}}
-   */
-  function sampleAt(tMs) {
-    if (len === 0) return { value: null, velPerMs: 0, fresh: false, extrapolating: false, holding: false };
+  const at = (k) => (head + k) % CAP; // the k-th stored sample, oldest first
 
-    const fresh = (tMs - lastPushTs) < HOLD_MS;
-    const newestIdx = (head + len - 1) % CAP;
+  /**
+   * Interpolate/extrapolate the display value at client time `tMs`, into `out`
+   * when given (no allocation). `limit`: a value extrapolation never passes,
+   * and holds at the newest sample when the secant runs away from it (the
+   * plan's end). `span`: the length of the bracketing sample span, 0 outside.
+   * @returns {{value: number|null, velPerMs: number, fresh: boolean, extrapolating: boolean, holding: boolean, span: number}}
+   */
+  function sampleAt(tMs, out = {}, limit = null) {
+    out.velPerMs = 0; out.extrapolating = false; out.holding = false; out.span = 0;
+    if (len === 0) { out.value = null; out.fresh = false; return out; }
+
+    out.fresh = (tMs - lastPushTs) < HOLD_MS;
+    const newestIdx = at(len - 1);
     const newestT = bufT[newestIdx];
 
-    if (len === 1 || tMs <= bufT[head]) {
-      return { value: bufV[head], velPerMs: 0, fresh, extrapolating: false, holding: false };
-    }
+    if (len === 1 || tMs <= bufT[head]) { out.value = bufV[head]; return out; }
 
     if (tMs >= newestT) {
-      const pastMs = tMs - newestT;
+      const pastMs = tMs - newestT, vN = bufV[newestIdx];
       if (pastMs <= EXTRAPOLATE_MS) {
-        return { value: bufV[newestIdx] + lastVelPerMs * pastMs, velPerMs: lastVelPerMs, fresh, extrapolating: true, holding: false };
+        let v = vN + lastVelPerMs * pastMs;
+        if (limit != null && isFinite(limit)) {
+          if ((limit - vN) * lastVelPerMs <= 0) v = vN;
+          else if ((v - limit) * lastVelPerMs > 0) v = limit;
+        }
+        out.value = v; out.velPerMs = lastVelPerMs; out.extrapolating = true;
+        return out;
       }
       // `holding` IS the stutter: the render instant has outrun the newest
       // sample past the extrapolate window, so this frame repeats the last
       // value and the next arrival snaps forward. Counted, never smoothed
       // over: a rising hold rate is the measurement, not a symptom to hide.
-      return { value: bufV[newestIdx], velPerMs: 0, fresh, extrapolating: false, holding: true };
+      out.value = vN; out.holding = true;
+      return out;
     }
 
-    // Linear scan for the bracketing pair. The ring is small (a couple hundred
-    // entries at most) and this runs once per rendered frame, not per sample.
-    let lo = head;
-    let hi = (head + 1) % CAP;
-    for (let i = 1; i < len; i++) {
-      if (bufT[hi] > tMs) break;
-      lo = hi;
-      hi = (hi + 1) % CAP;
-    }
+    // The render instant sits a sample or two behind the newest: search back.
+    let k = len - 1;
+    while (k > 1 && bufT[at(k - 1)] > tMs) k--;
+    const lo = at(k - 1), hi = at(k);
     const span = bufT[hi] - bufT[lo];
-    const frac = span > 0 ? Math.min(1, Math.max(0, (tMs - bufT[lo]) / span)) : 1;
-    const p0 = bufV[lo];
-    const p1 = bufV[hi];
-    const v0 = bufVel[lo];
-    const v1 = bufVel[hi];
-
-    let value;
-    if (span > 0 && isFinite(v0) && isFinite(v1)) {
-      // Cubic Hermite, not linear: linear interp puts a slope kink at every
-      // ~40ms sample boundary — measured as the rail marker's visible
-      // jitter. Tangents are scaled by `span` (m = v*span) so the curve's
-      // real-time derivative at each endpoint equals the stored per-ms
-      // velocity exactly, independent of how long this particular span is —
-      // that scaling is what keeps the derivative continuous across the
-      // shared boundary with the NEXT span (see bufVel's comment above).
-      const t = frac;
-      const t2 = t * t;
-      const t3 = t2 * t;
-      const h00 = 2 * t3 - 3 * t2 + 1;
-      const h10 = t3 - 2 * t2 + t;
-      const h01 = -2 * t3 + 3 * t2;
-      const h11 = t3 - t2;
-      const m0 = v0 * span;
-      const m1 = v1 * span;
-      const raw = h00 * p0 + h10 * m0 + h01 * p1 + h11 * m1;
-      // Hermite can legitimately overshoot p0/p1 a little on curved motion,
-      // but a bad velocity estimate must never fling the marker off-screen:
-      // clamp to the span's range plus a fixed fraction of headroom.
-      const overshoot = 0.15 * Math.abs(p1 - p0);
-      const clampLo = Math.min(p0, p1) - overshoot;
-      const clampHi = Math.max(p0, p1) + overshoot;
-      value = Math.min(clampHi, Math.max(clampLo, raw));
-    } else {
-      // No stored tangent on one side (first sample in the buffer's life,
-      // or a degenerate zero-length span): fall back to linear.
-      value = p0 + (p1 - p0) * frac;
-    }
-    return { value, velPerMs: lastVelPerMs, fresh, extrapolating: false, holding: false };
+    const p0 = bufV[lo], p1 = bufV[hi], d = (p1 - p0) / span;
+    let m0 = d, m1 = d;
+    if (k >= 2) { const pv = at(k - 2), h0 = bufT[lo] - bufT[pv]; m0 = pchipSlope(h0, (p0 - bufV[pv]) / h0, span, d); }
+    if (k <= len - 2) { const nx = at(k + 1), h1 = bufT[nx] - bufT[hi]; m1 = pchipSlope(span, d, h1, (bufV[nx] - p1) / h1); }
+    // Monotone in exact arithmetic; the clamp stops rounding from moving a
+    // flat span by an ulp per frame, which would keep the on-demand loop awake.
+    const h = hermite(p0, p1, m0 * span, m1 * span, (tMs - bufT[lo]) / span);
+    out.value = Math.min(Math.max(h, Math.min(p0, p1)), Math.max(p0, p1));
+    out.velPerMs = lastVelPerMs;
+    out.span = span;
+    return out;
   }
 
   /** Reset to empty — call when the bound field's channel/uid changes identity. */
@@ -317,6 +267,24 @@ export function createTelebuf(opts = {}) {
   }
 
   return { push, sampleAt, reset, forEach, get length() { return len; } };
+}
+
+const tailRes = {};
+/**
+ * The recent path for the comet's tail: out[k] is the value at
+ * tEnd - k * spanMs / (out.length - 1), newest first, off the same curve as
+ * sampleAt() (so the tail ends exactly at the head). Stops at the first point
+ * with no value or inside a sample span longer than `gapMs` (a dropout is a
+ * gap, never a guessed curve). Returns how many points it wrote. No allocation.
+ */
+export function sampleTail(tele, tEnd, spanMs, out, limit = null, gapMs = 250) {
+  const n = out.length - 1;
+  for (let k = 0; k <= n; k++) {
+    const r = tele.sampleAt(tEnd - (k * spanMs) / n, tailRes, limit);
+    if (r.value == null || r.span > gapMs) return k;
+    out[k] = r.value;
+  }
+  return n + 1;
 }
 
 /**
@@ -357,109 +325,51 @@ export function chartPath(points, gaps, nowMs, joinMs) {
 }
 
 /**
- * A fixed-size ring of RENDERED (already-interpolated) points, for painting a
- * fading trail. Distinct from `createTelebuf`: this records what the display
- * actually drew each frame (deduped so idle jitter doesn't spam the ring), not
- * raw ground-truth samples — exactly what the original comet trail did.
- */
-export function createTrail(opts = {}) {
-  const CAP = opts.capacity || 320;
-  const bufX = new Float64Array(CAP);
-  const bufT = new Float64Array(CAP);
-  let head = 0;
-  let len = 0;
-
-  function record(x, tMs, opts2 = {}) {
-    const minDx = opts2.minDx != null ? opts2.minDx : 0.35;
-    const minDtMs = opts2.minDtMs != null ? opts2.minDtMs : 8;
-    if (len === 0) {
-      bufX[0] = x; bufT[0] = tMs; head = 0; len = 1;
-      return;
-    }
-    if ((tMs - bufT[head]) >= minDtMs || Math.abs(x - bufX[head]) >= minDx) {
-      head = (head + 1) % CAP;
-      bufX[head] = x; bufT[head] = tMs;
-      if (len < CAP) len++;
-    } else {
-      bufX[head] = x; bufT[head] = tMs;
-    }
-  }
-
-  /** Iterate newest-to-oldest points younger than `maxAgeMs`. */
-  function forEachRecent(nowMs, maxAgeMs, fn) {
-    let idx = head;
-    for (let i = 0; i < len; i++) {
-      const age = nowMs - bufT[idx];
-      if (age > maxAgeMs) break;
-      fn(bufX[idx], bufT[idx], age);
-      idx = (idx - 1 + CAP) % CAP;
-    }
-  }
-
-  function reset() { head = 0; len = 0; }
-
-  return { record, forEachRecent, reset, get length() { return len; } };
-}
-
-/**
  * A single render-delay clock, SHARED across every telebuf that must agree
  * about "now" (position/velocity/target — see RailWidget.svelte, which reads
- * all three at the one instant this produces so the phosphor dot and the tape
- * cursor never disagree). See this file's header for why the delay exists.
+ * all three at the one instant this produces so the comet and the tape cursor
+ * never disagree). See this file's header for what the delay buffers.
  *
- * Usage: call `noteArrival(tsMs)` every time ANY real sample lands (the
- * timestamp the sample itself carries, e.g. `machine.sampleTs[channelId]`),
- * call `update(frameDtMs)` once per rendered frame, then read `renderTime(t)`
- * (or `stableRenderTime(t)`, which additionally guarantees the return value
- * never rewinds by more than one frame — a delay that grows because arrivals
- * just got sparser must not make the display visibly jump backward).
+ * Usage: pass every primary sample's push() lateness to `noteLate(ms)`, call
+ * `update(frameDtMs)` once per rendered frame, then read `renderTime(t)` (or
+ * `stableRenderTime(t)`, which additionally never rewinds more than one frame —
+ * a delay that grows because arrivals just got later must not make the display
+ * visibly jump backward). No allocation per frame or per arrival.
  *
- * @param {{minDelayMs?: number, maxDelayMs?: number, slewMsPerFrame?: number, gapCapacity?: number}} [opts]
+ * @param {{minDelayMs?: number, maxDelayMs?: number, slewMsPerFrame?: number, lateCapacity?: number}} [opts]
  */
 export function createRenderClock(opts = {}) {
   const MIN_DELAY_MS = opts.minDelayMs != null ? opts.minDelayMs : RENDER_DELAY_MIN_MS;
   const MAX_DELAY_MS = opts.maxDelayMs != null ? opts.maxDelayMs : RENDER_DELAY_MAX_MS;
-  // 4ms/frame: acquires a safe delay within ~1s of a hub-pacing burst
-  // starting (see this file's header, "jitter regression #4") instead of
-  // chasing it for the burst's whole duration.
   const SLEW_MS_PER_FRAME = opts.slewMsPerFrame != null ? opts.slewMsPerFrame : 4;
-  const GAP_CAP = opts.gapCapacity || 32; // ~1s of history at ~30Hz — plenty for a p95
+  const CAP = opts.lateCapacity || 32; // ~1 s of arrivals at 30 Hz: plenty for a p95
 
-  const gaps = new Float64Array(GAP_CAP);
-  let gapHead = 0, gapLen = 0;
-  let lastArrivalTs = 0;
+  const late = new Float64Array(CAP);
+  const sorted = new Float64Array(CAP);
+  let lateHead = 0, lateLen = 0;
 
   let delayMs = (MIN_DELAY_MS + MAX_DELAY_MS) / 2; // sane mid-point before any data
+  let targetMs = delayMs;
   let frameDtMs = 16.667;
   let lastRenderT = 0;
 
-  /** Record one real sample's arrival timestamp (same epoch-ms domain as sampleAt). */
-  function noteArrival(tsMs) {
-    if (lastArrivalTs > 0) {
-      const gap = tsMs - lastArrivalTs;
-      if (gap > 0 && gap < 5000) { // ignore resets/backward jumps/huge stalls
-        gaps[gapHead] = gap;
-        gapHead = (gapHead + 1) % GAP_CAP;
-        if (gapLen < GAP_CAP) gapLen++;
-      }
-    }
-    lastArrivalTs = tsMs;
+  /** One arrival's lateness (push()'s return); NaN is ignored. Re-targets the delay at the p95. */
+  function noteLate(ms) {
+    if (!isFinite(ms)) return;
+    late[lateHead] = ms;
+    lateHead = (lateHead + 1) % CAP;
+    if (lateLen < CAP) lateLen++;
+    sorted.set(late);
+    if (lateLen < CAP) sorted.fill(Infinity, lateLen);
+    sorted.sort();
+    const p95 = sorted[Math.floor(0.95 * (lateLen - 1))];
+    targetMs = Math.max(MIN_DELAY_MS, Math.min(MAX_DELAY_MS, p95 + RENDER_DELAY_MARGIN_MS));
   }
 
-  function p95Gap() {
-    if (gapLen === 0) return MIN_DELAY_MS;
-    const sorted = Array.prototype.slice.call(gaps, 0, gapLen).sort((a, b) => a - b);
-    const idx = Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95));
-    return sorted[idx];
-  }
-
-  /** Recompute the target delay from the measured arrival cadence and slew toward it. Call once per rendered frame. */
+  /** Slew the delay toward its target. Call once per rendered frame. */
   function update(dtMs) {
     if (dtMs > 0 && dtMs < 200) frameDtMs = dtMs;
-    const target = Math.max(MIN_DELAY_MS, Math.min(MAX_DELAY_MS, p95Gap() * 1.5 + frameDtMs));
-    const delta = target - delayMs;
-    const clamped = Math.max(-SLEW_MS_PER_FRAME, Math.min(SLEW_MS_PER_FRAME, delta));
-    delayMs += clamped;
+    delayMs += Math.max(-SLEW_MS_PER_FRAME, Math.min(SLEW_MS_PER_FRAME, targetMs - delayMs));
   }
 
   function getDelayMs() { return delayMs; }
@@ -470,16 +380,15 @@ export function createRenderClock(opts = {}) {
   /** Same, but never rewinds more than one frame versus the last call — avoids a visible backward jump when the delay grows. */
   function stableRenderTime(tMs) {
     let t = renderTime(tMs);
-    const maxRewind = frameDtMs;
-    if (lastRenderT > 0 && t < lastRenderT - maxRewind) t = lastRenderT - maxRewind;
+    if (lastRenderT > 0 && t < lastRenderT - frameDtMs) t = lastRenderT - frameDtMs;
     lastRenderT = t;
     return t;
   }
 
   function reset() {
-    gapHead = 0; gapLen = 0; lastArrivalTs = 0; lastRenderT = 0;
-    delayMs = (MIN_DELAY_MS + MAX_DELAY_MS) / 2;
+    lateHead = 0; lateLen = 0; lastRenderT = 0;
+    delayMs = targetMs = (MIN_DELAY_MS + MAX_DELAY_MS) / 2;
   }
 
-  return { noteArrival, update, getDelayMs, renderTime, stableRenderTime, reset };
+  return { noteLate, update, getDelayMs, renderTime, stableRenderTime, reset };
 }

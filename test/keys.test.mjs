@@ -90,6 +90,11 @@ const PROBES = {
   'Sidebar|F2, Double-click': /e\.key === 'F2'[\s\S]*startRename/,
   'Sidebar|Alt+Up, Alt+Down': /e\.altKey[\s\S]*ArrowUp[\s\S]*moveLayout/,
   'Sidebar|Hold Enter, Space': /use:hold=\{\{ ms: 1000/,
+  'Log page|F3': /e\.key !== 'F3'[\s\S]*a === searchEl[\s\S]*searchEl\.focus\(\)/,
+  'Log page|Up, Down': /k !== 'ArrowDown' && k !== 'ArrowUp'[\s\S]*e\.key === 'ArrowDown'/,
+  'Log page|Home, End': /k === 'Home' \? 0 : k === 'End'/,
+  'Log page|Enter': /class="head" tabindex="-1" aria-expanded=\{x\}[^>]*onclick/,
+  'Log page|Escape': /e\.key === 'Escape' && q/,
   'Phosphor panes|F2, Double-click|Hubs': /opensName/,
   'Phosphor panes|F2, Double-click|Buttplug': /e\.key === 'F2'\) nameFocus/,
   'Rail|Shift+drag': /dragGain\(e, 1\)/,
@@ -490,7 +495,7 @@ console.log('\n[history] the Changes feed, Undo, Revert changes and Ctrl+Z');
   };
   const start = sliders.map((f) => valueOf(f) ?? f.dflt);
   await page.locator('[role=tab]', { hasText: 'Motion' }).first().click();
-  if (sliders.some((f) => f.advanced)) await page.locator('button[title="Show advanced"]').first().click();
+  if (sliders.some((f) => f.advanced)) await page.locator('button[data-tip="Show advanced"]').first().click();
   await page.waitForSelector(sel(sliders[0]), { timeout: 5000 });
   const set = [];
   for (const [i, f] of sliders.entries()) set.push(await setTo(f, [0.15, 0.6, 0.85][i]));

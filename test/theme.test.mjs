@@ -166,6 +166,42 @@ ok('...and applies once it registers', T.currentTheme().id === 'mytheme-neon' &&
 ok('legacy keys are never deleted', mem.get('sd32.theme') === 'mytheme-neon');
 ok('garbage storage falls back to the default', (mem.set('phosphor.theme', '{"chassis":{"hue":"x","tint":99}}'), T.loadTheme().chassis.hue === 263 && T.loadTheme().chassis.tint === 4));
 
+// ---- themes and variants: an old preference maps to a Theme plus a variant ----------
+console.log('themes and variants');
+mem.clear();
+mem.set('phosphor.theme', JSON.stringify({ id: 'slate', name: 'Slate', accents: { reality: '#5CC8FF', intent: '#9D8BFA' }, look: { scale: 1.3 } }));
+t = T.loadTheme();
+ok('an old stored preset id is the Phosphor Theme with that variant, its scale kept', t.style === 'phosphor' && t.variant === 'slate' && t.id === 'slate' && t.look.scale === 1.3);
+mem.clear();
+mem.set('phosphor.theme', JSON.stringify({ id: 'luna', name: 'Luna', skin: 'luna' }));
+t = T.loadTheme();
+ok('a preference from the skin build maps to the Theme of the same id', t.style === 'luna' && t.variant === 'luna');
+mem.clear();
+mem.set('phosphor.theme', JSON.stringify({ id: 'custom', name: 'Custom', skin: 'rack', accents: { reality: '#123456', intent: '#654321' } }));
+t = T.loadTheme();
+ok('a Custom theme that wore a skin keeps that Theme and has no variant', t.style === 'rack' && t.variant === null && t.accents.reality === '#123456');
+mem.clear();
+mem.set('phosphor.theme', JSON.stringify({ id: 'custom', name: 'Custom', accents: { reality: '#123456', intent: '#654321' } }));
+ok('a Custom theme with none is the default style', T.loadTheme().style === 'phosphor');
+mem.clear();
+mem.set('sd32.theme', 'paper');
+t = T.loadTheme();
+ok('the legacy key maps too', t.style === 'phosphor' && t.variant === 'paper');
+mem.clear();
+T.applyTheme('luna-olive');
+ok('a variant of another Theme applies with that Theme', T.currentTheme().style === 'luna' && T.currentTheme().variant === 'luna-olive');
+T.editTheme((x) => { x.chassis.brightness = 0.9; });
+ok('an edit keeps the Theme and drops the variant', T.currentTheme().style === 'luna' && T.currentTheme().id === 'custom' && T.currentTheme().variant === null);
+const out = T.exportTheme();
+T.applyTheme('phosphor');
+T.importTheme(out);
+ok('export then import keeps the Theme', T.currentTheme().style === 'luna' && JSON.parse(out).style === 'luna');
+ok('Phosphor is the first Theme, its twelve variants the old presets in order', T.STYLES[0].id === 'phosphor' && T.variantsOf('phosphor').slice(0, 12).map((x) => x.id).join() === 'phosphor,tracer,synth,ember,arctic,vapor,ultra,sakura,stealth,slate,ink,paper');
+ok('the Display pane shows variants only for a Theme with more than one', T.STYLES.filter((x) => T.variantsOf(x.id).length === 1).every((x) => T.shownPresets({ style: x.id }).length === 0) && T.shownPresets({ style: 'luna' }).length === 3 && T.shownPresets({ style: 'phosphor' }).length >= 12);
+mem.clear();
+T.applyTheme('ember');
+ok('applying a Theme sets the root attributes\' source: style and variant', T.currentTheme().style === 'phosphor' && T.currentTheme().variant === 'ember');
+
 // ---- presets, edits, export/import ---------------------------------------------------
 console.log('presets');
 mem.clear();

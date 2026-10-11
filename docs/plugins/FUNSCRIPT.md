@@ -31,7 +31,7 @@ sentences in PLUGINS.md; R-B is a CSP edit verified in the real shell (C-8).
 | scheduler | `clock.js`, `scheduler.js` | the media clock (rVFC display times, median, slew, step), one segment per funscript span, offset/range/invert, stop and preroll segments, the per-frame submit cadence, refusal classes |
 | host | kernel files | `api.submitSegments`, the lookahead door in `motion.js`, `api.gate` on a motion-input field, the producer lock, `api.net.fetch`, the CSP; generic, no funscript knowledge |
 | player-ui | `ui.js`, `timeline.js` | the controller and the card: video stage, overview heat and scrub, the automation detail view, the strip, status slot, layout tiers |
-| stash | `stash.js`, `library.js` | GraphQL client over an injected fetch, caching, URL keying, the library grid and the connect card, the fake Stash |
+| stash | `stash.js`, `library.js` | GraphQL client over an injected fetch, caching, URL keying, the library list and the connect card, the fake Stash |
 | plugin | `index.js`, `prefs.js`, `manifest.json` | registration, the settings card (Stash connect, Scale, playback), prefs defaults, the factory entry, docs, the fake-hub browser test and the live smoke |
 | scale | `scale.js` | the map every action takes before the wire, Manual or Auto; the settings card's Scale row (Interpolation) |
 | analyzer | `analyzer.js` | the expanded detail: lag readouts and the hub's Tuning controls, Live or Preview (Analyzer) |
@@ -532,7 +532,12 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   stream; the controller runs a silent clock over the script's duration
   (play, pause, seek, rate and end as a video's). The motion-only meter is
   horizontal at every class. The 120 px strip and the stroke meter's track
-  are `--screen`; the empty stage wears a dashed `--line-3` edge.
+  are `--screen`; the empty stage wears a dashed `--line-3` edge. The
+  full composition's three heads share one head row: the card's border and
+  `--sp-3` above, a `--fsp-src` row (30 px, `--tap` under a coarse pointer)
+  with the heading centered, so 01 PLAYER, 02 LIBRARY and 03 SETTINGS sit on
+  one baseline and opening Settings or the analyzer moves no head
+  (`ph-1qs5.12`).
 - **PR5 One player bar.** Desktop: directly under the stage, above the
   timeline head (as the mockup draws it; review 2026-10-08). Phones: at the
   bottom of the Player card, directly above the footer: loading a video or
@@ -588,7 +593,10 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   with the inline bar.
 - **PR10 Stop pair** top right in fullscreen at full hit size and half
   opacity at rest, the caret above (DESIGN §10.3; RENDERING §8.4 row 11).
-  Restated, unchanged. No floating collapse chevrons.
+  Restated, unchanged. No floating collapse chevrons. *(As built
+  2026-10-10, `ph-9t5l.7`: the video goes edge to edge and the caret is a
+  top left corner hotspot over it, shown on pointer movement and gone at
+  rest; an open analyzer stops painting its rows behind the video.)*
 - **As built, PR8 to PR10 and PR17 (`ph-1qs5.4`):** the hover bar's row is
   the player bar's own buttons, moved into it on entry and back on exit
   (one set of controls and listeners); it has no mute or volume (`m` mutes,
@@ -654,6 +662,70 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   closes on a pick, a tap outside or the end of fullscreen. The Stash
   connect card is the kit's rows (label, the field across the control and
   value cells).
+  *(Rows superseded 2026-10-10 by the library browser below: 2.5rem rows, columns, badges.)*
+- **Library browser (operator 2026-10-10, `ph-0hvq`):** "the funscript
+  player library being kinda useless? ... most sizes only 1 vid shows". As
+  built: a row is 2.5rem high (44.8 px at the default Look; under a coarse
+  pointer never under 44 px at any Look): a small 16:9 shot, the title with the
+  scene's state (Playing or Loaded on the loaded scene, Queued), then
+  `duration · speed` with what it carries (V8 V9 once its script parsed
+  with those axes, Script). A badge is drawn whole or not at all. Rows sit
+  side by side in columns 14rem or wider where the box allows (the kit
+  list's `row.min`); the 16:9 tile grid only where tiles fit three across
+  and a page holds six (`formFor`; no box does today). The column's head
+  row holds 02 LIBRARY and the Library | Queue switch. The list's head row,
+  pager and Add to queue are 30 px under a fine pointer and the row's height
+  under a coarse one. The kit list resolves `--ui-row-h` as drawn, so a
+  `max()` or `var()` holds. The head adds Scripted only (on by default, pref
+  `lib.scripted`): off, every Stash scene lists and an unscripted one loads
+  video only. Sort adds Duration and Plays. On the phone landscape class
+  the fullscreen drawer is `min(560px, 70vw)` wide, two columns of rows. A
+  narrow phone head shortens its heading before a control leaves the card
+  (`ph-5u0g.15`). The 1024 x 768 desktop still opens with the column shut
+  for the session (PR5 as built); the caret opens it. Scenes in view
+  against the fake Stash (72 scenes, 65 scripted):
+
+  | Size | View | Before | After |
+  |---|---|---|---|
+  | 1428 x 900 | column | 1 | 8 |
+  | 1428 x 900 | fullscreen drawer | 6 | 13 |
+  | 1024 x 768 | column, caret open | 1 | 6 |
+  | 1024 x 768 | fullscreen drawer | 4 | 10 |
+  | 844 x 390 | page, no video | 1 | 6 |
+  | 844 x 390 | fullscreen drawer | 0 | 6 |
+  | 412 x 915 | Library tab | 7 | 10 |
+  | 412 x 915 | fullscreen drawer | 8 | 13 |
+  | 390 x 844 | Library tab | 5 | 7 |
+  | 390 x 844 | fullscreen drawer | 7 | 12 |
+  | 360 x 780 | Library tab | 0 (4 drawn, the page shifted sideways) | 6 |
+  | 360 x 780 | fullscreen drawer | 7 | 10 |
+- **Script heat (operator 2026-10-10, `ph-0hvq`):** "script heatmap when hovering
+  over thumbnail". A 6 px strip on the bottom edge of a scene's shot, in the
+  timeline overview's heat and its token colors (an overlay: nothing moves),
+  shown while the row or tile is hovered, keyboard-focused or the loaded scene
+  (a touch has no hover and its tap plays, so the loaded row is its way to
+  it; a long press stays the context menu). Phosphor's own heat only: the
+  operator ruled Stash's `interactive_heatmap` PNG out the same day (too
+  colorful, and its red ramp breaks law 13); it is never requested. It is
+  hidden from assistive tech: it repeats nothing the row lacks (the speed
+  reads in the meta) and a generated sentence would invent a summary of
+  96 numbers. The strip is cached, not recomputed: a page load fetches the
+  funscripts of the visible page and the next (scripted scenes only, three
+  at a time, held while a video plays) and keeps 96 bucket speeds per scene
+  in IndexedDB (`fsp-heat`), never the script and never a color, so a
+  theme switch repaints with no request. Entry key: scene id plus Stash's
+  change marker, `updated_at` and `interactive_speed` (A10); a matching marker
+  is a hit with no request. A hover revalidates that one entry once per
+  session after 250 ms: a conditional GET on the funscript URL
+  (`If-Modified-Since` from the stored `Last-Modified`, `If-None-Match` from a
+  stored ETag; Stash sends only Last-Modified, A10), a 304 keeps the entry,
+  a 200 replaces it; a URL that sends neither is downloaded and its CRC32
+  compared with the stored one. Leaving before 250 ms asks nothing; leaving
+  mid-request cancels it. 2000 entries (least recently seen out), none kept
+  unseen for 30 days (swept at each library load, no timer); another Stash
+  server empties the store. A failed request shows no new strip and keeps the
+  old one. Veto: the heat on the whole row hover (the shot alone is 71 px
+  wide in a row), the 6 px height, 96 buckets, 3 at a time.
 - **PR14 Status.** Phones: the page footer's status slot (DESIGN §10.3, the
   page registers `status`). Desktop: the Player card's last row, unframed.
   Both carry the 3 px tone bar; the text is `--tx`, never `--warn`.
@@ -863,9 +935,16 @@ FULL
   `theme.test.mjs` (3.5:1 on the Ember and Phosphor cards); 4.5:1 would
   be a shell token change, not the player's. Heat past the limit is
   striped, not only recolored, because Ember's `--intent` and `--warn`
-  sit 13.6 Delta E apart. The reality trace is drawn at `mediaAt(t - offset)`, so a
-  machine in sync draws on the curve: offset can be set by eye. It is a
-  scope, not a measurement (ponytail; arrival-stamped).
+  sit 13.6 Delta E apart. The reality trace holds one point per telemetry
+  sample, drawn at `mediaAt(arrival - offset)`, so a machine in sync draws on
+  the curve: offset can be set by eye. It is a scope, not a measurement
+  (arrival-stamped). The curve between samples is a monotone cubic (PCHIP):
+  it passes through every sample and never leaves the range of two
+  neighbors, so it adds no peak; the detail's tooltip says it is
+  interpolated. Time only runs forward in it: the media clock re-anchors
+  backward at play, after a frame step or buffering, and before its ring
+  fills, and a sample that lands at or before the last drawn one is
+  dropped; samples over 250 ms apart are a gap (ph-6eh7).
 - **Heat** (ph-rsb5): the speed heatmap funscript users know. Each span
   between two of the file's actions is painted at its stroke speed,
   `|dpos| / dt` in units/s (pos 0..100), as one hard-edged run of a
@@ -991,6 +1070,26 @@ the queue, a tab to manage the queue". Design (Fable, veto-able), as built:
   only. A File cannot be stored, so after a launch a file's row reads
   Reopen, and Open video given a file of that name resolves it.
 
+### Context menus (operator 2026-10-10, `ph-hi4i`)
+
+Operator: "No right click in the funscript plugin." The player's own items
+ride `api.ui.menu` (docs/PLUGINS.md, Context menus), above the page's
+(Manage plugins):
+
+- **Stage** (Player): Play or Pause (off with the status words, or
+  `nothing to play`), Fullscreen or Exit fullscreen on the page mount (off
+  for motion only), Open video, Open script.
+- **Timeline** (the overview and the detail with its lanes): Seek here,
+  Set A here, Set B here (off until A is set), Clear loop (off without
+  one). Here is the time under the pointer; from the menu key or
+  Shift+F10 it is the playhead. A B before A swaps them; a loop the
+  controller cannot hold clears, as the A-B button does.
+- **Scene row** (the library): Play, Play next (the queue's head; a scene
+  already queued moves there), Add to queue, Open in Stash (the scene's
+  page, `<base>/scenes/<id>`, through `api.net.open`; a failure logs
+  `Open in Stash: no browser here`).
+- **Queue row**: Remove, Move to top (off on the first).
+
 ## Stash
 
 Configuration: a connect card (Stash URL, API key as a password field,
@@ -1000,9 +1099,10 @@ in the library's place while no base is set; stored in `api.prefs`
 shell; vite dev uses `window.fetch`, so Stash must allow the dev origin).
 Media loads by URL under the R-B CSP.
 
-Browse: `findScenes(filter {q, page, per_page = tiles that fit, sort,
-direction}, scene_filter {interactive: true})`, search debounced 300 ms,
-sorts Date, Added, Title, Rating, Speed, pages instead of scrolling.
+Browse: `findScenes(filter {q, page, per_page = the rows that fit, sort,
+direction}, scene_filter {interactive: true}, or {} with Scripted only
+off)`, search debounced 300 ms (Enter at once), sorts Date, Added, Title,
+Duration, Plays, Rating, Speed, pages instead of scrolling.
 Pages and scripts are cached for the session. Load: hold, fetch and parse
 the funscript, set `video.src` to the direct stream and the poster to the
 screenshot. A scene without a script loads video only, Play stays grayed.
@@ -1042,13 +1142,30 @@ GET), 188 interactive scenes: `node test/funscript-stash.test.mjs --live
   (`screenshot preview stream webp vtt sprite funscript
   interactive_heatmap caption`).
 - **A8** verified. All five keys sort both ways; an unknown key is refused
-  (`invalid sort`), so a pass is meaningful.
+  (`invalid sort`), so a pass is meaningful. Duration (`duration`) and
+  Plays (`play_count`), added 2026-10-10, are in v0.31.1's
+  `sceneSortOptions` (`pkg/sqlite/scene.go`, read 2026-10-10) but not yet
+  checked live; the `--live` loop sorts by every key. Every sort ends on
+  `COALESCE(scenes.title, scenes.id)` and groups by scene id, so pages
+  never repeat or skip a scene where the sort key ties.
 - **A9** verified. `{ version { version } }` answers `v0.31.1`.
+- **A10** read from the v0.31.1 source, not yet checked live (`--live`
+  does not ask it). `Scene.updated_at` is `Time!` (`graphql/schema/types/
+  scene.graphql`) and `interactive_speed` moves on a rescan: together the
+  heat cache's change marker. `/scene/:id/funscript` is `http.ServeFile`
+  with `Cache-Control: no-cache` (`pkg/utils/http.go`
+  `ServeStaticFile`): it answers `Last-Modified` (the file's mtime) and a 304
+  to `If-Modified-Since`, and no ETag. The client sends `If-None-Match` when
+  it holds an ETag, so a server that sends one is honored, and a server that
+  sends none is compared by CRC32. A browser fetch (vite dev) needs the
+  server to allow those request headers and expose the response ones; the
+  shell's `api.net.fetch` does not.
 
 Out of v1: transcodes, HLS and `sceneStreams` (a transcode restarts
 `currentTime` at the seek point, which the clock would need to model),
 markers, write-back (play count), Stash's heatmap PNG (its red ramp breaks
-law 13; the card draws its own token heat).
+law 13; the card draws its own token heat, and so does the library's script
+heat).
 
 ## Playback (ph-smvd.12)
 
@@ -1232,7 +1349,8 @@ Decisions (veto-able):
   already shows).
 - **A6** A trace point's plan share treats `plan.current` as a window share
   (the plan roles are window-relative, PlanStrip and ph-t2jn), scaled by
-  the field's own min and max when it declares them.
+  the field's own min and max when it declares them, and never clamped: a
+  plan outside the window reads below 0 or past 1 (`planShareOf`).
 
 Tests: `--unit` (c2) checks the groups on the recording itself (valencesim
 0.1.7-p4hub, etag d8c8e522322810a2: `Tuning / ` groups, `trial_mask` and
@@ -1351,7 +1469,13 @@ Decisions (veto-able):
 
 - **Node, in `npm run check`:** `test/funscript-core.test.mjs`,
   `test/funscript-scheduler.test.mjs`, `test/funscript-stash.test.mjs`,
-  `test/kinetic-trace.test.mjs` (Kinetic), and the host sections (e2), (e3)
+  `test/funscript-heat.test.mjs` (the script heat cache against the fake
+  Stash: a page load fills scripted scenes only, a reload on the same
+  markers makes no request, one changed marker asks one scene, playback
+  holds the prefetch, three at a time, a hover's 304, changed ETag or
+  Last-Modified and CRC32 paths, once per session, leaving cancels, the
+  30-day and 2000-entry limits, another server empties it, no heatmap PNG
+  request ever), `test/kinetic-trace.test.mjs` (Kinetic), and the host sections (e2), (e3)
   (the role door), (i), (j) of `test/plugins.test.mjs`. Items:
   CONTRACT.md, per module.
 - **Browser, `npm run check:funscript` in `test:browser`:**
@@ -1365,7 +1489,19 @@ Decisions (veto-able):
   at the grant rate, each stamp the instant its script time shows and sent
   at least the latency ahead, no INTENT written, nothing after a pause, two
   lanes, and without the role one status line and no stream (`--osc` runs
-  (o) alone); nothing sent before Play; preroll then video start;
+  (o) alone); (L) the library against a fake Stash of 72 scenes at 1428 x
+  900, 1024 x 768, 844 x 390, 412 x 915, 390 x 844 and 360 x 780: at least
+  six scenes in view in the library view and the fullscreen drawer, no
+  scroller, no row spilling, nothing sideways, no box moving while the
+  first page loads, 44 px targets under a coarse pointer, the drawer's
+  columns following a Look change; on the desktop
+  column and the phone's tab Next in place, Search, Sort Duration both
+  ways and Plays, Scripted only, and the Queued, Loaded, Playing, V8 V9 and
+  Script badges; (L2) the script heat on the tiles: painted for the page and
+  the next only, an overlay that moves nothing, `aria-hidden`, shown on
+  hover, repainted by a token change with no request, in IndexedDB
+  (`--library` runs (L) and (L2) alone; `--shots <dir>` adds dark and
+  Paper at every size); nothing sent before Play; preroll then video start;
   every start within half the horizon of its send; starts tile; seek
   re-stamps from now; Pause sends exactly one hold then silence; offset
   +50 moves stamps by 50 ms; rate 1.5 divides durations; a pushed PAUSE
@@ -1553,6 +1689,21 @@ Decisions (veto-able):
   while a wrap is pending, not on a backward jump from the last frame: a
   loop set at the playhead wraps before any frame, and the jump rule never
   fired (found by browser section (h)).
+- **L1** (`ph-0hvq`) Rows, side by side in columns, wherever the 16:9 grid
+  would page fewer than six or fit fewer than three across; a 2.5rem row
+  pages about twice the scenes of a tile per area, so no box shows the grid
+  today. Veto: the grid wherever three fit across, whatever it pages.
+- **L2** V8 V9 shows only for a scene whose script this session parsed:
+  Stash serves no companion files (A7), and knowing before a pick costs a
+  GET and a parse per row. Veto: prefetch the scripts of the page in view.
+- **L3** The badges are spans the library writes into the kit tile's title
+  and meta slots, not a kit option; a second plugin wanting pills makes it
+  one. Veto: a kit `badges` option now.
+- **L4** Sorts add Duration and Plays only: Last played reads too close to
+  Plays in a 30 px select. Veto: Last played (`last_played_at`) as well.
+- **L5** On the phone landscape class the fullscreen drawer is
+  `min(560px, 70vw)` for two columns of rows (three rows fit its height):
+  open, it covers more of the video. Veto: 400 px and three scenes.
 
 ## Protocol gaps and risks
 

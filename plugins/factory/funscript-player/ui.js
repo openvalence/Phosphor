@@ -75,12 +75,13 @@
 // - Auto Scale (prefs interp scaleAuto): a new script starts at [0, 1]; the analyzer's planner measure
 //   of the wire at scale 1 (ctl.fit, analyzer.js fit) sets the map when it lands.
 // - A card outside glance frames its analyzer, shown or not: its twin render is the timeline's intent
-//   curve and Auto's measure. Glance draws no curve.
+//   curve and Auto's measure. Glance draws no curve. In media fullscreen it is not shown: behind the video its
+//   rows never repaint (ph-9t5l.7).
 
 import { parseFunscript, pairFiles, posAt, fmtTime, axisOf, peakSpeed, marksOf } from './funscript.js';
 import { createMediaClock, frameSource, createLoop, loopSpec } from './clock.js';
 import { createScheduler, applyT, strokeSpeed, TRANSIENT } from './scheduler.js';
-import { createStash } from './stash.js';
+import { createStash, normalizeBase } from './stash.js';
 import { mountLibrary } from './library.js';
 import { mountTimeline, CSS as TL_CSS } from './timeline.js';
 import { mountAnalyzer, CSS as AN_CSS, COPY as AN_COPY } from './analyzer.js';
@@ -162,6 +163,17 @@ export const COPY = Object.freeze({
   seek: 'Seek',
   full: 'Fullscreen (f)',
   fullExit: 'Exit fullscreen (f)',
+  fullMenu: 'Fullscreen',
+  fullExitMenu: 'Exit fullscreen',
+  seekHere: 'Seek here',
+  setA: 'Set A here',
+  setB: 'Set B here',
+  clearLoop: 'Clear loop',
+  noScript: 'no script',
+  aFirst: 'set A first',
+  noLoop: 'no loop',
+  notReady: 'nothing to play',
+  noOpen: 'Open in Stash: no browser here',
   auto: 'Auto latency',
   autoTip: 'Offset from the plan strip',
 
@@ -195,6 +207,12 @@ export function clampOffset(v) {
 export function windowShare(v, lo, hi) {
   v = Number(v); lo = Number(lo); hi = Number(hi);
   return Number.isFinite(v) && Number.isFinite(lo) && Number.isFinite(hi) && hi > lo ? clamp((v - lo) / (hi - lo), 0, 1) : null;
+}
+
+/** plan.current as a window share, or null. Never clamped: a plan below the window or past it reads below 0 or past 1 (ph-t2jn). */
+export function planShareOf(f, v) {
+  if (!f || v == null || !Number.isFinite(v = Number(v))) return null;
+  return f.min != null && f.max > f.min ? (v - f.min) / (f.max - f.min) : v;
 }
 
 const isUnit = (f, id, text) => !!f && (f.unitId === id || f.unit === text);
@@ -253,6 +271,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
   let planAge = Infinity, planEl = NaN, latAt = -Infinity;
   let autoMap = [0, 1], autoFor = null;
   const trace = [];
+  let traceAt = NaN, traceLap = 0;   // the last traced sample's arrival, the loop lap it was traced in
   scheduler.setTransform(state.T);
 
   const gate = () => (state.motion && fields && fields.dur ? api.gate(fields.dur) || '' : '');
@@ -290,9 +309,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
   /** plan.current as a window share (the plan roles are window-relative), or null. */
   const planShare = () => {
     const f = api.field && api.field('plan.current');
-    const v = f && !api.stale(f) ? Number(api.value(f)) : NaN;
-    if (!Number.isFinite(v)) return null;
-    return f.min != null && f.max > f.min ? clamp((v - f.min) / (f.max - f.min), 0, 1) : clamp(v, 0, 1);
+    return f && !api.stale(f) ? planShareOf(f, api.value(f)) : null;
   };
 
   function hold() {
@@ -383,10 +400,16 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
       probe({ k: 'mark', t: now(), name: 'wrap', lap: loop.lap });
       video.currentTime = loop.wrap() / 1000;
     }
-    if (state.phase === 'playing' && clock.ready && fields && fields.pos) {
-      const m = fold(clock.mediaAt(now() - state.T.offsetMs + scheduler.compMs));
+    // One trace point per telemetry sample, at its sample time (now less its age; hub-dated where the
+    // machine stamps it, machine.svelte.js sampleTs): never a held copy per frame.
+    const at = fields && fields.pos ? now() - api.age(fields.pos) : NaN;
+    if (state.phase === 'playing' && clock.ready && Number.isFinite(at) && !(Math.abs(at - traceAt) < 1)) {
+      traceAt = at;
+      const m = fold(clock.mediaAt(at - state.T.offsetMs + scheduler.compMs));
       if (Number.isFinite(m)) {
-        trace.push({ m, at: now(), u: windowShare(api.value(fields.pos), fields.lo && api.value(fields.lo), fields.hi && api.value(fields.hi)),
+        if (trace.length && traceLap !== loop.lap) trace.push({ m, at, u: null, p: null });   // a wrap: the lap starts its own line
+        traceLap = loop.lap;
+        trace.push({ m, at, u: windowShare(api.value(fields.pos), fields.lo && api.value(fields.lo), fields.hi && api.value(fields.hi)),
           stale: !!api.stale(fields.pos), p: planShare() });
       }
     }
@@ -535,6 +558,13 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     applyPlay();
     changed();
   }
+  /** A and B set directly (the timeline's menu), null clears either; B before A swaps them. */
+  function setAB(a, b) {
+    state.ab = a != null && b != null && b < a ? { a: b, b: a } : { a, b };
+    setLoopSpec();
+    if (state.ab.b != null && !loop.spec) state.ab = { a: null, b: null };
+    changed();
+  }
   /** One A-B press: sets A at the playhead, then B (the loop starts), then clears. */
   function markAB() {
     const m = mediaNow(), { a, b } = state.ab;
@@ -587,7 +617,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
   applyPlay();
 
   return {
-    state, trace, play, tick, onFrame, load, attach, unload, setMotion, setT, setView, seek, mediaNow, here, setPlay, markAB,
+    state, trace, play, tick, onFrame, load, attach, unload, setMotion, setT, setView, seek, mediaNow, here, setPlay, markAB, setAB,
     get wire() { return wired; },
     /** The map in force, [lower, upper] (scale.js mapOf): Auto's fit or the operator's gain. */
     get scale() { return interp.scaleAuto ? autoMap : mapOf(interp); },
@@ -627,11 +657,11 @@ export const CSS = `
   --fsp-stage-min: 120px; --fsp-detail-min: 64px; --fsp-trh: var(--fsp-bar); --fsp-st: 0px;
   min-height: calc(var(--fsp-src) + var(--fsp-sp) + var(--fsp-bar) + var(--fsp-trh) + var(--fsp-detail-min) + var(--fsp-st) + 6 * var(--sp-2) + var(--fsp-stage-min) + var(--fsp-pad, 0px));
   grid-template-columns: minmax(0, 1fr) 320px;
-  grid-template-rows: var(--fsp-src) minmax(var(--fsp-stage-min), 1fr) var(--fsp-trh) var(--fsp-sp) var(--fsp-bar) minmax(var(--fsp-detail-min), var(--fsp-detail)) var(--fsp-st);
+  grid-template-rows: calc(var(--fsp-src) + var(--fsp-top, 0px)) minmax(var(--fsp-stage-min), 1fr) var(--fsp-trh) var(--fsp-sp) var(--fsp-bar) minmax(var(--fsp-detail-min), var(--fsp-detail)) var(--fsp-st);
   grid-template-areas: "src lib" "stage lib" "tr lib" "sp lib" "tlh lib" "tl lib" "st lib"; }
 /* The desktop (the full card) draws the bar under the stage (review 2026-10-08); phones keep it at the bottom. */
 .fsp[data-comp=full][data-cls=landscape]:not([data-an]) {
-  grid-template-rows: var(--fsp-src) minmax(var(--fsp-stage-min), 1fr) var(--fsp-sp) var(--fsp-bar) minmax(var(--fsp-detail-min), var(--fsp-detail)) var(--fsp-trh) var(--fsp-st);
+  grid-template-rows: calc(var(--fsp-src) + var(--fsp-top, 0px)) minmax(var(--fsp-stage-min), 1fr) var(--fsp-sp) var(--fsp-bar) minmax(var(--fsp-detail-min), var(--fsp-detail)) var(--fsp-trh) var(--fsp-st);
   grid-template-areas: "src lib" "stage lib" "sp lib" "tlh lib" "tl lib" "tr lib" "st lib"; }
 @media (pointer: coarse) { .fsp { --fsp-src: var(--tap); --fsp-bar: var(--tap); --fsp-sp: var(--tap); } }
 /* PR5: one player bar; on phones and the handheld card its scrub row over its button row (data-rows2). */
@@ -654,20 +684,30 @@ export const CSS = `
 .fsp:is([data-comp=handheld], [data-comp=glance], [data-libshut]) .fsp-src { padding-right: var(--stop-reserve, 0px); }
 /* The page's shell cards (PR1): the Player card is a frame behind its column, its rows inset by the card padding;
    the library column is the Library card. Inside a dash card there is no frame: the dash card is the card. */
-.fsp[data-page] { --fsp-pad: calc(2 * var(--sp-3)); column-gap: var(--gap); }
+.fsp[data-page] { --fsp-pad: calc(var(--fsp-top, var(--sp-3)) + var(--sp-3)); column-gap: var(--gap); }
+/* The full card's head row starts where the Library and Settings cards' head rows do (their border and --sp-3
+   padding), all three heads on one baseline; the first track carries the inset, so the row keeps its whole --fsp-src. */
+.fsp[data-page][data-comp=full] { --fsp-top: calc(var(--sp-3) + 1px); }
 .fsp-pframe { grid-area: 1 / 1 / -1 / 2; }
 .fsp[data-an] .fsp-pframe { grid-column: 1 / -1; }
 .fsp[data-page] > :is(.fsp-src, .fsp-stage, .fsp-split, .fsp-tlh, .fsp-tr, .fsp-tlbox, .fsp-anbox) { margin-inline: var(--sp-4); }
 .fsp[data-page][data-comp=handheld]:not([data-media]) > .fsp-libbox { margin-inline: var(--sp-4); }
-.fsp[data-page] > .fsp-src { margin-top: var(--sp-3); }
-.fsp[data-page][data-comp=full]:not([data-libshut], [data-an]) .fsp-libbox { display: flex; flex-direction: column; gap: var(--sp-3);
+.fsp[data-page] > .fsp-src { margin-top: var(--fsp-top, var(--sp-3)); }
+.fsp[data-page][data-comp=full]:not([data-libshut], [data-an]) .fsp-libbox { display: flex; flex-direction: column;
   background: var(--bg-card); border: 1px solid var(--line-1); border-radius: var(--radius);
   padding: max(var(--sp-3), calc(var(--stop-reserve-h, 0px) - var(--caret-h, 0px) + var(--sp-2))) var(--sp-4) var(--sp-3); }
 .fsp[data-page][data-comp=full] .fsp-libv { flex: 1 1 auto; min-height: 0; }
 /* Heads are the card title's voice (style.css .dash-title, its index); this places them. */
-.fsp-libbox > .fsp-h { display: none; }
-.fsp[data-page][data-comp=full] .fsp-libbox > .fsp-h { display: block; }
-.fsp-h { flex: none; margin: 0; line-height: 30px; }
+.fsp-libh { flex: none; display: flex; align-items: center; gap: var(--sp-2); min-width: 0; --ui-btn-h: var(--fsp-src); }
+/* The column is a shaded scroller: no gap, which would follow each shade (style.css [data-shade]); the head spaces itself. */
+.fsp:is([data-page][data-comp=full], [data-media][data-libdrawer]) .fsp-libh { margin-bottom: var(--sp-3); }
+.fsp-libseg > button { min-height: var(--ui-btn-h); }
+.fsp-libh > .fsp-libseg { margin-left: auto; }
+.fsp-libh > .fsp-h { display: none; }
+.fsp[data-page][data-comp=full] .fsp-libh > .fsp-h { display: block; }
+.fsp-h { flex: none; margin: 0; }
+/* A narrow head shortens the media name, then its heading, before a control leaves the card (ph-5u0g.15). */
+.fsp-src > .fsp-h { flex: 0 0.001 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* The kit's buttons take each row's height. */
 .fsp-src { --ui-btn-h: var(--fsp-src); }
 .fsp-tr, .fsp-tlh { --ui-btn-h: var(--fsp-bar); }
@@ -714,7 +754,7 @@ export const CSS = `
 .fsp-libbox { display: flex; flex-direction: column; }
 .fsp-libbox > .fsp-libv { flex: 1 1 auto; min-height: 0; }
 .fsp-libseg { flex: none; }
-.fsp[data-comp=handheld]:not([data-media]) .fsp-libseg { display: none; }
+.fsp[data-comp=handheld]:not([data-media]) .fsp-libh { display: none; }
 .fsp[data-comp=handheld][data-view=player] .fsp-libbox { visibility: hidden; }
 .fsp[data-comp=glance] .fsp-libbox, .fsp[data-comp=glance] .fsp-tlbox { display: none; }
 .fsp[data-comp=glance] .fsp-stage { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
@@ -780,13 +820,13 @@ export const CSS = `
 .fsp[data-an]:not([data-comp=glance]) .fsp-tl { position: absolute; inset: 0; }
 .fsp[data-an]:not([data-comp=glance]) .fsp-dt { height: auto; flex: 1 1 0; min-height: 0; }
 .fsp[data-an][data-comp=full] { grid-template-columns: minmax(0, 1fr) clamp(320px, 40%, 560px);
-  grid-template-rows: var(--fsp-src) var(--fsp-bar) calc(180px - var(--fsp-src) - var(--fsp-bar) - 2 * var(--sp-2)) minmax(0, 1fr) var(--fsp-trh) var(--fsp-st);
+  grid-template-rows: calc(var(--fsp-src) + var(--fsp-top, 0px)) var(--fsp-bar) calc(180px - var(--fsp-src) - var(--fsp-top, 0px) - var(--fsp-bar) - 2 * var(--sp-2)) minmax(0, 1fr) var(--fsp-trh) var(--fsp-st);
   grid-template-areas: "src stage" "tlh stage" "tl stage" "tl an" "tr tr" "st st"; }
 .fsp[data-an][data-comp=full] .fsa-row { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 9ch; }
 .fsp[data-page][data-an][data-comp=full] { grid-template-columns: minmax(0, 1fr) calc(clamp(320px, 40%, 560px) + 2 * var(--sp-4)); }
 .fsp[data-media] > .fsp-stage { margin: 0; }
 .fsp[data-media] { min-height: 0 !important; }
-.fsp[data-page][data-an][data-comp=full] > .fsp-stage { margin-top: var(--sp-3); }
+.fsp[data-page][data-an][data-comp=full] > .fsp-stage { margin-top: var(--fsp-top); }
 .fsp[data-media] .fsp-vbox { border: 0; border-radius: 0; }
 .fsp[data-an][data-comp=handheld] { --fsp-an: 55%; grid-template-rows: var(--tap) var(--fsp-bar) minmax(0, 1fr) var(--fsp-trh) var(--fsp-st);
   grid-template-areas: "src" "tlh" "tl" "tr" "st"; }
@@ -816,10 +856,12 @@ export const CSS = `
 .fsp[data-media] > :not(.fsp-stage, style) { display: none !important; }
 /* PR13: the fullscreen library drawer, under the stop pair, its content clear of the screen's corners; the phone
    tab's now-playing row. */
-.fsp[data-media][data-libdrawer] > .fsp-libbox { display: flex !important; flex-direction: column; gap: var(--sp-3); position: fixed; top: var(--stop-reserve-h, 0px);
+.fsp[data-media][data-libdrawer] > .fsp-libbox { display: flex !important; flex-direction: column; position: fixed; top: var(--stop-reserve-h, 0px);
   right: 0; bottom: 0; width: min(400px, 60vw); z-index: 20; padding: var(--sp-3) max(var(--sp-4), var(--corner-inset)) max(var(--sp-3), var(--corner-inset)) var(--sp-4);
   visibility: visible; box-sizing: border-box; background: var(--bg-card); border: 1px solid var(--line-1); border-radius: var(--radius); }
-.fsp[data-media][data-libdrawer] .fsp-libbox > .fsp-h { display: block; }
+.fsp[data-media][data-libdrawer] .fsp-libh > .fsp-h { display: block; }
+/* A phone on its side has the height for three rows: the drawer widens to two columns of them (ph-0hvq). */
+.fsp[data-cls=landscape][data-media][data-libdrawer] > .fsp-libbox { width: min(560px, 70vw); }
 .fsp-libb { display: none; }
 .fsp[data-media] .fsp-libb { display: inline-flex; }
 .fsp-now { display: none; flex: none; align-items: center; gap: var(--sp-3); min-height: var(--tap); padding-top: var(--sp-2); border-top: 1px solid var(--line-1); }
@@ -1023,9 +1065,21 @@ export function createPlayer(api) {
   const setAutoplay = (on) => { autoplay = !!on; writePref(api, 'autoplay', autoplay); views.forEach((w) => w.render()); };
   const saveQueue = () => { writePref(api, 'queue', queue.map(toStored)); views.forEach((w) => w.render()); };
   const loadEntry = (e) => { if (e.kind === 'stash') pick(e.scene); else if (e.files) openLocal(e.files); };
+  /** The scene's page on the Stash server, in the system browser; null without a server or an id. */
+  const stashPage = (s) => { const base = normalizeBase((readPrefs(api).stash || {}).base); return base && s.id ? base + '/scenes/' + encodeURIComponent(s.id) : null; };
+  const openStash = (s) => {
+    const u = stashPage(s);
+    if (!u) return null;
+    return () => Promise.resolve().then(() => api.net.open(u)).catch(() => false).then((ok) => { if (!ok) api.log(COPY.noOpen, 'warn'); });
+  };
   const Q = {
     list: () => queue,
     add(scene) { queue = [...queue, { kind: 'stash', key: scene.key, title: scene.title, durationMs: scene.durationMs ?? null, scene }]; saveQueue(); },
+    /** The scene at the queue's head, once: an entry already queued moves there. */
+    addNext(scene) {
+      queue = [{ kind: 'stash', key: scene.key, title: scene.title, durationMs: scene.durationMs ?? null, scene }, ...queue.filter((e) => e.key !== scene.key)];
+      saveQueue();
+    },
     remove(i) { queue = queue.filter((_, k) => k !== i); saveQueue(); },
     next(i) { queue = move(queue, i, 0); saveQueue(); },
     move(from, to) { queue = move(queue, from, to); saveQueue(); },
@@ -1184,7 +1238,7 @@ export function createPlayer(api) {
     const saveAudio = () => writePref(api, 'audio', { vol: video.volume, muted: video.muted });
     const vol = ui.slider({ min: 0, max: 1, step: 0.05, label: COPY.volume, class: 'fsp-vol',
       onInput: (x) => { video.volume = clamp(x, 0, 1); if (video.volume > 0) video.muted = false; }, onChange: () => saveAudio() });
-    vol.title = COPY.volume;
+    vol.dataset.tip = COPY.volume;
     const rate = ui.button({ label: '1x', title: COPY.rate, class: 'fsp-rate',
       onClick: () => { video.defaultPlaybackRate = video.playbackRate = RATES[(RATES.indexOf(video.playbackRate) + 1) % RATES.length]; render(); } });
     rate.setAttribute('aria-label', COPY.rate);
@@ -1213,14 +1267,14 @@ export function createPlayer(api) {
     // Offset: the kit's number box, typed, arrowed (5 ms, Ctrl the 100 ms decade) or dragged sideways (5 ms per 4 px).
     const offN = ui.stepper({ min: -OFFSET_MAX, max: OFFSET_MAX, step: OFFSET_STEP, buttons: false, drag: true, unit: COPY.offsetUnit, label: COPY.offset,
       value: st.T.offsetMs, onChange: (v) => { if (clampOffset(v) !== st.T.offsetMs) ctl.setT({ offsetMs: clampOffset(v) }); } });
-    offN.input.title = COPY.offsetTip;
-    const offK = h('span', { class: 'field-label fsp-offk', text: COPY.offset, title: COPY.offsetTip });
+    offN.input.dataset.tip = COPY.offsetTip;
+    const offK = h('span', { class: 'field-label fsp-offk', text: COPY.offset, 'data-tip': COPY.offsetTip });
     const off = h('label', { class: 'fsp-off', 'data-search-key': 'offset' }, offK, offN);
     const inv = ui.button({ label: COPY.invert, pressed: st.T.invert, class: 'fsp-inv', onClick: () => ctl.setT({ invert: inv.pressed }) });
     inv.setAttribute('data-search-key', 'invert');
     const speedBar = h('i');
     const speedTxt = h('span');
-    const speed = h('div', { class: 'fsp-speed', title: COPY.speed }, speedBar, speedTxt);
+    const speed = h('div', { class: 'fsp-speed', 'data-tip': COPY.speed }, speedBar, speedTxt);
     const setMuted = (m) => { video.muted = m; saveAudio(); render(); };
     // The bar's Fullscreen and Settings are the page's (the dash card's hero has neither).
     const fullB = ui.button({ icon: 'full', title: COPY.full, class: 'fsp-full', onClick: () => fullscreen() });
@@ -1311,6 +1365,16 @@ export function createPlayer(api) {
       if (!media && st.scene && !st.scene.stream) return;
       stage.fullscreen = !media;
     };
+    // The context menus (api.ui.menu, docs/PLUGINS.md Context menus): the stage, then the timeline's own.
+    ui.menu(stage, () => {
+      const on = act(), noVid = !!st.scene && !st.scene.stream;
+      return [
+        { label: on ? COPY.pause : COPY.play, disabled: on || ctl.canPlay() ? '' : st.status.text || COPY.notReady, run: () => { ctl.toggle(); flash(); } },
+        ...(opts.fullscreen ? [{ label: media ? COPY.fullExitMenu : COPY.fullMenu, disabled: noVid ? COPY.noVideo : '', run: fullscreen }] : []),
+        { label: COPY.openVideo, run: () => fileV.open() },
+        { label: COPY.openScript, run: () => fileS.open() },
+      ];
+    }, { title: COPY.player });
 
     const KEY_SEEK = { j: -10000, l: 10000, ArrowLeft: -5000, ArrowRight: 5000 };
     root.addEventListener('keydown', (e) => {
@@ -1343,6 +1407,18 @@ export function createPlayer(api) {
       onRange: (partial, commit) => { if (commit) ctl.setT(partial); },
     });
     tlCaret.after(tl.zoomEl);
+    // The keyboard's here is the playhead.
+    const tlMenu = (at) => {
+      const t = at.keyboard ? ctl.mediaNow() : tl.timeAt(at.x, at.target), { a, b } = st.ab;
+      const none = t == null ? COPY.noScript : '';
+      return [
+        { label: COPY.seekHere, disabled: none, run: () => ctl.seek(t) },
+        { label: COPY.setA, disabled: none, run: () => ctl.setAB(t, b) },
+        { label: COPY.setB, disabled: none || (a == null ? COPY.aFirst : ''), run: () => ctl.setAB(a, t) },
+        { label: COPY.clearLoop, disabled: a == null && b == null ? COPY.noLoop : '', run: () => ctl.setAB(null, null) },
+      ];
+    };
+    for (const e of tl.menuEls) ui.menu(e, tlMenu, { title: COPY.timeline });
     off.before(tl.abEl);
     let library = null, analyzer = null;
     function expand(on) {
@@ -1360,7 +1436,6 @@ export function createPlayer(api) {
     const recompose = () => {
       const cls = opts.page ? pageClass(+document.documentElement.dataset.bucket || 3, innerWidth, innerHeight) : '';
       if (cls) attr(root, 'data-cls', cls);
-      if (library && cls !== prevCls) library.fit();
       prevCls = cls;
       const c = cls === 'portrait' ? (root.clientWidth < GLANCE_UP ? 'glance' : 'handheld') : cls ? 'full' : compositionOf(root.clientWidth);
       if (c !== comp) {
@@ -1369,12 +1444,12 @@ export function createPlayer(api) {
         if (hosting()) st.composition = c;
         if (c !== 'glance' && !library) {
           library = mountLibrary(lib, { ui, getStash, prefs: libPrefs, fetch: (u, i) => api.net.fetch(u, i),
-            onPick: (s) => { pick(s); setDrawer(false); }, rows: () => root.dataset.cls === 'portrait' && !media, onQueue: (s) => Q.add(s) });
+            onPick: (s) => { pick(s); setDrawer(false); }, onQueue: (s) => Q.add(s), onNext: (s) => Q.addNext(s), onOpen: openStash });
           lib.append(qbox, now);
-          lib.insertBefore(libseg, lib.querySelector('.fsp-libv'));
+          // The column's head row: 02 LIBRARY (the page's) and the Library | Queue switch.
+          lib.prepend(h('div', { class: 'fsp-libh' }, opts.page ? h('h3', { class: 'dash-title fsp-h', 'data-pidx': '02', text: COPY.library }) : '', libseg));
           qv = mountQueue(qbox, { list: Q.list, onPlay: (i) => { Q.play(i); setDrawer(false); }, onNext: Q.next, onRemove: Q.remove, onMove: Q.move,
             onReopen: () => fileV.open() }, ui);
-          if (opts.page) lib.prepend(h('h3', { class: 'dash-title fsp-h', 'data-pidx': '02', text: COPY.library }));
         }
       }
       const gapPx = parseFloat(getComputedStyle(root).columnGap) || 0;
@@ -1433,6 +1508,7 @@ export function createPlayer(api) {
       libseg.value = lv;
       if (qv && qSeen !== queue) { qSeen = queue; qv.render(); }
       autoB.pressed = autoplay;
+      if (library) library.mark({ now: st.scene ? st.scene.key : null, playing: on, queued: queue.map((e) => e.key) });
       // The handheld Library and Queue views hide the bar (visibility); its Rail button leaves the count too (ph-5wsk.5).
       railB.shown = !(comp === 'handheld' && st.view !== 'player' && !media);
       setText(title, st.scene ? st.scene.title : '');
@@ -1443,7 +1519,10 @@ export function createPlayer(api) {
       if (head) {
         const libTab = comp === 'handheld' && st.view !== 'player';
         head.dataset.pidx = libTab ? '02' : '01';
-        setText(head, !libTab ? COPY.player : st.view === 'queue' ? QCOPY.queue : COPY.library);
+        const ht = !libTab ? COPY.player : st.view === 'queue' ? QCOPY.queue : COPY.library;
+        setText(head, ht);
+        // A narrow phone head ellipsizes it (ph-5u0g.15): the whole word stays one hover away.
+        attr(head, 'data-tip', ht);
       }
       stage.empty.hidden = !!st.scene;
       mo.hidden = !noVid;
@@ -1467,7 +1546,7 @@ export function createPlayer(api) {
       if (comp && comp !== 'glance') anMount();
       if (comp !== 'glance') tl.frame(m, ctl.trace, analyzer && analyzer.kinetic);
       if (analyzer && comp !== 'glance') {
-        analyzer.frame(root.hasAttribute('data-an'));
+        analyzer.frame(anShown());
         const fr = analyzer.fit;
         if (fr && fr !== fitSeen) { fitSeen = fr; ctl.fitKinetic(fr.sc, fr.extent); }
       }
@@ -1479,7 +1558,7 @@ export function createPlayer(api) {
         setText(speedTxt, Math.round(sp2.v) + ' ' + sp2.unit);
         speedBar.style.width = cap ? clamp(sp2.v / cap, 0, 1) * 100 + '%' : '0';
         speed.toggleAttribute('data-over', !!cap && sp2.v > cap);
-        speed.title = cap && sp2.v > cap ? COPY.speedOver : COPY.speed;
+        speed.dataset.tip = cap && sp2.v > cap ? COPY.speedOver : COPY.speed;
         const at = tickAt(applyT(posAt(st.shaped || st.script, m), st.T));
         for (const t of [tickI, moI]) { t.hidden = false; t.style.left = at; }
       } else {
@@ -1496,14 +1575,15 @@ export function createPlayer(api) {
       hubSeen = hubKey(pu, stale, ceil);
       render();
     }
-    // What a frame draws from the hub: the real tick (its share and staleness) and the speed ceiling. The open
-    // analyzer's rows read the hub on every frame; a collapsed one only checks whether its render is current.
+    // What a frame draws from the hub: the real tick (its share and staleness) and the speed ceiling. The shown
+    // analyzer's rows read the hub when api.changed moves (analyzer.js); a hidden one only checks whether its render is current.
+    const anShown = () => root.hasAttribute('data-an') && !root.hasAttribute('data-media');
     const realShare = () => (fields.pos ? windowShare(api.value(fields.pos), fields.lo && api.value(fields.lo), fields.hi && api.value(fields.hi)) : null);
     const hubKey = (pu, stale, c) => pu + ' ' + stale + ' ' + c.vmax + ' ' + c.spanMm;
     let hubSeen = '';
     function poll() {
       if (raf) return;
-      if (root.hasAttribute('data-an') || hubKey(realShare(), !!(fields.pos && api.stale(fields.pos)), ceilingOf(api, fields)) !== hubSeen) kick();
+      if (anShown() || hubKey(realShare(), !!(fields.pos && api.stale(fields.pos)), ceilingOf(api, fields)) !== hubSeen) kick();
       else if (analyzer && comp !== 'glance') analyzer.frame(false);
     }
     const hosting = () => vel.parentNode === stage.media;

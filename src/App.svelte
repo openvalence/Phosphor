@@ -47,7 +47,7 @@
   import { machine } from './model/machine.svelte.js';
   import { isFieldEnabled, resetsToDefault, WIDGET } from './model/settings.js';
   import { UI_CATEGORY, UI_CATEGORY_TIER, UI_NAV_TIER } from '../../Valence/clients/js/index.js';
-  import { navIcon } from './ui/navIcons.js';
+  import { navIcon, navIconKey } from './ui/navIcons.js';
   import { writeSetting, inFlight } from './model/shadow.svelte.js';
   import { withoutClaimed, claimRoles } from './model/roles.js';
   import { heroClaims } from './ui/heroes.js';
@@ -57,11 +57,12 @@
   import { prefs, setPref } from './model/prefs.js';
   import { OFF, toggle, toggleBar, osFullscreen } from './model/fullscreen.js';
   import { scrollshade } from './ui/scrollshade.js';
+  import { IDLE_MS } from './plugins/kit.js';
   import RailLayouts from './shell/RailLayouts.svelte';
   import { hold } from './shell/hold.js';
   import { resetNeedsModal } from './shell/resetGate.js';
   import { settingsEntries } from './shell/settingsSearch.js';
-  import { presetList } from './model/theme.js';
+  import { shownPresets, currentTheme, pickableStyles } from './model/theme.js';
   import { registerSearch } from './ui/searchIndex.js';
   import { layouts, orderedLayoutNames, switchLayout, addLayout, dashEdit, redHint } from './model/dashboard.svelte.js';
   import './ui/select.css';
@@ -164,6 +165,8 @@
   const OS_SHELL = SHELL && !['android', 'ios'].includes(import.meta.env.TAURI_ENV_PLATFORM);
   let full = $state(OFF);
   const isFull = $derived(full.on && !!current?.page);
+  // A fullscreen page is opaque: the OS material under a Theme is taken away while it shows (model/material.svelte.js).
+  $effect(() => { document.documentElement.toggleAttribute('data-page-full', isFull); });
   const currentId = $derived(current?.id);
   $effect(() => { currentId; untrack(() => { full = OFF; }); });
   let osFull = false;
@@ -207,6 +210,23 @@
     return () => window.removeEventListener('phosphor-page-fullscreen', ask);
   });
   $effect(() => { if (OS_SHELL) document.documentElement.dataset.fullscreenMode = $prefs.fullscreen; });
+  // A media page's bare fullscreen (ph-9t5l.7): the video edge to edge, the caret a corner hotspot over it that shows on
+  // pointer movement or Tab and hides with the stage overlay (kit IDLE_MS).
+  const mediaBare = $derived(isFull && full.bare && !!current?.page?.mediaFullscreen);
+  let caretWoke = $state(false);
+  $effect(() => {
+    if (!mediaBare) return;
+    let t;
+    const wake = (e) => {
+      if (e.type === 'keydown' && e.key !== 'Tab') return;
+      caretWoke = true;
+      clearTimeout(t);
+      t = setTimeout(() => { caretWoke = false; }, IDLE_MS);
+    };
+    const evs = ['pointermove', 'pointerdown', 'keydown'];
+    for (const ev of evs) window.addEventListener(ev, wake);
+    return () => { clearTimeout(t); caretWoke = false; for (const ev of evs) window.removeEventListener(ev, wake); };
+  });
   // The page status (docs/PLUGINS.md, Pages, `status`): per page, the latest
   // phosphor-page-status of each source in the pane (a plugin page, or a card
   // on the Dash or a category page), newest last. TopStrip's status slot shows
@@ -339,7 +359,7 @@
   $effect(() => { if (active !== 'machine') dashEdit.on = false; });
   // F3 lists every Display and Settings entry and lands on its row.
   const settingsTab = $derived(tabs.find((t) => t.id === 'shell:settings') || tabs.find((t) => t.id === 'display'));
-  $effect(() => registerSearch('settings', () => (settingsTab ? settingsEntries(presetList())
+  $effect(() => registerSearch('settings', () => (settingsTab ? settingsEntries(shownPresets(currentTheme()), pickableStyles())
     .filter((e) => !e.shell || settingsTab.id === 'shell:settings')
     .map((e) => ({ label: e.label, path: settingsTab.id === 'display' ? 'Display' : 'Phosphor › Settings', go: async () => {
       selectTab(settingsTab.id);
@@ -452,7 +472,11 @@
     if (!current || !current.cat) return { groups: [], hidden: 0, diag: 0, adv: 0, diagAll: 0 };
     let hidden = showAdvanced ? 0 : heroAdvUids.size, diag = 0, adv = heroAdvUids.size, diagAll = 0;
     const groups = [];
+    // A card's total is every field of its name, live and diagnostic, shown or not.
+    const totalOf = (name) => current.cat.groups.reduce((n, x) => n + (x.name === name ? x.fields.length : 0), 0);
     for (const g of current.cat.groups) {
+      // A diagnostic group named like a shown live group is that card's tail, never a card of its own.
+      const host = g.diagnostic ? groups.find((x) => !x.diagnostic && x.name === g.name) : null;
       if (g.diagnostic) diagAll += g.fields.length;
       if (g.diagnostic && !showDiagnostic) { diag += g.fields.length; continue; }
       const fields = g.fields.filter((f) => {
@@ -461,7 +485,8 @@
         hidden++;
         return false;
       });
-      if (fields.length) groups.push({ ...g, fields, total: g.fields.length });
+      if (host) host.fields = [...host.fields, ...fields];
+      else if (fields.length) groups.push({ ...g, fields, total: totalOf(g.name) });
     }
     return { groups, hidden, diag, adv, diagAll };
   });
@@ -521,6 +546,11 @@
     if (cat && t.kind === 'page' && hasDefaults) {
       out.push({ label: drillItem ? 'Reset group to defaults' : 'Reset page to defaults', disabled: resetWhy, run: resetCategory });
     }
+    // A plugin page: the footer's Fullscreen (a media page carries its own), then the Plugins pane.
+    if (t.kind === 'page' && current.page) {
+      if (current.page.fields && !current.page.mediaFullscreen) out.push({ label: isFull ? 'Exit fullscreen' : 'Fullscreen', run: () => { full = toggle(full); } });
+      out.push({ label: 'Manage plugins', run: () => selectTab('plugins') });
+    }
     return out;
   }
   $effect(() => installContextMenu({ tab: () => current, go: selectTab, dash: pickLayout, items: menuItems }));
@@ -549,14 +579,17 @@
    */
   // RENDERING §11 per class: a group past the class's density budget is a
   // card that opens its own page, never a hidden one. A section's cards
-  // follow one header row (settings.js orders them together, DESIGN §10.11).
+  // follow one header row (settings.js orders them together, DESIGN §10.11);
+  // the diagnostic cards with no section, last, follow a Diagnostics row.
+  const DIAG_HEAD = {};
+  const headOf = (g) => (g ? g.section || (g.diagnostic ? DIAG_HEAD : '') : '');
   const settingItems = $derived([
     ...(current && current.cat ? current.cat.heroes : []).map((h) =>
       ({ id: 'hero:' + h.id, title: h.title || capitalize(h.id), snippet: heroCard, hero: heroShown(h),
          fields: heroFields.filter((f) => h.fields.claimed.has(f.uid) && (showAdvanced || !heroAdvUids.has(f.uid))) })),
     ...projectGroups(visibleGroups.groups, view.cls).flatMap(({ group: g, drill: promoted }, i, all) => [
-      ...(g.section && g.section !== all[i - 1]?.group.section
-        ? [{ id: 'section:' + current.cat.id + ':' + g.section, kind: 'section', title: g.section }] : []),
+      ...(headOf(g) && headOf(g) !== headOf(all[i - 1]?.group)
+        ? [{ id: 'section:' + current.cat.id + ':' + (g.section || '~diagnostic'), kind: 'section', title: g.section || 'Diagnostics' }] : []),
       {
         id: (g.diagnostic ? 'diag:' : 'group:') + current.cat.id + ':' + (g.name || 'ungrouped'),
         title: g.title || (g.diagnostic ? 'Diagnostics' : 'Settings'),
@@ -594,19 +627,19 @@
 
 {#snippet stripWrench()}
   <button type="button" class="strip-wrench" aria-pressed={dashEdit.on} aria-label={dashEdit.on ? 'Done editing' : 'Edit layout'}
-          disabled={dashEdit.on && !!redHint()} title={dashEdit.on ? redHint() || 'Done editing' : 'Edit layout'} onclick={() => (dashEdit.on = !dashEdit.on)}>
+          disabled={dashEdit.on && !!redHint()} data-tip={dashEdit.on ? redHint() || 'Done editing' : 'Edit layout'} onclick={() => (dashEdit.on = !dashEdit.on)}>
     <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 1.5a4 4 0 0 0-4.6 5.2L1.5 11.1a1.5 1.5 0 0 0 2.1 2.1l4.4-4.4A4 4 0 0 0 13.3 4.2L11 6.5 9.5 5l2.3-2.3a4 4 0 0 0-1.3-1.2z"/></svg>
   </button>
 {/snippet}
 
 {#snippet railTab(t, mini)}
-  <button role="tab" class="rail-tab" class:sub={t.sub} data-tab-id={t.id}
+  <button role="tab" class="rail-tab" data-part="rail-tab" class:sub={t.sub} data-tab-id={t.id}
           aria-selected={current && current.id === t.id}
           tabindex={current && current.id === t.id ? 0 : -1}
           class:on={current && current.id === t.id}
-          title={t.label}
+          data-tip={t.label} aria-label={mini ? t.label : null}
           onclick={() => (t.id === 'machine' ? pickLayout('Default') : selectTab(t.id))}>
-    <span class="rail-glyph" aria-hidden="true"><svg viewBox="0 0 16 16"><path d={navIcon(t)} /></svg></span>
+    <span class="rail-glyph" data-icon={navIconKey(t)} aria-hidden="true"><svg viewBox="0 0 16 16"><path d={navIcon(t)} /></svg></span>
     {#if !mini}<span class="rail-name">{t.label}</span>{/if}
   </button>
 {/snippet}
@@ -615,8 +648,8 @@
 {#snippet sideTabs(mini, ops)}
     <div role="tablist" aria-orientation="vertical" tabindex="-1" onkeydown={(e) => onTablistKeydown(e, true)}>
       {#each navSections as sec (sec.label)}
-        <div class="rail-sec" class:shell={sec.shell}>
-          {#if !mini}<span class="rail-lbl">{sec.label}</span>{/if}
+        <div class="rail-sec" data-part="rail-sec" class:shell={sec.shell}>
+          {#if !mini}<span class="rail-lbl" data-part="rail-label">{sec.label}</span>{/if}
           {#each sec.tabs as t (t.id)}
             {@const here = ops && current.id === t.id}
             {@render railTab(t, mini)}
@@ -625,16 +658,16 @@
                    style:--n={(visibleGroups.diagAll ? 1 : 0) + (visibleGroups.adv ? 1 : 0) + (hasDefaults ? 1 : 0)}>
                 {#if visibleGroups.diagAll}
                   <button type="button" aria-pressed={showDiagnostic} onclick={() => (showDiagnostic = !showDiagnostic)}
-                          title={showDiagnostic ? 'Hide diagnostic' : 'Show diagnostic'}><b>{visibleGroups.diagAll}</b> diag</button>
+                          data-tip={showDiagnostic ? 'Hide diagnostic' : 'Show diagnostic'}><b>{visibleGroups.diagAll}</b> diag</button>
                 {/if}
                 {#if visibleGroups.adv}
                   <button type="button" aria-pressed={showAdvanced} onclick={toggleAdvanced}
-                          title={showAdvanced ? 'Hide advanced' : 'Show advanced'}><b>{visibleGroups.adv}</b> adv</button>
+                          data-tip={showAdvanced ? 'Hide advanced' : 'Show advanced'}><b>{visibleGroups.adv}</b> adv</button>
                 {/if}
                 {#if hasDefaults}
                   <button type="button" class="reset" class:done={resetDone} disabled={!!resetWhy}
                           use:hold={{ ms: 1000, onfire: holdReset, key: current.id + drill }}
-                          title={resetWhy || 'Hold 1 s to reset ' + (drillItem ? 'this group' : 'this page') + ' to defaults'}
+                          data-tip={resetWhy || 'Hold 1 s to reset ' + (drillItem ? 'this group' : 'this page') + ' to defaults'}
                           >{resetDone ? 'reset ✓' : 'reset'}</button>
                 {/if}
               </div>
@@ -647,7 +680,7 @@
 {/snippet}
 
 {#snippet pane()}
-  <main class="pane" class:full={isFull} class:bare={isFull && full.bare} class:fill={!!current?.page?.fill} use:scrollshade={isFull}>
+  <main class="pane" data-part="pane" class:full={isFull} class:bare={isFull && full.bare} class:media={mediaBare} class:fill={!!current?.page?.fill} class:fit={current?.id === 'log'} use:scrollshade={isFull && !mediaBare}>
     <div class="pane-main" class:switching class:plugin={!!current?.page} onanimationend={() => (switching = false)}>
       {#key current.id}
       {#if current.pane}
@@ -660,8 +693,8 @@
       {:else if current.cat}
         {#if drillItem}
           <button type="button" class="og-btn drill-back" onclick={() => (drill = null)}>‹ {current.label}</button>
-          <section class="og-panel drill-page" aria-label={drillItem.title}>
-            <h3 class="drill-title">{drillItem.title}</h3>
+          <h3 class="drill-title">{drillItem.title}</h3>
+          <section class="surface-card drill-page" aria-label={drillItem.title}>
             {@render groupCard(drillItem)}
           </section>
         {:else if settingItems.length}
@@ -690,7 +723,7 @@
       {:else if current.id === 'pairing'}
         <PairingPane />
       {:else if current.id === 'valence'}
-        <ValencePane />
+        <ValencePane onopenlog={() => selectTab('log')} />
       {:else if current.id === 'log'}
         <LogPane />
       {:else if current.id === 'display'}
@@ -706,10 +739,10 @@
         <QuickRail open={quickOpen} onclick={(e) => askQuick('toggle', e.currentTarget)} />
       {/if}
       {#if current.page?.fields && !current.page.mediaFullscreen}
-        <button class="og-btn sm" class:on={isFull} type="button" aria-pressed={isFull} title="Fullscreen, F11"
+        <button class="og-btn sm" class:on={isFull} type="button" aria-pressed={isFull} data-tip="Fullscreen, F11"
                 onclick={() => (full = toggle(full))}>Fullscreen</button>
         {#if OS_SHELL}
-          <select class="og-btn sm" aria-label="Fullscreen mode" title="In window / Borderless" value={$prefs.fullscreen}
+          <select class="og-btn sm" aria-label="Fullscreen mode" data-tip="In window / Borderless" value={$prefs.fullscreen}
                   onchange={(e) => setPref('fullscreen', e.currentTarget.value)}>
             <option value="window">In window</option>
             <option value="borderless">Borderless</option>
@@ -720,16 +753,16 @@
         {#if visibleGroups.diagAll}
           <button class="og-btn sm adv-toggle" type="button" onclick={() => (showDiagnostic = !showDiagnostic)} aria-expanded={showDiagnostic}
                   aria-label={visibleGroups.diagAll + ' diagnostic'}
-                  title={showDiagnostic ? 'Hide diagnostic' : 'Show diagnostic'}>{visibleGroups.diagAll} {view.bucket <= 2 ? 'diag' : 'diagnostic'}</button>
+                  data-tip={showDiagnostic ? 'Hide diagnostic' : 'Show diagnostic'}>{visibleGroups.diagAll} {view.bucket <= 2 ? 'diag' : 'diagnostic'}</button>
         {/if}
         {#if visibleGroups.adv}
           <button class="og-btn sm adv-toggle" type="button" onclick={toggleAdvanced} aria-expanded={showAdvanced}
                   aria-label={visibleGroups.adv + ' advanced'}
-                  title={showAdvanced ? 'Hide advanced' : 'Show advanced'}>{visibleGroups.adv} {view.bucket <= 2 ? 'adv' : 'advanced'}</button>
+                  data-tip={showAdvanced ? 'Hide advanced' : 'Show advanced'}>{visibleGroups.adv} {view.bucket <= 2 ? 'adv' : 'advanced'}</button>
         {/if}
         {#if hasDefaults}
           <button class="og-btn sm reset-cat" type="button" disabled={!!resetWhy}
-                  title={resetWhy || (drillItem ? 'Reset group to defaults' : 'Reset page to defaults')}
+                  data-tip={resetWhy || (drillItem ? 'Reset group to defaults' : 'Reset page to defaults')}
                   onclick={resetCategory}>Reset</button>
         {/if}
         <!-- Handheld: an icon and the count in a fixed chip, so the one 48 px row holds (DESIGN §10.3). -->
@@ -743,7 +776,7 @@
 {/snippet}
 
 <div class="app">
-  <TopStrip {shell} bare={isFull && full.bare} compact={!!current?.page?.compactHero && view.bucket <= 2} page={statusSlot} onopenlog={() => selectTab('log')} />
+  <TopStrip {shell} bare={isFull && full.bare} compact={!!current?.page?.compactHero && view.bucket <= 2} page={statusSlot} onopenlog={() => selectTab('log')} onopenlink={() => selectTab('valence')} />
 
   <!-- Only INSTRUMENT-zone heroes (heroes.js) render here, pinned above every
        view's PANE and never inside one: losing sight of the carriage because
@@ -761,16 +794,16 @@
     <div class="frame">
       <!-- The tablist role lives on an inner div: <nav> is a landmark, and ARIA
            forbids giving a non-interactive landmark an interactive role. -->
-      <nav class="rail" class:mini={railMini} aria-label="Sections" use:scrollshade>
+      <nav class="rail" data-part="rail" class:mini={railMini} aria-label="Sections" use:scrollshade>
         <button type="button" class="rail-collapse" onclick={toggleRail}
                 aria-expanded={!railMini}
                 aria-label={railMini ? 'Expand navigation' : 'Collapse navigation'}
-                title={railMini ? 'Expand navigation' : 'Collapse navigation'}>
+                data-tip={railMini ? 'Expand navigation' : 'Collapse navigation'}>
           <span aria-hidden="true">{railMini ? '»' : '«'}</span>
         </button>
         {@render sideTabs(railMini, railOps)}
       </nav>
-      <div class="content" bind:this={contentEl} use:scrollshade>
+      <div class="content" data-part="content" bind:this={contentEl} use:scrollshade>
         {@render pane()}
       </div>
       <Dock />
@@ -802,7 +835,7 @@
                      use:focusNode onkeydown={(e) => { if (e.key === 'Enter') stripCommit(); else if (e.key === 'Escape') { e.stopPropagation(); stripAdding = false; } }}
                      onblur={() => (stripAdding = false)} />
             {:else}
-              <button type="button" aria-label="Add layout" title="Add layout" onclick={() => { stripName = ''; stripBad = false; stripAdding = true; }}>+</button>
+              <button type="button" aria-label="Add layout" data-tip="Add layout" onclick={() => { stripName = ''; stripBad = false; stripAdding = true; }}>+</button>
             {/if}
           {/if}
         {/each}
@@ -814,8 +847,8 @@
   {/if}
 
   {#if isFull}
-    <button type="button" class="full-caret" class:bare={full.bare} aria-expanded={!full.bare}
-            aria-label={full.bare ? 'Show bar' : 'Hide bar'} title={full.bare ? 'Show bar' : 'Hide bar'}
+    <button type="button" class="full-caret" class:bare={full.bare} class:hot={mediaBare} class:woke={caretWoke} aria-expanded={!full.bare}
+            aria-label={full.bare ? 'Show bar' : 'Hide bar'} data-tip={full.bare ? 'Show bar' : 'Hide bar'}
             onclick={() => (full = toggleBar(full))}>
       <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 7.5l3-3 3 3"/></svg>
     </button>
@@ -1143,6 +1176,16 @@
   /* A page registered with `fill` (docs/PLUGINS.md, Pages): its mount takes
      the content pane's whole height, as in page fullscreen. Desktop only. */
   .content > .pane.fill:not(.full) { height: 100%; }
+  /* A page that fits the window at every class (the Log page, DESIGN
+     Amendments 2026-10-10): its own list is the one scroller and takes what
+     the chrome leaves. The scrolling layout becomes a window-tall column
+     while it is on screen. Flex items keep their content minimum, so a
+     window too short for the page's floor scrolls as before. */
+  :global(html:not([data-rc=full])) .app:has(> .pane.fit) { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
+  .app:has(> .pane.fit) > :not(.pane) { flex-shrink: 0; }
+  .app > .pane.fit { flex: 1 1 0; display: flex; flex-direction: column; }
+  .pane.fit > .pane-main { flex: 1 1 0; display: flex; flex-direction: column; }
+  .pane.fit > .pane-main > :global(*) { flex: 1 1 auto; }
 
   /* ---- page fullscreen (DESIGN §10.3) -------------------------------------
      In window: the page fills the window below the hero bar, so only the
@@ -1191,4 +1234,16 @@
   :global(:root[data-cutout-top]) .full-caret.bare { left: auto; right: calc(var(--cutout-r) + var(--cutout-w) + var(--sp-3)); transform: none; }
   .full-caret svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.5; }
   .full-caret.bare svg { transform: rotate(180deg); }
+  /* A media page's bare fullscreen (ph-9t5l.7): no padding and no scroll shade, the video edge to edge; the caret floats in
+     the top left corner, inset like the stop pair, and is display: none at rest so only the pair sits over the video. */
+  .pane.full.bare.media { padding: 0; }
+  .full-caret.hot {
+    display: none;
+    top: max(var(--sp-2), calc(var(--corner-tl, 0px) * .3));
+    left: max(var(--sp-2), calc(var(--corner-tl, 0px) * .3));
+    transform: none;
+    border-top: 1px solid var(--line);
+    border-radius: var(--r-s);
+  }
+  .full-caret.hot:is(.woke, :hover, :focus-visible) { display: grid; }
 </style>

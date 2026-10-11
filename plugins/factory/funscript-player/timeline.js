@@ -40,9 +40,13 @@
 // - `overlay` elements ride the detail (the caller positions them), pointer-events none.
 // - The A-B points are a selection: --highlight, a band on the heat and two lines in the detail.
 //   One button cycles start, end, clear (onLoop); setLoop draws what the controller holds.
-// - The curve, the dots and the lanes are drawn over a span SLIDE times the detail's window, centered on it, and
-//   moved with a transform: playback rebuilds them only when the window leaves that span or what they draw
-//   changes (ph-m1gy). frame() draws nothing while the playhead, the trace and the render stand still.
+// - The curve, the dots, the lanes and the trace are drawn over a span SLIDE times the detail's window,
+//   centered on it, and moved with a transform: playback rebuilds the first three only when the window leaves
+//   that span or what they draw changes (ph-m1gy), and formats each trace point once per span (ph-jem5).
+//   frame() draws nothing while the playhead, the trace and the render stand still.
+// - The trace is measured, so its curve passes through every sample and adds no extreme (traceLines, monotone
+//   cubic); time only runs forward in it (ph-6eh7). The detail's tooltip says it is interpolated. It is drawn as
+//   500 ms path parts: a sample sets its own part and at most the one before, never the whole trace.
 // - The oscillator axes (raw Script.axes V8, V9) are thin lanes under the detail, its window and playhead,
 //   0..1 bottom to top, untransformed: the hub maps them (SPEC 9.7). The detail gives up their height, so the
 //   timeline's box never changes; without them there are no lanes.
@@ -54,6 +58,8 @@ export const HEAT_BINS = 200;
 // Heat speeds, units/s: --bg-sunken at rest, --reality at HEAT_MID_UPS, --highlight from HEAT_TOP_UPS up.
 export const HEAT_MID_UPS = 200, HEAT_TOP_UPS = 400;
 export const TRACE_MS = 8000;
+const TRACE_GAP_MS = 250;   // samples farther apart are a dropout: a gap, never a guessed curve
+const TRACE_PART_MS = 500;  // a trace path part: a new sample redraws its own part and at most the one before
 export const MIN_SPAN = 0.05;
 const SLIDE = 2, NONE = [];
 const SEEK_KEYS = { ArrowLeft: -5000, ArrowRight: 5000 };
@@ -62,6 +68,7 @@ const T0 = { offsetMs: 0, lo: 0, hi: 1, invert: false };
 export const COPY = Object.freeze({
   overview: 'Script overview',
   detail: 'Script detail',
+  detailTip: 'Script, and measured position interpolated between samples',
   scrub: 'Playhead',
   lo: 'Range low',
   hi: 'Range high',
@@ -127,23 +134,68 @@ export function seekAt(x, W, durationMs) {
 }
 
 /**
- * The reality trace inside [fromMs, toMs] as polylines: a null u breaks the
- * line (law 9: a gap, never a zero), a stale change starts a new one. key: the share drawn ('u', or 'p' the plan).
+ * The reality trace inside [clipFrom, clipTo] (default [fromMs, toMs]) over [fromMs, toMs] in a W x H box, as lines
+ * [{stale, parts: [{id, d, k0, k1, n}]}]: a monotone cubic (PCHIP) through every sample, so it passes each one and never
+ * leaves the range of its two neighbors. A null u breaks the line (law 9: a gap, never a zero), and so do samples over
+ * TRACE_GAP_MS apart; a stale change starts a new line from the last point. A point not after its line's last is
+ * dropped (the time base stepped back), so x only grows. A line is cut into SVG path parts by TRACE_PART_MS of media
+ * time, each starting at the point before its first so they join; id names a part, and k0, k1 (its first and last
+ * segment's text, kept objects) and n change only when its d does. key: the share drawn ('u', or 'p' the plan).
  */
-export function traceLines(trace, fromMs, toMs, W, H, key = 'u') {
-  const out = [];
-  let cur = null;
+export function traceLines(trace, fromMs, toMs, W, H, key = 'u', clipFrom = fromMs, clipTo = toMs) {
+  const out = [], isP = key === 'p', line = [];
+  let stale = false;
+  const close = () => { if (line.length > 1) out.push({ stale, parts: partsOf(line, fromMs, toMs, W, H, isP) }); line.length = 0; };
   for (const p of trace || []) {
-    const u = p[key];
-    if (u == null || p.m < fromMs || p.m > toMs) { cur = null; continue; }
-    if (!cur || cur.stale !== !!p.stale) {
-      const prev = cur && cur.pts[cur.pts.length - 1];
-      cur = { stale: !!p.stale, pts: prev ? [prev] : [] };
-      out.push(cur);
-    }
-    cur.pts.push(((p.m - fromMs) / (toMs - fromMs) * W).toFixed(1) + ',' + (H - clamp(u, 0, 1) * H).toFixed(1));
+    const u = isP ? p.p : p.u;
+    if (u == null || p.m < clipFrom || p.m > clipTo) { close(); continue; }
+    const last = line[line.length - 1];
+    if (last && !(p.m > last.m)) continue;
+    if (last && p.m - last.m > TRACE_GAP_MS) close();
+    else if (last && stale !== !!p.stale) { close(); line.push(last); }
+    if (line.length < 2) stale = !!p.stale;
+    line.push(p);
   }
-  return out.filter((l) => l.pts.length > 1).map((l) => ({ points: l.pts.join(' '), stale: l.stale }));
+  close();
+  return out;
+}
+// A point's text and the text of the segment ending at it, per frame of reference (the timeline's span holds for many
+// frames) and per neighbors (the segment reads two points back and one on), kept on the point as `tl`: a new sample
+// formats its own segment and redoes the one before it, nothing else (ph-jem5).
+function partsOf(l, f, t, W, H, isP) {
+  const sx = W / (t - f), X = (p) => (p.m - f) * sx, Y = (p) => H - clamp(isP ? p.p : p.u, 0, 1) * H;
+  const cache = (p) => {
+    let c = p.tl;
+    if (!c || c.f !== f || c.t !== t || c.W !== W || c.H !== H) p.tl = c = { f, t, W, H, u: null, p: null, su: null, sp: null };
+    return c;
+  };
+  const text = (p) => {
+    const c = cache(p);
+    return (isP ? c.p : c.u) ?? (c[isP ? 'p' : 'u'] = X(p).toFixed(1) + ',' + Y(p).toFixed(1));
+  };
+  // The tangent at b (PCHIP): 0 at an extreme, else the weighted harmonic mean of the secants, at most 3 times either,
+  // so no segment overshoots; an end takes its one secant.
+  const tan = (a, b, c) => {
+    if (!a || !c) return a ? (Y(b) - Y(a)) / (X(b) - X(a)) : (Y(c) - Y(b)) / (X(c) - X(b));
+    const h0 = X(b) - X(a), h1 = X(c) - X(b), d0 = (Y(b) - Y(a)) / h0, d1 = (Y(c) - Y(b)) / h1;
+    return d0 * d1 <= 0 ? 0 : (3 * h0 + 3 * h1) / ((2 * h1 + h0) / d0 + (h1 + 2 * h0) / d1);
+  };
+  const parts = [], k = isP ? 'sp' : 'su';
+  let part = null;
+  for (let i = 1; i < l.length; i++) {
+    const p = l[i], a = l[i - 2], b = l[i - 1], n = l[i + 1], c = cache(p), cut = Math.floor(p.m / TRACE_PART_MS);
+    let s = c[k];
+    if (!s || s.a !== a || s.b !== b || s.n !== n) {
+      const h = (X(p) - X(b)) / 3;
+      s = c[k] = { a, b, n, s: 'C' + (X(b) + h).toFixed(1) + ',' + (Y(b) + tan(a, b, p) * h).toFixed(1) + ' '
+        + (X(p) - h).toFixed(1) + ',' + (Y(p) - tan(b, p, n) * h).toFixed(1) + ' ' + text(p) };
+    }
+    if (!part || cut !== part.cut) parts.push(part = { cut, id: cut + ':' + b.m, d: 'M' + text(b), k0: s.s, k1: null, n: 0 });
+    part.d += s.s;
+    part.k1 = s.s;
+    part.n++;
+  }
+  return parts;
 }
 
 /** A speed in units/s as a CSS color: --bg-sunken at rest, through --reality to --highlight, mixed in oklab. */
@@ -204,7 +256,7 @@ export const CSS = `
 .fsp-scrub::after { width: 9px; height: 20px; translate: -4.5px -10px; border-radius: 4.5px; border: 2px solid var(--highlight); }
 .fsp-dt { position: relative; height: var(--fsp-detail, 96px); flex: none; border: 1px solid var(--line); border-radius: var(--r-s); overflow: hidden;
   container-type: size; touch-action: pan-x pan-y; }
-.fsp-dt polyline, .fsp-dt line { fill: none; vector-effect: non-scaling-stroke; }
+.fsp-dt polyline, .fsp-dt line, .fsp-dt .real, .fsp-dt .plan { fill: none; vector-effect: non-scaling-stroke; }
 .fsp-dt .dots { fill: none; stroke: var(--intent); stroke-width: 5; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .fsp-dt .int { stroke: var(--intent); stroke-width: 2; }
 .fsp-dt .int.draft { stroke-dasharray: 6 4; }
@@ -251,7 +303,7 @@ const s = (tag, attrs = {}) => {
 
 export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () => {}, zoomMs = 10000, ovHost = null, ovBefore = null, overlay = [], onLoop = null }) {
   let script = null, raw = null, T = T0, ceiling = null, preview = null, m = 0, trace = [], ab = { a: null, b: null }, kin = null;
-  let traceN = 0, traceLast = null, span = null;
+  let traceN = 0, traceLast = null, span = null, traceFor = {};
   let zoom = ZOOMS.includes(zoomMs) ? zoomMs : 10000;
   const dur = () => (script ? script.durationMs : 0);
 
@@ -295,12 +347,13 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
   const rgHi = s('line', { class: 'rg', x1: '0', x2: '1000' });
   const curve = s('polyline', { class: 'int' });
   const dots = s('path', { class: 'dots' });
-  const real = s('g');
+  const real = s('g'), planG = s('g'), realG = s('g'), planEls = new Map(), realEls = new Map();   // plan under reality
+  real.append(planG, realG);
   const abA = s('line', { class: 'ab', y1: '0', y2: '100' }), abB = s('line', { class: 'ab', y1: '0', y2: '100' });
   dtSvg.append(rgLo, rgHi, abA, abB, curve, dots, real);
-  const zOut = h('button', { type: 'button', class: 'og-btn sm', title: COPY.zoomOut, 'aria-label': COPY.zoomOut, text: COPY.zoomOutGlyph });
-  const zIn = h('button', { type: 'button', class: 'og-btn sm', title: COPY.zoomIn, 'aria-label': COPY.zoomIn, text: COPY.zoomInGlyph });
-  const zSpan = h('output', { title: COPY.span });
+  const zOut = h('button', { type: 'button', class: 'og-btn sm', 'data-tip': COPY.zoomOut, 'aria-label': COPY.zoomOut, text: COPY.zoomOutGlyph });
+  const zIn = h('button', { type: 'button', class: 'og-btn sm', 'data-tip': COPY.zoomIn, 'aria-label': COPY.zoomIn, text: COPY.zoomInGlyph });
+  const zSpan = h('output', { 'data-tip': COPY.span });
   const setZoom = (z) => { zoom = z; onZoom(z); draw(); };
   zOut.addEventListener('click', () => setZoom(zoomStep(zoom, 1)));
   zIn.addEventListener('click', () => setZoom(zoomStep(zoom, -1)));
@@ -308,7 +361,7 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
   zAB.hidden = !onLoop;
   zAB.addEventListener('click', () => onLoop && onLoop());
   const pills = ['lo', 'hi'].map((key) => {
-    const p = h('div', { class: 'fsp-rh', role: 'slider', tabindex: '0', 'aria-label': COPY[key],
+    const p = h('div', { class: 'fsp-rh', role: 'slider', tabindex: '0', 'aria-label': COPY[key], 'data-tip': COPY[key],
       'aria-orientation': 'vertical', 'aria-valuemin': '0', 'aria-valuemax': '100', 'data-key': key });
     let id = null;
     const move = (v) => { preview = { ...(preview || {}), ...clampRange(eff(), key, v) }; onRange(preview, false); draw(); };
@@ -343,7 +396,7 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
     p.addEventListener('blur', commit);
     return p;
   });
-  const dt = h('div', { class: 'fsp-dt', role: 'group', 'aria-label': COPY.detail }, dtSvg, ...pills, ...overlay);
+  const dt = h('div', { class: 'fsp-dt', role: 'group', 'aria-label': COPY.detail, 'data-tip': COPY.detailTip }, dtSvg, ...pills, ...overlay);
   // Pinch on touch: two fingers on the detail step the zoom once per PINCH_STEP of distance.
   const touch = new Map();
   let pinch0 = 0;
@@ -368,11 +421,11 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
     const line = s('polyline');
     const svg = s('svg', { viewBox: '0 0 1000 100', preserveAspectRatio: 'none', 'aria-hidden': 'true' });
     svg.append(line);
-    return { id, line, el: h('div', { class: 'fsp-lane', role: 'img', 'aria-label': COPY[id], title: COPY[id], 'data-axis': id }, svg) };
+    return { id, line, el: h('div', { class: 'fsp-lane', role: 'img', 'aria-label': COPY[id], 'data-tip': COPY[id], 'data-axis': id }, svg) };
   });
   const lph = h('i', { class: 'fsp-ph', 'aria-hidden': 'true' });
   const laneBox = h('div', { class: 'fsp-lanes' }, ...lanes.map((l) => l.el), lph);
-  const slid = [curve, dots, ...lanes.map((l) => l.line)];
+  const slid = [curve, dots, ...lanes.map((l) => l.line), real];
   let axes = {};
   const root = h('div', { class: 'fsp-tl' }, dt, laneBox, ...(ovHost ? [] : [ov]));
   el.append(root);
@@ -404,16 +457,27 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
     }
     const tx = 'translate(' + ((span.a - from) / zoom * 1000).toFixed(2) + ' 0)';
     for (const e of slid) e.setAttribute('transform', tx);
-    // The trace's polylines are reused frame to frame: plan under reality.
-    let n = 0;
-    const put = (cls, pts) => {
-      const p = real.children[n++] || real.appendChild(s('polyline'));
-      if (p.getAttribute('class') !== cls) p.setAttribute('class', cls);
-      p.setAttribute('points', pts);
-    };
-    for (const l of traceLines(trace, from, to, 1000, 100, 'p')) put('plan', l.points);
-    for (const l of traceLines(trace, from, to, 1000, 100)) put(l.stale ? 'real stale' : 'real', l.points);
-    while (real.children.length > n) real.lastChild.remove();
+    // The trace is redrawn only on a new sample, a new span or a step of the left clip, which trails the window's left
+    // edge by under an eighth of it; the age trim at the front waits for the next sample. Only the parts whose text
+    // changed are set: a sample sets its own part and at most the one before.
+    const last = trace[trace.length - 1], q = zoom / 8, cf = span.a + Math.floor((from - span.a) / q) * q;
+    if (traceFor.span !== span || traceFor.cf !== cf || traceFor.last !== last) {
+      traceFor = { span, cf, last };
+      for (const [key, g, map] of [['p', planG, planEls], ['u', realG, realEls]]) {
+        const seen = new Set();
+        for (const l of traceLines(trace, span.a, span.b, 1000 * SLIDE, 100, key, cf)) {
+          const cls = key === 'p' ? 'plan' : l.stale ? 'real stale' : 'real';
+          for (const pt of l.parts) {
+            const id = cls + pt.id;
+            let e = map.get(id);
+            if (!e) map.set(id, (e = { el: g.appendChild(s('path', { class: cls })) }));
+            if (e.k0 !== pt.k0 || e.k1 !== pt.k1 || e.n !== pt.n) { e.el.setAttribute('d', pt.d); Object.assign(e, { k0: pt.k0, k1: pt.k1, n: pt.n }); }
+            seen.add(id);
+          }
+        }
+        for (const [id, e] of map) if (!seen.has(id)) { e.el.remove(); map.delete(id); }
+      }
+    }
     for (const [line, v] of [[rgLo, Te.lo], [rgHi, Te.hi]]) {
       line.setAttribute('y1', String(100 - v * 100));
       line.setAttribute('y2', String(100 - v * 100));
@@ -446,7 +510,7 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
       if (t != null) { line.setAttribute('x1', ax(t)); line.setAttribute('x2', ax(t)); }
     }
     const tip = ab.a == null ? COPY.abStart : ab.b == null ? COPY.abEnd : COPY.abClear;
-    if (zAB.title !== tip) { zAB.title = tip; zAB.setAttribute('aria-label', tip); }
+    if (zAB.dataset.tip !== tip) { zAB.dataset.tip = tip; zAB.setAttribute('aria-label', tip); }
     zAB.setAttribute('aria-pressed', String(ab.b != null));
     zAB.classList.toggle('on', ab.b != null);
   }
@@ -475,6 +539,16 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
     },
     /** {a, b} media ms, either null: what the A-B button has set. */
     setLoop(x) { if (x && (x.a !== ab.a || x.b !== ab.b)) { ab = { a: x.a, b: x.b }; draw(); } },
+    /** The timeline's own elements (the context menu's): the detail with its lanes, and the overview. */
+    menuEls: [root, ov],
+    /** The media ms under clientX x on the overview or the detail holding `node`; null without a script. */
+    timeAt(x, node) {
+      const d = dur();
+      if (!script || !(d > 0)) return null;
+      if (ov.contains(node)) { const r = ov.getBoundingClientRect(); return seekAt(x - r.left, r.width, d); }
+      const r = dt.getBoundingClientRect(), from = m - clamp(m / d, 0, 1) * zoom;
+      return r.width > 0 ? clamp(from + (x - r.left) / r.width * zoom, 0, d) : null;
+    },
     unmount() { root.remove(); ov.remove(); },
   };
 }

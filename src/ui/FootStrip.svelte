@@ -17,10 +17,12 @@
    * (the @media rules below, breakpoints measured): clock offset, clock rtt,
    * deadman, state pushes, session, reconnects, last rx; under 442 px the
    * "LINK" label goes too. The scale control and "UI build:etag" (screenshot
-   * debugging) never drop; the build cell may ellipsize.
+   * debugging) never drop; the build cell may ellipsize, and it alone gives
+   * the dock toggle's slot its room.
    *
-   * Read-only and quiet on purpose: the one control is the UI scale at the
-   * right end (ScaleControl) and the session clock toggle; the rest only
+   * Read-only and quiet on purpose: the controls are the UI scale
+   * (ScaleControl), the right dock's toggle at the right end beside it, and
+   * the session clock toggle; the rest only
    * tells the operator what the Valence link is doing. Ground truth applies
    * here too — every value is `--` until the machine (or the session itself)
    * has actually produced it.
@@ -35,10 +37,14 @@
    *   corners whenever it is the bottom row (style.css, the inset vars).
    * - A live value never moves its neighbors: each holds a fixed slot (--w,
    *   in ch of the mono face) and clips with an ellipsis (ph-rt1).
+   * - The dock toggle's slot is held whether or not a dock exists, so its
+   *   arrival with the first pin moves nothing; the phone class has no dock
+   *   and no slot (DESIGN §10.13).
    */
   import { machine } from '../model/machine.svelte.js';
   import { since, clock, compact, seconds } from '../model/format.js';
   import ScaleControl from './ScaleControl.svelte';
+  import { dock, toggleDock } from './Dock.svelte';
 
   let { pinned = false } = $props();
   let fsH = $state(0);
@@ -85,23 +91,32 @@
   const uiCell = $derived(buildId + ':' + (etag ? etag.slice(0, 10) : '--'));
 </script>
 
-<footer class="footstrip" class:pinned bind:offsetHeight={fsH} aria-label="Link diagnostics">
+<footer class="footstrip" data-part="status-row" class:pinned bind:offsetHeight={fsH} aria-label="Link diagnostics">
   <span class="fs-label" aria-hidden="true">&#9656; LINK</span>
 
   <div class="facts">
-    <span class="fact d6" title="{machine.stats.reconnects} reconnects"><span class="k">reconnects</span><span class="v mono" style="--w: 3ch">{compact(machine.stats.reconnects)}</span></span>
-    <span class="fact d4" title="{machine.stats.statePushes} state pushes"><span class="k">state pushes</span><span class="v mono" style="--w: 5ch">{compact(machine.stats.statePushes)}</span></span>
-    <span class="fact d1" title={usTitle(offsetUs)}><span class="k">clock offset</span><span class="v mono" style="--w: 11ch">{offsetUs != null ? seconds(offsetUs) : '--'}</span></span>
-    <span class="fact d2" title={usTitle(rttUs)}><span class="k">clock rtt</span><span class="v mono" style="--w: 7ch">{rttUs != null ? seconds(rttUs) : '--'}</span></span>
-    <span class="fact d3" title={deadmanMs ? deadmanMs + ' ms' : undefined}><span class="k">deadman</span><span class="v mono" style="--w: 5ch">{deadman}</span></span>
+    <span class="fact d6" data-tip="{machine.stats.reconnects} reconnects"><span class="k">reconnects</span><span class="v mono" style="--w: 3ch">{compact(machine.stats.reconnects)}</span></span>
+    <span class="fact d4" data-tip="{machine.stats.statePushes} state pushes"><span class="k">state pushes</span><span class="v mono" style="--w: 5ch">{compact(machine.stats.statePushes)}</span></span>
+    <span class="fact d1" data-tip={usTitle(offsetUs)}><span class="k">clock offset</span><span class="v mono" style="--w: 11ch">{offsetUs != null ? seconds(offsetUs) : '--'}</span></span>
+    <span class="fact d2" data-tip={usTitle(rttUs)}><span class="k">clock rtt</span><span class="v mono" style="--w: 7ch">{rttUs != null ? seconds(rttUs) : '--'}</span></span>
+    <span class="fact d3" data-tip={deadmanMs ? deadmanMs + ' ms' : undefined}><span class="k">deadman</span><span class="v mono" style="--w: 5ch">{deadman}</span></span>
     <span class="fact d7"><span class="k">last rx</span><span class="v mono" style="--w: 6ch">{rxAge}</span></span>
-    <span class="fact fact-ui" title="UI build {uiCell}, catalog etag {etag || '--'}"><span class="k">ui</span><span class="v mono" style="--w: 18ch">{uiCell}</span></span>
+    <span class="fact fact-ui" data-tip="UI build {uiCell}, catalog etag {etag || '--'}"><span class="k">ui</span><span class="v mono" style="--w: 18ch">{uiCell}</span></span>
     <button type="button" class="fact fact-btn d5" onclick={() => (sessionMs = !sessionMs)}
-            title={sessionMs ? 'Hide milliseconds' : 'Show milliseconds'}>
+            data-tip={sessionMs ? 'Hide milliseconds' : 'Show milliseconds'}>
       <span class="k">session</span><span class="v mono" style="--w: {sessionMs ? 11 : 7}ch">{sessionAge}</span>
     </button>
   </div>
-  <ScaleControl />
+  <div class="foot-end">
+    <ScaleControl />
+    <span class="dock-slot">
+      {#if dock.shown}
+        <button type="button" class="og-btn sm dock-btn" aria-label={dock.label} data-tip={dock.label} aria-expanded={dock.open} onclick={toggleDock}>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3h11v10h-11zM10 3v10" /></svg>
+        </button>
+      {/if}
+    </span>
+  </div>
 </footer>
 
 <style>
@@ -140,6 +155,20 @@
   :global(:root[data-phone]) .footstrip { box-sizing: content-box; height: max(var(--tap), 40px); padding-block: 0; }
   :global(:root[data-phone]) .footstrip.pinned { padding-bottom: env(safe-area-inset-bottom, 0px); }
   :global(:root[data-phone] .app:has(.page-foot.page .foot-page > *)) .footstrip.pinned { padding-bottom: 0; }
+
+  /* The right end: the scale control, then the dock toggle's slot. em of the
+     fixed type, so the scale group's edge holds while the UI scale steps. */
+  .foot-end { flex: none; display: flex; align-items: center; gap: .727em; margin-left: auto; }
+  /* The scale buttons' metrics (ScaleControl), netted to the row's text height. */
+  .dock-slot { flex: none; display: flex; width: 24px; margin-block: calc(var(--sp-1) * -1); }
+  .dock-slot .dock-btn { min-height: 0; height: 20px; width: 100%; padding: 0; color: var(--ink-dim); }
+  .dock-slot .dock-btn[aria-expanded='true'] { color: var(--highlight); }
+  .dock-btn svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; }
+  @media (pointer: coarse) {
+    .dock-slot { width: 40px; }
+    .dock-slot .dock-btn { height: 40px; }
+  }
+  :global(:root[data-phone]) .dock-slot { display: none; }
 
   .fs-label {
     flex: 0 0 auto;

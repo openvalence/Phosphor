@@ -1,4 +1,4 @@
-// hub-identity.test.mjs: the LinkBar header and HUB chip text, driven by a
+// hub-identity.test.mjs: the LinkBar header and the dialed endpoint (Health's Address row), driven by a
 // fake WELCOME through the real session decoder (ph-0oo). No hub, no browser.
 // Run: node test/hub-identity.test.mjs
 
@@ -46,11 +46,11 @@ const bare = await welcomeIdentity(null);
 assert.equal(bare, null, 'SPEC §6.3: identity may be absent');
 assert.equal(hubTitle(bare, ''), '--', 'no identity: no invented name');
 
-// HUB chip: the endpoint the session dialed, whatever the page origin is.
+// The address: the endpoint the session dialed, whatever the page origin is.
 assert.equal(endpointLabel('127.0.0.1', 8282, null), '127.0.0.1:8282', 'WS host:port');
 assert.equal(endpointLabel('192.168.1.40', 82, null), '192.168.1.40:82', 'served page: the hub it dialed');
 assert.equal(endpointLabel('AA:BB:CC:DD:EE:FF', 82, 'Nucleus-1F'), 'Nucleus-1F', 'BLE: device name');
 assert.equal(endpointLabel('AA:BB:CC:DD:EE:FF', 82, ''), 'AA:BB:CC:DD:EE:FF', 'BLE without a name: address');
 assert.equal(endpointLabel('', 82, null), '--', 'not connected');
 
-console.log('PASS: hub-identity: header name order and HUB chip endpoint');
+console.log('PASS: hub-identity: header name order and the dialed endpoint');

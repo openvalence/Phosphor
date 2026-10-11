@@ -29,6 +29,14 @@
 //   own min and max with the walls out of reach: the same mm geometry in the middle half of a window twice as
 //   wide, so the window guards (end velocity cut, clamp) never bend it. Without the rail room for that window
 //   the measure is null and the controller keeps its curve estimate.
+// - The rows (value, status, gate, tooltip), the render's limits and window and the trial mark are read on
+//   the frame after api.changed moves for any channel they read (a sample, a gate, safety or shadow change,
+//   another client's write included), at once after a change made here (a draft, a write, Apply or Discard),
+//   a new catalog or an open, and never otherwise: a frame where nothing changed reads nothing from the host
+//   (ph-uve3). Without api.changed (NaN) every frame reads.
+// - api.onChanged over the same channels asks the caller for a frame (onRender), so a change made elsewhere
+//   shows within a frame with nothing else moving (the machine parked, no player loop; ph-vo56). The watch is
+//   renewed with each catalog and dropped on unmount.
 
 import { posAt } from './funscript.js';
 import { applyT } from './scheduler.js';
@@ -42,6 +50,9 @@ export const KIN_MAX_SAMPLES = 200000;
 export const WIDE_AT = 0.25, WIDE_SPAN = 0.5;
 const CONTROLS = new Set(['slider', 'stepper', 'toggle', 'segmented', 'select']);
 const TRIAL_ROLE = 'action.trial';
+const MARK_ROLE = 'meta.trial_pending';
+// The roles the render reads: a row's (its draft included) when a row carries one, else the hub's field.
+const KIN_ROLES = ['limit.input.speed', 'limit.input.accel', 'limit.input.jerk', 'geometry.max_travel', 'window.min', 'window.max'];
 
 export const COPY = Object.freeze({
   live: 'Live',
@@ -103,6 +114,47 @@ export function lagOf(trace, script, T, key = 'u') {
     if (e < err) { err = e; best = d; }
   }
   return best;
+}
+
+/**
+ * lagOf for one key over a trace that grows and trims (ph-jem5): a point's error at every shift is computed once,
+ * when it first appears, and the sums are rebuilt in trace order on each call, so the answer is lagOf's to the bit.
+ * A new script or T starts over. -> (trace, script, T) => ms | null
+ */
+export function createLag(key = 'u') {
+  const N = Math.floor((LAG_MAX_MS - LAG_MIN_MS) / LAG_STEP_MS) + 1;
+  const rows = new Map(), pool = [], sums = new Float64Array(N);
+  let sc = null, tt = null, gen = 0;
+  const drop = (e) => { if (e.v) pool.push(e.v); };
+  return (trace, script, T) => {
+    if (!script) return null;
+    if (script !== sc || T !== tt) { rows.forEach(drop); rows.clear(); sc = script; tt = T; }
+    gen++;
+    sums.fill(0);
+    let n = 0, lo = Infinity, hi = -Infinity;
+    for (const x of trace || []) {
+      let e = rows.get(x);
+      if (!e) {
+        const u = x[key];
+        e = { v: null, gen };
+        if (u != null && !x.stale && Number.isFinite(u)) {
+          e.v = pool.pop() || new Float64Array(N);
+          for (let k = 0; k < N; k++) e.v[k] = Math.abs(u - applyT(posAt(script, x.m - (LAG_MIN_MS + k * LAG_STEP_MS)), T));
+        }
+        rows.set(x, e);
+      }
+      e.gen = gen;
+      if (!e.v) continue;
+      n++;
+      lo = Math.min(lo, x[key]); hi = Math.max(hi, x[key]);
+      for (let k = 0; k < N; k++) sums[k] += e.v[k];
+    }
+    rows.forEach((e, x) => { if (e.gen !== gen) { drop(e); rows.delete(x); } });
+    if (n < LAG_MIN_POINTS || hi - lo < 0.1) return null;
+    let best = -1, err = Infinity;
+    for (let k = 0; k < N; k++) if (sums[k] < err) { err = sums[k]; best = k; }
+    return best < 0 ? null : LAG_MIN_MS + best * LAG_STEP_MS;
+  };
 }
 
 /** The value one press of a toggle sends: the other end. */
@@ -195,8 +247,10 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
   fit = () => null, onRender = () => {} }) {
   const capable = () => !!api.field(TRIAL_ROLE);
   let mode = capable() ? 'preview' : 'live';
-  let note = '', lagAt = -Infinity, lagText = '', model = null, rows = [];
-  const btn = (text, tip) => h('button', { type: 'button', class: 'og-btn sm', text, title: tip });
+  let note = '', lagAt = -Infinity, lagText = '', model = null, rows = [], cap = false;
+  let roleIt = new Map(), roleF = {}, roleV = {}, inputs = null;
+  let chans = [], seen = NaN, pend = false, wasShown = false, unwatch = () => {};
+  const btn = (text, tip) => h('button', { type: 'button', class: 'og-btn sm', text, 'data-tip': tip });
   const bLive = btn(COPY.live, COPY.liveTip);
   const bPrev = btn(COPY.preview, COPY.previewTip);
   const bApply = btn(COPY.apply, COPY.applyTip);
@@ -216,17 +270,45 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
     kin = createKinetic();
     kin.ready.then((v) => { version = v; onRender(); }, kinFail);
   } catch (e) { kinFail(e); }
-  const shown = (it) => Number(it.draft != null ? it.draft : api.value(it.f));
+  const shown = (it) => Number(it.draft != null ? it.draft : it.val);
+  const reread = () => { seen = NaN; };
+  /** The sum of api.changed over the channels the analyzer reads; NaN without it. */
+  function stamp() {
+    if (!api.changed) return NaN;
+    let s = api.changed(MARK_ROLE);
+    for (const c of chans) s += api.changed(c);
+    return s;
+  }
+  /** The hub's values when api.changed moved for a channel they read, or after reread(); false when nothing moved. */
+  function read(open) {
+    const s = stamp();
+    if (s === seen) return false;
+    seen = s;
+    for (const it of rows) {
+      it.val = api.value(it.f);
+      if (!open) continue;
+      it.st = api.status(it.f);
+      it.gate = api.gate(it.f) || '';
+      it.tip = it.gate || api.reason(it.f) || api.stale(it.f) || it.f.desc || '';
+    }
+    for (const r of KIN_ROLES) if (!roleIt.has(r)) roleV[r] = Number(api.value(roleF[r]));
+    if (open) pend = !!api.trialPending;
+    return true;
+  }
   /** Re-render through the worker when the script, T, a limit, the window or a shown Tuning value changed. */
-  function kinetic() {
+  function kinetic(fresh) {
     const sc = script(), t = T();
     if (kinState !== 'wasm' || !sc || !sc.at.length) return;
-    const v = (role) => { const it = rows.find((x) => x.f.role === role); return it ? shown(it) : Number(api.value(api.field(role))); };
-    const limits = { vmax: v('limit.input.speed'), amax: v('limit.input.accel'), jmax: v('limit.input.jerk'), rail: v('geometry.max_travel'), horizonMs: 0 };
-    const win = [v('window.min'), v('window.max')];
-    if (!Object.values(limits).slice(0, 4).every((x) => x > 0) || !(win[1] > win[0])) { kinR = { error: COPY.noLimits }; kinSc = null; return; }
-    const tuning = tuningOf(rows.map((it) => [it.f, shown(it)]));
-    const key = JSON.stringify([limits, win, tuning, t]);
+    if (fresh || !inputs || inputs.t !== t) {
+      const v = (role) => (roleIt.has(role) ? shown(roleIt.get(role)) : roleV[role]);
+      const limits = { vmax: v('limit.input.speed'), amax: v('limit.input.accel'), jmax: v('limit.input.jerk'), rail: v('geometry.max_travel'), horizonMs: 0 };
+      const win = [v('window.min'), v('window.max')];
+      const ok = Object.values(limits).slice(0, 4).every((x) => x > 0) && win[1] > win[0];
+      const tuning = ok ? tuningOf(rows.map((it) => [it.f, shown(it)])) : null;
+      inputs = { t, ok, limits, win, tuning, key: ok ? JSON.stringify([limits, win, tuning, t]) : '' };
+    }
+    const { limits, win, tuning, key } = inputs;
+    if (!inputs.ok) { kinR = { error: COPY.noLimits }; kinSc = null; return; }
     const run = (s, w, map, done) => {
       const id = busy = ++seq, { segs, t0, steps } = segmentsOf(s, t), every = Math.max(EVERY, Math.ceil(steps / KIN_MAX_SAMPLES));
       kin.render({ limits, window: w, tuning, segs: map ? segs.map(map) : segs, steps, stepMs: 1, every }).then((r) => {
@@ -252,26 +334,28 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
   const fail = (r) => { if (r && r.ok === false) note = r.error || ''; };
   const setMode = (m) => { mode = m; note = ''; frame(); };
   bLive.addEventListener('click', () => setMode('live'));
-  bPrev.addEventListener('click', () => { if (capable()) setMode('preview'); });
-  const op = (fn) => () => { note = ''; Promise.resolve(fn()).then(fail, (e) => { note = (e && e.message) || String(e); }).then(onRender); };
+  bPrev.addEventListener('click', () => { if (cap) setMode('preview'); });
+  const op = (fn) => () => { note = ''; Promise.resolve(fn()).then(fail, (e) => { note = (e && e.message) || String(e); }).then(() => { reread(); onRender(); }); };
   bApply.addEventListener('click', op(() => api.commitTrial()));
   bDiscard.addEventListener('click', op(() => api.revertTrial()));
 
   function send(f, v) {
     note = '';
-    if (mode === 'preview' && capable()) fail(api.writeTrial(f, v));
+    if (mode === 'preview' && cap) fail(api.writeTrial(f, v));
     else api.write(f, v);
+    reread();
+    onRender();
   }
 
   function row(f) {
     const v = h('output', { class: 'fsa-v' });
     const c = h('span', { class: 'fsa-c' });
     const r = h('div', { class: 'fsa-row' }, h('span', { class: 'fsa-k', text: f.label || f.name }), c, v);
-    const it = { f, r, v, c, draft: null, inputs: [], paint: null };
+    const it = { f, r, v, c, draft: null, inputs: [], paint: null, val: undefined, st: 'confirmed', gate: '', tip: '' };
     if (f.widget === 'slider') {
       const i = h('input', { type: 'range', min: String(f.min), max: String(f.max), step: String(f.step || (f.max - f.min) / 100), 'aria-label': f.label || f.name });
-      i.addEventListener('input', () => { it.draft = +i.value; paint(it); });
-      i.addEventListener('change', () => { const x = it.draft; it.draft = null; if (x != null) send(f, x); paint(it); });
+      i.addEventListener('input', () => { it.draft = +i.value; paint(it); reread(); });
+      i.addEventListener('change', () => { const x = it.draft; it.draft = null; if (x != null) send(f, x); it.val = api.value(f); paint(it); });
       c.append(i);
       it.inputs = [i];
       it.paint = (val) => { if (it.draft == null && document.activeElement !== i) i.value = String(val ?? f.min); };
@@ -313,6 +397,7 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
 
   function build() {
     model = api.catalog();
+    cap = capable();
     const groups = tuningGroups(model);
     rows = [];
     list.replaceChildren(...(groups.length ? groups.flatMap((g) => {
@@ -320,35 +405,45 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
       rows.push(...its);
       return [h('div', { class: 'fsa-g', text: g.name }), ...its.map((x) => x.r)];
     }) : [h('div', { class: 'fsa-empty', text: COPY.empty })]));
+    roleIt = new Map();
+    for (const it of rows) if (it.f.role && !roleIt.has(it.f.role)) roleIt.set(it.f.role, it);
+    roleF = Object.fromEntries(KIN_ROLES.map((r) => [r, roleIt.has(r) ? null : api.field(r)]));
+    chans = [...new Set([...rows.map((it) => it.f.channelId), ...Object.values(roleF).filter(Boolean).map((f) => f.channelId)])];
+    unwatch();
+    unwatch = api.onChanged ? api.onChanged([MARK_ROLE, ...chans], onRender) : () => {};
+    roleV = {};
+    inputs = null;
+    reread();
   }
 
+  /** The row from its last read (read()) and its draft. */
   function paint(it) {
-    const val = api.value(it.f);
-    it.paint(val);
-    setText(it.v, fmtValue(it.f, it.draft != null ? it.draft : val));
+    it.paint(it.val);
+    setText(it.v, fmtValue(it.f, it.draft != null ? it.draft : it.val));
     it.r.toggleAttribute('data-draft', it.draft != null);
-    setAttr(it.r, 'data-st', api.status(it.f));
-    const gate = api.gate(it.f) || '';
-    const tip = gate || api.reason(it.f) || api.stale(it.f) || it.f.desc || '';
-    if (it.r.title !== tip) it.r.title = tip;
-    for (const i of it.inputs) if (i.disabled !== !!gate) i.disabled = !!gate;
+    setAttr(it.r, 'data-st', it.st);
+    if (it.r.dataset.tip !== it.tip) it.r.dataset.tip = it.tip;
+    for (const i of it.inputs) if (i.disabled !== !!it.gate) i.disabled = !!it.gate;
   }
 
   let lagIn = null;   // [trace length, its last point, script, T]: what lagText was measured over
-  /** shown false (the card's analyzer collapsed): the render for the timeline's curve and Auto only, no row reads the hub. */
+  const lagU = createLag('u'), lagP = createLag('p');
+  /** shown false (the card's analyzer collapsed): the render for the timeline's curve and Auto only, no row paint. */
   function frame(shown = true) {
-    if (api.catalog() !== model) build();
-    const cap = capable();
+    // A new catalog bumps every sequence, so an unmoved stamp needs no catalog read.
+    if (stamp() !== seen && api.catalog() !== model) build();
+    if (shown && !wasShown) reread();
+    wasShown = shown;
+    const fresh = read(shown);
     if (!cap && mode === 'preview') mode = 'live';
-    kinetic();
+    kinetic(fresh);
     if (!shown) return;
     press(bLive, mode === 'live');
     press(bPrev, mode === 'preview');
     bPrev.disabled = !cap;
-    bPrev.title = cap ? COPY.previewTip : COPY.noTrial;
-    const pending = !!api.trialPending;
-    bApply.disabled = bDiscard.disabled = !cap || !pending;
-    for (const it of rows) paint(it);
+    bPrev.dataset.tip = cap ? COPY.previewTip : COPY.noTrial;
+    bApply.disabled = bDiscard.disabled = !cap || !pend;
+    if (fresh) for (const it of rows) paint(it);
     const now = performance.now();
     const tr = now - lagAt >= LAG_EVERY_MS ? trace() : null;
     if (tr && !(lagIn && lagIn[0] === tr.length && lagIn[1] === tr[tr.length - 1] && lagIn[2] === script() && lagIn[3] === T())) {
@@ -356,13 +451,13 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
       const sc = script(), t = T();
       lagIn = [tr.length, tr[tr.length - 1], sc, t];
       const fmt = (d) => (d == null ? COPY.none : d + ' ms');
-      lagText = COPY.lag + ' ' + fmt(lagOf(tr, sc, t, 'u')) + '  ' + COPY.plan + ' ' + fmt(lagOf(tr, sc, t, 'p'));
+      lagText = COPY.lag + ' ' + fmt(lagU(tr, sc, t)) + '  ' + COPY.plan + ' ' + fmt(lagP(tr, sc, t));
     }
     setText(lag, note || lagText);
     setText(kinEl, kinText(kinState, kinR));
     const tip = kinR && kinR.anomalies ? [version, Math.round(kinR.ms) + ' ms', ...[...kinR.anomalies].map((n, b) => (n && ANOMALIES[b] ? ANOMALIES[b] + ' ' + n : ''))
       .filter(Boolean)].join('\n') : version;
-    if (kinEl.title !== tip) kinEl.title = tip;
+    if (kinEl.dataset.tip !== tip) kinEl.dataset.tip = tip;
   }
 
   frame();
@@ -371,6 +466,6 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
     get mode() { return mode; },
     get kinetic() { return kinR && kinR.pos && kinR.sc === script() ? kinR : null; },
     get fit() { return fitR; },
-    unmount() { if (kin) kin.close(); root.remove(); },
+    unmount() { unwatch(); unwatch = () => {}; if (kin) kin.close(); root.remove(); },
   };
 }

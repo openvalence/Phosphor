@@ -30,7 +30,7 @@
   });
 </script>
 
-<footer class="page-foot" class:page bind:offsetHeight={footH} aria-label="Page controls">
+<footer class="page-foot" data-part="page-foot" class:page bind:offsetHeight={footH} aria-label="Page controls">
   <div class="foot-page">{@render children?.()}</div>
 </footer>
 

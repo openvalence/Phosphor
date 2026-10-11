@@ -63,7 +63,8 @@
 </div>
 
 <style>
-  .toy { display: flex; flex-direction: column; gap: var(--sp-2); height: 100%; overflow: auto; }
+  /* Grows with its controls: nothing in a card scrolls on its own (DESIGN §10.6). */
+  .toy { display: flex; flex-direction: column; gap: var(--sp-2); }
   .toy-head, .toy-row { display: flex; align-items: center; gap: var(--sp-3); }
   .toy-name { flex: 1 1 auto; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .toy-ctl { padding: var(--sp-2) var(--sp-2); border-radius: var(--radius); }
