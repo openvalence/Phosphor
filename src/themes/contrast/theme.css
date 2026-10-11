@@ -53,10 +53,9 @@ html:root[data-style="contrast"] [data-part="bar"] .chip.tone-good { border-styl
 html:root[data-style="contrast"] [data-part="bar"] .chip.tone-dim { border-style: dashed; }
 html:root[data-style="contrast"] [data-part="bar"] .mono { font-weight: 700; letter-spacing: 0; }
 
-@media (max-width: 560px) {
-  html:root[data-style="contrast"] [data-part="bar"] .chip { font-size: .66rem; }
-  html:root[data-style="contrast"] [data-part="caption-btn"] { width: 40px; }
-}
+
+/* The channel heat blocks: a cell is outlined and fills from the bottom by its level, so a reading is a height as well as a tint. */
+html:root[data-style="contrast"] [data-part="bar"] .blk:not(.warn) { border-radius: 0; box-shadow: inset 0 0 0 1px var(--line-2); background-image: linear-gradient(to top, transparent var(--lv), var(--bg) var(--lv)); }
 /* The link dot: state is a shape, never a color. live = solid disc, connecting = ring around a dot,
    offline = hollow square with a cross. */
 html:root[data-style="contrast"] .linkdot { width: 20px; height: 20px; }
@@ -225,6 +224,8 @@ html:root[data-style="contrast"] .field.disabled { opacity: 1; }
 /* ---- fields: boxed, mono numerals, a 3 px frame; the ladder owns the border color inside a .field ---- */
 html:root[data-style="contrast"] :is(.og-num, .value-input, select, .chip-num) { border-width: var(--ct-w); border-radius: 0; box-shadow: none; background-color: var(--bg-sunken); color: var(--tx-hi); font-weight: 700; }
 html:root[data-style="contrast"] [data-part="pane"] :is(.og-num, .value-input, select) { min-height: var(--ct-hit); }
+html:root[data-style="contrast"] [data-part="pane"] :is(.ui-text, .ui-select, .ui-stepper > .og-num) { min-height: 2.5rem; }
+html:root[data-style="contrast"] [data-part="pane"] .ui-stepper > button { flex-basis: 2.5rem; min-height: 2.5rem; }
 html:root[data-style="contrast"] :is(.og-num, .value-input, select, .chip-num):focus { border-color: var(--highlight); }
 html:root[data-style="contrast"] :is(.og-num, .value-input, select):hover:not(:disabled):not(:focus) { border-style: double; }
 html:root[data-style="contrast"] select {
@@ -255,9 +256,8 @@ html:root[data-style="contrast"] .og-switch .track::after {
   width: 22px;
   height: 22px;
   border-radius: 0;
-  background: var(--tx-mut);
-  box-shadow: none;
-  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+  background: var(--bg);
+  box-shadow: inset 0 0 0 4px var(--tx-mut);
 }
 html:root[data-style="contrast"] .og-switch input:checked + .track::after { transform: translateX(30px); background: var(--reality); box-shadow: none; }
 html:root[data-style="contrast"] .og-switch .track::before {
@@ -296,7 +296,7 @@ html:root[data-style="contrast"] input[type="checkbox"]:not([role="switch"]):che
   clip-path: polygon(8% 52%, 22% 38%, 40% 56%, 80% 12%, 94% 26%, 40% 84%);
 }
 html:root[data-style="contrast"] [role="radio"] { font-weight: 700; }
-html:root[data-style="contrast"] [role="radio"]::before {
+html:root[data-style="contrast"] [role="radio"]:not(.og-seg > *)::before {
   content: '';
   display: inline-block;
   box-sizing: border-box;
@@ -308,8 +308,8 @@ html:root[data-style="contrast"] [role="radio"]::before {
   border: var(--ct-w) solid var(--line-3);
   background: var(--bg);
 }
-html:root[data-style="contrast"] [role="radio"][aria-checked="true"] { text-decoration: underline; text-decoration-thickness: 3px; text-underline-offset: 4px; }
-html:root[data-style="contrast"] [role="radio"][aria-checked="true"]::before { border-color: var(--reality); background: radial-gradient(circle, var(--reality) 0 38%, var(--bg) 42%); }
+html:root[data-style="contrast"] [role="radio"][aria-checked="true"]:not(.og-seg > *) { text-decoration: underline; text-decoration-thickness: 3px; text-underline-offset: 4px; }
+html:root[data-style="contrast"] [role="radio"][aria-checked="true"]:not(.og-seg > *)::before { border-color: var(--reality); background: radial-gradient(circle, var(--reality) 0 38%, var(--bg) 42%); }
 
 /* ---- sliders: a 6 px track, a barred thumb ---- */
 html:root[data-style="contrast"] input[type="range"] { height: calc(6px + 2 * var(--range-hit)); background-color: var(--line-2); }
@@ -430,14 +430,29 @@ html:root[data-style="contrast"] ::-webkit-scrollbar-button:single-button {
   background-color: var(--bg-sunken);
   border: 2px solid var(--line-3);
   background-repeat: no-repeat;
-  background-position: center;
-  background-size: 10px 10px;
 }
-html:root[data-style="contrast"] ::-webkit-scrollbar-button:single-button:vertical:decrement { background-image: linear-gradient(45deg, transparent 50%, var(--tx-hi) 50%); clip-path: none; }
-html:root[data-style="contrast"] ::-webkit-scrollbar-button:single-button:vertical:increment { background-image: linear-gradient(225deg, transparent 50%, var(--tx-hi) 50%); }
-html:root[data-style="contrast"] ::-webkit-scrollbar-button:single-button:horizontal:decrement { background-image: linear-gradient(-45deg, transparent 50%, var(--tx-hi) 50%); }
-html:root[data-style="contrast"] ::-webkit-scrollbar-button:single-button:horizontal:increment { background-image: linear-gradient(135deg, transparent 50%, var(--tx-hi) 50%); }
+html:root[data-style="contrast"] ::-webkit-scrollbar-button:single-button:vertical:decrement {
+  background-image: linear-gradient(to bottom right, transparent 50%, var(--tx-hi) 50%), linear-gradient(to bottom left, transparent 50%, var(--tx-hi) 50%);
+  background-size: 5px 8px; background-position: 4px 5px, 9px 5px;
+}
+html:root[data-style="contrast"] ::-webkit-scrollbar-button:single-button:vertical:increment {
+  background-image: linear-gradient(to top right, transparent 50%, var(--tx-hi) 50%), linear-gradient(to top left, transparent 50%, var(--tx-hi) 50%);
+  background-size: 5px 8px; background-position: 4px 5px, 9px 5px;
+}
+html:root[data-style="contrast"] ::-webkit-scrollbar-button:single-button:horizontal:decrement {
+  background-image: linear-gradient(to bottom right, transparent 50%, var(--tx-hi) 50%), linear-gradient(to top right, transparent 50%, var(--tx-hi) 50%);
+  background-size: 8px 5px; background-position: 5px 4px, 5px 9px;
+}
+html:root[data-style="contrast"] ::-webkit-scrollbar-button:single-button:horizontal:increment {
+  background-image: linear-gradient(to bottom left, transparent 50%, var(--tx-hi) 50%), linear-gradient(to top left, transparent 50%, var(--tx-hi) 50%);
+  background-size: 8px 5px; background-position: 5px 4px, 5px 9px;
+}
 
+@media (max-width: 560px) {
+  html:root[data-style="contrast"] [data-part="bar"] .chip { font-size: .66rem; }
+  html:root[data-style="contrast"] [data-part="caption-btn"] { width: 36px; }
+  html:root[data-style="contrast"] [data-part="bar"] .wordmark { padding: 0 .2rem; }
+}
 /* ---- Windows high contrast (forced colors): the system palette wins; shapes and borders carry the state ---- */
 @media (forced-colors: active) {
   html:root[data-style="contrast"] :focus-visible { outline: var(--ct-ring) solid Highlight; outline-offset: 3px; }
@@ -452,9 +467,9 @@ html:root[data-style="contrast"] ::-webkit-scrollbar-button:single-button:horizo
   html:root[data-style="contrast"] .og-btn.primary::before { background: none; border-color: Highlight; }
   html:root[data-style="contrast"] :is(.og-btn, .og-seg button, .stepper button):disabled { border-color: GrayText; color: GrayText; background-image: none; }
   html:root[data-style="contrast"] .og-switch .track { border-color: ButtonText; }
-  html:root[data-style="contrast"] .og-switch .track::after { forced-color-adjust: none; background: ButtonText; }
+  html:root[data-style="contrast"] .og-switch .track::after { forced-color-adjust: none; background: Canvas; box-shadow: inset 0 0 0 4px ButtonText; }
   html:root[data-style="contrast"] .og-switch input:checked + .track { border-color: Highlight; }
-  html:root[data-style="contrast"] .og-switch input:checked + .track::after { background: Highlight; }
+  html:root[data-style="contrast"] .og-switch input:checked + .track::after { background: Highlight; box-shadow: none; }
   html:root[data-style="contrast"] .og-switch .track::before { color: ButtonText; }
   html:root[data-style="contrast"] .og-switch input:checked + .track::before { color: Highlight; }
   html:root[data-style="contrast"] input[type="checkbox"]:not([role="switch"]):checked::before { forced-color-adjust: none; background: Highlight; }
@@ -466,4 +481,7 @@ html:root[data-style="contrast"] ::-webkit-scrollbar-button:single-button:horizo
   html:root[data-style="contrast"] #ph-tip { forced-color-adjust: none; background: CanvasText; color: Canvas; border-color: CanvasText; }
   html:root[data-style="contrast"] ::-webkit-scrollbar-thumb { background: ButtonText; }
   html:root[data-style="contrast"] .linkdot .core { forced-color-adjust: none; background-color: CanvasText; }
+  html:root[data-style="contrast"] [data-icon]::before { forced-color-adjust: none; background-color: currentColor; }
+  html:root[data-style="contrast"] .blk { forced-color-adjust: none; }
+  html:root[data-style="contrast"] [data-part="rail-tab"]:not(.on) .rail-glyph { color: ButtonText; }
 }
