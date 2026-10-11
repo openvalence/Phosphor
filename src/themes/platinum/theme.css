@@ -1,102 +1,626 @@
-/* Platinum: pinstripe title bars, a title plate, gray bevels and a black hairline
-   around every window. Light chassis; the stripes sit behind a solid plate that
-   carries the title, so the text reads on a chassis surface. */
+/* Platinum: a Mac OS 8 and 9 homage drawn from scratch. Pinstriped title bars (close box left,
+   zoom and collapse right), bevelled gray windows with a hairline and a drop shadow, push buttons
+   with a heavy default ring, X check boxes, dotted radios, groove sliders, scroll arrows and a
+   ridged thumb, a woven desktop pattern, balloon-yellow tooltips, bold Charcoal-style type.
+
+   Light chassis; every surface under text is a chassis token or a literal that is lighter than every
+   token (white fields, the balloon), so the contrast guard holds. Black hairlines, white highlights
+   and gray shadows are decoration, never a state: states keep their own colors (:not() names them).
+   Graphite is the same chrome in cool gray (html[data-variant="platinum-graphite"]). */
 html:root[data-style="platinum"] {
-  --font: 'Lucida Grande', 'Lucida Sans Unicode', Geneva, 'Segoe UI', Verdana, sans-serif;
-  --font-head: Charcoal, Chicago, 'Lucida Grande', 'Lucida Sans Unicode', Geneva, 'Segoe UI', Verdana, sans-serif;
+  --font: Geneva, 'Lucida Grande', 'Lucida Sans Unicode', Verdana, 'DejaVu Sans', sans-serif;
+  --font-head: Charcoal, Chicago, 'Lucida Grande', Verdana, 'DejaVu Sans', sans-serif;
+  --mono: Monaco, 'Lucida Console', 'Cascadia Mono', Consolas, 'DejaVu Sans Mono', monospace;
   --frame-w: 1px;
-  --tex-page: radial-gradient(rgba(60, 60, 80, .13) 1px, transparent 1.2px);
-  --tex-page-size: 4px 4px;
-  --stripe: repeating-linear-gradient(180deg, #FFFFFF 0 1px, #C2C2C6 1px 2px);
+  /* the desktop: a woven two-tone pattern, fixed under the windows */
+  --tex-page: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' shape-rendering='crispEdges'%3E %3Cpath d='M0 0h2v2H0zM4 4h2v2H4z' fill='%23fff' fill-opacity='.34'/%3E %3Cpath d='M4 0h2v2H4zM0 4h2v2H0z' fill='%232A3560' fill-opacity='.11'/%3E %3Cpath d='M2 2h2v2H2zM6 6h2v2H6z' fill='%232A3560' fill-opacity='.05'/%3E%3C/svg%3E");
+  --tex-page-size: 8px 8px;
+  --pt-black: #000;
+  --pt-white: #fff;
+  --pt-lo: #8C8C94;
+  --pt-lo2: #6A6A72;
+  --pt-shadow: rgba(0, 0, 0, .3);
+  /* title bar pinstripes: white and gray lines, two pixels a pair */
+  --pt-stripes: repeating-linear-gradient(180deg, #FFFFFF 0 1px, #A4A4AC 1px 2px);
+  /* the accent family of the controls: thumb, progress, selection (Graphite swaps these) */
+  --pt-a1: #E4E4F6;
+  --pt-a2: #AEAED8;
+  --pt-a3: #7E7EB6;
+  --pt-a4: #4C4C86;
+  --pt-sel: #3C3CAA;
+  --pt-sel-soft: #C6C6EA;
+  --pt-balloon: #FFFFC8;
+  /* the push button: highlights top and left, shadows bottom and right, a slightly lit face */
+  --pt-btn:
+    linear-gradient(#fff, #fff) 3px 0 / calc(100% - 6px) 1px no-repeat,
+    linear-gradient(#fff, #fff) 0 3px / 1px calc(100% - 6px) no-repeat,
+    linear-gradient(#8C8C94, #8C8C94) 3px 100% / calc(100% - 6px) 1px no-repeat,
+    linear-gradient(#8C8C94, #8C8C94) 100% 3px / 1px calc(100% - 6px) no-repeat,
+    linear-gradient(160deg, #F6F6F8 0%, #E0E0E4 50%, #C6C6CC 100%);
+  --pt-btn-down:
+    linear-gradient(#6A6A72, #6A6A72) 3px 0 / calc(100% - 6px) 1px no-repeat,
+    linear-gradient(#6A6A72, #6A6A72) 0 3px / 1px calc(100% - 6px) no-repeat,
+    linear-gradient(#E8E8EC, #E8E8EC) 3px 100% / calc(100% - 6px) 1px no-repeat,
+    linear-gradient(#E8E8EC, #E8E8EC) 100% 3px / 1px calc(100% - 6px) no-repeat,
+    linear-gradient(160deg, #A4A4AC 0%, #B8B8C0 50%, #CACAD0 100%);
+}
+html:root[data-style="platinum"][data-variant="platinum-graphite"] {
+  --pt-stripes: repeating-linear-gradient(180deg, #F2F2F4 0 1px, #8A8E98 1px 2px);
+  --pt-a1: #E2E4E8;
+  --pt-a2: #A6ABB6;
+  --pt-a3: #747A88;
+  --pt-a4: #484E5C;
+  --pt-sel: #404658;
+  --pt-sel-soft: #C4C8D2;
+  --pt-lo: #838790;
+  --pt-lo2: #5E626C;
 }
 
+
+/* ---- the title bar: the top bar. Pinstripes across it, a plate under the title, the close box at the
+   left end, the collapse and zoom boxes at the right ---- */
+html:root[data-style="platinum"] [data-part="top"] { background-color: var(--bg-card); border-bottom: 1px solid var(--pt-black); }
 html:root[data-style="platinum"] [data-part="bar"] {
   background-color: var(--bg-card);
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, .8), rgba(255, 255, 255, 0) 60%);
-  box-shadow: inset 0 -1px 0 #000;
+  background-image: var(--pt-stripes), linear-gradient(var(--bg-card), var(--bg-card));
+  background-size: 100% 18px, 100% 100%;
+  background-position: 0 50%, 0 0;
+  background-repeat: no-repeat;
+  box-shadow: inset 0 1px 0 var(--pt-white), inset 0 -1px 0 var(--pt-black);
+  padding-left: 0;
+  gap: var(--sp-3);
 }
-html:root[data-style="platinum"] [data-part="bar"] .wordmark { font-family: var(--font-head); font-weight: 700; font-size: .9rem; letter-spacing: 0; }
-html:root[data-style="platinum"] [data-part="bar"] .chip { border-radius: 3px; background-image: linear-gradient(180deg, rgba(255, 255, 255, .7), rgba(255, 255, 255, 0)); }
-html:root[data-style="platinum"] [data-part="top"] { border-bottom: 1px solid #000; }
-html:root[data-style="platinum"] [data-part="strip"],
-html:root[data-style="platinum"] [data-part="hero"] { background-image: linear-gradient(180deg, rgba(255, 255, 255, .55), rgba(255, 255, 255, 0) 70%); }
-html:root[data-style="platinum"] [data-part="hero"] { border-bottom: 1px solid #000; }
+html:root[data-style="platinum"] [data-part="bar"] .header-left,
+html:root[data-style="platinum"] [data-part="bar"] .chips.pinned,
+html:root[data-style="platinum"] [data-part="bar"] .chips.opt {
+  background-color: var(--bg-card);
+  padding-inline: 8px;
+  align-self: stretch;
+  margin-block: 0;
+}
+html:root[data-style="platinum"] [data-part="bar"] .header-left { margin-left: 2px; border-radius: 0; }
+html:root[data-style="platinum"] [data-part="bar"] .wordmark {
+  font-family: var(--font-head);
+  font-weight: 700;
+  font-size: .86rem;
+  letter-spacing: 0;
+  color: var(--tx-hi);
+}
+html:root[data-style="platinum"] [data-part="bar"] .chip {
+  border-radius: 3px;
+  background-color: var(--pt-white);
+  border-color: var(--pt-black);
+  box-shadow: inset 1px 1px 0 var(--pt-lo);
+}
+html:root[data-style="platinum"] [data-part="bar"] .chips.opt { padding-inline: 0; }
 
-html:root[data-style="platinum"] [data-part="rail"] {
-  background-image: linear-gradient(90deg, rgba(255, 255, 255, .6), rgba(255, 255, 255, 0) 30%);
-  border-color: #000;
-  border-radius: 0 4px 4px 0;
-  box-shadow: 2px 2px 0 rgba(0, 0, 0, .35);
+/* The caption: display:contents lets the close box move to the left end of the bar (order) while
+   the collapse and zoom boxes stay at the right. Each keeps a 30 px hit box and the bar's full height. */
+html:root[data-style="platinum"] [data-part="caption"] { display: contents; }
+html:root[data-style="platinum"] [data-part="caption-btn"] {
+  position: relative;
+  align-self: stretch;
+  width: 26px;
+  padding: 0;
+  color: var(--pt-black);
+  background: transparent;
 }
+html:root[data-style="platinum"] [data-part="caption-btn"][data-cap="close"] { order: -1; width: 30px; margin-left: 2px; }
+html:root[data-style="platinum"] [data-part="caption-btn"][data-cap="min"] { width: 24px; }
+html:root[data-style="platinum"] [data-part="caption-btn"][data-cap="max"] { width: 28px; margin-right: 2px; }
+html:root[data-style="platinum"] [data-part="caption-btn"]::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 13px;
+  height: 13px;
+  margin: -6.5px 0 0 -6.5px;
+  background:
+    linear-gradient(#fff, #fff) 0 0 / 100% 1px no-repeat,
+    linear-gradient(#fff, #fff) 0 0 / 1px 100% no-repeat,
+    linear-gradient(#8C8C94, #8C8C94) 0 100% / 100% 1px no-repeat,
+    linear-gradient(#8C8C94, #8C8C94) 100% 0 / 1px 100% no-repeat,
+    linear-gradient(150deg, #F2F2F6, #CBCBD2);
+  border: 1px solid var(--pt-black);
+  box-shadow: 0 0 0 2px var(--bg-card);
+}
+html:root[data-style="platinum"] [data-part="caption-btn"] svg { position: relative; width: 11px; height: 11px; stroke-width: 1.5; }
+/* close: an empty box until the pointer is on it, then its cross */
+html:root[data-style="platinum"] [data-part="caption-btn"][data-cap="close"] svg { opacity: 0; }
+html:root[data-style="platinum"] [data-part="caption-btn"][data-cap="close"]:hover svg,
+html:root[data-style="platinum"] [data-part="caption-btn"][data-cap="close"]:focus-visible svg,
+html:root[data-style="platinum"] [data-part="caption-btn"][data-cap="close"][aria-expanded="true"] svg { opacity: 1; }
+/* zoom: a box with a small box inside it, not the stock square */
+html:root[data-style="platinum"] [data-part="caption-btn"][data-cap="max"] svg { width: 6px; height: 6px; margin: -3px 0 0 -3px; stroke-width: 1.2; }
+html:root[data-style="platinum"] [data-part="caption-btn"][data-cap="max"] svg rect { width: 7px; height: 7px; x: 2.5px; y: 2.5px; }
+/* collapse: a bar across the box, as a window rolled up */
+html:root[data-style="platinum"] [data-part="caption-btn"][data-cap="min"] svg { width: 9px; height: 9px; stroke-width: 1.6; }
+html:root[data-style="platinum"] [data-part="caption-btn"]:hover { background: transparent; color: var(--pt-black); }
+html:root[data-style="platinum"] [data-part="caption-btn"]:active::before,
+html:root[data-style="platinum"] [data-part="caption-btn"][aria-expanded="true"]::before {
+  background:
+    linear-gradient(#6A6A72, #6A6A72) 0 0 / 100% 1px no-repeat,
+    linear-gradient(#6A6A72, #6A6A72) 0 0 / 1px 100% no-repeat,
+    linear-gradient(#E8E8EC, #E8E8EC) 0 100% / 100% 1px no-repeat,
+    linear-gradient(#E8E8EC, #E8E8EC) 100% 0 / 1px 100% no-repeat,
+    linear-gradient(150deg, #A8A8B0, #C6C6CC);
+}
+html:root[data-style="platinum"] [data-part="caption-btn"]:focus-visible { outline: 2px solid var(--highlight); outline-offset: -3px; }
+/* the close alert: a bevelled alert box, at the close box's side */
+html:root[data-style="platinum"] [role="dialog"][aria-label="Close Phosphor"] {
+  left: 0;
+  right: auto;
+  border: 1px solid var(--pt-black);
+  border-radius: 0;
+  background: var(--bg-card);
+  color: var(--tx);
+  box-shadow: inset 1px 1px 0 var(--pt-white), inset -1px -1px 0 var(--pt-lo), 3px 3px 0 var(--pt-shadow);
+}
+
+/* ---- the window body under the title bar: the strip and the hero ---- */
+html:root[data-style="platinum"] [data-part="strip"] {
+  background-color: var(--bg-card);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, .55), rgba(255, 255, 255, 0) 60%);
+}
+html:root[data-style="platinum"] [data-part="stop-frame"] {
+  outline: 1px solid var(--pt-lo2);
+  outline-offset: 2px;
+  border-radius: 3px;
+  box-shadow: 1px 1px 0 3px var(--pt-white);
+}
+html:root[data-style="platinum"] [data-part="numerals"] { color: var(--tx); }
+html:root[data-style="platinum"] [data-part="numerals"] .hn-val { font-family: var(--mono); }
+html:root[data-style="platinum"] [data-part="hero"] {
+  background-color: var(--bg-card);
+  border-bottom: 1px solid var(--pt-black);
+  background-image: linear-gradient(180deg, var(--bg-card), var(--bg-raised));
+}
+
+/* ---- the sidebar: a window of its own; section names are a title bar's stripes with a plate ---- */
+html:root[data-style="platinum"] [data-part="rail"] {
+  background-color: var(--bg-card);
+  background-image: none;
+  border: 1px solid var(--pt-black);
+  border-left: 0;
+  border-radius: 0 4px 4px 0;
+  box-shadow: inset -1px 0 0 var(--pt-lo), inset 1px 1px 0 var(--pt-white), 3px 3px 0 var(--pt-shadow);
+}
+html:root[data-style="platinum"] [data-part="rail-sec"] { border-color: var(--pt-lo); }
 html:root[data-style="platinum"] [data-part="rail-label"] {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-family: var(--font-head);
   font-weight: 700;
   text-transform: none;
   letter-spacing: 0;
-  font-size: 12px;
-  background-color: var(--bg-card);
-  background-image: var(--stripe);
-  margin: 0 4px 2px;
-  padding: 2px 8px;
-  border: 1px solid #000;
-  border-radius: 3px;
+  font-size: .72rem;
+  color: var(--tx-hi);
 }
-html:root[data-style="platinum"] [data-part="rail-tab"] { border-radius: 3px; }
+html:root[data-style="platinum"] [data-part="rail-label"]::after {
+  content: '';
+  flex: 1 1 auto;
+  height: 9px;
+  background-image: var(--pt-stripes);
+}
+html:root[data-style="platinum"] [data-part="rail-tab"] { border-radius: 0; font-family: var(--font-head); font-weight: 700; font-size: .78rem; }
+html:root[data-style="platinum"] [data-part="rail-tab"]:hover { background-color: var(--pt-sel-soft); }
 html:root[data-style="platinum"] [data-part="rail-tab"].on {
-  background-color: color-mix(in srgb, var(--highlight) 22%, var(--bg-card));
-  border-color: #000;
+  background-color: var(--pt-sel-soft);
+  border-color: var(--pt-black);
+  box-shadow: inset 1px 1px 0 var(--pt-white), inset -1px -1px 0 var(--pt-lo);
 }
-html:root[data-style="platinum"] [data-part="rail-tab"]:hover { background-color: var(--bg); }
+html:root[data-style="platinum"] .rail-sec.shell { border-radius: 0; }
 
-/* Windows: a black hairline, a drop shadow and a striped title bar with a plate. */
-html:root[data-style="platinum"] [data-part="card"],
-html:root[data-style="platinum"] [data-part="nest"] { border-radius: 0 0 3px 3px; box-shadow: 0 0 0 1px #000, 3px 3px 0 1px rgba(0, 0, 0, .35); }
-html:root[data-style="platinum"] [data-part="card-head"]:not(.over) {
-  padding: 0 6px;
-  background-color: var(--bg-raised);
-  background-image: var(--stripe);
-  box-shadow: 0 0 0 1px #000;
-  border-radius: 3px 3px 0 0;
+/* ---- the status bar and the page foot: the window's lower edge ---- */
+html:root[data-style="platinum"] [data-part="status-row"],
+html:root[data-style="platinum"] [data-part="page-foot"] {
+  background-color: var(--bg-card);
+  background-image: linear-gradient(180deg, var(--pt-white) 0 1px, rgba(255, 255, 255, 0) 1px);
+  border-top: 1px solid var(--pt-black);
 }
-html:root[data-style="platinum"] [data-part="card-head"]:not(.over) .dash-name { justify-content: center; }
+
+/* ---- windows: a card is a document window, a nest the folder window that holds them ----
+   The title bar is the card's head: pinstripes, a plate under the title, the close box and the zoom
+   box drawn at its ends (decoration: they take no pointer and give way to the head's own controls). */
+html:root[data-style="platinum"] [data-part="card-head"]:not(.over) {
+  position: relative;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--pt-black);
+  border-radius: 5px 5px 0 0;
+  background-color: var(--bg-card);
+  background-image: var(--pt-stripes), linear-gradient(var(--bg-card), var(--bg-card));
+  background-size: 100% 14px, 100% 100%;
+  background-position: 0 50%, 0 0;
+  background-repeat: no-repeat;
+  box-shadow: 0 0 0 1px var(--pt-black), inset 0 1px 0 var(--pt-white);
+}
+html:root[data-style="platinum"] [data-part="card-head"]:not(.over)::before,
+html:root[data-style="platinum"] [data-part="card-head"]:not(.over)::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  width: 11px;
+  height: 11px;
+  pointer-events: none;
+  border: 1px solid var(--pt-black);
+  background:
+    linear-gradient(#fff, #fff) 0 0 / 100% 1px no-repeat,
+    linear-gradient(#fff, #fff) 0 0 / 1px 100% no-repeat,
+    linear-gradient(#8C8C94, #8C8C94) 0 100% / 100% 1px no-repeat,
+    linear-gradient(#8C8C94, #8C8C94) 100% 0 / 1px 100% no-repeat,
+    linear-gradient(150deg, #F2F2F6, #CBCBD2);
+  box-shadow: 0 0 0 2px var(--bg-card);
+}
+html:root[data-style="platinum"] [data-part="card-head"]:not(.over)::before { left: 8px; }
+/* the zoom box: a small box in the corner of the box */
+html:root[data-style="platinum"] [data-part="card-head"]:not(.over)::after {
+  right: 8px;
+  background:
+    linear-gradient(#000, #000) 1px 1px / 5px 1px no-repeat,
+    linear-gradient(#000, #000) 1px 1px / 1px 5px no-repeat,
+    linear-gradient(#000, #000) 1px 5px / 5px 1px no-repeat,
+    linear-gradient(#000, #000) 5px 1px / 1px 5px no-repeat,
+    linear-gradient(#fff, #fff) 0 0 / 100% 1px no-repeat,
+    linear-gradient(#fff, #fff) 0 0 / 1px 100% no-repeat,
+    linear-gradient(#8C8C94, #8C8C94) 0 100% / 100% 1px no-repeat,
+    linear-gradient(#8C8C94, #8C8C94) 100% 0 / 1px 100% no-repeat,
+    linear-gradient(150deg, #F2F2F6, #CBCBD2);
+}
+html:root[data-style="platinum"] [data-part="card-head"]:not(.over):has(.tools, .dash-open)::after { display: none; }
+html:root[data-style="platinum"] [data-part="card-head"]:not(.over):has(.tools)::before { display: none; }
+html:root[data-style="platinum"] [data-part="card-head"]:not(.over) .dash-name { justify-content: center; align-items: center; }
 html:root[data-style="platinum"] .dash-title {
+  font-family: var(--font-head);
   font-weight: 700;
   text-transform: none;
   letter-spacing: 0;
-  font-size: .8rem;
+  font-size: .78rem;
+  color: var(--tx-hi);
 }
-html:root[data-style="platinum"] [data-part="card-head"]:not(.over) .dash-title { background-color: var(--bg-card); padding: 0 .7em; }
-html:root[data-style="platinum"] [data-part="panel"] { border-radius: 4px; box-shadow: 0 0 0 1px #000, 3px 3px 0 1px rgba(0, 0, 0, .35); }
+html:root[data-style="platinum"] [data-part="card-head"]:not(.over) .dash-title { background-color: var(--bg-card); padding: 0 .7em; line-height: 1.5; }
+html:root[data-style="platinum"] .dash-title[data-pidx]::before { color: var(--tx-ghost); font-weight: 400; }
+
+html:root[data-style="platinum"] [data-part="card"],
+html:root[data-style="platinum"] [data-part="nest"] {
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px var(--pt-black), inset 1px 1px 0 var(--pt-white), inset -1px -1px 0 var(--pt-lo), 3px 3px 0 1px var(--pt-shadow);
+}
+html:root[data-style="platinum"] [data-part="card-head"]:not(.over) + [data-part="card"],
+html:root[data-style="platinum"] [data-part="card-head"]:not(.over) + [data-part="nest"] { border-radius: 0 0 3px 3px; border-top-color: var(--pt-lo); }
+/* a nest is the folder window: its cards sit on the sunken surface */
+html:root[data-style="platinum"] [data-part="nest"] { box-shadow: 0 0 0 1px var(--pt-black), inset 1px 1px 0 var(--pt-lo2), inset -1px -1px 0 var(--pt-white), 3px 3px 0 1px var(--pt-shadow); }
+
+/* a plugin card: the same window, the bar a title bar with stripes behind its plates */
+html:root[data-style="platinum"] [data-part="panel"] {
+  border-radius: 5px 5px 3px 3px;
+  box-shadow: 0 0 0 1px var(--pt-black), inset 1px 1px 0 var(--pt-white), inset -1px -1px 0 var(--pt-lo), 3px 3px 0 1px var(--pt-shadow);
+}
 html:root[data-style="platinum"] [data-part="panel-bar"] {
   margin: calc(var(--sp-3) * -1) calc(var(--sp-4) * -1) 0;
   padding: 0 var(--sp-3);
-  background-color: var(--bg-raised);
-  background-image: var(--stripe);
-  border-radius: 3px 3px 0 0;
-}
-html:root[data-style="platinum"] [data-part="panel-bar"] .dash-title { background-color: var(--bg-card); padding: 0 .7em; }
-html:root[data-style="platinum"] .og-panel { outline: none; border-color: #000; border-radius: 4px; background-image: none; box-shadow: 2px 2px 0 rgba(0, 0, 0, .3); }
-html:root[data-style="platinum"] .pane-head h2 { font-family: var(--font-head); font-weight: 700; }
-
-/* Controls: raised gray with a white top edge, pressed on a gray inset. */
-html:root[data-style="platinum"] .og-btn,
-html:root[data-style="platinum"] .og-seg button,
-html:root[data-style="platinum"] .stepper button {
-  border-radius: 5px;
+  border-bottom: 1px solid var(--pt-black);
+  border-radius: 4px 4px 0 0;
   background-color: var(--bg-card);
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, .9), rgba(255, 255, 255, 0) 55%, rgba(0, 0, 0, .1));
+  background-image: var(--pt-stripes), linear-gradient(var(--bg-card), var(--bg-card));
+  background-size: 100% 16px, 100% 100%;
+  background-position: 0 50%, 0 0;
+  background-repeat: no-repeat;
 }
+html:root[data-style="platinum"] [data-part="panel-bar"] .dash-title,
+html:root[data-style="platinum"] [data-part="panel-bar"] .ui-caret { background-color: var(--bg-card); padding-inline: .6em; }
+html:root[data-style="platinum"] [data-part="panel-bar"] .ui-caret { min-height: 20px; margin-block: 5px; align-self: center; height: 20px; }
+
+/* wells and displays: etched, never the stock bracket corners */
+html:root[data-style="platinum"] .og-panel {
+  outline: none;
+  background-color: var(--bg-card);
+  background-image: none;
+  border-color: var(--pt-lo);
+  border-radius: 2px;
+  box-shadow: inset 1px 1px 0 var(--pt-white), 1px 1px 0 var(--pt-white);
+}
+html:root[data-style="platinum"] .og-screen {
+  border-color: var(--pt-black);
+  border-radius: 0;
+  box-shadow: inset 1px 1px 0 var(--pt-lo2), inset -1px -1px 0 var(--pt-white), 1px 1px 0 var(--pt-white);
+}
+html:root[data-style="platinum"] .pane-head h2 { font-family: var(--font-head); font-weight: 700; text-transform: none; letter-spacing: 0; }
+html:root[data-style="platinum"] .card-sub { text-transform: none; letter-spacing: 0; font-weight: 700; color: var(--tx-hi); }
+html:root[data-style="platinum"] .field-label { text-transform: none; letter-spacing: 0; }
+
+/* any other surface card (a plugin's own page): the same window frame, no title bar of its own */
+html:root[data-style="platinum"] .surface-card:not([data-part]),
+html:root[data-style="platinum"] .surface-nest:not([data-part]) {
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px var(--pt-black), inset 1px 1px 0 var(--pt-white), inset -1px -1px 0 var(--pt-lo), 3px 3px 0 1px var(--pt-shadow);
+}
+html:root[data-style="platinum"] .ui-menu.surface-card,
+html:root[data-style="platinum"] .ui-sheet.surface-card { border-radius: 0; }
+
+/* the grow box: three diagonal strokes in the bottom-right corner of a window, inside its padding */
+html:root[data-style="platinum"] [data-part="card"],
+html:root[data-style="platinum"] [data-part="panel"] { position: relative; }
+html:root[data-style="platinum"] [data-part="card"]::after,
+html:root[data-style="platinum"] [data-part="panel"]::after {
+  content: '';
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 9px;
+  height: 9px;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 9' shape-rendering='crispEdges'%3E %3Cpath d='M8 0L0 8M8 3L3 8M8 6L6 8' stroke='%23000' stroke-width='1' fill='none' transform='translate(.5 .5)'/%3E %3Cpath d='M9 1L1 9M9 4L4 9M9 7L7 9' stroke='%23fff' stroke-width='1' fill='none' transform='translate(.5 .5)'/%3E%3C/svg%3E");
+  opacity: .7;
+}
+html:root[data-style="platinum"] .dash-item:has(> .handle.resize) [data-part="card"]::after { display: none; }
+
+/* ---- push buttons: black hairline, rounded, lit top-left, shaded bottom-right; pressed is the same
+   button lit from the other side. The default button (.primary) wears the heavy ring. A toggled-on
+   button (.on) stays pressed in. States keep their own border and text colors. ---- */
+html:root[data-style="platinum"] .og-btn,
+html:root[data-style="platinum"] .stepper button,
+html:root[data-style="platinum"] .og-seg button:not(.active) {
+  border-radius: 6px;
+  background: var(--pt-btn);
+  background-color: var(--bg-card);
+}
+html:root[data-style="platinum"] .stepper button { border-radius: 4px; }
+html:root[data-style="platinum"] .og-btn:not(.on):not(.primary):not(.running):not(.danger),
+html:root[data-style="platinum"] .stepper button,
+html:root[data-style="platinum"] .og-seg button:not(.active) { border-color: var(--pt-black); }
+html:root[data-style="platinum"] .og-btn:not(.on):not(.primary):not(.running):not(.danger):active:not(:disabled),
+html:root[data-style="platinum"] .stepper button:active:not(:disabled),
+html:root[data-style="platinum"] .og-seg button:not(.active):active:not(:disabled) { background: var(--pt-btn-down); background-color: var(--bg-sunken); color: var(--tx-hi); border-color: var(--pt-black); }
+html:root[data-style="platinum"] .og-btn.on { background: var(--pt-btn-down); background-color: var(--bg-sunken); }
+html:root[data-style="platinum"] .og-btn.primary { outline: 2px solid var(--pt-black); outline-offset: 1px; font-weight: 700; }
+html:root[data-style="platinum"] .og-btn.primary:focus-visible { outline: 3px solid var(--highlight); outline-offset: 1px; }
+html:root[data-style="platinum"] .og-btn:disabled,
+html:root[data-style="platinum"] .stepper button:disabled { border-color: var(--pt-lo); }
+html:root[data-style="platinum"] .og-seg button.active { background-color: var(--bg-sunken); font-weight: 700; }
+html:root[data-style="platinum"] .og-seg { gap: var(--sp-3); }
+/* radios, in a segmented row: a round bevelled dot before the label */
+html:root[data-style="platinum"] .og-seg button[role="radio"] { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+html:root[data-style="platinum"] .og-seg button[role="radio"]::before {
+  content: '';
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid var(--pt-black);
+  background: radial-gradient(circle at 35% 30%, #fff 0, #E8E8EC 40%, #B4B4BC 100%);
+  box-shadow: inset -1px -1px 0 rgba(0, 0, 0, .18);
+}
+html:root[data-style="platinum"] .og-seg button[role="radio"][aria-checked="true"]::before {
+  background: radial-gradient(circle at 50% 50%, #000 0 2.6px, transparent 3px), radial-gradient(circle at 35% 30%, #fff 0, #E8E8EC 40%, #B4B4BC 100%);
+}
+
+/* ---- text boxes: white, a black hairline, shadowed inside the top and left ---- */
 html:root[data-style="platinum"] .og-num,
 html:root[data-style="platinum"] .value-input,
-html:root[data-style="platinum"] select { border-radius: 0; background-color: var(--bg-card); box-shadow: inset 1px 1px 0 rgba(0, 0, 0, .35); }
-html:root[data-style="platinum"] .og-switch .track { border-radius: 3px; }
-html:root[data-style="platinum"] .og-switch .track::after { border-radius: 2px; }
-html:root[data-style="platinum"] input[type="range"]::-webkit-slider-thumb { border-radius: 3px; background-color: var(--bg-card); }
-html:root[data-style="platinum"] input[type="range"]::-moz-range-thumb { border-radius: 3px; background-color: var(--bg-card); }
-html:root[data-style="platinum"] [data-part="status-row"],
-html:root[data-style="platinum"] [data-part="page-foot"] { border-top: 1px solid #000; background-image: linear-gradient(180deg, rgba(255, 255, 255, .6), rgba(255, 255, 255, 0)); }
+html:root[data-style="platinum"] .ui-menu-ask {
+  --line-1: #000;
+  border-radius: 0;
+  background-color: var(--pt-white);
+  box-shadow: inset 1px 1px 0 var(--pt-lo), 1px 1px 0 var(--pt-white);
+  color: var(--tx);
+}
+html:root[data-style="platinum"] .og-num:focus,
+html:root[data-style="platinum"] .value-input:focus { outline: 2px solid var(--highlight); outline-offset: 0; }
 
+/* ---- the pop-up menu button: a bevelled button with its arrows at the right ---- */
+html:root[data-style="platinum"] select {
+  border-radius: 6px;
+  border-color: var(--pt-black);
+  padding-right: 28px;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' shape-rendering='crispEdges'%3E%3Cpath d='M6 7h8L10 2zM6 11h8l-4 5z' fill='%23000'/%3E%3C/svg%3E") right 2px center / 18px 18px no-repeat,
+    var(--pt-btn);
+  background-color: var(--bg-card);
+}
+html:root[data-style="platinum"] select:focus { outline: 2px solid var(--highlight); outline-offset: 1px; }
+
+/* ---- check boxes: a bevelled square with a bold X ---- */
+html:root[data-style="platinum"] input[type="checkbox"]:not([role="switch"]) {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin: 2px 4px 2px 0;
+  vertical-align: middle;
+  border: 1px solid var(--pt-black);
+  border-radius: 1px;
+  background: var(--pt-white);
+  box-shadow: inset 1px 1px 0 var(--pt-lo), inset -1px -1px 0 #E2E2E6;
+}
+html:root[data-style="platinum"] input[type="checkbox"]:not([role="switch"]):checked {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.2 2.2l7.6 7.6M9.8 2.2L2.2 9.8' stroke='%23000' stroke-width='1.9' stroke-linecap='square' fill='none'/%3E%3C/svg%3E") center / 12px 12px no-repeat,
+    var(--pt-white);
+}
+html:root[data-style="platinum"] input[type="checkbox"]:not([role="switch"]):disabled { border-color: var(--pt-lo); }
+html:root[data-style="platinum"] input[type="checkbox"]:not([role="switch"]):disabled:checked { opacity: .55; }
+html:root[data-style="platinum"] input[type="checkbox"]:not([role="switch"]):active { background-color: #CACAD0; box-shadow: inset 1px 1px 0 var(--pt-lo2); }
+
+/* ---- the switch: a slide switch in a groove ---- */
+html:root[data-style="platinum"] .og-switch .track { border-radius: 3px; background-color: var(--bg-sunken); box-shadow: inset 1px 1px 0 var(--pt-lo2), 1px 1px 0 var(--pt-white); }
+html:root[data-style="platinum"] .og-switch .track::after {
+  border-radius: 2px;
+  background-image: linear-gradient(135deg, rgba(255, 255, 255, .7), rgba(255, 255, 255, 0) 55%, rgba(0, 0, 0, .18)), repeating-linear-gradient(90deg, transparent 0 4px, rgba(0, 0, 0, .28) 4px 5px, transparent 5px 7px);
+  box-shadow: 0 0 0 1px var(--pt-black), inset 1px 1px 0 rgba(255, 255, 255, .8);
+}
+html:root[data-style="platinum"] .og-switch input:checked + .track::after { box-shadow: 0 0 0 1px var(--pt-black), inset 1px 1px 0 rgba(255, 255, 255, .8); }
+html:root[data-style="platinum"] .og-switch input:focus-visible + .track { outline: 2px solid var(--highlight); outline-offset: 2px; }
+
+/* ---- sliders: a groove with a bevelled, gripped thumb ---- */
+html:root[data-style="platinum"] input[type="range"] { box-shadow: 0 1px 0 var(--pt-white), 0 -1px 0 var(--pt-lo2); }
+html:root[data-style="platinum"] input[type="range"]::-webkit-slider-thumb {
+  border-radius: 3px;
+  border-color: var(--pt-black);
+  background: repeating-linear-gradient(0deg, #8C8C94 0 1px, #fff 1px 2px) center / 6px 8px no-repeat, linear-gradient(135deg, #F8F8FA, #CBCBD2);
+  background-color: var(--bg-card);
+  box-shadow: inset 1px 1px 0 var(--pt-white), inset -1px -1px 0 var(--pt-lo);
+}
+html:root[data-style="platinum"] input[type="range"]::-moz-range-thumb {
+  border-radius: 3px;
+  border-color: var(--pt-black);
+  background: repeating-linear-gradient(0deg, #8C8C94 0 1px, #fff 1px 2px) center / 6px 8px no-repeat, linear-gradient(135deg, #F8F8FA, #CBCBD2);
+  background-color: var(--bg-card);
+  box-shadow: inset 1px 1px 0 var(--pt-white), inset -1px -1px 0 var(--pt-lo);
+}
+html:root[data-style="platinum"] input[type="range"]:active::-webkit-slider-thumb { background-color: var(--bg-sunken); box-shadow: inset 1px 1px 0 var(--pt-lo2); }
+
+/* ---- progress: the barber pole bar in a groove ---- */
+html:root[data-style="platinum"] progress {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 14px;
+  border: 1px solid var(--pt-black);
+  border-radius: 7px;
+  background-color: var(--bg-sunken);
+  overflow: hidden;
+  box-shadow: inset 1px 1px 0 var(--pt-lo2);
+}
+html:root[data-style="platinum"] progress::-webkit-progress-bar { background: var(--bg-sunken); }
+html:root[data-style="platinum"] progress::-webkit-progress-value { background-image: repeating-linear-gradient(135deg, var(--pt-a3) 0 4px, var(--pt-a1) 4px 8px); background-color: var(--pt-a2); border-right: 1px solid var(--pt-black); }
+html:root[data-style="platinum"] progress::-moz-progress-bar { background-image: repeating-linear-gradient(135deg, var(--pt-a3) 0 4px, var(--pt-a1) 4px 8px); background-color: var(--pt-a2); }
+
+/* ---- tabs: rounded tops, the front one open to the page ---- */
+html:root[data-style="platinum"] [role="tab"]:not([data-part="rail-tab"]),
+html:root[data-style="platinum"] .tabs button { border-radius: 6px 6px 0 0; border-color: var(--pt-black); }
+html:root[data-style="platinum"] [role="tab"][aria-selected="true"]:not([data-part="rail-tab"]),
+html:root[data-style="platinum"] .tabs button.on { background-color: var(--bg-card); font-weight: 700; }
+html:root[data-style="platinum"] [role="tab"][aria-selected="false"]:not([data-part="rail-tab"]) { background-color: var(--bg-raised); background-image: linear-gradient(rgba(0, 0, 0, .07), rgba(0, 0, 0, .07)); }
+
+/* ---- menus, dialogs and the balloon ---- */
+html:root[data-style="platinum"] .ui-menu {
+  padding: 2px 0;
+  border: 1px solid var(--pt-black);
+  border-radius: 0;
+  background-color: var(--bg-card);
+  box-shadow: inset 1px 1px 0 var(--pt-white), inset -1px -1px 0 var(--pt-lo), 3px 3px 0 var(--pt-shadow);
+}
+html:root[data-style="platinum"] .ui-menu-t { font-family: var(--font-head); font-weight: 700; color: var(--tx-hi); }
+html:root[data-style="platinum"] .ui-menu-h { border-bottom: 1px solid var(--pt-lo); box-shadow: 0 1px 0 var(--pt-white); }
+html:root[data-style="platinum"] .ui-menu-sec {
+  font-family: var(--font-head);
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: .72rem;
+  color: var(--tx-mut);
+  border-top: 1px solid var(--pt-lo);
+  box-shadow: 0 -1px 0 var(--pt-white);
+}
+html:root[data-style="platinum"] .ui-menu-i { font-family: var(--font-head); font-weight: 700; font-size: .76rem; border-radius: 0; }
+html:root[data-style="platinum"] .ui-menu-i:hover:not(:disabled),
+html:root[data-style="platinum"] .ui-menu-i:focus-visible,
+html:root[data-style="platinum"] .ui-menu-i[aria-expanded="true"] { background-color: var(--pt-sel); color: var(--pt-white); outline-offset: -2px; }
+html:root[data-style="platinum"] .ui-menu-i:hover:not(:disabled)::after,
+html:root[data-style="platinum"] .ui-menu-i:focus-visible::after,
+html:root[data-style="platinum"] .ui-menu-i[aria-expanded="true"]::after { color: var(--pt-white); }
+html:root[data-style="platinum"] .ui-menu-i:focus-visible { outline: 1px dotted var(--pt-white); }
+html:root[data-style="platinum"] .ui-menu-i[data-checked]::after { color: var(--tx-hi); }
+html:root[data-style="platinum"] .ui-sheet {
+  border: 1px solid var(--pt-black);
+  border-radius: 0;
+  background-color: var(--bg-card);
+  box-shadow: inset 1px 1px 0 var(--pt-white), inset -1px -1px 0 var(--pt-lo), 4px 4px 0 var(--pt-shadow);
+}
+html:root[data-style="platinum"] .ui-sheet[data-form="popover"] { border-radius: 0; }
+html:root[data-style="platinum"] .ui-sheet[data-form="sheet"] { border-radius: 6px 6px 0 0; }
+html:root[data-style="platinum"] .ui-sheet[data-form="slot"] { box-shadow: inset 1px 1px 0 var(--pt-white), inset -1px -1px 0 var(--pt-lo); }
+html:root[data-style="platinum"] .ui-sheet-head {
+  margin: calc(var(--sp-3) * -1) calc(var(--sp-4) * -1) 0;
+  padding: var(--sp-1) var(--sp-3);
+  border-bottom: 1px solid var(--pt-black);
+  background-color: var(--bg-card);
+  background-image: var(--pt-stripes), linear-gradient(var(--bg-card), var(--bg-card));
+  background-size: 100% 16px, 100% 100%;
+  background-position: 0 50%, 0 0;
+  background-repeat: no-repeat;
+}
+html:root[data-style="platinum"] .ui-sheet-head .dash-title { background-color: var(--bg-card); padding: 0 .7em; }
+html:root[data-style="platinum"] .ui-sheet-grab { border-radius: 0; background: var(--pt-lo); box-shadow: 0 1px 0 var(--pt-white); }
+html:root[data-style="platinum"] #ph-tip {
+  border: 1px solid var(--pt-black);
+  outline: none;
+  border-radius: 0;
+  background-color: var(--pt-balloon);
+  color: var(--tx);
+  font-family: var(--font);
+  box-shadow: 2px 2px 0 var(--pt-shadow);
+}
+
+/* ---- the plugin kit: the transport, the stage and the lists ---- */
+html:root[data-style="platinum"] .ui-stage-box { border: 1px solid var(--pt-black); border-radius: 0; box-shadow: inset 1px 1px 0 var(--pt-lo2), 1px 1px 0 var(--pt-white); }
+html:root[data-style="platinum"] .ui-scrub-track {
+  height: 9px;
+  border: 1px solid var(--pt-black);
+  border-radius: 5px;
+  background-color: var(--bg-sunken);
+  box-shadow: inset 1px 1px 0 var(--pt-lo2), 1px 1px 0 var(--pt-white);
+}
+html:root[data-style="platinum"] .ui-scrub:is(:hover, [data-drag]) .ui-scrub-track { height: 9px; }
+html:root[data-style="platinum"] .ui-scrub-track > i { border-radius: 4px; }
+html:root[data-style="platinum"] .ui-scrub-buf { background: var(--pt-a1); }
+html:root[data-style="platinum"] .ui-scrub-played { background-image: repeating-linear-gradient(135deg, rgba(255, 255, 255, .4) 0 4px, rgba(255, 255, 255, 0) 4px 8px); }
+html:root[data-style="platinum"] .ui-scrub-played::after { border: 1px solid var(--pt-black); border-radius: 3px; box-shadow: inset 1px 1px 0 rgba(255, 255, 255, .7); }
+html:root[data-style="platinum"] .ui-scrub-tip { background: var(--pt-balloon); border: 1px solid var(--pt-black); border-radius: 0; color: var(--tx); }
+html:root[data-style="platinum"] .ui-split::after { height: 3px; translate: 0 -1.5px; background: var(--pt-lo); box-shadow: 0 1px 0 var(--pt-white); }
+html:root[data-style="platinum"] .ui-tile-shot { border-color: var(--pt-black); border-radius: 0; box-shadow: 1px 1px 0 var(--pt-white); }
+html:root[data-style="platinum"] .ui-tile-b[aria-current="true"] .ui-tile-shot { box-shadow: 0 0 0 2px var(--highlight); }
+html:root[data-style="platinum"] .ui-stage-overlay { background: linear-gradient(to top, color-mix(in srgb, var(--bg-card) 94%, transparent), color-mix(in srgb, var(--bg-card) 60%, transparent) 60%, transparent); }
+
+/* ---- scrollbars: a dotted track, a ridged thumb in the accent family, an arrow button at each end ---- */
 html:root[data-style="platinum"] * { scrollbar-width: auto; scrollbar-color: auto; }
-html:root[data-style="platinum"] ::-webkit-scrollbar { width: 15px; height: 15px; }
-html:root[data-style="platinum"] ::-webkit-scrollbar-track { background-color: var(--bg-raised); background-image: radial-gradient(rgba(60, 60, 80, .25) 1px, transparent 1.2px); background-size: 4px 4px; border-left: 1px solid #000; }
-html:root[data-style="platinum"] ::-webkit-scrollbar-thumb { background-color: var(--bg-card); background-image: repeating-linear-gradient(90deg, #FFFFFF 0 1px, #A8A8AC 1px 2px); border: 1px solid #000; border-radius: 3px; }
+html:root[data-style="platinum"] ::-webkit-scrollbar { width: 16px; height: 16px; }
+html:root[data-style="platinum"] ::-webkit-scrollbar-corner { background: var(--bg-card); }
+html:root[data-style="platinum"] ::-webkit-scrollbar-track {
+  background-color: var(--bg-card);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2' shape-rendering='crispEdges'%3E %3Cpath d='M0 0h1v1H0z' fill='%23FFFFFF'/%3E%3Cpath d='M1 1h1v1H1z' fill='%23B4B4BC'/%3E%3C/svg%3E");
+  border-left: 1px solid var(--pt-lo);
+  border-top: 1px solid var(--pt-lo);
+}
+html:root[data-style="platinum"] ::-webkit-scrollbar-thumb {
+  border: 1px solid var(--pt-black);
+  border-radius: 2px;
+  background-color: var(--pt-a2);
+  background-image: linear-gradient(135deg, var(--pt-a1), var(--pt-a2) 55%, var(--pt-a3));
+  box-shadow: inset 1px 1px 0 rgba(255, 255, 255, .85), inset -1px -1px 0 rgba(0, 0, 0, .28);
+}
+/* the ridges: three short lines in the middle of the thumb */
+html:root[data-style="platinum"] ::-webkit-scrollbar-thumb:vertical {
+  background-image:
+    repeating-linear-gradient(0deg, var(--pt-a4) 0 1px, rgba(255, 255, 255, .8) 1px 2px) center / 7px 7px no-repeat,
+    linear-gradient(90deg, var(--pt-a1), var(--pt-a2) 55%, var(--pt-a3));
+}
+html:root[data-style="platinum"] ::-webkit-scrollbar-thumb:horizontal {
+  background-image:
+    repeating-linear-gradient(90deg, var(--pt-a4) 0 1px, rgba(255, 255, 255, .8) 1px 2px) center / 7px 7px no-repeat,
+    linear-gradient(180deg, var(--pt-a1), var(--pt-a2) 55%, var(--pt-a3));
+}
+html:root[data-style="platinum"] ::-webkit-scrollbar-button:single-button {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--pt-black);
+  background-color: var(--bg-card);
+  background-repeat: no-repeat;
+  background-position: center;
+  box-shadow: inset 1px 1px 0 var(--pt-white), inset -1px -1px 0 var(--pt-lo);
+}
+html:root[data-style="platinum"] ::-webkit-scrollbar-button:single-button:vertical:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M5 2.5L8.5 7h-7z' fill='%23000'/%3E%3C/svg%3E");
+}
+html:root[data-style="platinum"] ::-webkit-scrollbar-button:single-button:vertical:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M5 7.5L1.5 3h7z' fill='%23000'/%3E%3C/svg%3E");
+}
+html:root[data-style="platinum"] ::-webkit-scrollbar-button:single-button:horizontal:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M2.5 5L7 1.5v7z' fill='%23000'/%3E%3C/svg%3E");
+}
+html:root[data-style="platinum"] ::-webkit-scrollbar-button:single-button:horizontal:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M7.5 5L3 1.5v7z' fill='%23000'/%3E%3C/svg%3E");
+}
+html:root[data-style="platinum"] ::-webkit-scrollbar-button:single-button:active { background-color: var(--bg-sunken); box-shadow: inset 1px 1px 0 var(--pt-lo2); }
