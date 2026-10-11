@@ -54,6 +54,18 @@ html:root[data-style="platinum"][data-variant="platinum-graphite"] {
   --pt-sel-soft: #C4C8D2;
   --pt-lo: #838790;
   --pt-lo2: #5E626C;
+  --pt-btn:
+    linear-gradient(#fff, #fff) 3px 0 / calc(100% - 6px) 1px no-repeat,
+    linear-gradient(#fff, #fff) 0 3px / 1px calc(100% - 6px) no-repeat,
+    linear-gradient(#6C707A, #6C707A) 3px 100% / calc(100% - 6px) 1px no-repeat,
+    linear-gradient(#6C707A, #6C707A) 100% 3px / 1px calc(100% - 6px) no-repeat,
+    linear-gradient(160deg, #F0F1F4 0%, #D4D6DC 50%, #B4B8C2 100%);
+  --pt-btn-down:
+    linear-gradient(#4E525C, #4E525C) 3px 0 / calc(100% - 6px) 1px no-repeat,
+    linear-gradient(#4E525C, #4E525C) 0 3px / 1px calc(100% - 6px) no-repeat,
+    linear-gradient(#E4E6EA, #E4E6EA) 3px 100% / calc(100% - 6px) 1px no-repeat,
+    linear-gradient(#E4E6EA, #E4E6EA) 100% 3px / 1px calc(100% - 6px) no-repeat,
+    linear-gradient(160deg, #989CA8 0%, #AAAEB8 50%, #BCC0C8 100%);
 }
 
 
@@ -63,7 +75,7 @@ html:root[data-style="platinum"] [data-part="top"] { background-color: var(--bg-
 html:root[data-style="platinum"] [data-part="bar"] {
   background-color: var(--bg-card);
   background-image: var(--pt-stripes), linear-gradient(var(--bg-card), var(--bg-card));
-  background-size: 100% 18px, 100% 100%;
+  background-size: 100% 20px, 100% 100%;
   background-position: 0 50%, 0 0;
   background-repeat: no-repeat;
   box-shadow: inset 0 1px 0 var(--pt-white), inset 0 -1px 0 var(--pt-black);
@@ -75,7 +87,8 @@ html:root[data-style="platinum"] [data-part="bar"] .chips.pinned,
 html:root[data-style="platinum"] [data-part="bar"] .chips.opt {
   background-color: var(--bg-card);
   padding-inline: 8px;
-  align-self: stretch;
+  align-self: center;
+  min-height: 20px;
   margin-block: 0;
 }
 html:root[data-style="platinum"] [data-part="bar"] .header-left { margin-left: 2px; border-radius: 0; }
@@ -220,6 +233,9 @@ html:root[data-style="platinum"] [data-part="page-foot"] {
   background-image: linear-gradient(180deg, var(--pt-white) 0 1px, rgba(255, 255, 255, 0) 1px);
   border-top: 1px solid var(--pt-black);
 }
+
+/* the link dot: the same color, lit like an LED */
+html:root[data-style="platinum"] [data-part="bar"] .linkdot:not(.offline) .core { background-image: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, .75), rgba(255, 255, 255, 0) 60%); outline: 1px solid var(--pt-black); }
 
 /* ---- windows: a card is a document window, a nest the folder window that holds them ----
    The title bar is the card's head: pinstripes, a plate under the title, the close box and the zoom
@@ -493,6 +509,14 @@ html:root[data-style="platinum"] [role="tab"][aria-selected="true"]:not([data-pa
 html:root[data-style="platinum"] .tabs button.on { background-color: var(--bg-card); font-weight: 700; }
 html:root[data-style="platinum"] [role="tab"][aria-selected="false"]:not([data-part="rail-tab"]) { background-color: var(--bg-raised); background-image: linear-gradient(rgba(0, 0, 0, .07), rgba(0, 0, 0, .07)); }
 
+/* the Display pane's theme chips are buttons too */
+html:root[data-style="platinum"] [data-style-id],
+html:root[data-style="platinum"] [data-theme-id] { border-radius: 6px; background: var(--pt-btn); background-color: var(--bg-card); }
+html:root[data-style="platinum"] ::selection { background: var(--pt-sel-soft); color: var(--pt-black); }
+/* keyboard focus: the heavier ring of full keyboard access (color, style and offset stay the page's) */
+html:root[data-style="platinum"] :focus-visible { outline-width: 3px; }
+html:root[data-style="platinum"] .ui-menu-i:focus-visible { outline-width: 1px; }
+
 /* ---- menus, dialogs and the balloon ---- */
 html:root[data-style="platinum"] .ui-menu {
   padding: 2px 0;
@@ -573,6 +597,15 @@ html:root[data-style="platinum"] .ui-tile-shot { border-color: var(--pt-black); 
 html:root[data-style="platinum"] .ui-tile-b[aria-current="true"] .ui-tile-shot { box-shadow: 0 0 0 2px var(--highlight); }
 html:root[data-style="platinum"] .ui-stage-overlay { background: linear-gradient(to top, color-mix(in srgb, var(--bg-card) 94%, transparent), color-mix(in srgb, var(--bg-card) 60%, transparent) 60%, transparent); }
 
+/* the confirm alert: a Platinum alert box, the default button ringed */
+html:root[data-style="platinum"] [role="alertdialog"] {
+  border-radius: 0;
+  background-color: var(--bg-card);
+  box-shadow: 0 0 0 1px var(--pt-black), inset 1px 1px 0 var(--pt-white), inset -1px -1px 0 var(--pt-lo), 5px 5px 0 var(--pt-shadow);
+}
+html:root[data-style="platinum"] [role="alertdialog"] h2 { font-family: var(--font-head); font-weight: 700; }
+html:root[data-style="platinum"] [role="alertdialog"] .og-btn.confirm { outline: 2px solid var(--pt-black); outline-offset: 1px; font-weight: 700; }
+
 /* ---- scrollbars: a dotted track, a ridged thumb in the accent family, an arrow button at each end ---- */
 html:root[data-style="platinum"] * { scrollbar-width: auto; scrollbar-color: auto; }
 html:root[data-style="platinum"] ::-webkit-scrollbar { width: 16px; height: 16px; }
@@ -592,14 +625,16 @@ html:root[data-style="platinum"] ::-webkit-scrollbar-thumb {
 }
 /* the ridges: three short lines in the middle of the thumb */
 html:root[data-style="platinum"] ::-webkit-scrollbar-thumb:vertical {
-  background-image:
+  background:
     repeating-linear-gradient(0deg, var(--pt-a4) 0 1px, rgba(255, 255, 255, .8) 1px 2px) center / 7px 7px no-repeat,
     linear-gradient(90deg, var(--pt-a1), var(--pt-a2) 55%, var(--pt-a3));
+  background-color: var(--pt-a2);
 }
 html:root[data-style="platinum"] ::-webkit-scrollbar-thumb:horizontal {
-  background-image:
+  background:
     repeating-linear-gradient(90deg, var(--pt-a4) 0 1px, rgba(255, 255, 255, .8) 1px 2px) center / 7px 7px no-repeat,
     linear-gradient(180deg, var(--pt-a1), var(--pt-a2) 55%, var(--pt-a3));
+  background-color: var(--pt-a2);
 }
 html:root[data-style="platinum"] ::-webkit-scrollbar-button:single-button {
   display: block;
