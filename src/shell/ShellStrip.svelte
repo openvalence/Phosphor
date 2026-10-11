@@ -111,7 +111,7 @@
       <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/></svg>
     </button>
     {#if asking}
-      <div class="sb-pop" role="dialog" aria-label="Close Phosphor">
+      <div class="sb-pop" data-part="close-prompt" role="dialog" aria-label="Close Phosphor">
         <p class="sb-pop-t">Close Phosphor?</p>
         {#each lines as l (l)}<p class="sb-pop-c">{l}</p>{/each}
         <button class="sb-hold" bind:this={holdEl} class:holding

@@ -161,12 +161,12 @@
       </button>
     {/if}
     <ChannelHeat onopen={onheat} />
-    <span class="wordmark" data-tip={title}>{title}</span>
+    <span class="wordmark" data-part="wordmark" data-text={title} data-tip={title}>{title}</span>
     <!-- The link dot: state by class (live, connecting, stale, offline), words by tooltip and status text.
          The ripple's clip is a row-high band behind the row's content (see .rclip). -->
-    <span class="linkdot {dotCls}" class:virtual={!!machine.link.virtual} role="status" data-tip={dotTip}>
+    <span class="linkdot {dotCls}" data-part="link-dot" class:virtual={!!machine.link.virtual} role="status" data-tip={dotTip}>
       <span class="rclip" aria-hidden="true"><span class="ripple"></span></span>
-      <span class="core" aria-hidden="true"></span>
+      <span class="core" data-part="link-dot-core" aria-hidden="true"></span>
       <span class="sr">Link: {dotWord}</span>
     </span>
   </div>

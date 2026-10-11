@@ -283,6 +283,8 @@
   $effect(() => { window.dispatchEvent(new CustomEvent('phosphor-page-fullscreen-change', { detail: { on: isFull } })); });
   // Scrollbars are a pref, off by default; style.css switches on this one attribute.
   $effect(() => { document.documentElement.toggleAttribute('data-scrollbars', $prefs.scrollbars); });
+  // A Theme hook (docs/THEMES.md, Chrome hooks): the desktop rail drawn as its icon column.
+  $effect(() => { document.documentElement.toggleAttribute('data-rail-collapsed', isDesktop && railMini); });
   function onFullKey(e) {
     if (e.key === 'F11' && current?.page?.fields) { e.preventDefault(); full = toggle(full, current.page.mediaFullscreen); }
     // After every listener: an overlay's own Escape (F1, F3) prevents it.

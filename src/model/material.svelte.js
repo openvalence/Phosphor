@@ -17,7 +17,7 @@
  */
 import { onTheme, currentTheme, themeMeta } from './theme.js';
 
-/** What is applied right now: 'mica', 'acrylic', 'glass', 'vibrancy' or 'none'. */
+/** What is applied right now: 'mica', 'mica-light', 'mica-alt', 'acrylic', 'glass', 'vibrancy' or 'none'. */
 export const material = $state({ applied: 'none', wanted: null });
 
 let invoke = null;
@@ -27,17 +27,22 @@ let last = '';
 const root = () => document.documentElement;
 const reduced = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-transparency: reduce)').matches;
 
-/** The material the active theme asks for, or null: none while fullscreen or when the OS asks for less. */
+/** The material the active Variant asks for (its own `material`, else its Theme's), or null. */
+function asked() {
+  const t = currentTheme(), m = themeMeta(t.style);
+  const v = m && t.variant ? m.variants.find((x) => x.id === t.variant) : null;
+  return (v && 'material' in v ? v.material : m?.material) || null;
+}
+
+/** What to ask the window for: none while fullscreen, on the wallpaper or when the OS asks for less. */
 function wanted() {
-  const m = themeMeta(currentTheme().style);
-  if (!m || !m.material) return null;
   if (root().hasAttribute('data-page-full') || root().hasAttribute('data-wall') || reduced()) return null;
-  return m.material;
+  return asked();
 }
 
 function sync() {
   const want = wanted();
-  material.wanted = themeMeta(currentTheme().style)?.material || null;
+  material.wanted = asked();
   if (!invoke || want === last) return;
   last = want;
   busy = busy.then(async () => {

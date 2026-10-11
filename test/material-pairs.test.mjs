@@ -1,10 +1,10 @@
 /**
- * pairs.check.mjs -- the contrast of every text-on-surface pair theme.css builds, under the three
+ * material-pairs.test.mjs -- the contrast of every text-on-surface pair the Material theme.css builds, under the three
  * Variants and under 132 fake system palettes (the grid of test/dynamic-color.test.mjs), read from
  * the computed tokens in a bare page: no shell, no hub. The containers and tiers are CSS (relative
  * colors), so only a browser can say what they come to.
  *
- * Run: node src/themes/material/pairs.check.mjs
+ * Run: node test/material-pairs.test.mjs
  */
 import { chromium } from 'playwright';
 import { readFileSync } from 'node:fs';
@@ -14,9 +14,9 @@ Object.defineProperty(globalThis, 'localStorage', { value: {
   getItem: (k) => (mem.has(k) ? mem.get(k) : null), setItem: (k, v) => mem.set(k, String(v)), removeItem: (k) => mem.delete(k),
   get length() { return mem.size; }, key: (i) => [...mem.keys()][i] ?? null, clear: () => mem.clear(),
 }, configurable: true });
-const { THEMES, themeCss, fromOklch } = await import('../../model/theme.js');
-const { paletteTheme } = await import('../../model/dynamicColor.js');
-const CSS = readFileSync(new URL('./theme.css', import.meta.url), 'utf8').replace(/url\('\.\/fonts\/[^']+'\)/g, 'local(none)');
+const { THEMES, themeCss, fromOklch } = await import('../src/model/theme.js');
+const { paletteTheme } = await import('../src/model/dynamicColor.js');
+const CSS = readFileSync(new URL('../src/themes/material/theme.css', import.meta.url), 'utf8').replace(/url\('\.\/fonts\/[^']+'\)/g, 'local(none)');
 
 // [name, text token, surface token, floor]: the pairs the Theme builds, from the rules that name them.
 const PAIRS = [

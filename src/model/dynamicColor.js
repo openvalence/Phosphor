@@ -5,10 +5,10 @@
  *
  * Constraints:
  * - Pure until installDynamicColor(): node tests import paletteTheme with no DOM.
- * - Only the Theme 'material' with its own id is derived; an edited theme (Custom) is the
- *   user's and is left alone. The derived theme is applied without persisting, so the stored
- *   theme stays the baseline preset and a phone without a palette (below Android 12, the
- *   browser, any desktop) keeps the baseline.
+ * - Every Variant of the Theme 'material' is derived (keyed by style, not id); an edited theme
+ *   (Custom, no variant) is the user's and is left alone, without a stale data-md-scheme.
+ *   The derived theme is applied without persisting, so the stored theme stays the shipped
+ *   Variant and a phone without a palette (below Android 12, the browser, any desktop) keeps it.
  * - Contrast is the theme engine's (text, labels, safety inks) plus this file's clamp:
  *   an accent that would read under 4.5:1 on any surface is moved along its lightness until
  *   it does, and one that lands on the safety amber or red hue is turned away from it.
@@ -86,8 +86,7 @@ export function installDynamicColor() {
   const sync = () => {
     const t = currentTheme();
     const root = document.documentElement;
-    if (t.style !== 'material') { root.removeAttribute('data-md-scheme'); lastKey = ''; return; }
-    if (t.id !== 'material') return;
+    if (t.style !== 'material' || !t.variant) { root.removeAttribute('data-md-scheme'); lastKey = ''; return; }
     const r = paletteTheme(t, palette());
     if (!r) { root.removeAttribute('data-md-scheme'); return; }
     const key = JSON.stringify([r.theme.accents, r.theme.chassis]);

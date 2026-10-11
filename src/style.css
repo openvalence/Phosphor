@@ -452,7 +452,9 @@ html.still { --t-quick: 0ms; --t-move: 0ms; --t-slow: 0ms; }
       rgba(var(--reality-rgb), calc(var(--ga) * .35)) calc(var(--h) - var(--sp) * .45),
       rgba(var(--reality-rgb), var(--ga)) var(--h),
       rgba(var(--reality-rgb), calc(var(--ga) * .35)) calc(var(--h) + var(--sp) * .45),
-      transparent calc(var(--h) + var(--sp)));
+      transparent calc(var(--h) + var(--sp))),
+    /* a Theme's slider fill, under the ladder (docs/THEMES.md, Chrome hooks) */
+    var(--slider-fill, none);
 }
 /* The knob's line is its arc: the unfilled arc takes the state, a pulse runs
    up the filled arc to the hand, and the filled arc carries the afterglow.
@@ -528,6 +530,9 @@ input[type="range"] {
   appearance: none;
   margin: var(--sp-4) 0;
   background: var(--line-2) content-box;
+  /* A Theme's fill (docs/THEMES.md, Chrome hooks): --h is the thumb's center; a kit slider publishes --fx-f. */
+  background-image: var(--slider-fill, none);
+  --h: calc(var(--slider-thumb-w) / 2 + var(--fx-f, 0) * (100% - var(--slider-thumb-w)));
   outline: none;
   touch-action: pan-y;
 }

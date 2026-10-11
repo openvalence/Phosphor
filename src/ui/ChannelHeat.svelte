@@ -218,20 +218,20 @@
 
 {#if flat.length && coarse}
   <!-- A finger cannot pick a 5 px block: one 40 px target that opens the Link page. -->
-  <button type="button" class="heat one" class:compact style="--tick: {TICK_MS}ms" onclick={() => onopen && onopen(null)}
+  <button type="button" class="heat one" data-part="heat" class:compact style="--tick: {TICK_MS}ms" onclick={() => onopen && onopen(null)}
           aria-label={'Channel activity' + (warnings ? ', ' + warnings + (warnings === 1 ? ' warning' : ' warnings') : '')}>
     {#each shown as g (g.key)}
-      <span class="grp">{#each g.blocks as b (b.key)}<span class="blk" class:warn={b.warn} style="--lv: {pct(b.lv)}%"></span>{/each}</span>
+      <span class="grp">{#each g.blocks as b (b.key)}<span class="blk" data-part="heat-blk" class:warn={b.warn} style="--lv: {pct(b.lv)}%"></span>{/each}</span>
     {/each}
   </button>
 {:else if flat.length}
-  <div class="heat" class:compact role="toolbar" tabindex="-1" aria-label="Channel activity" bind:this={box} style="--tick: {TICK_MS}ms"
+  <div class="heat" data-part="heat" class:compact role="toolbar" tabindex="-1" aria-label="Channel activity" bind:this={box} style="--tick: {TICK_MS}ms"
        onkeydown={onkey} onpointerenter={enter} onpointerleave={leave}
        onfocusout={(e) => { if (!box.contains(e.relatedTarget)) focused = false; }}>
     {#each shown as g (g.key)}
       <span class="grp bar">
         {#each g.blocks as b (b.key)}
-          <button type="button" class="blk" class:warn={b.warn} class:on={activeKey === b.key}
+          <button type="button" class="blk" data-part="heat-blk" class:warn={b.warn} class:on={activeKey === b.key}
                   style="--lv: {pct(b.lv)}%" tabindex={b.key === rover ? 0 : -1}
                   aria-label={b.name + ', ' + b.cls + (b.warn ? ', warning' : '')}
                   aria-describedby={activeKey === b.key ? uid : undefined}
