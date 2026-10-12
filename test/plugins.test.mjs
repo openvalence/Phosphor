@@ -453,7 +453,8 @@ console.log('(e) motion door routing');
     eq(s6.sent[0].segs, [{ pos: 0.6, len: 120, ev: LIMITS.segment_end_vel_unspecified / 1000 }]));
   ok('lead equals the grant\'s schedule_latency_us, no constant', s6.sent[0].anchor === 1_000_000 + 61000);
   ok('the path names the horizon and lead once', o6.log.filter((l) => /segments STREAM.*500 ms.*61000 us/.test(l.msg)).length === 1);
-  ok('the segments wish declares no curve family (RFC-108: the hub shapes free knots)', s6.asked[0][0].length === 2);
+  ok('the segments wish is channel, rate and a 2 s burst, no curve family (RFC-108: the hub shapes free knots)',
+    s6.asked[0][0].length === 3 && s6.asked[0][0][2] === 2 * s6.asked[0][0][1]);
   d6(0.2); await tick();
   ok('an untimed point rides the samples STREAM', d6(0.2).ok && s6.sent.at(-1).ch === 0x7000);
 

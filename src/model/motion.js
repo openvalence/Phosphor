@@ -286,8 +286,11 @@ export function createMotionDoor(deps) {
     if (a === 'refused') return 'refused';
     if (a !== 'pending') {
       asked.set(id, 'pending');
-      // No curve family: a free knot is shaped by the hub's smoothness (RFC-108).
-      s.publish([[ch, st.maxRateHz || FALLBACK_RATE_HZ]]).then(
+      // No curve family: a free knot is shaped by the hub's smoothness (RFC-108). A segments
+      // grant wishes a 2 s bucket (SPEC 10.5 burst): a seek right after a start re-sends a
+      // whole lead, and an overdrawn bundle is dropped whole, its supersede with it.
+      const rate = st.maxRateHz || FALLBACK_RATE_HZ;
+      s.publish([st.duration ? [ch, rate, 2 * rate] : [ch, rate]]).then(
         (g) => asked.set(id, g.find((x) => x.channel === ch) ? 'granted' : 'refused'),
         (e) => { asked.set(id, 'refused'); deps.log('warn', 'motion input: ' + e.message); },
       );
