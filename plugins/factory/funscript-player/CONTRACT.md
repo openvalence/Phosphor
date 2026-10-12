@@ -418,8 +418,9 @@ export function conflictWords(reason, owners, self);   // -> 'refused: rail owne
    Stamp `S = E - lat` (RFC-059: execution = stamp + declared latency).
 8. Offsets `round((S - S0) / unit) * unit`, `unit = LIMITS.segment_t_off_unit_us`;
    an offset not above the previous one is consumed, not packed.
-   `bundleHead(packed, hubNow, grant.scheduleHorizonMs / 2, recordBytes(layout))`
-   takes the head: half the horizon, at most 32, one payload.
+   `bundleHead(packed, hubNow, leadCapMs(grant.scheduleHorizonMs), recordBytes(layout))`
+   takes the head: the horizon less `LEAD_MARGIN_MS` (100) and never under half
+   of it (RFC-115), at most 32, one payload.
 9. `record()` fills `input.target` (clamped 0..1) and `input.duration` in its
    unit (clamped to the type range); every other field rides `unspecified`.
    `s.publishSegment(ch, recs, {anchor: S0 >>> 0, offsetsUs})`.
@@ -427,7 +428,7 @@ export function conflictWords(reason, owners, self);   // -> 'refused: rail owne
     once per code. Success: `{ok: true, sent, rateHz: grant.rate}`, `sent`
     counting every leading item packed or consumed through the last one
     packed. Nothing in reach: `{ok: true, sent: 0}` (the first start lies
-    past half the horizon).
+    past the lead cap).
 
 `streamGate` (pure) returns the first that applies: `'no hub link'`,
 `'session not authorized'` (roles below access), `halted`,

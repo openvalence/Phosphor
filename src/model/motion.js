@@ -77,6 +77,14 @@ const TYPE_MAX = { [PACKED.u8]: 255, [PACKED.i8]: 127, [PACKED.u16]: 65535, [PAC
 export const SEG_FLOOR_MS = 10;
 
 /**
+ * RFC-115: how far ahead the lookahead door stamps a segment's start, the grant's horizon less
+ * LEAD_MARGIN_MS and never under half of it. A WiFi stall shorter than the lead never reaches the
+ * motion. The margin covers the hub clock's error: a stamp past the horizon moves its bundle earlier.
+ */
+export const LEAD_MARGIN_MS = 100;
+export const leadCapMs = (horizonMs) => Math.max(horizonMs / 2, horizonMs - LEAD_MARGIN_MS);
+
+/**
  * The door's hub clock: the offset of the kept CLOCK exchange (SPEC §7.1)
  * with the least error bound, RTT/2 plus its age times CLOCK_DRIFT, never
  * the newest exchange alone.
@@ -278,8 +286,11 @@ export function createMotionDoor(deps) {
     if (a === 'refused') return 'refused';
     if (a !== 'pending') {
       asked.set(id, 'pending');
-      // No curve family: a free knot is shaped by the hub's smoothness (RFC-108).
-      s.publish([[ch, st.maxRateHz || FALLBACK_RATE_HZ]]).then(
+      // No curve family: a free knot is shaped by the hub's smoothness (RFC-108). A segments
+      // grant wishes a 2 s bucket (SPEC 10.5 burst): a seek right after a start re-sends a
+      // whole lead, and an overdrawn bundle is dropped whole, its supersede with it.
+      const rate = st.maxRateHz || FALLBACK_RATE_HZ;
+      s.publish([st.duration ? [ch, rate, 2 * rate] : [ch, rate]]).then(
         (g) => asked.set(id, g.find((x) => x.channel === ch) ? 'granted' : 'refused'),
         (e) => { asked.set(id, 'refused'); deps.log('warn', 'motion input: ' + e.message); },
       );
@@ -345,7 +356,7 @@ export function createMotionDoor(deps) {
    * The RFC-087 lookahead door: `list` is [{atMs, norm, durationMs, endVel?}],
    * atMs the now() instant the machine STARTS executing each, ascending, endVel
    * the velocity at its end in norm/s (absent: `unspecified`). Sends what
-   * starts within half the granted horizon in one bundle; `sent` counts the
+   * starts within leadCapMs(horizon) in one bundle; `sent` counts the
    * leading items through the last one packed (an item before it may have been
    * consumed as too short or colliding), so the caller advances by it.
    *
@@ -420,7 +431,7 @@ export function createMotionDoor(deps) {
       lastOff = off;
       packed.push({ atUs: s0 + off, rec: record(st, x.norm, (end - e) / 1000, x.endVel), i });
     }
-    const { head } = bundleHead(packed, hubNow, grant.scheduleHorizonMs / 2, st.bytes);
+    const { head } = bundleHead(packed, hubNow, leadCapMs(grant.scheduleHorizonMs), st.bytes);
     if (!head.length) return { ok: true, sent: 0, rateHz };
 
     noteSegments(st.id, grant);
