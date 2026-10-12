@@ -7,8 +7,9 @@
    * Constraints:
    * - /uitoken mints a short-lived `control` credential to anything on the
    *   LAN, so it can never be the route to `configure`; only a ceremony is.
-   *   This pane always sends a BARE knock (no PIN): whether it lands as
-   *   knock-and-approve or push-to-pair is the hub's window state at arrival.
+   *   This pane sends a knock with no PIN: a bare one lands as knock-and-approve
+   *   or push-to-pair by the hub's window state at arrival; one asking configure
+   *   (Valence RFC-114 draft) waits for an approval, a double press of Pair included.
    * - Surfaces bind by spec-core id (CORE_CHANNEL), never by name (law 6).
    *   The pending list and the ledger need `configure` to read, so a lower
    *   session sees locked rows with the reason, never an empty list.
@@ -55,6 +56,7 @@
   let pairingModes = $state(0);
   let liveWindowOpen = $state(false);
   let windowOpenedAt = $state(0);
+  let windowRole = $state(null); // the tier the open window grants, from its window_opened EVENT
   let boundSession = null;
 
   $effect(() => {
@@ -73,13 +75,16 @@
       // A connect-time snapshot; window_opened/closed EVENTs keep it live.
       liveWindowOpen = (pairingModes & PAIRING_MODE.push_to_pair) !== 0;
       windowOpenedAt = 0;
+      windowRole = null;
     });
     const offGrant = s.on('grant', syncRoles);
     const offPairGrant = s.on('pairGrant', (g) => { syncRoles(); onPairGrant(g); });
     const offEvent = s.on('event', (evt) => {
       if (evt.channel !== CORE_CHANNEL.pairing_events) return;
-      if (evt.kind === PAIRING_EVENT_KIND.window_opened) { liveWindowOpen = true; windowOpenedAt = Date.now(); }
-      else if (evt.kind === PAIRING_EVENT_KIND.window_closed) { liveWindowOpen = false; windowOpenedAt = 0; }
+      if (evt.kind === PAIRING_EVENT_KIND.window_opened) {
+        liveWindowOpen = true; windowOpenedAt = Date.now();
+        windowRole = evt.body && evt.body.role != null ? evt.body.role | 0 : null;
+      } else if (evt.kind === PAIRING_EVENT_KIND.window_closed) { liveWindowOpen = false; windowOpenedAt = 0; windowRole = null; }
       onPairingEvent(evt);
     });
     const offNack = s.on('nack', (n) => {
@@ -101,10 +106,11 @@
   const windowText = $derived.by(() => {
     if (machine.link.phase !== 'live') return '--';
     if (!windowOpen) return 'closed';
-    if (!windowOpenedAt) return 'open, close time unknown';
+    const grants = windowRole != null ? ', grants ' + (ACCESS_NAME[windowRole] || windowRole) : '';
+    if (!windowOpenedAt) return 'open' + grants + ', close time unknown';
     const left = LIMITS.pairing_window_default_s - Math.floor((now - windowOpenedAt) / 1000);
-    return left > 0 ? 'open, about ' + left + ' s left'
-      : 'open, past the ' + LIMITS.pairing_window_default_s + ' s default';
+    return left > 0 ? 'open' + grants + ', about ' + left + ' s left'
+      : 'open' + grants + ', past the ' + LIMITS.pairing_window_default_s + ' s default';
   });
 
   // push_to_pair is a WINDOW, so its bit follows `windowOpen`; the other two
@@ -204,6 +210,10 @@
   let claimDeadline = $state(0);
   let claimResult = $state(null); // {phase, msg}
   let claimTimer = null;
+  let askedConfigure = $state(false);
+  // Other clients' pending configure asks, by instance: with any, a double press approves neither.
+  let rivals = $state(new Set());
+  const idKey = (id) => Array.from(id, (b) => b.toString(16).padStart(2, '0')).join('');
 
   function ownKnockEvent(evt) {
     const id = evt.body && evt.body.instance_id;
@@ -215,9 +225,19 @@
     claimTimer = null;
     claimResult = { phase, msg };
   }
+  function trackRival(evt) {
+    const id = evt.body && evt.body.instance_id;
+    if (!(id instanceof Uint8Array) || ownKnockEvent(evt)) return;
+    const next = new Set(rivals);
+    if (evt.kind === PAIRING_EVENT_KIND.knocked && (evt.body.role | 0) === ACCESS.configure) next.add(idKey(id));
+    else next.delete(idKey(id));
+    rivals = next;
+  }
   function onPairingEvent(evt) {
+    trackRival(evt);
     if (!claiming || !ownKnockEvent(evt)) return;
-    if (evt.kind === PAIRING_EVENT_KIND.knocked) claimResult = { phase: 'pending', msg: 'Knock delivered: waiting for approval' };
+    if (evt.kind === PAIRING_EVENT_KIND.knocked) claimResult = { phase: 'pending', msg: askedConfigure
+      ? 'Asked configure: double-press Pair on the machine' : 'Knock delivered: waiting for approval' };
     else if (evt.kind === PAIRING_EVENT_KIND.denied) finishClaim('fault', 'Denied');
     else if (evt.kind === PAIRING_EVENT_KIND.expired) finishClaim('fault', 'Knock expired');
   }
@@ -231,15 +251,19 @@
   function onPairGrant(g) {
     if (g.token) setPairedToken(getSession().origin, g.token);
     const roleName = g.role != null ? (ACCESS_NAME[g.role] || String(g.role)) : 'a higher tier';
-    finishClaim('settled', 'Paired at ' + roleName);
+    // A window grants control only where configure owners exist.
+    finishClaim('settled', 'Paired at ' + roleName
+      + (g.role === ACCESS.control ? '. Configure: Ask configure, then double-press Pair' : ''));
   }
-  function startClaim() {
+  function startClaim(role) {
     const s = getSession();
     if (!s) return;
-    if (!s.sendPairReq()) { finishClaim('fault', 'Not connected'); return; }
+    askedConfigure = role === ACCESS.configure;
+    if (!s.sendPairReq(askedConfigure ? { role } : undefined)) { finishClaim('fault', 'Not connected'); return; }
     claiming = true;
     claimDeadline = Date.now() + CLAIM_MS;
-    claimResult = { phase: 'pending', msg: 'Knock sent: waiting for the hub' };
+    claimResult = { phase: 'pending', msg: askedConfigure
+      ? 'Asked configure: double-press Pair on the machine' : 'Knock sent: waiting for the hub' };
     clearTimeout(claimTimer);
     claimTimer = setTimeout(() => {
       if (claiming) finishClaim('fault', 'No answer within the pairing window');
@@ -250,6 +274,9 @@
     if (machine.link.phase !== 'live') return { phase: null, text: 'Not connected' };
     if (!claimResult) return { phase: null, text: '' };
     const left = Math.max(0, Math.ceil((claimDeadline - now) / 1000));
+    if (claiming && askedConfigure && rivals.size) {
+      return { phase: 'overdue', text: 'Another configure ask is pending: double-press approves neither' };
+    }
     return { phase: claimResult.phase, text: claimResult.msg + (claiming ? ', ' + left + ' s left' : '') };
   });
 
@@ -282,19 +309,22 @@
     </dl>
     <div class="row">
       <button type="button" class="og-btn" class:primary={!isConfigure} disabled={isConfigure || claiming || machine.link.phase !== 'live'}
-              onclick={startClaim}>{claiming ? 'Waiting for an answer' : 'Pair this client'}</button>
+              onclick={() => startClaim()}>{claiming && !askedConfigure ? 'Waiting for an answer' : 'Pair this client'}</button>
+      <button type="button" class="og-btn" disabled={isConfigure || claiming || machine.link.phase !== 'live'}
+              data-tip="Double-press Pair on the machine to approve"
+              onclick={() => startClaim(ACCESS.configure)}>{claiming && askedConfigure ? 'Waiting for Pair' : 'Ask configure'}</button>
       <button type="button" class="og-btn" disabled={!setupCat} data-tip={setupCat ? '' : 'No setup settings on this hub'}
               onclick={() => (setupOpen = true)}>Set up this machine</button>
     </div>
     <p class="pane-status" role="status" data-phase={claimLadder.phase} data-tip={claimLadder.text}>{claimLadder.text}</p>
     <details class="howto">
-      <summary>Open a pairing window at the machine</summary>
+      <summary>At the machine</summary>
       <ol>
-        <li>Power-cycle three times, each within about 10 s of boot</li>
-        <li>The third cycle opens a {LIMITS.pairing_window_default_s} s window</li>
-        <li>Press Pair this client after reconnect</li>
+        <li>Press Pair: a {LIMITS.pairing_window_default_s} s window, control (configure if unclaimed)</li>
+        <li>Ask configure, then double-press Pair to approve it</li>
+        <li>Hold Pair 5 s: every client drops to watch</li>
+        <li>No Pair button: power-cycle three times, each within 10 s of boot</li>
       </ol>
-      <p class="pane-note">Grants configure if unclaimed, control if claimed</p>
     </details>
   </section>
   {#if setupOpen && setupCat}<ProvisionWizard category={setupCat} onclose={() => (setupOpen = false)} />{/if}
