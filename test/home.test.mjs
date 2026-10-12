@@ -377,9 +377,10 @@ if (!LIVE) {
   })));
   await page.click('nav.rail [role=tab][data-tip="System"]');
   await page.waitForTimeout(150);
-  ok('sections: System shows a Library section over its Pattern presets card, then its diagnostic cards under Diagnostics (ph-vrg)',
-     JSON.stringify(await sectionRuns()) === JSON.stringify([{ head: 'Library', cards: ['Pattern presets'] }, { head: 'Diagnostics', cards: ['Power', 'Session'] }]),
-     await sectionRuns());
+  const titles = await page.$$eval('main.pane .dash-grid[data-view] > .dash-cell .dash-title', (els) => els.map((e) => e.textContent.trim()));
+  ok('sections: System shows its Pattern library card first, then its diagnostic cards under Diagnostics (ph-vrg, val-3xd)',
+     titles[0] === 'Pattern library' && JSON.stringify(await sectionRuns()) === JSON.stringify([{ head: 'Diagnostics', cards: ['Power', 'Session'] }]),
+     { titles, runs: await sectionRuns() });
   await page.click('nav.rail [role=tab][data-tip="Motion"]');
   await page.waitForTimeout(150);
   // ph-vrg: a diagnostic group named like a live one rides that card (the order itself: settings-model.test).
