@@ -81,6 +81,7 @@ const env = {
   live: () => true,
   safety: () => safety,
   storage: { getItem: () => null, setItem() {} },
+  pace: { when: (k, gap, fn) => fn() },   // the device update rate has its own suite (bp-linear.test.mjs)
   entries: () => entries,
   sample: (ch) => samples[ch],
   fetchBlob: async ({ slot }) => {

@@ -20,8 +20,11 @@ import {
   MAP, MAPS, TICK_MS, refKey, homeOf, interlock, isUserSpace, addNode, connect, removeRel,
   refuseConnect, checkRel, freeRelId, loadLocal, saveLocal, createRunner, findHub, storeVerb,
   storeItem, readStoreItem, rosterBits, removeNode, addDraft, planWire, createHistory, snap, endRange,
-  OPS, addOp, planLink, addLink, insOf, outOf, opLabel,
+  OPS, addOp, planLink, addLink, insOf, outOf, opLabel, MS_PORT, DEFAULT_MS,
 } from '../model/graph.js';
+import { createTraces } from '../model/trace.js';
+import { PRESETS } from '../model/graph-presets.js';
+import { pace, gapOf } from './bp-pace.js';
 import { ROLE, claimRoles } from '../model/roles.js';
 import { rosterCount } from '../ui/widgets/roster.js';
 import { controlKey, WIDGET, reportedValue } from '../model/settings.js';
@@ -42,6 +45,8 @@ export const manifest = {
 
 export const HERO = { id: 'editor', title: 'Node graph', cells: { h: [16, 10], v: [10, 16] } };
 export const SENSOR_MS = 1000;
+/** Every buttplug output's history, off until switched on (shared with the toy modules). */
+export const traces = createTraces({ storage: typeof localStorage !== 'undefined' ? localStorage : null });
 const CMD = { scalar: 'bp_toy_scalar', rotate: 'bp_toy_rotate', linear: 'bp_toy_linear' };
 const msg = (e) => String(e?.message ?? e);
 /** Canvas units between a map node and the field nodes an edge places for it. */
@@ -66,7 +71,7 @@ export const fieldType = (f) => {
  * @param {Object} api the plugin API
  * @param {{invoke: Function, listen: Function}|null} shell the Tauri bridge; null leaves buttplug refs absent
  * @param {Object} env {live(), safety(), storage, entries(), sample(ch), fetchBlob(o)?, runAction(act, op, extra)?, shadow(f)?,
- *   hubName()?, modules()? (plugin modules as [{title, spec}])}
+ *   hubName()?, modules()? (plugin modules as [{title, spec}]), pace? (a bp-pace.js pacer; tests pass a pass-through)}
  */
 export function graphRuntime(api, shell, env) {
   const local = loadLocal(env.storage);
@@ -149,24 +154,54 @@ export function graphRuntime(api, shell, env) {
     }
   }
 
-  function bpWrite(ref, value) {
+  /**
+   * Send a target's value, at the device's update rate (bp-pace.js): one
+   * command per output in flight or waiting for the window, the newest wins.
+   * `ms` is a linear output's duration, kept inside the feature's own range.
+   */
+  function bpWrite(ref, value, ms) {
     const d = devices.get(ref.device);
     const c = ctlOf(ref);
     if (!d || !c || !CMD[c.kind] || !shell) return;
     const k = refKey(ref);
-    if (inflight.has(k)) { inflight.set(k, value); return; }
-    inflight.set(k, null);
-    const a = { index: d.index, feature: c.feature };
-    if (c.kind === 'rotate') a.speed = value;
-    else if (c.kind === 'linear') Object.assign(a, { position: value, ms: 2 * TICK_MS });
-    else a.value = value;
-    shell.invoke(CMD[c.kind], a)
-      .catch((e) => api.log(d.name + ': ' + msg(e), 'warn'))
-      .finally(() => {
-        const next = inflight.get(k);
-        inflight.delete(k);
-        if (next != null && !closed) bpWrite(ref, next);
-      });
+    if (inflight.has(k)) { inflight.set(k, { value, ms }); return; }
+    inflight.set(k, { value, ms });
+    (env.pace || pace).when(d.key, gapOf(d), () => {
+      const w = inflight.get(k);
+      inflight.set(k, null);
+      if (closed || !w) { inflight.delete(k); return; }
+      const a = { index: d.index, feature: c.feature };
+      if (c.kind === 'rotate') a.speed = w.value;
+      else if (c.kind === 'linear') {
+        const [lo, hi] = c.ms || [0, 100000];
+        Object.assign(a, { position: w.value, ms: Math.round(Math.min(hi, Math.max(lo, Number.isFinite(w.ms) ? w.ms : DEFAULT_MS))) });
+      } else a.value = w.value;
+      traces.push(k, w.value);
+      shell.invoke(CMD[c.kind], a)
+        .catch((e) => api.log(d.name + ': ' + msg(e), 'warn'))
+        .finally(() => {
+          const next = inflight.get(k);
+          inflight.delete(k);
+          if (next != null && !closed) bpWrite(ref, next.value, next.ms);
+        });
+    });
+  }
+
+  /** A Plan node's value from the hub's plan.* fields: the end as a share of the window, times in ms; undefined when absent. */
+  function planValue(fn) {
+    const num = (role, ms) => {
+      const f = api.field(role);
+      const v = f && api.value(f);
+      if (typeof v !== 'number' || !Number.isFinite(v)) return undefined;
+      const u = unitOf(f);
+      return ms ? v * (u === 'µs' ? 0.001 : u === 's' ? 1000 : 1) : v;
+    };
+    if (fn === 'end') return num(ROLE.planEnd);
+    const dur = num(ROLE.planDuration, true);
+    const el = num(ROLE.planElapsed, true);
+    if (fn === 'duration') return dur;
+    if (fn === 'elapsed') return el;
+    return dur === undefined || el === undefined ? undefined : Math.max(0, dur - el);
   }
 
   function readSensors() {
@@ -198,8 +233,9 @@ export function graphRuntime(api, shell, env) {
       const f = fieldFor(ref.key);
       return f && writable(f) ? { min: f.min, max: f.max, step: f.step } : null;
     },
-    write(ref, v) {
-      if (ref.kind === 'bp') return bpWrite(ref, v);
+    plan: planValue,
+    write(ref, v, ms) {
+      if (ref.kind === 'bp') return bpWrite(ref, v, ms);
       const f = fieldFor(ref.key);
       if (f) api.write(f, v);
     },
@@ -529,7 +565,7 @@ export function graphRuntime(api, shell, env) {
   }
 
   /** Is this a node chain's wire: an op at either end. */
-  const isLink = (a, b) => !!(opOf(a) || opOf(b));
+  const isLink = (a, b, port) => !!(opOf(a) || opOf(b) || port === MS_PORT);
 
   /** A link plan from output a to input b (port on an op), with the node ends checked. */
   function linkPlan(a, b, port) {
@@ -542,7 +578,7 @@ export function graphRuntime(api, shell, env) {
 
   /** Why output socket a cannot be wired to input socket b (port on an op), in words; '' when it can. Changes nothing. */
   function why(a, b, port) {
-    if (isLink(a, b)) return linkPlan(a, b, port).reason || '';
+    if (isLink(a, b, port)) return linkPlan(a, b, port).reason || '';
     const p = planWire(g, a, b, homeNodes);
     if (p.reason || p.partial) return p.reason || '';
     const h = homeNodes(nodeOf(p.from), nodeOf(p.to));
@@ -552,7 +588,7 @@ export function graphRuntime(api, shell, env) {
   /** Wire output socket a to input socket b (node, draft, rel or op ids; port on an op). '' or the refusal in words. */
   function wire(a, b, port) {
     return step(() => {
-      if (isLink(a, b)) {
+      if (isLink(a, b, port)) {
         const p = linkPlan(a, b, port);
         if (p.reason) return p.reason;
         addLink(g, p);
@@ -584,7 +620,8 @@ export function graphRuntime(api, shell, env) {
   function unwire(id, side, port) {
     return step(() => {
       const at = side === 'in' ? 'to' : 'from';
-      g.links = g.links.filter((l) => !(l[at] === id && (side === 'out' || !opOf(id) || l.port === port)));
+      // A position-with-duration node's Duration input is cut apart from its main input.
+      g.links = g.links.filter((l) => !(l[at] === id && (side === 'out' || (opOf(id) ? l.port === port : (l.port === MS_PORT) === (port === MS_PORT)))));
       if (opOf(id)) return '';
       const end = side === 'in' ? 'from' : 'to';
       const d = draftOf(id);
@@ -633,6 +670,65 @@ export function graphRuntime(api, shell, env) {
       if (vals) o.vals = { ...o.vals, ...vals };
       const live = new Set(insOf(o).filter((p) => !p.fixed).map((p) => p.name));
       g.links = g.links.filter((l) => l.to !== id || live.has(l.port));
+      return '';
+    });
+  }
+
+  /** Change a node's own settings ({ms}: a position-with-duration target's Duration when nothing is wired). */
+  function editNode(id, patch) {
+    return step(() => {
+      const n = nodeOf(id);
+      if (!n) return 'that node is gone';
+      if ('ms' in patch) n.ms = Math.max(0, Number(patch.ms) || 0);
+      return '';
+    });
+  }
+
+  /**
+   * Place a starting graph (graph-presets.js) below what is on the canvas, as
+   * one undo step; '' or the reason in words. A node a preset names that the
+   * canvas already holds is reused. `deviceKey` picks the toy.
+   */
+  function applyPreset(id, deviceKey) {
+    const p = PRESETS.find((x) => x.id === id);
+    if (!p) return 'no such preset';
+    const toy = [...devices.values()].find((d) => d.kind === 'toy' && (!deviceKey || d.key === deviceKey) && d.controls.some((c) => c.kind === 'linear'));
+    const refs = {};
+    let ctl = null;
+    for (const n of p.nodes) {
+      if (n.ref.toy) {
+        if (!toy) return 'no toy with a position-with-duration output is connected';
+        ctl = toy.controls.find((c) => c.kind === 'linear');
+        refs[n.id] = bpRef(toy, ctl);
+      } else {
+        const hit = allFields().find((x) => !x.f.isIntentField && n.ref.role.includes(x.f.role));
+        if (!hit) return 'this hub has no ' + n.ref.role[0] + ' field';
+        refs[n.id] = { kind: 'field', key: hit.key };
+      }
+    }
+    const taken = g.nodes.find((m) => refKey(m.ref) === refKey(refs.dst || {}));
+    if (taken && (g.links.some((l) => l.to === taken.id && !l.port) || g.rels.some((r) => r.to === taken.id && r.enabled))) {
+      return 'refused: ' + about(refs.dst).name + ' is already driven';
+    }
+    return step(() => {
+      const y0 = [...g.nodes, ...g.ops, ...g.rels, ...g.drafts].reduce((m, b) => Math.max(m, b.y + 200), 0);
+      const ids = {};
+      for (const n of p.nodes) {
+        const node = addNode(g, refs[n.id], snap(n.x), snap(y0 + n.y));
+        node.pinned = true;
+        ids[n.id] = node.id;
+      }
+      for (const o of p.ops) {
+        const op = addOp(g, o.kind, snap(o.x), snap(y0 + o.y));
+        if (o.fn) op.fn = o.fn;
+        if (o.clamp != null) op.clamp = o.clamp;
+        op.vals = Object.fromEntries(Object.entries(o.vals || {}).map(([k, v]) => [k, v === '$max' ? ctl.range[1] : v]));
+        ids[o.id] = op.id;
+      }
+      for (const l of p.links) {
+        const pl = planLink(g, ids[l.from], ids[l.to], l.port);
+        if (!pl.reason) addLink(g, pl);
+      }
       return '';
     });
   }
@@ -718,7 +814,7 @@ export function graphRuntime(api, shell, env) {
       const b = nodeOf(r.to);
       return { home: r.home, why: a && b ? home(a.ref, b.ref).why : '' };
     }
-    const l = g.links.find((x) => x.to === id);
+    const l = g.links.find((x) => x.to === id && x.port !== MS_PORT);
     return l ? { home: 'client', why: 'runs in Phosphor (node chain)' } : null;
   }
 
@@ -815,7 +911,7 @@ export function graphRuntime(api, shell, env) {
     get unitNote() { return unitNote(); },
     hubState: (r) => hubState.get(r.rel_id) || { phase: 'confirmed', reason: '' },
     hubArmed, home, sources, targets, add, edit, remove, refreshHub, tick,
-    why, wire, unwire, place, placeMap, placeOp, editOp, batch, removeMany, duplicate, moveMany, ports, echo, palette, runs, about, state, hubName,
+    why, wire, unwire, editNode, applyPreset, presets: PRESETS, place, placeMap, placeOp, editOp, batch, removeMany, duplicate, moveMany, ports, echo, palette, runs, about, state, hubName,
     undo: () => travel((swap) => history.undo(swap)),
     redo: () => travel((swap) => history.redo(swap)),
     get canUndo() { return history.canUndo; },
@@ -827,6 +923,11 @@ export function graphRuntime(api, shell, env) {
     out: (id) => runner.out(id),
     /** An op's output this tick, while armed. */
     val: (id) => runner.val(id),
+    /** A Scope's history {buf, t, ver} while armed; null otherwise. */
+    scope: (id) => runner.scope(id),
+    /** A buttplug output's update rate gap in ms (the device's, else the default). */
+    gap: (ref) => gapOf(devices.get(ref.device)),
+    traces,
     /** Why a chain's target node is not driven, in words. */
     chainWhy: (id) => runner.why(id),
     maps: MAPS, MAP, OPS, insOf, outOf, opLabel,

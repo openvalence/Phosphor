@@ -374,7 +374,7 @@ console.log('(i) typed nodes: every op, every conversion, order, loops, missing 
   run('lowpass', { v: 0, tau: 1 }, { s: ls });
   ok('Low-pass: one tau later is 63.2 %', near(run('lowpass', { v: 10, tau: 1 }, { s: ls, dt: 1 }), 10 * (1 - Math.exp(-1))));
   ok('Input nodes output their own value', run('value', { v: 0.25 }) === 0.25 && run('integer', { v: 3 }) === 3 && run('boolean', { v: 1 }) === 1);
-  ok('every node kind evaluates', Object.keys(OPS).every((k) => evalOp(addOp(emptyGraph(), k), Object.fromEntries(insOf(addOp(emptyGraph(), k)).map((p) => [p.name, p.def])), {}, 0) !== undefined));
+  ok('every node kind evaluates (a Plan reads the hub, an Interval waits for a change)', Object.keys(OPS).filter((k) => k !== 'plan' && k !== 'interval').every((k) => evalOp(addOp(emptyGraph(), k), Object.fromEntries(insOf(addOp(emptyGraph(), k)).map((p) => [p.name, p.def])), {}, 0) !== undefined));
 
   ok('int to float is exact', conv(3, 'int', 'float') === 3);
   ok('float to int rounds', conv(2.6, 'float', 'int') === 3 && conv(2.4, 'float', 'int') === 2);

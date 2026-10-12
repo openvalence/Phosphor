@@ -23,11 +23,15 @@ import {
   cbMap, cbUint, cbTstr, cbF32, cbArray, cbBool, cbBstr, cbDecodeFull,
 } from '../../../Valence/clients/js/cbor.js';
 import { ROLE } from './roles.js';
+import { pushPoint } from './trace.js';
 
 export { M as MAP };
 export const ITEM_KIND = 'relationship.map';
 /** Client-side evaluation period: bounds every client write to 20 Hz. */
 export const TICK_MS = 50;
+/** The input port of a position-with-duration target node that takes the duration (ms); its default is the node's own `ms`. */
+export const MS_PORT = 'ms';
+export const DEFAULT_MS = 100;
 
 /** Words and parameter names per map, in the order SPEC 8.11 lists them. */
 export const MAPS = {
@@ -237,7 +241,7 @@ export function wouldLoop(g, from, to) {
 export function driverName(g, to, except = null) {
   const r = g.rels.find((x) => x !== except && x.to === to && x.enabled);
   if (r) return r.name;
-  const l = (g.links || []).find((x) => x !== except && x.to === to);
+  const l = (g.links || []).find((x) => x !== except && x.to === to && x.port !== MS_PORT);
   if (!l) return '';
   const o = (g.ops || []).find((x) => x.id === l.from);
   return o ? opLabel(o) : 'a node';
@@ -456,6 +460,14 @@ export const COMPARE = {
   gt: fn('Greater than', 2, (a, b) => a > b),
 };
 
+/** The hub's plan in flight, from the plan.* fields: the end as a share of the window, times in ms. */
+export const PLAN = {
+  end: fn('Plan end', 0),
+  elapsed: fn('Plan elapsed (ms)', 0),
+  remaining: fn('Plan remaining (ms)', 0),
+  duration: fn('Plan duration (ms)', 0),
+};
+
 /** Boolean Math operations, on booleans. */
 export const LOGIC = {
   and: fn('And', 2, (a, b) => a && b),
@@ -492,6 +504,10 @@ export const OPS = {
   threshold: { label: 'Threshold', cat: 'Converter', out: 'bool', ins: [V(), pin('on', 'On above', 'float', 0.6), pin('off', 'Off below', 'float', 0.4)] },
   slew: { label: 'Slew', cat: 'Converter', out: 'float', ins: [V(), pin('rise', 'Rise per s', 'float', 1), pin('fall', 'Fall per s', 'float', 1)] },
   lowpass: { label: 'Low-pass', cat: 'Converter', out: 'float', ins: [V(), pin('tau', 'Tau (s)', 'float', 0.5)] },
+  interval: { label: 'Interval', cat: 'Converter', out: 'float', ins: [V()] },
+  ratelimit: { label: 'Rate limit', cat: 'Converter', out: 'float', ins: [V(), pin('every', 'Every (ms)', 'float', 75)] },
+  scope: { label: 'Scope', cat: 'Converter', out: 'float', ins: [V()] },
+  plan: { label: 'Plan', cat: 'Input', out: 'float', fns: PLAN, fn: 'end', ins: [] },
 };
 
 /** An op node's output type: a Switch carries its own `type`. */
@@ -536,8 +552,14 @@ export function planLink(g, from, to, port) {
   if (!op(from) && !g.nodes.some((n) => n.id === from)) return { reason: 'refused: that output is gone' };
   if (!t && !g.nodes.some((n) => n.id === to)) return { reason: 'refused: that input is gone' };
   if (wouldLoop(g, from, to)) return { reason: 'refused: would loop' };
-  const key = t ? port : undefined;
-  if (!t) {
+  const dur = !t && port === MS_PORT;
+  if (!t && port != null && !dur) return { reason: 'refused: no such input' };
+  if (dur) {
+    const n = g.nodes.find((m) => m.id === to);
+    if (!(n.ref.kind === 'bp' && n.ref.ctl === 'linear')) return { reason: 'refused: only a position-with-duration output takes a duration' };
+  }
+  const key = t || dur ? port : undefined;
+  if (!t && !dur) {
     const r = g.rels.find((x) => x.to === to && x.enabled);
     if (r) return { reason: 'refused: target already driven by "' + r.name + '"' };
   }
@@ -593,6 +615,23 @@ export function evalOp(o, x, s, dt) {
     case 'threshold': return hysteresis(s, x.v, x.on, x.off) ? 1 : 0;
     case 'slew': return slewStep(s, x.v, Math.max(0, x.rise), Math.max(0, x.fall), dt);
     case 'lowpass': return lowpassStep(s, x.v, x.tau, dt);
+    case 'interval': {
+      // Milliseconds between changes of the input, to the evaluator's tick.
+      s.since = s.v === undefined ? 0 : s.since + dt * 1000;
+      if (s.v !== undefined && x.v !== s.v) { s.ms = s.since; s.since = 0; }
+      s.v = x.v;
+      return s.ms;
+    }
+    case 'ratelimit':
+      // Newest wins: the value now, at most once every `every` ms; the last passed one between.
+      s.t = (s.t ?? Infinity) + dt * 1000;
+      if (s.t >= x.every) { s.t = 0; s.y = x.v; }
+      return s.y;
+    case 'scope':
+      // The wire's history, a point per change on the node's own clock; draw reads `s.buf`.
+      s.t = (s.t ?? 0) + dt * 1000;
+      if (x.v !== s.v) { s.v = x.v; s.ver = (s.ver || 0) + 1; pushPoint(s.buf || (s.buf = []), s.t, x.v); }
+      return x.v;
     default: return undefined;
   }
 }
@@ -613,6 +652,11 @@ export function evalChains(g, io, state, dt) {
   const into = new Map();
   for (const l of g.links || []) into.set(l.to + ':' + l.port, l);
   for (const o of topo(g)) {
+    if (o.kind === 'plan') {
+      const v = io.plan ? io.plan(o.fn) : undefined;
+      if (typeof v === 'number' && Number.isFinite(v)) val.set(o.id, v); else why.set(o.id, 'disarmed: no plan from the hub');
+      continue;
+    }
     const x = {};
     let miss = '';
     let safe = false;
@@ -790,7 +834,9 @@ export function rosterBits(roster, sample) {
  *   read(ref)   -> source value in its physical units, or undefined
  *   type(ref)   -> 'float' | 'int' | 'bool' (absent: float)
  *   target(ref) -> {min?, max?, step?, integer?, safe?} or null when absent
- *   write(ref, value)
+ *   write(ref, value, ms) -> `ms` is a position-with-duration target's duration: its
+ *               Duration link's value, else the node's own default
+ *   plan(fn)    -> the hub's plan value for a Plan node (PLAN), or undefined
  *   armed()     -> {ok, why} (interlock())
  * Writes a target only when the output moved by its step (any change when it
  * declares none), as SPEC 8.11 evaluation does. A chain whose input has no
@@ -804,7 +850,7 @@ export function createRunner(io) {
   const typeOf = (ref) => (io.type ? io.type(ref) : 'float');
 
   /** Clamp into the target and write when moved by its step. */
-  function drive(ref, t, s, out) {
+  function drive(ref, t, s, out, ms) {
     if (out === SAFE) out = t.safe;
     if (typeof out !== 'number' || !Number.isFinite(out)) return;
     if (t.min != null) out = Math.max(t.min, out);
@@ -812,7 +858,7 @@ export function createRunner(io) {
     if (t.integer) out = Math.round(out);
     if (s.last !== undefined && (t.step ? Math.abs(out - s.last) < t.step : out === s.last)) return;
     s.last = out;
-    io.write(ref, out);
+    io.write(ref, out, ms);
   }
 
   function step(g, now) {
@@ -822,7 +868,7 @@ export function createRunner(io) {
     const byId = new Map(g.nodes.map((n) => [n.id, n]));
     const ops = new Map((g.ops || []).map((o) => [o.id, o]));
     const mine = g.rels.filter((r) => r.home === 'client' && r.enabled && byId.has(r.from) && byId.has(r.to));
-    const chains = (g.links || []).filter((l) => byId.has(l.to) && ops.has(l.from));
+    const chains = (g.links || []).filter((l) => !l.port && byId.has(l.to) && ops.has(l.from));
     if (!a.ok) {
       if (was) {
         for (const id of new Set([...mine.map((r) => r.to), ...chains.map((l) => l.to)])) {
@@ -836,22 +882,29 @@ export function createRunner(io) {
       return a;
     }
     was = true;
-    for (const r of mine) {
-      const to = byId.get(r.to).ref;
-      const t = io.target(to);
-      const x = io.read(byId.get(r.from).ref);
-      if (!t || typeof x !== 'number' || !Number.isFinite(x)) continue;
-      let s = st.get(r.id);
-      if (!s || s.map !== r.map) st.set(r.id, (s = { map: r.map, m: {}, last: undefined }));
-      drive(to, t, s, evalMap(r, s.m, x, dt));
-    }
     const state = (id, kind) => {
       let s = st.get('o:' + id);
       if (!s || s.kind !== kind) st.set('o:' + id, (s = { kind, m: {} }));
       return s.m;
     };
-    const ch = evalChains(g, { read: io.read, type: typeOf }, state, dt);
+    const ch = evalChains(g, { read: io.read, type: typeOf, plan: io.plan }, state, dt);
     vals = ch.val;
+    // A position-with-duration target's duration: its wired value, else its own default.
+    const wired = new Map((g.links || []).filter((l) => l.port === MS_PORT).map((l) => [l.to, l]));
+    const msOf = (n) => {
+      const l = wired.get(n.id);
+      const up = l && (ops.has(l.from) ? ch.val.get(l.from) : io.read((byId.get(l.from) || {}).ref));
+      return typeof up === 'number' && Number.isFinite(up) ? up : Number.isFinite(n.ms) ? n.ms : DEFAULT_MS;
+    };
+    for (const r of mine) {
+      const n = byId.get(r.to);
+      const t = io.target(n.ref);
+      const x = io.read(byId.get(r.from).ref);
+      if (!t || typeof x !== 'number' || !Number.isFinite(x)) continue;
+      let s = st.get(r.id);
+      if (!s || s.map !== r.map) st.set(r.id, (s = { map: r.map, m: {}, last: undefined }));
+      drive(n.ref, t, s, evalMap(r, s.m, x, dt), msOf(n));
+    }
     for (const l of chains) {
       const n = byId.get(l.to);
       const t = io.target(n.ref);
@@ -866,7 +919,7 @@ export function createRunner(io) {
         continue;
       }
       s.why = '';
-      if (t) drive(n.ref, t, s, conv(v, outOf(ops.get(l.from)), typeOf(n.ref)));
+      if (t) drive(n.ref, t, s, conv(v, outOf(ops.get(l.from)), typeOf(n.ref)), msOf(n));
     }
     return a;
   }
@@ -879,6 +932,8 @@ export function createRunner(io) {
     val: (id) => vals.get(id),
     /** Why a chain's target node is not driven, in words; '' when it is. */
     why: (id) => st.get('c:' + id)?.why || '',
+    /** A Scope's history {buf, t, ver} while armed; null otherwise. */
+    scope: (id) => st.get('o:' + id)?.m || null,
     reset: () => { st.clear(); was = false; last = 0; vals = new Map(); },
   };
 }

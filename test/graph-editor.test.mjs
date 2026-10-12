@@ -169,7 +169,9 @@ function BP_STUB() {
   window.__TAURI_INTERNALS__.invoke = async (cmd, a) => {
     if (cmd === 'bp_devices') {
       return [{ index: 1, key: 'lovense-aa-bb', name: 'Lush', kind: 'toy', connected: true,
-        controls: [{ feature: 0, description: 'Motor', kind: 'scalar', type: 'Vibrate', range: [0, 20] }] }];
+        controls: [{ feature: 0, description: 'Motor', kind: 'scalar', type: 'Vibrate', range: [0, 20] }] },
+      ...(localStorage.getItem('test.linear') ? [{ index: 2, key: 'ossm-aa-cc', name: 'OSSM', kind: 'toy', connected: true,
+        controls: [{ feature: 0, description: 'Stroke', kind: 'linear', type: 'HwPositionWithDuration', range: [0, 100], ms: [0, 100000] }] }] : [])];
     }
     if (cmd.startsWith('bp_toy_')) { window.__bp.push([cmd, a]); return null; }
     return base(cmd, a);
@@ -510,7 +512,7 @@ let saved = null;
   await page.keyboard.press('ArrowLeft');
   for (let i = 0; i < 8 && await page.locator('.gpal [data-cur]').getAttribute('data-group') !== 'Input'; i++) await page.keyboard.press('ArrowDown');
   await page.keyboard.press('ArrowRight');
-  ok('Left closes the open hub, Right opens the highlighted category', await page.locator('.gpal .gpal-item[data-nested]').count() === 3
+  ok('Left closes the open hub, Right opens the highlighted category', await page.locator('.gpal .gpal-item[data-nested]').count() === 4
     && await page.locator('.gpal .gpal-head[aria-expanded=true]').getAttribute('data-group') === 'Input');
   const mt = await page.evaluate(() => {
     const cs = (s) => getComputedStyle(document.querySelector(s));
@@ -951,6 +953,35 @@ let saved = null;
   const overlap = boxes.some((a, i) => boxes.some((b, j) => j > i && a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3]));
   ok('+ Add three times places three nodes, none on another (ph-qwh3)', boxes.length === 3 && !overlap, JSON.stringify(boxes));
   ok('no page errors (+ Add)', errors.length === 0, errors);
+  await ctx.close();
+}
+
+// ---- a position-with-duration node takes a Duration (docs/BUTTPLUG.md) ---------------
+{
+  const { ctx, page, errors } = await open({ store: { 'test.linear': '1' } });
+  const vp = await page.locator('.graph .gview').boundingBox();
+  const lin = await place(page, 0.6, 0.3, 'Stroke', 'ButtplugIO');
+  const L = nodeBy(page, lin);
+  ok('the node has its Duration row and socket under the head', await L.locator('.grow[data-port=ms] input[type=number]').count() === 1
+    && await L.locator(':scope > [data-sock][data-side=in][data-port=ms]').count() === 1);
+  ok('...its default is editable and starts at 100 ms', await L.locator('.grow[data-port=ms] input').inputValue() === '100');
+  await place(page, 0.1, 0.3, 'Interval', 'Converter');
+  await place(page, 0.1, 0.6, 'Rate limit', 'Converter');
+  const ops = page.locator('.gnode[data-kind=op]');
+  ok('Interval and Rate limit are in the add menu and draw as op nodes with their own pins', await ops.count() === 2
+    && await ops.filter({ hasText: 'Every (ms)' }).count() === 1);
+  const iv = ops.filter({ hasText: 'Interval' }).first();
+  const from = await center(iv.locator(':scope > [data-sock][data-side=out]'));
+  const to = await center(L.locator(':scope > [data-sock][data-port=ms]'));
+  await page.mouse.move(from[0], from[1]);
+  await page.mouse.down();
+  await page.mouse.move(to[0], to[1], { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(100);
+  const links = (await stored(page)).links;
+  ok('Interval wires to the Duration socket as a link on port ms', links.length === 1 && links[0].port === 'ms', JSON.stringify(links));
+  ok('...and the default field gives way to the label', await L.locator('.grow[data-port=ms] input').count() === 0);
+  ok('no page errors (duration)', errors.length === 0, errors);
   await ctx.close();
 }
 
