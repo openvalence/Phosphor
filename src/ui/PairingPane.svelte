@@ -251,7 +251,7 @@
   function onPairGrant(g) {
     if (g.token) setPairedToken(getSession().origin, g.token);
     const roleName = g.role != null ? (ACCESS_NAME[g.role] || String(g.role)) : 'a higher tier';
-    // A window grants control only where configure owners exist.
+    // A window grants control only on a claimed hub.
     finishClaim('settled', 'Paired at ' + roleName
       + (g.role === ACCESS.control ? '. Configure: Ask configure, then double-press Pair' : ''));
   }
