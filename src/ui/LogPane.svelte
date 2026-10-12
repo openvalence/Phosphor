@@ -285,18 +285,28 @@
 
   const lastTop = {};
   function onScroll(id, el) {
-    if (id === 'changes') return;
+    if (id === 'changes' || sticking.has(el)) return;
     const top = el.scrollTop, bottom = el.scrollHeight - top - el.clientHeight < 32;
     const f = ff[id];
     if (f.follow && !bottom && top < (lastTop[id] ?? 0) - 1) pause(id, false);
     else if (!f.follow && !f.held && bottom) resume(id);
     lastTop[id] = el.scrollTop;
   }
-  // Re-runs when the feed's rows or its follow flag change.
+  // Re-runs when the feed's rows or its follow flag change. The scroll waits for the frame: read right after
+  // the rows change, scrollHeight forced a layout per arriving line, and the frame laid out again. Until it
+  // lands, a scroll event (the rows trimmed off the top) is not the user scrolling away.
+  const sticking = new Set();
   const stick = (id) => (el) => {
     if (id === 'changes') return;
     void shown[id];
-    if (ff[id].follow) { el.scrollTop = el.scrollHeight; lastTop[id] = el.scrollTop; }
+    if (!ff[id].follow || sticking.has(el)) return;
+    sticking.add(el);
+    requestAnimationFrame(() => {
+      sticking.delete(el);
+      if (!ff[id].follow) return;
+      el.scrollTop = el.scrollHeight;
+      lastTop[id] = el.scrollTop;
+    });
   };
 
   function clearFeed() {
