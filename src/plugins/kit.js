@@ -118,31 +118,31 @@ const watchFull = () => {
 };
 
 /**
- * A window listener that removes itself once its element has been in the
- * document and left it, so an unmounted plugin view leaves nothing behind.
- * A sweep every WIN_SWEEP_MS removes it too: a resize or a fullscreen change
- * may never come, and the listener holds the whole unmounted view.
+ * A hook on something that outlives the view (a window listener, an observer of the
+ * document) holds the whole view. `off` runs once `el` has been in the document and
+ * left it: on a sweep every HELD_SWEEP_MS, since a resize or a fullscreen change may
+ * never come, or sooner through the hook's own `gone()`.
  */
-const WIN_SWEEP_MS = 2000;
-const winLs = new Set();
-let winSweep = 0;
-function sweepWin() {
-  for (const w of winLs) {
-    if (w.el.isConnected) w.seen = true;
-    else if (w.seen) { window.removeEventListener(w.type, w.f); winLs.delete(w); }
-  }
-  if (!winLs.size) { clearInterval(winSweep); winSweep = 0; }
+const HELD_SWEEP_MS = 2000;
+const held = new Set();
+let heldSweep = 0;
+function sweepHeld() {
+  for (const w of held) if (w.el.isConnected) w.seen = true; else if (w.seen) w.gone();
+  if (!held.size) { clearInterval(heldSweep); heldSweep = 0; }
 }
-function winOn(el, type, fn) {
-  const w = { el, type, seen: false, f: null };
-  w.f = (e) => {
-    if (el.isConnected) { w.seen = true; fn(e); } else if (w.seen) { window.removeEventListener(type, w.f); winLs.delete(w); }
-  };
-  window.addEventListener(type, w.f);
-  winLs.add(w);
+function hold(el, off) {
+  const w = { el, seen: false, gone: () => { if (held.delete(w)) off(); } };
+  held.add(w);
   // A view is mounted in the task that builds it: seen at the next tick, so one shown for under a sweep still goes.
   setTimeout(() => { if (el.isConnected) w.seen = true; }, 0);
-  if (!winSweep) winSweep = setInterval(sweepWin, WIN_SWEEP_MS);
+  if (!heldSweep) heldSweep = setInterval(sweepHeld, HELD_SWEEP_MS);
+  return w;
+}
+/** A window listener that runs while `el` is in the document and goes once it has left. */
+function winOn(el, type, fn) {
+  const f = (e) => { if (el.isConnected) { w.seen = true; fn(e); } else if (w.seen) w.gone(); };
+  const w = hold(el, () => window.removeEventListener(type, f));
+  window.addEventListener(type, f);
 }
 
 /** The shell's icon: an <svg> of the named glyph, or of one stroke path `d`. */
@@ -602,8 +602,8 @@ export function page(o = {}) {
       // Under 20 rem of room (a phone on its side) the page keeps its own height and the window scrolls.
       el.style.height = room >= remPx() * 20 ? room + 'px' : '';
     };
-    let seen = false;
-    const ro = new ResizeObserver(() => { if (el.isConnected) { seen = true; fit(); } else if (seen) ro.disconnect(); });
+    const ro = new ResizeObserver(() => { if (el.isConnected) { w.seen = true; fit(); } else if (w.seen) w.gone(); });
+    const w = hold(el, () => ro.disconnect());
     const fit0 = fit;
     // What the pane's padding and the pinned footer still push past the window comes off once more.
     fit = () => {
@@ -615,7 +615,7 @@ export function page(o = {}) {
     ro.observe(document.documentElement);
     winOn(el, 'resize', fit);
     winOn(el, 'phosphor-page-fullscreen-change', () => requestAnimationFrame(fit));
-    requestAnimationFrame(() => { seen = el.isConnected; fit(); });
+    requestAnimationFrame(() => { if (el.isConnected) w.seen = true; fit(); });
   }
   return def(el, {
     main: { value: main },
