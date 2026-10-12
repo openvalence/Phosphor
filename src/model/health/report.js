@@ -284,6 +284,8 @@ const sumOf = (a) => (a.length ? a.reduce((x, y) => x + y, 0) : null);
 const minOf = (a) => (a.length ? Math.min(...a) : null);
 /** A condition without a classifier: where it was measured, and whether that pins it. */
 const AREA_CAUSE = { device: ['client', 'decisive'], link: ['network', 'likely'], machine: ['hub', 'decisive'] };
+/** An incident pinned on another party than its area's (inc.who, ph-rnr2). */
+const WHO_CAUSE = { device: ['client', 'likely'], machine: ['hub', 'likely'] };
 /** A growth incident's own numbers (m) as [metric, baseline, current, window ms, slope per minute]. */
 const MEASURE = {
   growth: (m) => ['heap_floor_mb', m.baseMb, m.nowMb, m.minutes * 60000, m.slopeMbPerMin],
@@ -316,7 +318,7 @@ export function reportSource({ inc, snap, ctx, hubLog = null, protocol = null, o
   const inW = rows.filter((r) => r.t >= W[0] - W[2] / 2 && r.t < W[1] + W[2] / 2);
   const col = (k) => inW.map((r) => r[k]).filter(Number.isFinite);
   const d = CONDITIONS[inc.cond] || {};
-  const [cause, confidence] = d.cause ? [inc.cause, inc.confidence] : AREA_CAUSE[d.area] || [null, null];
+  const [cause, confidence] = d.cause ? [inc.cause, inc.confidence] : WHO_CAUSE[inc.who] || AREA_CAUSE[d.area] || [null, null];
   const [metric, baseline, current, windowMs, slope] = MEASURE[inc.cond] && inc.m ? MEASURE[inc.cond](inc.m) : [];
   // The video at the problem; a video-drops incident's own numbers, refreshed while it held.
   const md = (inc.cond === 'video-drops' && inc.m && inc.m.frames != null ? inc.m : e.media) || {};

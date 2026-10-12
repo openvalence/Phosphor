@@ -17,7 +17,7 @@
   import { health } from '../../model/health/health.svelte.js';
   import { machine } from '../../model/machine.svelte.js';
   import { bytes } from '../../model/format.js';
-  import { CONDITIONS, evidenceText, secs } from '../../model/health/core.js';
+  import { actionOf, detailOf, evidenceText, secs } from '../../model/health/core.js';
   import ReportReview from './ReportReview.svelte';
   import SentReports from './SentReports.svelte';
   import '../pane.css';
@@ -130,8 +130,8 @@
                 {#if !inc.closed}<span class="chip">now</span>{/if}
               </summary>
               <div class="more">
-                {#if CONDITIONS[inc.cond].detail}<p>{CONDITIONS[inc.cond].detail}</p>{/if}
-                {#each inc.tip || [] as l, k (k)}<p class:act={l === CONDITIONS[inc.cond].action}>{l}</p>{/each}
+                {#if detailOf(inc)}<p>{detailOf(inc)}</p>{/if}
+                {#each inc.tip || [] as l, k (k)}<p class:act={l === actionOf(inc)}>{l}</p>{/each}
                 <p class="ev mono">{[inc.why, evidenceText(inc.evidence), inc.durationMs ? 'total ' + secs(inc.durationMs) : ''].filter(Boolean).join(' · ')}</p>
                 <button type="button" class="og-btn sm" onclick={() => (health.review = inc.id)}>Send report</button>
               </div>
