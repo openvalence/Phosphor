@@ -15,7 +15,7 @@
  *       and the hub grants it, and the command.position setpoint otherwise;
  *   (e2) the segments lookahead door: latch, role lookup, shared lazy grant,
  *       hub-time stamps less the declared latency, late clip, the 10 ms floor,
- *       the 100 us grid, half the horizon (250, 500, 1000); streamGate's
+ *       the 100 us grid, the lead cap of the horizon (250, 500, 1000); streamGate's
  *       order; a foreign-held control-owner slot never grays Play, a running
  *       generator does, and a SOURCE_CONFLICT reads "refused: rail owned by"
  *       its owner with no lock taken; railOwners;
@@ -45,7 +45,7 @@ import { readFileSync } from 'node:fs';
 import { decodeCatalog, CHANNEL_CLASS, STREAM_KIND, UNIT_ID, LIMITS, PublishError, CH_CONTROL_OWNER, SOURCE_KIND, PLAN_FLAG, planFlagNames } from '../../Valence/clients/js/index.js';
 import { buildSettingsModel, reportedValue, placeableControls, minCells } from '../src/model/settings.js';
 import { ROLE, claimAll, claimRoles, ADVGEN_SPEC } from '../src/model/roles.js';
-import { motionTarget, createMotionDoor, bundleHead, recordBytes, motionStream, roleStream, streamGate, conflictWords, filteredHubNowUs, CLOCK_KEEP, CLOCK_HUNT, CLOCK_HUNT_GAP_MS } from '../src/model/motion.js';
+import { motionTarget, createMotionDoor, bundleHead, leadCapMs, recordBytes, motionStream, roleStream, streamGate, conflictWords, filteredHubNowUs, CLOCK_KEEP, CLOCK_HUNT, CLOCK_HUNT_GAP_MS } from '../src/model/motion.js';
 import { railOwners, railOwnerName, railOwned, foreignOwner } from '../src/model/actions.js';
 import { createPluginHost, validateManifest, MOTION_HOLD_MS, isHubUrl, PAGES_KEY } from '../src/plugins/host.js';
 import { KIT, ownMenus } from '../src/plugins/kit.js';
@@ -583,9 +583,10 @@ console.log('(e2) segments lookahead door, streamGate, railOwners');
     const b = s.sent[0];
     const st = starts(b);
     const cap = Math.min(LIMITS.bundle_max_samples, Math.floor((LIMITS.min_transport_payload - 6) / (2 + recordBytes(segSt.entry.layout))));
-    const inReach = tiles.filter((x, i) => i && (H + (x.atMs - T) * 1000 - 1000) - H <= horizon * 500).length + 1;
-    ok('horizon ' + horizon + ': every start within half of it, at most ' + cap + ' per bundle, sent = packed',
-      st.every((u) => u - H <= horizon * 500) && b.recs.length === Math.min(cap, inReach) && r.sent === b.recs.length
+    const reach = leadCapMs(horizon) * 1000;
+    const inReach = tiles.filter((x, i) => i && (H + (x.atMs - T) * 1000 - 1000) - H <= reach).length + 1;
+    ok('horizon ' + horizon + ': every start within its lead cap (RFC-115), at most ' + cap + ' per bundle, sent = packed',
+      st.every((u) => u - H <= reach) && b.recs.length === Math.min(cap, inReach) && r.sent === b.recs.length
       && b.offs.every((o) => o % UNIT === 0), r.sent + ' of ' + inReach);
   }
 

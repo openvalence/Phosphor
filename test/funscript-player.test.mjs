@@ -31,6 +31,7 @@ import { readFileSync } from 'node:fs';
 import { decodeCatalog } from '../../Valence/clients/js/index.js';
 import { buildSettingsModel } from '../src/model/settings.js';
 import { claimAll } from '../src/model/roles.js';
+import { leadCapMs } from '../src/model/motion.js';
 import * as CB from '../../Valence/clients/js/cbor.js';
 
 const args = process.argv.slice(2);
@@ -2600,7 +2601,7 @@ if (!LIVE) {
   const played = hub.segs(1);
   ok('timing: segments flow while playing', played.length > 8, played.length);
   const ahead = played.map((s) => (s.exec - s.arrival) / 1000);
-  ok('timing: every start within half the horizon of its arrival', ahead.every((a) => a <= HORIZON_MS / 2 + 2), Math.max(...ahead));
+  ok('timing: every start within the lead cap (RFC-115) of its arrival', ahead.every((a) => a <= leadCapMs(HORIZON_MS) + 2), Math.max(...ahead));
   // The clock corrects by its whole median until its ring fills (clock.js), so
   // the first second may leave a hole; past it the schedule must tile.
   const sched = schedule(hub.bundles.slice(1));
@@ -4139,8 +4140,8 @@ if (PB) {
   const us = posLog.map((p) => p.u);
   R.normal = { bundles: frames.bundles, maxLeadMs: +lead(segs).toFixed(1), holes: holes(sched(segs)), lat: await latOf(t0), segNacks: segNacks(),
     measured: [+Math.min(...us).toFixed(3), +Math.max(...us).toFixed(3)], maxStep: +maxStep(tStart + 2000, Infinity).toFixed(4) };
-  ok('pb normal: bundles flow, the lead within half the horizon, no NACK on the segments STREAM, the machine strokes',
-    frames.bundles > 20 && R.normal.maxLeadMs <= 127 && segNacks() === 0 && R.normal.measured[1] - R.normal.measured[0] > 0.3, R.normal);
+  ok('pb normal: bundles flow, the lead within the lead cap, no NACK on the segments STREAM, the machine strokes',
+    frames.bundles > 20 && R.normal.maxLeadMs <= leadCapMs(250) + 2 && segNacks() === 0 && R.normal.measured[1] - R.normal.measured[0] > 0.3, R.normal);
   ok('pb normal: auto compensation measures a lag and converges on it, never below 0', R.normal.lat.lag != null && R.normal.lat.convergedS != null
     && R.normal.lat.comps.every((c) => c >= 0), R.normal.lat);
   if (R.normal.lat.lag < 0) console.log('  [NOTE] the plan strip read a plan starting ' + -R.normal.lat.lag + ' ms before its stamp (Nucleus val-0ep); compensation held at 0');

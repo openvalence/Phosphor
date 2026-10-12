@@ -2,7 +2,7 @@
  * funscript-scheduler.test.mjs -- the funscript player's media clock and scheduler
  * (plugins/factory/funscript-player/clock.js, scheduler.js; bead ph-smvd.4). Node only,
  * no network: a synthetic frame stream stands in for the <video> element, a fake
- * submitSegments for the host (it packs what starts within half a 250 ms horizon).
+ * submitSegments for the host (it packs what starts within the lead cap of a 250 ms horizon).
  *
  * Constraints:
  * - Seeded randomness only: a failure reproduces.
@@ -18,6 +18,7 @@ import {
   HOME_MIN_MS, LAG_MIN, COMP_STEP_MS, EXPECT_MS, knotVel,
 } from '../plugins/factory/funscript-player/scheduler.js';
 import { PREFS, readPrefs } from '../plugins/factory/funscript-player/prefs.js';
+import { leadCapMs } from '../src/model/motion.js';
 import { parseFunscript, posAt } from '../plugins/factory/funscript-player/funscript.js';
 
 let fails = 0;
@@ -252,14 +253,14 @@ function strokes(seed, seconds = 30, gap = [150, 450]) {
   }
   return parseFunscript({ actions }, 'strokes');
 }
-// The host's packing, reduced: leading items starting within half the horizon, at most 32.
+// The host's packing, reduced: leading items starting within the lead cap (motion.js leadCapMs), at most 32.
 function fakeHost(now, horizonMs = 250) {
   const sent = [];
   const calls = [];
   const submit = (list) => {
     calls.push(list);
     let n = 0;
-    while (n < list.length && n < 32 && list[n].atMs <= now() + horizonMs / 2) n++;
+    while (n < list.length && n < 32 && list[n].atMs <= now() + leadCapMs(horizonMs)) n++;
     sent.push(...list.slice(0, n));
     return { ok: true, sent: n, rateHz: 50 };
   };

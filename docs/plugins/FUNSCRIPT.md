@@ -53,7 +53,7 @@ integrates last. Shared kernel files (`host.js`, `plugins.svelte.js`,
  -> api.submitSegments(list)          host.js: motion permission, producer lock
  -> shadow.svelte.js submitSegments
  -> motion.js door.segments           latch, segments STREAM by role, lazy grant,
-                                      exec time -> hub stamp, half-horizon head
+                                      exec time -> hub stamp, lead-cap head
  -> session.publishSegment            library: span, horizon, token bucket
  -> STREAM frame on the segments channel (0x2101 on valencesim, by role)
  -> hub arbiter and planner
@@ -70,9 +70,10 @@ and `now()` together, converts, subtracts the grant's
 `schedule_latency_us` (RFC-059: execution = stamp + declared latency),
 clips a late start to the earliest executable instant keeping its end,
 drops what is left under 10 ms, rounds `t_off` to 100 us, and sends only
-what starts within half the granted horizon (RFC-087 keeps RFC-014's
-"no further ahead than half that budget"; the registry's
-`max_future_schedule_ms` note says the same). `sent` tells the player how
+what starts within the lead cap: the granted horizon less 100 ms, never
+under half of it (`leadCapMs`, RFC-115; RFC-087's "fill toward the
+horizon"). At the reference hub's 1000 ms horizon a WiFi stall under about
+900 ms never reaches the motion. `sent` tells the player how
 far to advance; each segment is sent once.
 
 Measured on valencesim 0.1.6-p4hub (design 2's probe): the segments grant
@@ -423,7 +424,7 @@ window on the last: Kinetic² renders a reversal flat at every
 - **Every stop of the player's own is a command.** Pause, seek, a stall, a
   media error, a hidden page, an unmount and deactivate send one hold: the script
   continues `min(200 ms, to the next action)` and ends at rest. A vanished
-  client leaves at most half a horizon of scheduled motion, which then
+  client leaves at most the lead cap of scheduled motion, which then
   rests (RFC-058; SPEC §11.5 invariant 1).
 - **Preroll.** On Play, a machine more than 5 % of the stroke from the
   script's position first gets one positioning segment of
@@ -1673,9 +1674,9 @@ Decisions (veto-able):
   `input.target` and `input.duration` and declines elsewhere (law 7). No
   samples fallback (designs 2 and 3's samples paths dropped: no
   samples-only hub exists). Veto: samples at 50 Hz through `submitMotion`.
-- **D2** Lookahead is half the granted horizon, enforced in the host; the
-  player offers up to 32 and advances by `sent`. Veto: fill toward the
-  horizon minus a margin (RFC-087's "fill toward" sentence).
+- **D2** Lookahead is the granted horizon less 100 ms, never under half of
+  it (RFC-115, 2026-10-12; was half the horizon), enforced in the host; the
+  player offers up to 32 and advances by `sent`. Veto: back to half.
 - **D3** The host owns time; `atMs` is an absolute `performance.now()`
   execution start (designs 1 and 2; design 3's relative ms dropped:
   ambiguous across the call). The existing `submitMotion` segment stamp
