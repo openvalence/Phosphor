@@ -623,7 +623,9 @@ question in §10.8).
     ring (peak opacity .22) growing from the dot to a radius of about the
     width of "nucleus-p4" on a slow-start, speed-up, slow-rest curve, clipped to the bar's row and drawn behind the name, the chips and every
     other content. Transform and opacity only, pure CSS, no motion under
-    `html.still` or reduced motion, and no box moves.
+    `html.still` or reduced motion, and no box moves. Both step at 30 fps,
+    never the display's rate ([data-ambient], `src/ui/still.svelte.js`): on a
+    240 Hz screen they cost 30 composited frames a second, not 240.
   - Auth reads `AUTH: <tier>` (`--` with no session), its value held to the
     width of the longest tier name.
   - The data rate reads `down up KB/s` (1 KB = 1000 B), arrows a step larger
@@ -862,8 +864,8 @@ question in §10.8).
   falling as 1 / the silence, zero past 10 s. A steady channel and a bundle
   of channels arriving together hold one level through their arrivals;
   levels move on a 500 ms tick and glide by a CSS transition of the same
-  length, none under `html.still` (operator: "lerp pls, no need for
-  flashing"). The tick runs only while something arrived in the last 10 s;
+  length, stepped at 30 fps like the link dot, none under `html.still`
+  (operator: "lerp pls, no need for flashing"). The tick runs only while something arrived in the last 10 s;
   idle, nothing runs. A refused channel (its newest word a NACK) and a link
   block whose health condition is open wear the warn tint and a slash, and
   the panel says why. Hover or keyboard focus opens ONE panel in the top
@@ -1327,7 +1329,8 @@ derives from one unit, and no size is tuned by hand.
   Settings > Legibility carries Motion: System, Reduced, Full. System
   follows `prefers-reduced-motion`; Reduced and Full override it. Every
   animation keys off one class, `html.still`, which the theme's motion 0
-  also sets; no component reads the media query itself.
+  also sets, and a minimized shell window too (WebView2 keeps drawing a
+  minimized page); no component reads the media query itself.
 - The context menu (operator 2026-10-09, `ph-kyjd`; 2026-10-10, `ph-hi4i`):
   the shell's own menu replaces the webview's everywhere, text entry
   included; a release build turns WebView2's off at the source and a dev

@@ -18,7 +18,7 @@
    *   Code families and meanings are the registry's (registry-tables.js).
    * - logView.find is the Log page's search seam (ph-s5mu.1); the Log owns it.
    */
-  import { tick } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import { machine, getSession } from '../model/machine.svelte.js';
   import { ACCESS_NAME, NACK_NAME } from '../../../Valence/clients/js/index.js';
   import { NACK_FAMILY, NACK_MEANING, CHANNEL_RANGES } from '../model/registry-tables.js';
@@ -38,6 +38,8 @@
     return () => clearInterval(id);
   });
   function ageLabel(ms, _tick) { return since(ms); }
+  // Readouts that move with every frame redraw on that clock, never at the link's frame rate.
+  const perTick = (fn, _tick) => untrack(fn);
 
   const link = $derived(machine.link);
   const tierLabel = $derived(link.sessionId != null ? (ACCESS_NAME[link.roles] || ('tier ' + link.roles)) : '--');
@@ -134,7 +136,7 @@
       <div class="pane-head"><h2 id="vp-health">Link health</h2></div>
       <dl class="pane-facts">
         <dt>Link phase</dt><dd>{link.phase}</dd>
-        <dt>Last rx</dt><dd class="mono">{ageLabel(machine.stats.lastRxMs, nowTick)}</dd>
+        <dt>Last rx</dt><dd class="mono">{perTick(() => since(machine.stats.lastRxMs), nowTick)}</dd>
         <dt>Clock rtt</dt><dd class="mono">{machine.stats.clockRttUs != null ? machine.stats.clockRttUs + ' µs' : '--'}</dd>
         <dt>Clock offset</dt><dd class="mono">{machine.stats.clockOffsetUs != null ? machine.stats.clockOffsetUs + ' µs' : '--'}</dd>
         <dt>Reconnects</dt><dd class="mono">{machine.stats.reconnects}</dd>
@@ -169,9 +171,9 @@
     <section class="pane-sec og-screen traffic" aria-labelledby="vp-traffic">
       <div class="pane-head"><h2 id="vp-traffic">Traffic</h2></div>
       <dl class="pane-facts">
-        <dt>Raw frames</dt><dd class="mono">{machine.stats.framesIn} in, {machine.stats.framesOut} out</dd>
-        <dt>State pushes</dt><dd class="mono">{machine.stats.statePushes}</dd>
-        <dt>Bytes in</dt><dd class="mono">{bytes(machine.stats.bytesIn)}</dd>
+        <dt>Raw frames</dt><dd class="mono">{perTick(() => machine.stats.framesIn + ' in, ' + machine.stats.framesOut + ' out', nowTick)}</dd>
+        <dt>State pushes</dt><dd class="mono">{perTick(() => machine.stats.statePushes, nowTick)}</dd>
+        <dt>Bytes in</dt><dd class="mono">{perTick(() => bytes(machine.stats.bytesIn), nowTick)}</dd>
         <dt>Subscriptions</dt><dd class="mono">{subGrants}{lim.max_subscriptions ? ' of ' + lim.max_subscriptions : ''}</dd>
         <dt>Per frame</dt><dd class="mono">{lim.max_subscriptions_per_frame ?? '--'}</dd>
         <dt>Max frame</dt><dd class="mono">{lim.max_frame ? bytes(lim.max_frame) : '--'}</dd>
@@ -228,7 +230,7 @@
                   <td class="mono" class:mismatch={machine.grants[e.id] && e.maxRateHz && machine.grants[e.id].rate !== e.maxRateHz}>
                     {grantedRate(e.id)}
                   </td>
-                  <td class="opt2 mono">{lastSample(e.id, nowTick)}</td>
+                  <td class="opt2 mono">{perTick(() => lastSample(e.id), nowTick)}</td>
                 </tr>
               {/each}
             </tbody>
