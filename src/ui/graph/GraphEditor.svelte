@@ -33,6 +33,7 @@
   import { machine } from '../../model/machine.svelte.js';
   import { refKey, preview, snap, GRID, MAPS, OPS, SAFE, valueOf, TYPES, MS_PORT, DEFAULT_MS } from '../../model/graph.js';
   import GraphPalette from './GraphPalette.svelte';
+  import Trace from './Trace.svelte';
   import { nodeQueue } from '../contextmenu.js';
 
   let { rt } = $props();
@@ -675,6 +676,16 @@
     const why = R.edit(r.id, patch);
     if (why) refuseAt(why, e.currentTarget);
   }
+  async function startFrom(e) {
+    const el = e.currentTarget;
+    const id = el.value;
+    el.value = '';
+    if (!id) return;
+    const why = R.applyPreset(id);
+    if (why) { refuseAt(why, el); return; }
+    await tick();
+    fit();
+  }
   function setNodeMs(e, n) {
     const v = Number(e.currentTarget.value);
     if (!Number.isFinite(v)) { refuseAt('refused: not a number', e.currentTarget); return; }
@@ -746,6 +757,16 @@
   {/if}
   {#if nf.desc}<p class="gline gdesc" data-tip={nf.desc}>{nf.desc}</p>{/if}
   {#if nf.spec}<p class="gline gspec">{nf.spec}</p>{/if}
+  {#if bp && nf.ports.in}
+    {@const tk = refKey(n.ref)}
+    {@const tOn = (void beat, R.traces.on(tk))}
+    <div class="grow">
+      <span data-tip="The device's update rate; set in the server's Devices">rate {Math.round(1000 / R.gap(n.ref))} Hz</span>
+      <label class="check" data-tip="Plot the values sent over the last 10 s"><input type="checkbox" checked={tOn}
+             onchange={(e) => R.traces.set(tk, e.currentTarget.checked)} /> Trace</label>
+    </div>
+    {#if tOn}<Trace ver={(void beat, R.traces.version(tk))} read={() => ({ pts: R.traces.points(tk), now: R.traces.now() })} />{/if}
+  {/if}
   {#if nf.ports.out}
     {@const v = (void beat, R.value(n.ref))}
     <p class="gline" data-stale={stale ? '' : null} data-tip={stale || null}>
@@ -807,6 +828,10 @@
     </div>
     {#if !p.fixed}{@render socket(o.id, 'in', 'op', p.label, p.type, p.name, HEAD + (hasOpt(o) ? ROW_H : 0) + i * ROW_H + ROW_H / 2)}{/if}
   {/each}
+  {#if o.kind === 'scope'}
+    {@const m = (void beat, R.scope(o.id))}
+    <Trace ver={m ? m.ver || 0 : 0} read={() => ({ pts: (m && m.buf) || [], now: m ? m.t : 0 })} />
+  {/if}
   {@render socket(o.id, 'out', 'op', cap(R.opLabel(o)), ot)}
 {/snippet}
 
@@ -870,6 +895,10 @@
       <button type="button" class="og-btn" onclick={dup} disabled={!sel.size} data-tip="Duplicate selected maps (Ctrl+D)">Duplicate</button>
       <button type="button" class="og-btn" onclick={() => del()} disabled={!sel.size && !selWire} data-tip="Delete selection (Delete)">Delete</button>
       <button type="button" class="og-btn" aria-pressed={boxMode} onclick={() => { boxMode = !boxMode; }} data-tip="Drag to box-select (Shift+drag)">Box select</button>
+      <select class="og-btn" aria-label="Starting graph" data-tip="Place a starting graph" onchange={startFrom}>
+        <option value="">Starting graph</option>
+        {#each R.presets as p (p.id)}<option value={p.id}>{p.label}</option>{/each}
+      </select>
       <button type="button" class="og-btn" onclick={reset}>Reset view</button>
       <button type="button" class="og-btn" onclick={() => zoomBy(1.25)} aria-label="Zoom in">+</button>
       <button type="button" class="og-btn" onclick={() => zoomBy(0.8)} aria-label="Zoom out">−</button>

@@ -56,3 +56,6 @@ export function createTraces({ now = () => performance.now(), storage = null } =
     subscribe(f) { subs.add(f); return () => subs.delete(f); },
   };
 }
+
+/** The app's one set of buttplug output traces (toy modules and the node graph share it). */
+export const traces = createTraces({ storage: typeof localStorage !== 'undefined' ? localStorage : null });

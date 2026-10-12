@@ -245,6 +245,13 @@ export function createBp(s, { invoke, listen }, { echoMs = ECHO_MS } = {}) {
       return op('rename:' + key, want ? 'saving the name ' + want : 'going back to the protocol name',
         'bp_device_rename', { key, name: want }, 'rename failed', (x) => (find(x.devices, key)?.display_name ?? null) === want);
     },
+    /** The device's update rate in Hz (its message gap, upstream); blank goes back to the default. */
+    rate(key, hz) {
+      const n = Number(hz);
+      const want = String(hz ?? '').trim() && n > 0 ? Math.round(1000 / n) : null;
+      return op('rate:' + key, want ? 'saving ' + n + ' Hz' : 'going back to the default rate',
+        'bp_device_rate', { key, gapMs: want }, 'rate failed', (x) => (find(x.devices, key)?.message_gap_ms ?? null) === want);
+    },
     disconnect: (dev) => op('disconnect:' + dev.key, 'disconnecting', 'bp_device_disconnect', { index: dev.index },
       'disconnect failed', (x) => !find(x.devices, dev.key)?.connected),
     forget: (key) => op('forget:' + key, 'forgetting', 'bp_device_forget', { key }, 'forget failed', (x) => !find(x.devices, key)),

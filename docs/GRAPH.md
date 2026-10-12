@@ -66,6 +66,10 @@ An unconnected input uses the node's own editable value.
 | Threshold | Converter | Value, On above, Off below | bool | |
 | Slew | Converter | Value, Rise per s, Fall per s | float | |
 | Low-pass | Converter | Value, Tau (s) | float | |
+| Interval | Converter | Value | float | ms between changes of the value, to the tick; nothing before the first change |
+| Rate limit | Converter | Value, Every (ms) | float | passes the newest value at most every N ms, holds the last passed one between |
+| Scope | Converter | Value | float | passes the value through and plots it over the last 10 s, a tick per change |
+| Plan | Input | none | float | the hub's plan in flight: Plan end (a share of the window), Elapsed, Remaining, Duration (ms) |
 
 Edge rules, as Blender's safe math: divide by zero and modulo by zero yield
 0; square root of a negative yields 0; any other undefined result (NaN,
@@ -75,6 +79,17 @@ share their state machines with the hub maps (`hysteresis`, `slewStep`,
 `lowpassStep`). A closed Gate outputs SAFE: the target gets its safe value,
 every op downstream passes SAFE on, and a Switch passes it only from the arm
 it picked.
+
+## Position with duration
+
+A buttplug position-with-duration output (an OSSM, a stroker) is a target node with two inputs: its position and a Duration (ms) socket under the head. An unwired Duration is the node's own editable value (100 ms); a wired one overrides it, kept inside the feature's duration range. Position to Duration are separate wires, so a duration is whatever the graph makes of it: Interval after the position input is the period of its updates, Plan remaining is the plan's. The node writes when its position changes. Its device's update rate (docs/BUTTPLUG.md) is a ceiling on top: a Rate limit before the Interval keeps the two matched. Interval counts in ticks (`TICK_MS`, 20 Hz).
+
+Starting graphs (More, Starting graph; `src/model/graph-presets.js`, plain graph JSON placed below what is there, one undo step, then edited like any nodes):
+
+- **Mirror machine position to Buttplug**: Target, Window min and Window max into Map range (to 0..the output's top), into the position; Target through Interval into Duration.
+- **Mirror machine plan to Buttplug**: Plan end into Map range (0..1 to 0..the top) into the position; Plan remaining into Duration.
+
+The hub's plan reaches Phosphor as STATE samples of the segment in flight (plan strip, up to 45 Hz), not once per segment: there is no segment counter, so a "new segment" is only seen as a change of plan.end or plan.duration.
 
 ## Evaluation
 

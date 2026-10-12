@@ -241,6 +241,7 @@ function fakeShell(cmds) {
       if (quiet) return;
       list = list.map((d) => (d.key === key ? { ...d, display_name: name, name: name ?? d.device_name } : d));
     },
+    bp_device_rate: ({ key, gapMs }) => { list = list.map((d) => (d.key === key ? { ...d, message_gap_ms: gapMs } : d)); },
     bp_device_disconnect: ({ index }) => {
       if (index === 0) throw "device 0 is the machine; it leaves with the hub";
       list = list.map((d) => (d.index === index ? { ...d, connected: false, controls: [] } : d));
@@ -269,6 +270,13 @@ function fakeShell(cmds) {
   await bp.rename('lovense-aa', ' ');
   assert.equal(sh.calls.filter((c) => c[0] === 'bp_device_rename').at(-1)[1].name, null, 'blank sends null');
   assert.equal(s.devices.find((d) => d.key === 'lovense-aa').display_name, null);
+
+  // Update rate: Hz in, the message gap in ms out; blank goes back to the default.
+  await bp.rate('lovense-aa', 20);
+  assert.deepEqual(sh.calls.find((c) => c[0] === 'bp_device_rate')[1], { key: 'lovense-aa', gapMs: 50 });
+  assert.equal(s.ops['rate:lovense-aa'].phase, 'settled');
+  await bp.rate('lovense-aa', '');
+  assert.equal(sh.calls.filter((c) => c[0] === 'bp_device_rate').at(-1)[1].gapMs, null, 'blank sends null');
 
   // An Ok with no list change stays pending, goes overdue, and a late event settles it.
   quiet = true;

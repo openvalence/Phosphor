@@ -35,6 +35,7 @@ Commands (all async):
 | `bp_devices()` | `[{index, key, name, kind: "machine" \| "toy", connected: bool, features: [string], controls: [control], protocol, address, device_name, display_name}]`, `[]` when stopped: connected devices, then the ones the saved device config remembers (`connected: false`, no features or controls, `index` the one reserved for it). `features` are buttplug output/input type names, e.g. `HwPositionWithDuration`. `key` is protocol plus address in `[a-z0-9-]`, stable across sessions on one host (BLE addresses differ per platform). `name` is `display_name` (the saved override, or null) when set, else `device_name` (the protocol's name) |
 | `bp_device_rename(key, name: string \| null)` | saves `name` (trimmed; blank or null clears it) as the device's display name; errors for the machine or an unknown key |
 | `bp_device_disconnect(index)` | disconnects one toy (fork `ServerDeviceManager::disconnect_device`); it returns on a scan. Errors for the machine |
+| `bp_device_rate(key, gap_ms: u32 \| null)` | saves the device's message gap in ms (upstream user config `message_gap_ms`, in `devices.json`); null clears it, zero and the machine are refused. Upstream batches the device's commands in that window from its next connection |
 | `bp_device_forget(key)` | drops a remembered device's saved config (name, reserved index). Errors while it is connected, and for the machine |
 | `bp_machine_present(present: bool)` | the webview's hub link went live (true) or away (false) |
 | `bp_toy_scalar(index, feature, value: i32)` | the feature's scalar output (vibrate, oscillate, constrict, spray, temperature, led, position) to `value` steps |
@@ -52,6 +53,8 @@ The `bp_toy_*` commands resolve on the server's answer: `null` (or the
 reading) on its Ok, its error message as a string otherwise (not running, no
 such device or feature, the wrong kind for that feature, a value outside the
 range, the device gone). All of them refuse the machine.
+
+A device record carries `message_gap_ms` (the saved or protocol value, null when none).
 
 A control is `{feature, description, kind, type, range?, ms?}`, one per
 feature with an output, plus one per readable input:
@@ -106,6 +109,12 @@ write-then-rename, so a reader never sees a half-written file.
 Not offered: Intiface's "allow raw messages". The server speaks buttplug
 spec v4, and neither it nor the fork implements raw read/write commands in
 any spec version, so the setting would drive nothing.
+
+## Update rate and history
+
+- **What upstream does.** A device's commands are batched in its message gap and the newest per feature wins (`buttplug_server/src/device/device_task.rs`, batching branch; stops are flushed at once). The gap is the device config's `message_gap_ms`, else the hardware manager's (`device_handle.rs` 616-620; BLE is 75 ms, `btleplug_hardware.rs` 219). The `DeviceMessageTimingGap` apps are told is a fixed 100 (`device_handle.rs` 205), whatever the real gap.
+- **What Phosphor does.** One window per device (`src/plugins/bp-pace.js`), shared by the node graph and the toy modules: a send inside the window waits for its end and the newest value goes, so the update rate is a ceiling, never a speed-up. The rate is the device's `message_gap_ms`, default 75 ms (13 Hz); the pane's Devices tab sets it in Hz (`bp_device_rate`), the node and the toy module show it. Phosphor's own pacing takes the new value at once; upstream's batching takes it at the toy's next connection.
+- **History.** Every actuator output (position, vibrate, rotate, oscillate and the rest) has an optional trace of the values actually sent over the last 10 s, a tick per send, switched per output on its node and on the toy module (off by default, remembered per viewer; `src/model/trace.js`, drawn by `src/ui/graph/Trace.svelte`). It draws only when a value arrives and only while on screen.
 
 ## Behavior notes
 
@@ -237,6 +246,7 @@ loopback. The machine enters the intent path exactly as on desktop.
   each command lands as the device's applied output on `bp://output`,
   refusals resolve as errors, the machine is refused, a toy stop zeroes that
   toy and leaves a running rotator alone, stop-all zeroes every toy and the machine's Vibrate. No simulated device has a sensor; reads are covered on the JS side.
+- `node test/bp-linear.test.mjs`: Interval, Rate limit and Scope; the Duration link; the write carrying the duration (wired, overriding, default); the update-rate window (newest wins, the gap respected); the history buffer; a toy module's `bp_toy_linear` reaching the shell with position and ms intact at the device rate; both starting graphs loading and evaluating. A real device's receipt of the duration is not asserted: upstream's output observation carries no duration.
 - `cargo test` devices: `device_config_rename_disconnect_forget` (a rename
   shows at once and survives a restart through devices.json, blank resets,
   forget refused while connected, a disconnected toy stays listed with its
