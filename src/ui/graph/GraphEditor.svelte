@@ -75,10 +75,14 @@
   // ---- runtime state ---------------------------------------------------------
   let gen = $state(0);
   let beat = $state(0);   // buttplug readings and runner outputs are not reactive: redraw them at 10 Hz
+  // Off screen (a Dash preview scrolled away) the editor neither redraws values nor runs its wire animation.
+  let rootEl, offscreen = $state(false);
   onMount(() => {
     const off = R.onChange(() => gen++);
-    const t = setInterval(() => beat++, 100);
-    return () => { off(); clearInterval(t); };
+    const t = setInterval(() => { if (!offscreen) beat++; }, 100);
+    const io = new IntersectionObserver((e) => { offscreen = !e[e.length - 1].isIntersecting; if (!offscreen) beat++; });
+    io.observe(rootEl);
+    return () => { off(); clearInterval(t); io.disconnect(); };
   });
 
   // ponytail: a JSON snapshot per change; the graph is tens of nodes.
@@ -883,7 +887,7 @@
 {/snippet}
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<div class="graph" class:full role="application" aria-label="Node graph editor" onkeydown={key}>
+<div class="graph" class:full data-offscreen={offscreen ? '' : null} bind:this={rootEl} role="application" aria-label="Node graph editor" onkeydown={key}>
   <div class="gtool" role="toolbar" aria-label="Graph tools">
     <button type="button" class="og-btn" onclick={() => openPalette()} data-tip="Add node (Shift+A), search (F3)">+ Add</button>
     <button type="button" class="og-btn" onclick={fit} data-tip="Frame the nodes">Fit</button>
@@ -1117,5 +1121,5 @@
     .gsock { --hit: 40px; }
     .gtool .og-btn, .gparams input:not([type='checkbox']) { min-height: var(--tap); }
   }
-  :global(html.still) .gwire[data-live] { animation: none; }
+  :global(html.still) .gwire[data-live], .graph[data-offscreen] .gwire[data-live] { animation: none; }
 </style>
