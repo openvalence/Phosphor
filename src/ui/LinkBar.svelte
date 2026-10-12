@@ -4,9 +4,9 @@
    * 2026-10-02). Left: the channel heatmap, the hub name and the link dot.
    * Right: the chips (auth, data rate, loss, fps), then the shell's window
    * buttons at the far end, shell only. At 560 px and under it is TWO
-   * fixed rows (operator 2026-10-11): the first keeps the menu, the hub
-   * name, the dot and auth; the second (data-part bar-info) the heatmap
-   * and the other chips. The bar is the Tauri
+   * fixed rows (operator 2026-10-11): the first keeps the hub
+   * name, the dot and auth; the second (data-part bar-info) the menu, the
+   * heatmap and the other chips (menu and heatmap moved down, operator 2026-10-12). The bar is the Tauri
    * drag region. A reading nobody checks when something goes wrong lives in
    * the Health view instead (the address, the firmware, the control list;
    * DESIGN §10.3, operator 2026-10-10).
@@ -168,6 +168,15 @@
 <!-- "deep": empty bar space drags the undecorated shell window; buttons and
      other clickables opt out on their own (Tauri drag.js). -->
 {#snippet heat()}<ChannelHeat onopen={onheat} />{/snippet}
+<!-- The phone menu (DESIGN §10.12): the sidebar as a drawer, buckets 1 and 2. -->
+{#snippet menu()}
+  {#if phoneMenu.shown}
+    <button type="button" class="menu-btn" aria-label="Menu" data-tip="Menu" aria-expanded={phoneMenu.open}
+            onclick={() => (phoneMenu.open = !phoneMenu.open)}>
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11" /></svg>
+    </button>
+  {/if}
+{/snippet}
 {#snippet opt()}
   <div class="chips opt">
     <!-- Zero wide and first on the line, so every chip after it wraps away whole. -->
@@ -191,14 +200,7 @@
 
 <header class="linkbar" data-part="bar" class:shell={!!Shell} class:cut={besideCut} class:two={two.current} data-tauri-drag-region="deep" bind:this={barEl}>
   <div class="header-left">
-    <!-- The phone menu (DESIGN §10.12): the sidebar as a drawer, buckets 1 and 2. -->
-    {#if phoneMenu.shown}
-      <button type="button" class="menu-btn" aria-label="Menu" data-tip="Menu" aria-expanded={phoneMenu.open}
-              onclick={() => (phoneMenu.open = !phoneMenu.open)}>
-        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11" /></svg>
-      </button>
-    {/if}
-    {#if !two.current}{@render heat()}{/if}
+    {#if !two.current}{@render menu()}{@render heat()}{/if}
     <span class="wordmark" data-part="wordmark" data-text={title} data-tip={title}>{title}</span>
     <!-- The link dot: state by class (live, connecting, stale, offline), words by tooltip and status text.
          The ripple's clip is a row-high band behind the row's content (see .rclip). -->
@@ -218,7 +220,7 @@
   </div>
   {#if !two.current}{@render opt()}{/if}
   {#if Shell}<Shell />{/if}
-  {#if two.current}<div class="row2" data-part="bar-info">{@render heat()}{@render opt()}</div>{/if}
+  {#if two.current}<div class="row2" data-part="bar-info">{@render menu()}{@render heat()}{@render opt()}</div>{/if}
 </header>
 
 <style>
@@ -259,8 +261,9 @@
     --pr: max(var(--gap), var(--arc-r, var(--corner-tr, 0px)));
   }
   /* Two rows: the first is the padded box as with one; the second (.row2) sits in the bottom
-     padding, placed from the bar's edges so a Theme's bar padding never moves it, its ends clearing
-     the corners by the linear bound at its own distance from the top edge. */
+     padding, placed from the bar's edges so a Theme's bar padding never moves it. Its ends are the
+     first row's (--pl, --pr: corner and cutout insets), so the name and the menu glyph share a left
+     edge and auth and the last chip a right edge. */
   .linkbar.two {
     position: relative;
     height: calc(var(--r1) + var(--row) + var(--it));
@@ -268,8 +271,8 @@
   }
   .row2 {
     position: absolute;
-    left: max(var(--gap), var(--corner-tl, 0px) - var(--it) - var(--r1));
-    right: max(var(--gap), var(--corner-tr, 0px) - var(--it) - var(--r1));
+    left: var(--pl);
+    right: var(--pr);
     bottom: 0;
     height: var(--row);
     display: flex;
@@ -277,6 +280,15 @@
     gap: var(--sp-3);
   }
   .row2 .chips.opt { margin-left: auto; }
+  /* The menu took the heatmap's place and is 40 px wide: tightened so rate, loss and fps still fit whole at 412 px. */
+  .row2 { gap: var(--sp-2); }
+  .row2 .chip { gap: var(--sp-1); }
+  /* In a 32 px row the 40 px target overhangs upward only: below it would sit over the page. */
+  .row2 .menu-btn {
+    margin-block: calc(var(--row) - var(--mb)) 0;
+    /* The glyph's own left edge, not the button's, sits on the gutter. */
+    margin-inline-start: calc(((var(--mb) - var(--mg)) / 2 + var(--mg) * 2.5 / 16) * -1);
+  }
   :global(:root[data-cutout-top]) .cut .header-left {
     flex: none;
     width: calc(var(--cutout-l, 0px) - var(--pl) - var(--sp-2));
@@ -296,8 +308,10 @@
     flex: none;
     display: grid;
     place-items: center;
-    width: 40px;
-    height: 40px;
+    --mb: 40px;
+    --mg: 18px;
+    width: var(--mb);
+    height: var(--mb);
     margin-block: calc(var(--sp-2) * -1);
     margin-inline: calc(var(--gap) * -1 + var(--sp-1)) calc(var(--sp-2) * -1);
     color: var(--ink);
@@ -306,7 +320,7 @@
   .menu-btn[aria-expanded='true'] { color: var(--highlight); }
   /* At the screen's top edge beside a cutout: the ring stays inside the target. */
   .menu-btn:focus-visible { outline-offset: -2px; }
-  .menu-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
+  .menu-btn svg { width: var(--mg); height: var(--mg); fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
 
   /* Shrinks after the optional chips have shed; the name ellipsizes on its
      own. Never a clipping box: the hamburger overhangs it to keep its full
