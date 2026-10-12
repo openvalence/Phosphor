@@ -31,7 +31,7 @@
    */
   import { onMount, untrack, tick } from 'svelte';
   import { machine } from '../../model/machine.svelte.js';
-  import { refKey, preview, snap, GRID, MAPS, OPS, SAFE, valueOf, TYPES } from '../../model/graph.js';
+  import { refKey, preview, snap, GRID, MAPS, OPS, SAFE, valueOf, TYPES, MS_PORT, DEFAULT_MS } from '../../model/graph.js';
   import GraphPalette from './GraphPalette.svelte';
   import { nodeQueue } from '../contextmenu.js';
 
@@ -281,6 +281,7 @@
   const at = (b) => drag[b.id] || [b.o.x, b.o.y];
   /** A socket's center below its node's top: the header midline, or an op input's row. */
   function sockY(b, side, port) {
+    if (b.kind === 'node' && side === 'in' && port === MS_PORT) return HEAD + ROW_H / 2;
     if (b.kind !== 'op' || side === 'out' || port == null) return SOCK_Y;
     const i = R.insOf(b.o).findIndex((p) => p.name === port);
     return HEAD + (hasOpt(b.o) ? ROW_H : 0) + Math.max(0, i) * ROW_H + ROW_H / 2;
@@ -674,6 +675,12 @@
     const why = R.edit(r.id, patch);
     if (why) refuseAt(why, e.currentTarget);
   }
+  function setNodeMs(e, n) {
+    const v = Number(e.currentTarget.value);
+    if (!Number.isFinite(v)) { refuseAt('refused: not a number', e.currentTarget); return; }
+    const why = R.editNode(n.id, { ms: v });
+    if (why) refuseAt(why, e.currentTarget);
+  }
   function setOp(e, o, patch) {
     if (patch.vals && Object.values(patch.vals).some((v) => !Number.isFinite(v))) { refuseAt('refused: not a number', e.currentTarget); return; }
     const why = R.editOp(o.id, patch);
@@ -725,6 +732,18 @@
             data-tip={bp ? 'Buttplug device: edges run in Phosphor' : 'Catalog field on the hub'}>{bp ? 'client' : 'hub'}</span>
     {/if}
   </span>
+  {#if bp && n.ref.ctl === 'linear' && nf.ports.in}
+    {@const wired = g.links.some((l) => l.to === n.id && l.port === MS_PORT)}
+    <div class="grow" data-port={MS_PORT}>
+      {#if wired}
+        <span class="glabel">Duration (ms)</span>
+      {:else}
+        <label class="gfield" data-tip="Duration when nothing is wired"><span>Duration (ms)</span><input type="number" min="0" step="1"
+               value={n.ms ?? DEFAULT_MS} onchange={(e) => setNodeMs(e, n)} /></label>
+      {/if}
+    </div>
+    {@render socket(n.id, 'in', nf.ports.in, 'Duration (ms)', 'float', MS_PORT, HEAD + ROW_H / 2)}
+  {/if}
   {#if nf.desc}<p class="gline gdesc" data-tip={nf.desc}>{nf.desc}</p>{/if}
   {#if nf.spec}<p class="gline gspec">{nf.spec}</p>{/if}
   {#if nf.ports.out}

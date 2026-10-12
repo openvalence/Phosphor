@@ -617,7 +617,7 @@ export function evalOp(o, x, s, dt) {
     case 'lowpass': return lowpassStep(s, x.v, x.tau, dt);
     case 'interval': {
       // Milliseconds between changes of the input, to the evaluator's tick.
-      s.since = (s.since ?? 0) + dt * 1000;
+      s.since = s.v === undefined ? 0 : s.since + dt * 1000;
       if (s.v !== undefined && x.v !== s.v) { s.ms = s.since; s.since = 0; }
       s.v = x.v;
       return s.ms;
