@@ -63,13 +63,21 @@ export const CONDITIONS = {
     action: 'Move closer to the router' },
   'delay-spike': { area: 'link', sev: 'info', logOnly: true, clear: 30000,
     line: (m, i) => 'WiFi delay spike ' + ms(i.peakMs),
-    what: 'One round trip or one-way delay sample', limit: 'Logged over 4 times the usual and over 100 ms', detail: '', action: '' },
+    what: 'One round trip or one-way delay sample', limit: 'Logged over 4 times the usual and over 100 ms', detail: '', action: '',
+    by: { device: { line: (m, i) => 'This device was busy ' + ms(i.peakMs),
+      detail: 'This computer was busy, so the delay was measured here and not on the network.', action: 'Close other apps' } } },
   'updates-stalled': { area: 'link', sev: 'warn', hold: 0, clear: 30000,
     line: (m, i) => 'No machine updates for ' + span(i.peakMs),
     what: 'Time since the last message from the machine',
-    limit: 'Raised at 0.5 s on a live link while this page runs',
+    limit: 'Raised at 0.5 s on a live link',
     detail: "The machine's position updates stopped arriving for a moment.",
-    action: 'Check the WiFi' },
+    action: 'Check the WiFi',
+    by: {
+      device: { line: (m, i) => 'This device was busy ' + span(i.peakMs),
+        detail: 'This computer was too busy to read the next update on time.', action: 'Close other apps' },
+      machine: { line: (m, i) => 'Machine quiet for ' + span(i.peakMs),
+        detail: 'The machine itself stopped sending position updates for a moment.', action: 'Send a report' },
+    } },
   backlog: { area: 'link', sev: 'act', hold: 2000, clear: 10000,
     line: (m) => bytes(m.bytes) + ' waiting to send',
     what: 'Data this device queued that the network has not taken',
@@ -198,9 +206,20 @@ export const CAUSE_WORD = { client: 'this device fell behind', network: 'WiFi de
 /** A cutout cause to its condition id. */
 export const CUTOUT = { client: 'cutout-client', network: 'cutout-network', hub: 'cutout-hub', unknown: 'cutout-unknown' };
 
+/**
+ * A condition as one incident reads it: `by[who]` swaps the words when the
+ * incident was pinned on another party than the table's default (ph-rnr2).
+ */
+export const condOf = (inc) => {
+  const d = CONDITIONS[inc.cond];
+  return d.by && d.by[inc.who] ? { ...d, ...d.by[inc.who] } : d;
+};
+export const detailOf = (inc) => condOf(inc).detail;
+export const actionOf = (inc) => condOf(inc).action;
+
 /** An incident's one line: the status slot, the Log and the Health list. */
 export function lineOf(inc) {
-  const d = CONDITIONS[inc.cond];
+  const d = condOf(inc);
   const n = inc.count > 1 ? ' ×' + inc.count : '';
   if (d.cause) {
     return 'Motion paused ' + span(inc.durationMs) + ' · ' + (inc.fact || CAUSE_WORD[d.cause])
@@ -214,7 +233,7 @@ export function lineOf(inc) {
  * measured, since when, the threshold, the one action. Never the line again.
  */
 export function tipLines(inc) {
-  const d = CONDITIONS[inc.cond];
+  const d = condOf(inc);
   const f = (x) => (typeof x === 'function' ? x(inc.m || {}, inc) : x);
   // A measure over a window (growth) started at m.from, in the same clock as t0.
   const back = (d.hold || 0) + (inc.m && Number.isFinite(inc.m.from) && inc.t0 != null ? inc.t0 - inc.m.from : 0);
@@ -232,6 +251,37 @@ export const TICK_MS = 5;
 /** Loop lag over this (ms) means the page itself was stalled. */
 export const LAG_HEALTHY_MS = 50;
 
+/** A hub-time gap this share of the arrival gap or more: the machine went quiet, not the path to it. */
+export const HUB_QUIET_FRAC = 0.75;
+
+/**
+ * Why this device cannot vouch for what it timed (ph-rnr2), or null: the
+ * window hid, the event loop or a long task stalled over LAG_HEALTHY_MS, or
+ * the system's processor pressure was serious or critical. A frame handled
+ * late then reads as a late network when it was only handled late.
+ * e: {hidden, loopLagMaxMs, longTaskMaxMs, pressure}.
+ */
+export function busyHere(e) {
+  if (e.hidden) return 'window hidden';
+  const lag = Math.max(e.loopLagMaxMs || 0, e.longTaskMaxMs || 0);
+  if (lag > LAG_HEALTHY_MS) return 'this device stalled ' + Math.round(lag) + ' ms';
+  if (e.pressure === 'serious' || e.pressure === 'critical') return 'processor load ' + e.pressure;
+  return null;
+}
+
+/**
+ * Who a gap in the machine's updates belongs to, from the gap in arrival time
+ * and the gap in the machine's own sample time: the machine when it sampled
+ * nothing for about as long as nothing arrived; otherwise it sampled on and
+ * the frames came late, which is this device when it was busy, else the network.
+ * hubGapMs null (the sample is not hub-dated): the arrival gap alone cannot tell.
+ * @returns {'machine'|'device'|'network'}
+ */
+export function gapWho({ rxGapMs, hubGapMs, busy }) {
+  if (Number.isFinite(hubGapMs) && Number.isFinite(rxGapMs) && hubGapMs >= HUB_QUIET_FRAC * rxGapMs) return 'machine';
+  return busy ? 'device' : 'network';
+}
+
 /** q-quantile (0..1) of the finite numbers in a, or null. */
 export function quantile(a, q) {
   const s = a.filter(Number.isFinite).sort((x, y) => x - y);
@@ -245,39 +295,46 @@ export const min = (a) => { const f = a.filter(Number.isFinite); return f.length
  * CLIENT decisive from the send itself, likely from a stall before a
  * hub-reported starvation; NETWORK and HUB likely, no hub-side arrival stamps).
  * e: {clip, leadSendMinMs, latMs, rttP50Ms, owdUpMaxMs, owdRecentMaxMs (5 s),
- *     posGapMaxMs, periodMs, loopLagMaxMs, hidden, starved, hubWarn}; null or
- *     absent = not measured.
+ *     posGapMaxMs, posHubGapMs (the machine's own sample-time gap behind it),
+ *     periodMs, loopLagMaxMs, longTaskMaxMs, pressure, hidden, starved,
+ *     hubWarn}; null or absent = not measured. A busy page (busyHere) never
+ *     blames the network or the machine.
  * @returns {{cause: string, confidence: string, why: string, fact: string}} fact: the line's plain words with the number
  */
 export function classify(e) {
   const lat = e.latMs || 0;
   const need = lat + TICK_MS + (e.rttP50Ms || 0) / 2;
   const lead = e.leadSendMinMs;
-  const stalled = e.loopLagMaxMs > LAG_HEALTHY_MS;
-  const here = e.hidden ? 'window hidden' : stalled ? 'this device stalled ' + Math.round(e.loopLagMaxMs) + ' ms' : null;
+  const here = busyHere(e);
+  const lag = Math.max(e.loopLagMaxMs || 0, e.longTaskMaxMs || 0);
+  const stalled = lag > LAG_HEALTHY_MS;
   if (e.clip || (lead != null && lead < need)) {
-    const also = [stalled && 'stalled ' + Math.round(e.loopLagMaxMs) + ' ms', e.hidden && 'window hidden'].filter(Boolean);
+    const also = [stalled && 'stalled ' + Math.round(lag) + ' ms', e.hidden && 'window hidden', !stalled && !e.hidden && here].filter(Boolean);
     return { cause: 'client', confidence: 'decisive',
       why: (e.clip ? 'a move left after the last one ended' : 'sent ' + Math.round(lead) + ' ms ahead, need ' + Math.round(need)) + (also.length ? ', ' + also.join(', ') : ''),
       fact: here || (e.clip ? 'moves sent late' : 'moves sent only ' + Math.round(lead) + ' ms ahead') };
   }
   // The hub ran dry right after this page stalled or hid: the next moves left later than the hub
   // needed them, though over the nominal need (the hub plans one knot behind, so it needs more).
-  if (e.starved && (stalled || e.hidden)) {
-    return { cause: 'client', confidence: 'likely', why: 'the machine ran out after ' + (e.hidden ? 'the window hid' : 'a ' + Math.round(e.loopLagMaxMs) + ' ms stall here'), fact: here };
+  if (e.starved && here) {
+    return { cause: 'client', confidence: 'likely', why: 'the machine ran out after ' + (e.hidden ? 'the window hid' : stalled ? 'a ' + Math.round(lag) + ' ms stall here' : here), fact: here };
   }
   // A bundle reaches the hub owd_up after it left: late once that eats the lead less the hub's own budget.
   // A starvation the hub reports looks back 5 s: it can still be draining what a delay held up.
   const owd = e.starved && e.owdRecentMaxMs != null ? Math.max(e.owdRecentMaxMs, e.owdUpMaxMs ?? 0) : e.owdUpMaxMs;
-  if (!stalled && owd != null && lead != null && owd > lead - lat - TICK_MS) {
+  if (!here && owd != null && lead != null && owd > lead - lat - TICK_MS) {
     return { cause: 'network', confidence: 'likely', why: 'delay to the machine ' + Math.round(owd) + ' ms against ' + Math.round(lead) + ' ms sent ahead',
       fact: 'WiFi delay ' + Math.round(owd) + ' ms' };
   }
-  if (e.posGapMaxMs != null && e.posGapMaxMs >= Math.max(3 * (e.periodMs || 0), 100) && !stalled) {
+  const quiet = e.posGapMaxMs != null && e.posGapMaxMs >= Math.max(3 * (e.periodMs || 0), 100);
+  if (quiet && gapWho({ rxGapMs: e.posGapMaxMs, hubGapMs: e.posHubGapMs, busy: !!here }) === 'machine') {
+    return { cause: 'hub', confidence: 'likely', why: 'the machine sampled nothing for ' + Math.round(e.posHubGapMs) + ' ms', fact: 'machine quiet for ' + Math.round(e.posHubGapMs) + ' ms' };
+  }
+  if (quiet && !here) {
     return { cause: 'network', confidence: 'likely', why: 'no position update for ' + Math.round(e.posGapMaxMs) + ' ms',
       fact: 'no updates for ' + Math.round(e.posGapMaxMs) + ' ms' };
   }
-  if (e.starved && !stalled && e.hubWarn > 0) {
+  if (e.starved && !here && e.hubWarn > 0) {
     return { cause: 'hub', confidence: 'likely', why: 'sent on time, no delay seen, the machine logged ' + e.hubWarn + ' warning' + (e.hubWarn === 1 ? '' : 's'),
       fact: 'machine fell behind' };
   }
@@ -487,7 +544,10 @@ export function evidenceText(e) {
     e.rttP50Ms != null && 'round trip ' + r(e.rttP50Ms),
     e.owdUpMaxMs != null && 'uplink max ' + r(e.owdUpMaxMs),
     e.posGapMaxMs != null && 'update gap ' + r(e.posGapMaxMs),
+    e.posHubGapMs != null && 'machine sample gap ' + r(e.posHubGapMs),
     e.loopLagMaxMs != null && 'loop lag ' + r(e.loopLagMaxMs),
+    e.longTaskMaxMs > 0 && 'long task ' + r(e.longTaskMaxMs),
+    (e.pressure === 'serious' || e.pressure === 'critical') && 'processor load ' + e.pressure,
     e.backlogMax > 0 && 'backlog ' + e.backlogMax + ' B',
     e.hidden && 'page hidden',
     m && m.frames > 0 && ['video ' + m.w + 'x' + m.h + ' ' + Math.round(m.fps) + ' fps', m.hz && 'screen ' + Math.round(m.hz) + ' Hz',

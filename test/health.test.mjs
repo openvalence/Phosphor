@@ -9,7 +9,7 @@
  */
 import { readFileSync } from 'node:fs';
 import {
-  CONDITIONS, CUTOUT, GROWTH, SEV_RANK, classify, createTracker, displayHz, growth, lineOf, quantile, tipLines, videoRead, videoSignal, videoStep, videoWindow,
+  CONDITIONS, CUTOUT, GROWTH, SEV_RANK, busyHere, classify, createTracker, displayHz, gapWho, growth, lineOf, quantile, tipLines, videoRead, videoSignal, videoStep, videoWindow,
 } from '../src/model/health/core.js';
 
 let fails = 0;
@@ -265,6 +265,58 @@ console.log('\n--- the Machine card power readings (RFC-109) ---');
   ok('the saturated top is a reading', reportedReading(bus, { bus_mV: 65.534 }) === 65.534);
   ok('a field of another role keeps its top', reportedReading({ ...bus, role: 'telemetry.position' }, { bus_mV: 65.535 }) === 65.535);
   ok('no sample is no reading', reportedReading(bus, undefined) === null);
+}
+
+console.log('\n--- a busy host is not a bad network (ph-rnr2) ---');
+{
+  // Synthetic timelines as health.svelte.js hands them over: the same late delivery, three different truths.
+  const calm = { latMs: 1, rttP50Ms: 10, loopLagMaxMs: 4, leadSendMinMs: 50, owdUpMaxMs: 110, posGapMaxMs: null, periodMs: 20, hubWarn: 0 };
+  // 1. The network is slow and this device is calm: WiFi.
+  const net = classify(calm);
+  ok('late uplink, calm loop -> WiFi delay 110 ms', net.cause === 'network' && net.fact === 'WiFi delay 110 ms', net);
+  ok('...and the spike stays a WiFi spike', lineOf({ cond: 'delay-spike', count: 1, peakMs: 121 }) === 'WiFi delay spike 121 ms');
+  ok('...and a gap whose machine sample time kept pace is WiFi', gapWho({ rxGapMs: 800, hubGapMs: 40, busy: false }) === 'network'
+    && classify({ ...calm, owdUpMaxMs: 5, posGapMaxMs: 800, posHubGapMs: 40 }).cause === 'network');
+  // 2. The same delay with this device busy: this device, never WiFi.
+  for (const [name, busy, want] of [
+    ['loop lag 90 ms', { loopLagMaxMs: 90 }, 'this device stalled 90 ms'],
+    ['a 70 ms long task', { longTaskMaxMs: 70 }, 'this device stalled 70 ms'],
+    ['processor load serious', { pressure: 'serious' }, 'processor load serious'],
+    ['processor load critical', { pressure: 'critical' }, 'processor load critical'],
+    ['the window hidden', { hidden: true }, 'window hidden'],
+  ]) {
+    ok(name + ': busyHere says so', busyHere({ ...calm, ...busy }) === want, busyHere({ ...calm, ...busy }));
+    const c = classify({ ...calm, ...busy });
+    ok(name + ': the same 110 ms is not WiFi', c.cause !== 'network', c);
+    const g = classify({ ...calm, owdUpMaxMs: 5, posGapMaxMs: 800, posHubGapMs: 40, ...busy });
+    ok(name + ': the same 800 ms gap is not WiFi', g.cause !== 'network' && gapWho({ rxGapMs: 800, hubGapMs: 40, busy: true }) === 'device', g);
+    const s = classify({ ...calm, owdUpMaxMs: 5, leadSendMinMs: 115, starved: true, hubWarn: 3, ...busy });
+    ok(name + ': a starved hub is this device, not "machine fell behind"', s.cause === 'client' && s.fact === want, s);
+  }
+  ok('a calm loop and fair pressure never read as busy', busyHere({ ...calm, pressure: 'fair' }) === null && busyHere({ ...calm, pressure: 'nominal', longTaskMaxMs: 0 }) === null);
+  ok('a 40 ms stall is under the line (50 ms)', busyHere({ ...calm, loopLagMaxMs: 40 }) === null);
+  const dev = { cond: 'delay-spike', count: 1, peakMs: 121, who: 'device' };
+  ok('the spike line says this device: "This device was busy 121 ms"', lineOf(dev) === 'This device was busy 121 ms', lineOf(dev));
+  ok('...and gives the act, not the WiFi', tipLines(dev).includes('Close other apps') && !/wifi/i.test(lineOf(dev) + tipLines(dev).join(' ')), tipLines(dev));
+  const stl = { cond: 'updates-stalled', count: 1, peakMs: 800, who: 'device' };
+  ok('a stalled-updates incident on a busy device: "This device was busy 800 ms"', lineOf(stl) === 'This device was busy 800 ms', lineOf(stl));
+  // 3. The machine's own sample time stopped too: the machine.
+  ok('a hub-time gap as long as the arrival gap is the machine', gapWho({ rxGapMs: 800, hubGapMs: 780, busy: false }) === 'machine');
+  ok('...even while this device is busy (a busy page cannot stop the machine sampling)', gapWho({ rxGapMs: 800, hubGapMs: 780, busy: true }) === 'machine');
+  ok('...a hub gap under three quarters of the arrival gap is not', gapWho({ rxGapMs: 800, hubGapMs: 500, busy: false }) === 'network');
+  ok('...no hub time (not hub-dated) cannot tell, so the local evidence decides', gapWho({ rxGapMs: 800, hubGapMs: null, busy: false }) === 'network'
+    && gapWho({ rxGapMs: 800, hubGapMs: null, busy: true }) === 'device');
+  const hubQuiet = classify({ ...calm, owdUpMaxMs: 5, posGapMaxMs: 800, posHubGapMs: 780 });
+  ok('a cutout whose position gap is a hub-time gap -> the machine', hubQuiet.cause === 'hub' && hubQuiet.fact === 'machine quiet for 780 ms', hubQuiet);
+  ok('...also when this device was busy', classify({ ...calm, owdUpMaxMs: 5, posGapMaxMs: 800, posHubGapMs: 780, loopLagMaxMs: 90 }).cause === 'hub');
+  const mq = { cond: 'updates-stalled', count: 1, peakMs: 780, who: 'machine' };
+  ok('a stalled-updates incident on a quiet machine: "Machine quiet for 780 ms"', lineOf(mq) === 'Machine quiet for 780 ms' && tipLines(mq).includes('Send a report'), [lineOf(mq), tipLines(mq)]);
+  // Copy rules hold for every variant.
+  const variants = Object.entries(CONDITIONS).flatMap(([id, d]) => Object.entries(d.by || {}).map(([who, v]) => [id + '/' + who, { cond: id, who, count: 1, peakMs: 300 }, { ...d, ...v }]));
+  ok('every pinned variant is a short fragment with its number, one sentence and one act', variants.length === 3 && variants.every(([, inc, v]) => {
+    const l = lineOf(inc);
+    return l.length < 60 && /\d/.test(l) && !/\. |\.$/.test(l) && !/phosphor/i.test(l) && (v.detail.match(/\. |\.$/g) || []).length === 1 && v.action && !/;|, or |, then | then /.test(v.action);
+  }), variants.map((v) => lineOf(v[1])));
 }
 
 console.log('\n' + (fails ? 'FAIL -- ' + fails : 'PASS -- health core'));

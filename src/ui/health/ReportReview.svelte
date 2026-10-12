@@ -16,7 +16,7 @@
    */
   import { health, snapshot, context, hubLogCounts, putSent } from '../../model/health/health.svelte.js';
   import { FIELDS, NOT_INCLUDED, PRIVACY, PRIVACY_SHORT, URL_BUDGET, fileName, get, issueUrl, openUrl, reportSource, saveFile } from '../../model/health/report.js';
-  import { CONDITIONS } from '../../model/health/core.js';
+  import { detailOf } from '../../model/health/core.js';
   import { untrack } from 'svelte';
   import { hold } from '../../shell/hold.js';
   import { PROTO_VER } from '../../../../Valence/clients/js/generated/registry_vocab.js';
@@ -93,7 +93,7 @@
   {:else}
     <section class="pane-sec og-screen" aria-labelledby="rr-what">
       <div class="pane-head"><h2 id="rr-what">{inc.text}</h2></div>
-      {#if CONDITIONS[inc.cond].detail}<p class="lead">{CONDITIONS[inc.cond].detail}</p>{/if}
+      {#if detailOf(inc)}<p class="lead">{detailOf(inc)}</p>{/if}
       <p class="size mono" data-over={out?.attach || null}>{out ? out.full.length + ' characters' : '--'} · {out?.attach
         ? 'too long for the link: Send saves ' + fileName(id) + ' to attach on GitHub'
         : 'fits the link (' + URL_BUDGET + ' max)'}</p>

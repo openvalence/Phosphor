@@ -33,7 +33,7 @@ import { ROLE } from '../roles.js';
 import { labelFor, formatWithUnit } from '../format.js';
 import { reportedValue, reportedReading } from '../settings.js';
 import {
-  CONDITIONS, CUTOUT, GROWTH, SEV_RANK, LAG_HEALTHY_MS, TICK_MS, VIDEO, classify, createTracker, growth, lineOf, tipLines, quantile, max, min,
+  CONDITIONS, CUTOUT, GROWTH, SEV_RANK, LAG_HEALTHY_MS, TICK_MS, VIDEO, busyHere, classify, createTracker, detailOf, gapWho, growth, lineOf, tipLines, quantile, max, min,
   videoRead, videoStep, videoWindow, videoSignal, displayHz, pastScreen,
 } from './core.js';
 import { reportId, loadSent, saveSent } from './report.js';
@@ -61,10 +61,12 @@ export const health = $state({
 
 // ---- raw samples (plain arrays; trimmed by age) ------------------------------
 const lags = [];      // {t, v}
+const longs = [];     // {t (end), v}: long tasks (>= 50 ms), where the engine reports them
+const pressures = []; // {t, v, high}: processor pressure records, oldest first
 const rtts = [];      // {t, v}
 const owds = [];      // {t, v}
 const sends = [];     // {t, lead, gap, lat, horizon}
-const posGaps = [];   // {t, v}
+const posGaps = [];   // {t, v (arrival gap), hub (the machine's own sample-time gap, or null)}
 const hubLogs = [];   // {t, level}
 const anomalies = []; // {t}
 const backlogs = [];  // {t, v}
@@ -77,6 +79,19 @@ const snaps = new Map(); // incident id -> {rows, fine, t0}
 const trim = (a, age, t) => { while (a.length && t - a[0].t > age) a.shift(); };
 const inWin = (a, from, to) => a.filter((x) => x.t >= from && x.t <= to);
 const vals = (a) => a.map((x) => x.v);
+
+// ---- local busy evidence (ph-rnr2) ---------------------------------------------
+let lt = null;
+const noteLongs = (es) => { for (const e of es) longs.push({ t: e.startTime + e.duration, v: e.duration }); };
+/** Long tasks queued but not yet delivered to the observer: a stall that just ended is in them. */
+const drainLongs = () => { if (lt) noteLongs(lt.takeRecords()); };
+/** The processor pressure state in effect at from, else the first serious or critical one up to `to`, or null. */
+function pressureIn(from, to) {
+  const before = pressures.filter((r) => r.t < from).pop();
+  if (before && before.high) return before.v;
+  const hit = pressures.find((r) => r.t >= from && r.t <= to && r.high);
+  return hit ? hit.v : null;
+}
 
 // ---- device sampling ---------------------------------------------------------
 let fps = null, pressure = null, workers = 0, hiddenSince = null, wokeAt = 0;
@@ -103,9 +118,18 @@ function installDeviceProbes() {
   };
   if ('PressureObserver' in globalThis) {
     try {
-      const po = new globalThis.PressureObserver((recs) => { pressure = recs[recs.length - 1].state; });
+      const po = new globalThis.PressureObserver((recs) => {
+        for (const r of recs) pressures.push({ t: Number.isFinite(r.time) ? r.time : now(), v: r.state, high: r.state === 'serious' || r.state === 'critical' });
+        pressure = recs[recs.length - 1].state;
+      });
       po.observe('cpu', { sampleInterval: 1000 }).catch(() => {});
     } catch (e) { /* not on this engine: the card says not measured */ }
+  }
+  if ('PerformanceObserver' in globalThis) {
+    try {
+      lt = new PerformanceObserver((l) => noteLongs(l.getEntries()));
+      lt.observe({ type: 'longtask' });
+    } catch (e) { lt = null; /* not on this engine: loop lag alone */ }
   }
   document.addEventListener('playing', (e) => { if (e.target && e.target.tagName === 'VIDEO') vid = e.target; }, true);
   window.addEventListener('phosphor-page-fullscreen-change', (e) => { pageFull = !!(e.detail && e.detail.on); });
@@ -120,7 +144,7 @@ function installDeviceProbes() {
 let attached = null;
 let exch = [];             // kept CLOCK exchanges {at, offsetUs, rttUs}
 let clockInflight = false, mineDoneAt = -1e9, anyClockAt = -1e9;
-let posField = null, lastPosAt = 0, lastPos;
+let posField = null, lastPosAt = 0, lastPos, lastPosHub = null;
 let origRate = {}, throttled = new Set(), throttleCuts = 0;
 const bootByHost = new Map();
 let lastSendAt = -1e9, lastHorizon = null, lastLat = null;
@@ -161,9 +185,15 @@ function attach(s) {
     if (planF && ch === planF.dur.channelId) planSample(sample);
     if (!posField || ch !== posField.channelId) return;
     const t = now(), v = reportedValue(posField, sample);
-    if (lastPosAt && streaming(t) && v !== lastPos) posGaps.push({ t, v: t - lastPosAt });
+    // The machine's own sample time, when the frame carries it: its gap says whether the machine went quiet.
+    const hub = machine.sampleRxTs[ch] != null ? machine.sampleTs[ch] : null;
+    const hubGap = hub != null && lastPosHub != null ? hub - lastPosHub : null;
+    const rxGap = lastPosAt ? t - lastPosAt : 0;
+    if (rxGap && streaming(t) && v !== lastPos) posGaps.push({ t, v: rxGap, hub: hubGap });
+    if (rxGap >= STALL_MS) settleStall(rxGap, hubGap);
     lastPosAt = t;
     lastPos = v;
+    lastPosHub = hub;
   });
   s.on('grant', (gs) => {
     const live = machine.link.phase === 'live';
@@ -253,12 +283,15 @@ function lateArrivalCheck(t, owd) {
   cutout(t, { overlap: true }, owd - (lead - (lastLat || 0)));
 }
 
-function evidenceAt(t) {
+function evidenceAt(t, endT = t) {
   const W = [t - 1000, t];
+  // This page's own trouble runs to endT: a starvation's stall can sit inside the run, not before it.
+  const WB = [t - 1000, Math.max(t, endT || t)];
+  drainLongs();
+  const pgMax = inWin(posGaps, ...W).reduce((a, b) => (a == null || b.v > a.v ? b : a), null);
   // A stall still in progress: the 100 ms tick overdue now (lags hold only the ticks that ran).
   const overdue = visible() && t - wokeAt > 2000 && t - lastTickAt - 100 > 0 ? t - lastTickAt - 100 : null;
   const rtt60 = vals(inWin(rtts, t - 60000, t));
-  const pg = vals(inWin(posGaps, ...W));
   const rate = posRate();
   return {
     leadSendMinMs: min(inWin(sends, ...W).map((x) => x.lead)),
@@ -268,9 +301,12 @@ function evidenceAt(t) {
     owdUpMaxMs: max(vals(inWin(owds, t - 1500, t + 500))),
     // A starvation is classified 600 ms after its run ends: every delay landed by then counts.
     owdRecentMaxMs: max(vals(inWin(owds, t - 5000, Math.max(t + 500, now())))),
-    posGapMaxMs: max(pg),
+    posGapMaxMs: pgMax && pgMax.v,
+    posHubGapMs: pgMax && pgMax.hub,
     periodMs: rate > 0 ? 1000 / rate : null,
-    loopLagMaxMs: max([...vals(inWin(lags, ...W)), overdue]),
+    loopLagMaxMs: max([...vals(inWin(lags, ...WB)), overdue]),
+    longTaskMaxMs: max(vals(inWin(longs, ...WB))),
+    pressure: pressureIn(...WB),
     backlogMax: max(vals(inWin(backlogs, ...W))),
     hidden: !visible(),
     hubWarn: inWin(hubLogs, t - 5000, t).length,
@@ -282,7 +318,7 @@ function evidenceAt(t) {
 }
 
 function cutout(t, { overlap, ...extra }, sizeMs) {
-  const ev = { ...evidenceAt(t), ...extra };
+  const ev = { ...evidenceAt(t, t + sizeMs), ...extra };
   const c = classify(ev);
   tracker.event(CUTOUT[c.cause], t, { sizeMs: Math.max(0, sizeMs), overlap, cause: c.cause, confidence: c.confidence, why: c.why, fact: c.fact, evidence: ev });
 }
@@ -291,7 +327,11 @@ function cutout(t, { overlap, ...extra }, sizeMs) {
 function spikeCheck(t, rtt, owd) {
   const med = quantile(vals(inWin(rtts, t - 60000, t - 1)), 0.5);
   const v = Math.max(rtt, owd || 0);
-  if (med != null && v > 4 * med && v > 100) tracker.event('delay-spike', t, { sizeMs: 0, peakMs: Math.round(v), evidence: evidenceAt(t) });
+  if (med != null && v > 4 * med && v > 100) {
+    const evidence = evidenceAt(t);
+    // A sample timed while this device was busy measures the device, not the network.
+    tracker.event('delay-spike', t, { sizeMs: 0, peakMs: Math.round(v), evidence, who: busyHere(evidence) ? 'device' : undefined });
+  }
 }
 
 // ---- incidents: Log lines, the list, snapshots ----------------------------------
@@ -301,7 +341,7 @@ function view(inc) {
   return {
     id: inc.id, cond: inc.cond, sev: inc.sev, cause: inc.cause || CONDITIONS[inc.cond].cause || null,
     confidence: inc.confidence || null, why: inc.why || '', count: inc.count, durationMs: Math.round(inc.durationMs),
-    wallAt: inc.wallAt, closed: inc.closedAt != null, text: lineOf(inc), tip: tipLines(inc), m: inc.m || null, evidence: inc.evidence || null,
+    wallAt: inc.wallAt, closed: inc.closedAt != null, text: lineOf(inc), tip: tipLines(inc), detail: detailOf(inc), who: inc.who || null, m: inc.m || null, evidence: inc.evidence || null,
     settings: { horizonMs: lastHorizon, latMs: lastLat },
     episodes: inc.episodes.map((e) => e - inc.t0), t0: inc.t0,
   };
@@ -402,6 +442,24 @@ function evaluateBackground() {
   updateSlot(t);
 }
 
+/** The arrival gap that raises updates-stalled (ms). */
+const STALL_MS = 500;
+
+/**
+ * A position frame ended a gap of rxGap ms; hubGap is the machine's own sample-time gap behind it (null when
+ * not hub-dated). An open updates-stalled incident is then pinned on who it belongs to, whatever it was
+ * guessed to be while the gap ran.
+ */
+function settleStall(rxGap, hubGap) {
+  const inc = tracker.incidents['updates-stalled'];
+  if (!inc || inc.closedAt != null || !Number.isFinite(hubGap)) return;
+  const who = gapWho({ rxGapMs: rxGap, hubGapMs: hubGap, busy: !!busyHere(evidenceAt(now())) });
+  inc.who = who === 'network' ? undefined : who;
+  if (who === 'machine') inc.sev = 'warn';
+  inc.peakMs = Math.round(who === 'machine' ? hubGap : Math.max(inc.peakMs || 0, rxGap));
+  publish(inc);
+}
+
 function evaluate(t, row, md) {
   const live = machine.link.phase === 'live';
   // send-margin: least lead under a quarter of the horizon for 5 s, clear at a third.
@@ -415,9 +473,11 @@ function evaluate(t, row, md) {
     const p50 = quantile(r, 0.5), jit = quantile(r, 0.95) - p50;
     tracker.level('slow-link', band('slow-link', p50 > 50 || jit > 30, p50 < 30 && jit < 15, 'warn'), t, { m: { p50Ms: p50, p95Ms: p50 + jit } });
   } else tracker.level('slow-link', isOpen('slow-link') ? 'warn' : null, t);
-  // updates-stalled: no inbound frame for 500 ms on a live link while this page ran.
+  // updates-stalled: no inbound frame for 500 ms on a live link. A busy page only logs it (who: device,
+  // info); settleStall pins it on the machine or the network once the next frame says which.
   const gap = Date.now() - machine.stats.lastRxMs;
-  tracker.level('updates-stalled', live && gap >= 500 && (row.lag || 0) < LAG_HEALTHY_MS ? 'warn' : null, t, { peakMs: Math.round(gap) });
+  const busy = !!busyHere(evidenceAt(t));
+  tracker.level('updates-stalled', live && gap >= STALL_MS ? (busy ? 'info' : 'warn') : null, t, { peakMs: Math.round(gap), who: busy ? 'device' : undefined });
   tracker.level('backlog', live && row.backlog > 0 ? 'act' : null, t, { m: { bytes: row.backlog } });
   tracker.level('throttled', live && throttled.size ? 'info' : null, t, { m: { channels: throttled.size } });
   const rc = reconnectsAt.filter((x) => t - x < 300000).length;
@@ -488,7 +548,8 @@ function tempFields() {
 let due = 0, tickN = 0, lastReconnects = 0, fineAcc = null, lastTickAt = 0;
 /** This page stalled within `span` ms before t: a recorded lag, or the 100 ms tick overdue right now. */
 function stalledOver(t, span) {
-  return max(vals(inWin(lags, t - span - 100, t))) > LAG_HEALTHY_MS || t - lastTickAt > 100 + LAG_HEALTHY_MS;
+  drainLongs();
+  return max([...vals(inWin(lags, t - span - 100, t)), ...vals(inWin(longs, t - span - 100, t))]) > LAG_HEALTHY_MS || t - lastTickAt > 100 + LAG_HEALTHY_MS;
 }
 
 function tick() {
@@ -546,7 +607,8 @@ function tick() {
   fineAcc = null;
   ring.push(row);
   if (ring.length > RING_S) ring.shift();
-  for (const a of [lags, owds, sends, posGaps, backlogs, anomalies, vsteps]) trim(a, 120000, t);
+  for (const a of [lags, longs, owds, sends, posGaps, backlogs, anomalies, vsteps]) trim(a, 120000, t);
+  while (pressures.length > 1 && t - pressures[1].t > 120000) pressures.shift();
   trim(rtts, 600000, t);
   trim(hubLogs, 600000, t);
   while (reconnectsAt.length && t - reconnectsAt[0] > 600000) reconnectsAt.shift();
