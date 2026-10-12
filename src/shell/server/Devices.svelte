@@ -43,6 +43,12 @@
     input?.focus();
     input?.select();
   }
+  const hz = (d) => (d.message_gap_ms ? +(1000 / d.message_gap_ms).toFixed(1) : '');
+  function rate(e, d) {
+    const v = e.currentTarget.value;
+    e.currentTarget.value = hz(d);
+    bp.rate(d.key, v);
+  }
   function rename(e, d) {
     const v = e.currentTarget.value;
     e.currentTarget.value = d.display_name ?? '';
@@ -85,6 +91,14 @@
             {#if op('rename', d)?.reason}<span class="sp-ladder" data-phase={op('rename', d).phase}>{op('rename', d).reason}</span>{/if}
           </div>
           <p class="sp-note">applies on the toy's next connection</p>
+          <div class="sp-row">
+            <label class="sp-field">update rate (Hz)
+              <input type="number" min="0.1" step="any" value={hz(d)} placeholder="default 13"
+                     disabled={op('rate', d)?.phase === 'pending'} onchange={(e) => rate(e, d)} />
+            </label>
+            {#if op('rate', d)?.reason}<span class="sp-ladder" data-phase={op('rate', d).phase}>{op('rate', d).reason}</span>{/if}
+          </div>
+          <p class="sp-note">a ceiling: the newest value goes out at most this often</p>
         {/if}
         {#if d.connected}
           {#if outputs(d).length}

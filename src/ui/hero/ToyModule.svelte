@@ -12,24 +12,30 @@
    */
   import { onMount, untrack } from 'svelte';
   import { blankToy, createToy, shown } from '../../plugins/buttplug-toys.js';
+  import { gapOf } from '../../plugins/bp-pace.js';
+  import { traces } from '../../model/trace.js';
+  import Trace from '../graph/Trace.svelte';
 
   let { toy, shell } = $props();
   const t0 = untrack(() => toy);
   const s = $state(blankToy(t0));
   const t = createToy(s, t0, untrack(() => shell));
-  onMount(() => { t.init(); return t.dispose; });
+  let tick = $state(0);   // a traced value arrived, or a trace was switched
+  onMount(() => { t.init(); const off = traces.subscribe(() => { tick++; }); return () => { off(); t.dispose(); }; });
 
   // Duration per linear control: the operator's input, not a reading.
   const ms = $state(Object.fromEntries(t0.controls.filter((c) => c.kind === 'linear')
     .map((c) => [c.feature, Math.min(c.ms[1], Math.max(c.ms[0], 500))])));
 
   const key = (c) => c.feature + ':' + c.type;
+  const tk = (c) => 'bp:' + t0.key + ':' + key(c);
   const label = (c) => c.description || c.type;
 </script>
 
 <div class="toy">
   <div class="toy-head">
     <span class="toy-name">{toy.name}</span>
+    <span class="toy-rate mono" data-tip="Update rate; set in the server's Devices">{Math.round(1000 / gapOf(toy))} Hz</span>
     <button type="button" class="og-btn toy-stop"
             disabled={s.stop.phase === 'pending'} onclick={t.stop}>Stop</button>
   </div>
@@ -58,6 +64,11 @@
         </div>
       {/if}
       <p class="toy-ladder" data-phase={w.phase} role="status">{w.reason}</p>
+      {#if c.kind !== 'sensor'}
+        <label class="toy-trace" data-tip="Plot the values sent over the last 10 s"><input type="checkbox"
+               checked={(void tick, traces.on(tk(c)))} onchange={(e) => traces.set(tk(c), e.currentTarget.checked)} /> Trace</label>
+        {#if (void tick, traces.on(tk(c)))}<Trace ver={tick} read={() => ({ pts: traces.points(tk(c)), now: traces.now() })} />{/if}
+      {/if}
     </div>
   {/each}
 </div>
@@ -73,6 +84,8 @@
   .toy-ms { display: flex; align-items: center; gap: var(--sp-2); font-size: .75rem; color: var(--ink-dim); }
   .toy-ms input { width: 6em; min-height: var(--tap); }
   .stale { opacity: .45; }
+  .toy-rate { font-size: .75rem; color: var(--ink-dim); }
+  .toy-trace { display: flex; align-items: center; gap: var(--sp-2); font-size: .75rem; color: var(--ink-dim); }
   .toy-ladder { margin: 0; min-height: 1.2em; font-size: 11px; color: var(--ink-dim); }
   .toy-ladder[data-phase='overdue'], .toy-ladder[data-phase='fault'] { color: var(--warn-ink); }
 </style>

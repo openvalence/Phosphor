@@ -17,6 +17,9 @@
  * See: docs/BUTTPLUG.md
  */
 
+import { pace as sharedPace, gapOf } from './bp-pace.js';
+import { traces as sharedTraces } from '../model/trace.js';
+
 export const ECHO_MS = 4000;
 export const READ_MS = 30000;
 
@@ -97,13 +100,14 @@ export function shown(w) {
  * One toy module's commands and echoes. `s` (from blankToy) is mutated in
  * place: a $state proxy in ToyModule, a plain object in the test.
  */
-export function createToy(s, toy, { invoke, listen }, { echoMs = ECHO_MS, readMs = READ_MS } = {}) {
+export function createToy(s, toy, { invoke, listen }, { echoMs = ECHO_MS, readMs = READ_MS, pace = sharedPace, traces = sharedTraces } = {}) {
   const timers = new Map();
   const queued = new Map();
   const offs = [];
   let disposed = false;
   let poll = null;
   const ctls = new Map(toy.controls.map((c) => [ctlKey(c), c]));
+  let gen = 0;   // a stop voids every command still waiting for the device's window
 
   function overdueAfter(k, w) {
     clearTimeout(timers.get(k));
@@ -120,11 +124,24 @@ export function createToy(s, toy, { invoke, listen }, { echoMs = ECHO_MS, readMs
     return a;
   }
 
-  async function fire(c, value, ms) {
+  /** Send at the device's update rate (bp-pace.js); the newest request waiting goes out. */
+  function fire(c, value, ms) {
     const k = ctlKey(c);
     const w = s.ctl[k];
+    const mine = gen;
     Object.assign(w, { want: value, phase: 'pending', reason: 'waiting for the server' });
     overdueAfter(k, w);
+    pace.when(toy.key, gapOf(toy), () => {
+      if (mine !== gen || disposed) { clearTimeout(timers.get(k)); Object.assign(w, { want: null, phase: 'settled', reason: '' }); return; }
+      const q = queued.get(k);
+      queued.delete(k);
+      if (q) [value, ms] = q;
+      transmit(c, k, w, value, ms);
+    });
+  }
+
+  async function transmit(c, k, w, value, ms) {
+    traces.push('bp:' + toy.key + ':' + k, value);
     try {
       await invoke(CMD[c.kind], args(c, value, ms));
     } catch (e) {
@@ -152,6 +169,7 @@ export function createToy(s, toy, { invoke, listen }, { echoMs = ECHO_MS, readMs
 
   async function stop() {
     queued.clear();
+    gen++;
     const w = s.stop;
     Object.assign(w, { phase: 'pending', reason: 'stopping' });
     overdueAfter('stop', w);

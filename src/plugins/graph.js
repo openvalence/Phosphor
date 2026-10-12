@@ -22,7 +22,7 @@ import {
   storeItem, readStoreItem, rosterBits, removeNode, addDraft, planWire, createHistory, snap, endRange,
   OPS, addOp, planLink, addLink, insOf, outOf, opLabel, MS_PORT, DEFAULT_MS,
 } from '../model/graph.js';
-import { createTraces } from '../model/trace.js';
+import { traces } from '../model/trace.js';
 import { PRESETS } from '../model/graph-presets.js';
 import { pace, gapOf } from './bp-pace.js';
 import { ROLE, claimRoles } from '../model/roles.js';
@@ -45,8 +45,6 @@ export const manifest = {
 
 export const HERO = { id: 'editor', title: 'Node graph', cells: { h: [16, 10], v: [10, 16] } };
 export const SENSOR_MS = 1000;
-/** Every buttplug output's history, off until switched on (shared with the toy modules). */
-export const traces = createTraces({ storage: typeof localStorage !== 'undefined' ? localStorage : null });
 const CMD = { scalar: 'bp_toy_scalar', rotate: 'bp_toy_rotate', linear: 'bp_toy_linear' };
 const msg = (e) => String(e?.message ?? e);
 /** Canvas units between a map node and the field nodes an edge places for it. */
@@ -194,7 +192,7 @@ export function graphRuntime(api, shell, env) {
       const v = f && api.value(f);
       if (typeof v !== 'number' || !Number.isFinite(v)) return undefined;
       const u = unitOf(f);
-      return ms ? v * (u === 'µs' ? 0.001 : u === 's' ? 1000 : 1) : v;
+      return ms ? v * ((u === 'µs' || u === 'us') ? 0.001 : u === 's' ? 1000 : 1) : v;
     };
     if (fn === 'end') return num(ROLE.planEnd);
     const dur = num(ROLE.planDuration, true);

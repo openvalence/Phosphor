@@ -28,6 +28,7 @@ const ok = (name, cond, extra) => {
   console.log('  [' + (cond ? 'PASS' : 'FAIL') + '] ' + name + (extra ? '  -- ' + extra : ''));
   if (!cond) fails++;
 };
+const NOPACE = { when: (k, gap, fn) => fn() };   // the update rate has its own suite (bp-linear.test.mjs)
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const VIBE = {
@@ -124,7 +125,7 @@ console.log('(c) commands and the ladder');
 {
   const shell = fakeShell();
   const s = blankToy(VIBE);
-  const t = createToy(s, VIBE, shell, { echoMs: 30, readMs: 60000 });
+  const t = createToy(s, VIBE, shell, { echoMs: 30, readMs: 60000, pace: NOPACE });
   const c = VIBE.controls[0];
   const w = s.ctl['0:Vibrate'];
   ok('no value before the server reports one (law 9)', shown(w) === null);
@@ -152,10 +153,10 @@ console.log('(c) commands and the ladder');
   shell.pending.shift().resolve();
   await delay(0);
 
-  const r = createToy(blankToy(ROT), ROT, shell);
+  const r = createToy(blankToy(ROT), ROT, shell, { pace: NOPACE });
   r.send(ROT.controls[0], -40);
   ok('bp_toy_rotate(index, feature, speed), signed', JSON.stringify(shell.calls.at(-1)) === JSON.stringify(['bp_toy_rotate', { index: 2, feature: 0, speed: -40 }]));
-  const l = createToy(blankToy(LIN), LIN, shell);
+  const l = createToy(blankToy(LIN), LIN, shell, { pace: NOPACE });
   l.send(LIN.controls[0], 50, 300);
   ok('bp_toy_linear(index, feature, position, ms)', JSON.stringify(shell.calls.at(-1)) === JSON.stringify(['bp_toy_linear', { index: 3, feature: 0, position: 50, ms: 300 }]));
   for (const p of shell.pending.splice(0)) p.resolve();
@@ -166,7 +167,7 @@ console.log('(d) echoes from any client, the module stop, sensors');
 {
   const shell = fakeShell();
   const s = blankToy(VIBE);
-  const t = createToy(s, VIBE, shell, { echoMs: 1000, readMs: 60000 });
+  const t = createToy(s, VIBE, shell, { echoMs: 1000, readMs: 60000, pace: NOPACE });
   await t.init();
   const read = shell.take('bp_toy_read');
   ok('sensors read on init: bp_toy_read(index, feature, input)', !!read && JSON.stringify(read.args) === JSON.stringify({ index: 1, feature: 1, input: 'Battery' }));
