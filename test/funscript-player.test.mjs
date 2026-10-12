@@ -928,6 +928,24 @@ if (!LIVE && !STASH_LIVE && !OSC_ONLY && !args.includes('--library') && !args.in
       Math.abs(geo.h - geo.w * 9 / 16) <= 1.5 && geo.same && geo.aligned && geo.gap <= 12, geo);
     await page.waitForTimeout(IDLE + 400);
     ok('touch: paused, the controls stand with the center Play; the idle never hides them', await shown() && (await centerUp()) === 'Play');
+    // The title (operator 2026-10-11): one line top left with the controls, the file name without its extension; in
+    // fullscreen its text ends short of the stop pair.
+    const capLook = () => page.locator(STAGE + ' .ui-stage-caption').evaluate((e) => {
+      const cs = getComputedStyle(e), b = e.getBoundingClientRect(), box = e.parentElement.getBoundingClientRect();
+      const p = document.querySelector('.topstrip .pair'), pr = p && p.getClientRects().length ? p.getBoundingClientRect() : null;
+      const textRight = b.right - parseFloat(cs.paddingRight), textTop = b.top + parseFloat(cs.paddingTop);
+      return { shown: cs.display !== 'none', text: e.textContent, oneLine: cs.whiteSpace === 'nowrap' && cs.textOverflow === 'ellipsis',
+        topLeft: Math.abs(b.top - box.top) < 1 && Math.abs(b.left - box.left) < 1,
+        pairClear: !pr || textRight <= pr.left + 0.5 || textTop >= pr.bottom - 0.5, ink: cs.color, scrim: cs.backgroundImage !== 'none' };
+    });
+    const cap0 = await capLook();
+    ok('title: the video\'s title top left with the controls, one line, on the scrim', cap0.shown && cap0.text === 'clip' && cap0.oneLine && cap0.topLeft && cap0.scrim, cap0);
+    await page.locator(C + ' .fsp-full').evaluate((e) => e.click());
+    await page.waitForTimeout(700);
+    const capFull = await capLook();
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(500);
+    ok('title: in fullscreen it shows and its text ends short of the stop pair', capFull.shown && capFull.topLeft && capFull.pairClear, capFull);
     const pre0 = await marks('preroll'), play0 = await marks('play');
     await tapAt(0.5, 0.2);
     await page.waitForTimeout(150);
@@ -953,7 +971,7 @@ if (!LIVE && !STASH_LIVE && !OSC_ONLY && !args.includes('--library') && !args.in
     const went = await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-stage video').paused, C, { timeout: 4000 }).then(() => true, () => false);
     ok('touch: the center glyph plays, through the controller\'s preroll', went && (await marks('preroll')) > pre0);
     await page.waitForTimeout(IDLE + 600);
-    ok('touch: playing, the controls hide after the idle', !(await shown()));
+    ok('touch: playing, the controls hide after the idle, the title with them', !(await shown()) && !(await capLook()).shown);
     await tapAt(0.5, 0.2);
     await page.waitForTimeout(150);
     ok('touch: a tap shows them again, the glyph now Pause, and never pauses', await shown() && (await centerUp()) === 'Pause' && !(await paused()));
