@@ -22,7 +22,8 @@
 //   displayAt() is not capped: a clamped span would break the tiling above.
 // - frameSource's rAF fallback runs only while the video is not paused: a paused
 //   currentTime against a running now() would read as a step on every frame, and a paused
-//   video costs no display frames. 'play' starts it again.
+//   video costs no display frames. 'play' starts it again. While rVFC frames arrive it asks for
+//   no frames: a timer waits out FALLBACK_AFTER_MS since the last one (ph-pewq).
 // - A loop runs the clock in unrolled media time (createLoop): lap L adds L x (b - a), so the
 //   map stays one affine line across the wrap and the landing frame's seek delay is a residual.
 //   A wrap counts only after wrap() and only on a frame in the section's first half: wrap() is
@@ -89,7 +90,7 @@ export function createMediaClock({ window: win = CLOCK_WINDOW, slew = SLEW_MS_PE
 
 /** Without an rVFC frame for FALLBACK_AFTER_MS, rAF reports currentTime. */
 export function frameSource(video, onFrame, now = () => performance.now()) {
-  let stopped = false, lastFrame = now(), vfcId = 0, rafId = 0, warned = false, prev = null;
+  let stopped = false, lastFrame = now(), vfcId = 0, rafId = 0, timer = 0, warned = false, prev = null;
   const vfc = typeof video.requestVideoFrameCallback === 'function';
   const onVfc = (t, md) => {
     if (stopped) return;
@@ -112,8 +113,9 @@ export function frameSource(video, onFrame, now = () => performance.now()) {
   const onRaf = () => {
     rafId = 0;
     if (stopped || video.paused) return;
-    const t = now();
-    if (t - lastFrame >= FALLBACK_AFTER_MS) onFrame(video.currentTime * 1000, t);
+    const t = now(), idle = t - lastFrame;
+    if (idle < FALLBACK_AFTER_MS) { clearTimeout(timer); timer = setTimeout(start, FALLBACK_AFTER_MS - idle); return; }
+    onFrame(video.currentTime * 1000, t);
     rafId = requestAnimationFrame(onRaf);
   };
   const start = () => { if (!stopped && !rafId) rafId = requestAnimationFrame(onRaf); };
@@ -125,6 +127,7 @@ export function frameSource(video, onFrame, now = () => performance.now()) {
     video.removeEventListener('play', start);
     if (vfc && typeof video.cancelVideoFrameCallback === 'function') video.cancelVideoFrameCallback(vfcId);
     cancelAnimationFrame(rafId);
+    clearTimeout(timer);
   };
 }
 

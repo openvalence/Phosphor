@@ -130,9 +130,13 @@ console.log('(a) media clock');
 // ---- (b) frameSource ---------------------------------------------------------
 console.log('(b) frame source');
 {
-  let t = 0, raf = [], vfc = null;
+  let t = 0, raf = [], vfc = null, timers = [];
   globalThis.requestAnimationFrame = (f) => { raf.push(f); return raf.length; };
   globalThis.cancelAnimationFrame = () => { raf = []; };
+  const realTimeout = globalThis.setTimeout, realClear = globalThis.clearTimeout;
+  globalThis.setTimeout = (f) => { timers.push(f); return timers.length; };
+  globalThis.clearTimeout = () => { timers = []; };
+  const fire = () => { const q = timers; timers = []; q.forEach((f) => f()); };
   const on = {};
   const events = { addEventListener: (k, f) => { on[k] = f; }, removeEventListener: (k) => { delete on[k]; } };
   const video = { ...events, paused: false, currentTime: 0, requestVideoFrameCallback: (f) => { vfc = f; return 1; }, cancelVideoFrameCallback: () => { vfc = null; } };
@@ -143,9 +147,12 @@ console.log('(b) frame source');
   frameAt(10, 0.5, 26);
   rafAt(16);
   ok('rVFC frames report (mediaTime x 1000, expectedDisplayTime)', got.length === 1 && got[0][0] === 500 && got[0][1] === 26);
+  ok('while rVFC frames arrive the fallback asks for no frames, only a timer (ph-pewq)', raf.length === 0 && timers.length === 1);
   video.currentTime = 0.8;
+  fire();
   rafAt(10 + FALLBACK_AFTER_MS - 1);
   ok('no rAF report while rVFC is fresh', got.length === 1);
+  fire();
   rafAt(10 + FALLBACK_AFTER_MS);
   ok('rAF reports currentTime after 250 ms without frames', got.length === 2 && got[1][0] === 800 && got[1][1] === 10 + FALLBACK_AFTER_MS);
   video.paused = true;
@@ -166,6 +173,8 @@ console.log('(b) frame source');
   rafAt(300);
   ok('without rVFC, rAF reports after 250 ms', g2.length === 1 && g2[0][0] === 1000);
   stop2();
+  globalThis.setTimeout = realTimeout;
+  globalThis.clearTimeout = realClear;
 }
 {
   // WebKit's rVFC metadata, shaped like each suspect: the guards fall back to the callback's now
