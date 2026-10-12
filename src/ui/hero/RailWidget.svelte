@@ -611,6 +611,7 @@
 
     function draw(nowMs) {
       rafId = 0;
+      if (colorsStale) { readColors(); colorsStale = false; }
       const t0 = performance.now();
       // The first frame after a sleep takes the last real frame time: the
       // sleep is not a frame, and must not reach the render clock or the census.
@@ -759,11 +760,12 @@
 
     wake = () => { if (!rafId) rafId = requestAnimationFrame(draw); };
     sizeCanvas();
-    readColors();
+    // Colors are read by the next draw, in the frame: a read as the rail mounts forces a style pass of the page.
+    let colorsStale = true;
     // A resize clears the canvas; a theme change recolors it.
     const ro = (typeof ResizeObserver !== 'undefined') ? new ResizeObserver(() => { sizeCanvas(); wake(); }) : null;
     if (ro) ro.observe(hostEl);
-    const offTheme = onTheme(() => { readColors(); wake(); });
+    const offTheme = onTheme(() => { colorsStale = true; wake(); });
     wake();
 
     return () => {

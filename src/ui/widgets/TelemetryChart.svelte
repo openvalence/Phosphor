@@ -130,7 +130,8 @@
     const cssVar = (name) => getComputedStyle(root).getPropertyValue(name).trim();
     // Tokens are re-read on every theme apply and every hi-vis flip: a
     // snapshot taken at mount would keep drawing the previous theme's lanes.
-    let paletteColors, inkFaint, line;
+    // Read by the next draw, in the frame: a read as the page mounts forces a style pass of it.
+    let paletteColors, inkFaint, line, tokensStale = true;
     function readTokens() {
       paletteColors = PALETTE_VARS.map(cssVar);
       inkFaint = cssVar('--ink-faint');
@@ -138,12 +139,11 @@
       // (--line-1); --line-soft reads as near-invisible against --bg.
       line = cssVar('--line-1');
     }
-    readTokens();
     const colorFor = (f) => paletteColors[Math.max(0, candidates.indexOf(f)) % paletteColors.length];
     // Class only: the root's inline style holds layout vars (--cols, --s), and a token read per write forces a style recalc per resize step.
-    const themeObserver = new MutationObserver(() => { readTokens(); wake(); });
+    const themeObserver = new MutationObserver(() => { tokensStale = true; wake(); });
     themeObserver.observe(root, { attributes: true, attributeFilter: ['class'] });
-    const offTheme = onTheme(() => { readTokens(); wake(); });
+    const offTheme = onTheme(() => { tokensStale = true; wake(); });
 
     const reduced = still.on;   // tracked: the Motion toggle re-runs this effect
 
@@ -194,6 +194,7 @@
 
     function draw() {
       if (!cssW || !cssH) return;
+      if (tokensStale) { readTokens(); tokensStale = false; }
       ctx.clearRect(0, 0, cssW, cssH);
       const series = resolvedSeries;
       const n = series.length;

@@ -24,22 +24,35 @@ let minimized = false, apply = () => {};
 export const setMinimized = (on) => { minimized = !!on; apply(); };
 
 const AMBIENT_FPS = 30;
-const origin = new WeakMap();
+// Ambient animations being stepped: [origin, endTime], taken from the elements their start events named.
+// Never document.getAnimations() in the step: it flushes style and layout and walks every animation in the page;
+// getAnimations() runs only on a tick that has new starts, once for all of them.
+const ambient = new Map();
+const started = new Set();
 let ambientTimer = 0;
 function stepAmbient() {
   const now = document.timeline.currentTime;
-  let any = false;
-  for (const a of document.getAnimations()) {
-    if (!a.effect?.target?.closest('[data-ambient]')) continue;
-    any = true;
-    if (!origin.has(a)) { origin.set(a, now - (a.currentTime ?? 0)); a.pause(); }
-    const at = now - origin.get(a);
-    if (at >= a.effect.getComputedTiming().endTime) a.finish(); else a.currentTime = at;
+  for (const el of started) {
+    for (const a of el.getAnimations({ subtree: true })) {
+      if (ambient.has(a) || a.playState !== 'running') continue;
+      ambient.set(a, [now - (a.currentTime ?? 0), a.effect.getComputedTiming().endTime]);
+      a.pause();
+      // A style change or a removed element cancels it. A step between that and this event set its time and
+      // brought it back as a script animation; the event comes before the next frame's style, so cancel it again.
+      a.addEventListener('cancel', () => { ambient.delete(a); a.cancel(); }, { once: true });
+    }
   }
-  if (!any) { clearInterval(ambientTimer); ambientTimer = 0; }
+  started.clear();
+  for (const [a, [t0, end]] of ambient) {
+    const at = now - t0;
+    if (at >= end) { ambient.delete(a); a.finish(); } else a.currentTime = at;
+  }
+  if (!ambient.size) { clearInterval(ambientTimer); ambientTimer = 0; }
 }
 function wakeAmbient(e) {
-  if (!ambientTimer && e.target.closest?.('[data-ambient]')) ambientTimer = setInterval(stepAmbient, 1000 / AMBIENT_FPS);
+  if (!e.target.closest?.('[data-ambient]')) return;
+  started.add(e.target);
+  if (!ambientTimer) ambientTimer = setInterval(stepAmbient, 1000 / AMBIENT_FPS);
 }
 
 if (typeof window !== 'undefined') {

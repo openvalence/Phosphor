@@ -8,6 +8,8 @@
    * Constraints:
    * - Draws only when `ver` moves (a new value arrived) and only while on
    *   screen; there is no frame loop, so an idle trace costs nothing.
+   * - The draw waits for the frame: its size and color reads, made as a view
+   *   mounts, forced a style and layout pass of the whole page per trace.
    * - `read()` answers {pts: [[t, v]], now} on the clock of its points. Data is
    *   in model/trace.js; this file only paints it.
    */
@@ -59,12 +61,14 @@
     c.stroke();
   }
 
+  let raf = 0;
+  const queue = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; draw(); }); };
   onMount(() => {
-    const io = new IntersectionObserver((e) => { visible = e[e.length - 1].isIntersecting; draw(); });
+    const io = new IntersectionObserver((e) => { visible = e[e.length - 1].isIntersecting; queue(); });
     io.observe(cv);
-    return () => io.disconnect();
+    return () => { io.disconnect(); cancelAnimationFrame(raf); };
   });
-  $effect(() => { void ver; draw(); });
+  $effect(() => { void ver; queue(); });
 </script>
 
 <canvas bind:this={cv} class="trace" style:height={h + 'px'} aria-hidden="true"></canvas>

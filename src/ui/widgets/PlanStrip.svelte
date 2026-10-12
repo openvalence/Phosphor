@@ -235,8 +235,9 @@
     const readTokens = () => {
       cReal = cssVar('--reality'); cIntent = cssVar('--intent'); cWarn = cssVar('--warn'); cLine = cssVar('--line');
     };
-    readTokens();
-    const offTheme = onTheme(() => { readTokens(); wake(); });
+    // Read by the next draw, in the frame: a read as the strip mounts forces a style pass of the page.
+    let tokensStale = true;
+    const offTheme = onTheme(() => { tokensStale = true; wake(); });
 
     // The size comes from a ResizeObserver, never a read in the frame: one
     // there forces a layout behind whatever the page wrote this frame.
@@ -268,6 +269,7 @@
 
     function draw() {
       if (!cssW || !cssH) return;
+      if (tokensStale) { readTokens(); tokensStale = false; }
       ctx.clearRect(0, 0, cssW, cssH);
       const h = cssH;
       const now = performance.now();
