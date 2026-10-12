@@ -202,6 +202,7 @@ let _ws = null; // the newest socket: the health system reads its bufferedAmount
 let _cap = null; // this session's vault recorder, flushed on disconnect
 let _host = '';
 let _lastOpts = {};
+const libWarned = new Set();   // the library warnings already in the log
 
 /**
  * ph-vdk.14: reconciling the safety-events (0x000E) history against the
@@ -572,6 +573,8 @@ export function connect(opts = {}) {
     // countdown disappears and the attempt count still shows.
     log: (level, msg, delayMs) => {
       if (msg === 'reconnect in' && s === session) machine.link.retryAt = Date.now() + delayMs;
+      // Once per message per run: a decode failure repeats at the channel's rate.
+      if ((level === 'warn' || level === 'error') && !libWarned.has(msg)) { libWarned.add(msg); console.warn('valence: ' + msg); }
     },
   });
   session = s;
@@ -805,6 +808,8 @@ export function connect(opts = {}) {
     // A session replaced by retryNow()/disconnect() closes asynchronously;
     // its late close must not overwrite the successor's phase.
     if (s !== session) return;
+    // The shell log's only record of why a session ended (lib.rs js_log).
+    if (c.willReconnect) console.warn('link: socket closed (code ' + c.code + (c.reason ? ', ' + c.reason : '') + '), reconnecting');
     if (c.willReconnect) machine.link.attempts++;
     machine.link.phase = c.willReconnect ? 'retrying' : 'failed';
     machine.link.willReconnect = !!c.willReconnect;
@@ -862,11 +867,13 @@ function installVisibilityRecovery() {
       // Deliberate teardown, not a drop: the hub gets a GOODBYE and frees the
       // slot now. Do not "optimize" this into a delay — a throttled timer is
       // exactly what cannot be relied on here.
+      console.warn('link: page hidden (' + document.visibilityState + '), session closed until it is shown');
       try { session.close(); } catch (e) { /* already closing: harmless */ }
       machine.link.phase = 'idle';
       return;
     }
     if (!session.isLive) {
+      console.warn('link: page shown, reconnecting');
       machine.link.phase = 'connecting';
       try { session.connect(); } catch (e) { /* already connecting: harmless */ }
     }
