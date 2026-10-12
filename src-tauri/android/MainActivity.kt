@@ -2,8 +2,10 @@ package com.phosphor.app
 
 import android.content.res.Configuration
 import android.graphics.Rect
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.view.RoundedCorner
 import android.view.View
 import android.webkit.JavascriptInterface
@@ -25,11 +27,33 @@ class MainActivity : TauriActivity() {
   private var palette = ""
   private var atStart: ScriptHandler? = null
   private var atStartPalette: ScriptHandler? = null
+  private var wifiLock: WifiManager.WifiLock? = null
 
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
     hideSystemBars()
+  }
+
+  // Wi-Fi power save batches packets on DTIM beacons (100 to 300 ms stalls on the telemetry
+  // stream). Low-latency mode holds only while the app is foreground with the screen on, so the
+  // lock follows resumed, not the hub session. Not reference counted: a double acquire is a no-op.
+  override fun onResume() {
+    super.onResume()
+    if (wifiLock == null) {
+      val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+        else @Suppress("DEPRECATION") WifiManager.WIFI_MODE_FULL_HIGH_PERF
+      wifiLock = (applicationContext.getSystemService(WIFI_SERVICE) as WifiManager)
+        .createWifiLock(mode, "phosphor:link").apply { setReferenceCounted(false) }
+    }
+    wifiLock?.acquire()
+    Log.i("Phosphor", "wifi lock acquired (mode ${if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) "low-latency" else "high-perf"})")
+  }
+
+  override fun onPause() {
+    wifiLock?.takeIf { it.isHeld }?.release()
+    Log.i("Phosphor", "wifi lock released")
+    super.onPause()
   }
 
   // A dialog, the IME or the shade can bring the bars back: hide on every focus gain.
