@@ -24,7 +24,7 @@ import { connect, machine, parseHost, recentHubs } from './model/machine.svelte.
 import { applyStoredTheme, onTheme } from './model/theme.js';
 import { installDynamicColor } from './model/dynamicColor.js';
 import { installReveal } from './ui/reveal.js';
-import './ui/still.svelte.js';
+import { setMinimized } from './ui/still.svelte.js';
 import { loadPlugins } from './plugins/plugins.svelte.js';
 import { bindControls } from './plugins/kit.js';
 import { mountBound } from './ui/BoundControl.svelte';
@@ -138,6 +138,14 @@ async function boot() {
 // Tier-2 plugins: shell plugins folder, or ?plugin= in a dev build; a no-op on
 // the page a hub serves. See docs/PLUGINS.md.
 loadPlugins();
+// WebView2 keeps the page visible and drawing while the window is minimized: html.still stops the
+// ambient motion until it is restored. A phone has no such window event: nothing to do there.
+if (SHELL) import('@tauri-apps/api/window').then(async ({ getCurrentWindow }) => {
+  const w = getCurrentWindow();
+  const sync = () => w.isMinimized().then(setMinimized, () => {});
+  await w.onResized(sync);
+  sync();
+}).catch(() => {});
 // The embedded buttplug server's machine rides the same host (docs/BUTTPLUG.md).
 if (SHELL) import('./plugins/buttplug.js').then((m) => m.loadButtplug()).catch((e) => console.error('buttplug bridge failed to load', e));
 
