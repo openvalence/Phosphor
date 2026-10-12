@@ -120,13 +120,29 @@ const watchFull = () => {
 /**
  * A window listener that removes itself once its element has been in the
  * document and left it, so an unmounted plugin view leaves nothing behind.
+ * A sweep every WIN_SWEEP_MS removes it too: a resize or a fullscreen change
+ * may never come, and the listener holds the whole unmounted view.
  */
+const WIN_SWEEP_MS = 2000;
+const winLs = new Set();
+let winSweep = 0;
+function sweepWin() {
+  for (const w of winLs) {
+    if (w.el.isConnected) w.seen = true;
+    else if (w.seen) { window.removeEventListener(w.type, w.f); winLs.delete(w); }
+  }
+  if (!winLs.size) { clearInterval(winSweep); winSweep = 0; }
+}
 function winOn(el, type, fn) {
-  let seen = false;
-  const f = (e) => {
-    if (el.isConnected) { seen = true; fn(e); } else if (seen) window.removeEventListener(type, f);
+  const w = { el, type, seen: false, f: null };
+  w.f = (e) => {
+    if (el.isConnected) { w.seen = true; fn(e); } else if (w.seen) { window.removeEventListener(type, w.f); winLs.delete(w); }
   };
-  window.addEventListener(type, f);
+  window.addEventListener(type, w.f);
+  winLs.add(w);
+  // A view is mounted in the task that builds it: seen at the next tick, so one shown for under a sweep still goes.
+  setTimeout(() => { if (el.isConnected) w.seen = true; }, 0);
+  if (!winSweep) winSweep = setInterval(sweepWin, WIN_SWEEP_MS);
 }
 
 /** The shell's icon: an <svg> of the named glyph, or of one stroke path `d`. */
