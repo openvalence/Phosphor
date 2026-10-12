@@ -17,6 +17,9 @@
  *   card's size and never covers a card control: over the library column (or the analyzer column, above the
  *   transport row) of a full card, else below the card, reached by scrolling.
  * - mediaFullscreen: the hover bar offers fullscreen, so the shell's footer does not.
+ * - The page's scrollbar follows the shell's scrollers (style.css [data-shade]): none unless the scrollbars pref, then
+ *   a stable gutter. A thin one that may come and go made every layout inside it, the clock's tenths included, lay
+ *   the whole page out twice (ph-pewq).
  */
 import { readPrefs, writePref } from './prefs.js';
 import { COPY } from './ui.js';
@@ -34,6 +37,9 @@ export const PAGE_ICON = 'M2 3.5h12v9H2zM6.5 6v4l3.5-2z';
 const CSS = `
 .fsp-page { display: block; position: relative; overflow-y: auto; --pg-bot: calc(30px + var(--sp-2) + var(--sp-3)); }
 @media (pointer: coarse) { .fsp-page { --pg-bot: calc(var(--tap) + var(--sp-2) + var(--sp-3)); } }
+:root:not([data-scrollbars]) .fsp-page { scrollbar-width: none; }
+:root:not([data-scrollbars]) .fsp-page::-webkit-scrollbar { display: none; }
+:root[data-scrollbars] .fsp-page { scrollbar-width: auto; scrollbar-color: auto; scrollbar-gutter: stable; }
 .fsp-page > .ui-page-main { display: block; height: 100%; }
 .fsp-page .fsp-pcard { height: 100%; min-height: min-content; }
 .fsp-page > .fsp-psec[data-form=slot] { margin-top: var(--gap); }

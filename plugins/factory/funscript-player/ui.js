@@ -88,7 +88,7 @@ import { createMediaClock, frameSource, createLoop, loopSpec } from './clock.js'
 import { createScheduler, applyT, strokeSpeed, TRANSIENT } from './scheduler.js';
 import { createStash, normalizeBase } from './stash.js';
 import { mountLibrary } from './library.js';
-import { mountTimeline, CSS as TL_CSS } from './timeline.js';
+import { mountTimeline, CSS as TL_CSS, snap, xform, tx } from './timeline.js';
 import { mountAnalyzer, CSS as AN_CSS, COPY as AN_COPY } from './analyzer.js';
 import { readPrefs, writePref } from './prefs.js';
 import { wire, fitMap, mapOf } from './scale.js';
@@ -792,7 +792,7 @@ export const CSS = `
 .fsp[data-comp=glance] .fsp-stage :is(.ui-stage-empty, .ui-stage-center, .ui-stage-caption, .ui-stage-overlay, .fsp-mo) { visibility: hidden; }
 .fsp-meter { grid-area: meter; position: relative; display: none; background: var(--screen); border-radius: var(--r-s); }
 .fsp[data-comp=glance] .fsp-meter { display: block; }
-.fsp-tick { position: absolute; top: 2px; bottom: 2px; width: 3px; translate: -1.5px 0; }
+.fsp-tick { position: absolute; top: 2px; bottom: 2px; left: 0; width: 3px; will-change: transform; }
 .fsp-tick.int { background: var(--intent); }
 .fsp-tick.real { background: var(--reality); }
 .fsp-tick.stale { opacity: .4; }
@@ -840,7 +840,7 @@ export const CSS = `
 .fsp[data-comp=handheld] .fsp-off input.og-num { width: 6ch; }
 .fsp-speed { position: absolute; left: calc(var(--tap) * 2 + 4px); bottom: 3px; z-index: 1; height: 18px; min-width: 10ch; font: .75rem var(--mono); display: grid; align-items: center;
   pointer-events: none; }
-.fsp-speed i { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--intent); max-width: 100%; }
+.fsp-speed i { position: absolute; left: 0; bottom: 0; width: 100%; height: 3px; background: var(--intent); transform: scaleX(0); transform-origin: 0 0; will-change: transform; }
 .fsp-speed[data-over] i { background: var(--warn); }
 .fsp-speed span { color: var(--tx-mut); white-space: nowrap; overflow: hidden; }
 .fsp-speed[data-over] span { color: var(--tx); }
@@ -920,12 +920,18 @@ const h = (tag, attrs = {}, ...kids) => {
   e.append(...kids);
   return e;
 };
-const setText = (e, t) => { if (e.textContent !== t) e.textContent = t; };
+// A lone text node's data changes in place: a new node would invalidate every :has() above it (the page's) and
+// relayout the whole page on each tenth of the clock (ph-pewq).
+const setText = (e, t) => {
+  const n = e.firstChild;
+  if (n && n.nodeType === 3 && !n.nextSibling) { if (n.data !== t) n.data = t; } else if (e.textContent !== t) e.textContent = t;
+};
 // A property write only on change: render runs every frame, and a same-value disabled or hidden still rewrites the attribute.
 const prop = (e, k, v) => { if (e[k] !== v) e[k] = v; };
 const attr = (e, k, v) => { if (e.getAttribute(k) !== v) e.setAttribute(k, v); };
-// A meter tick's left at share u, its 3 px inside the meter at either end.
-const tickAt = (u) => 'calc(1.5px + (100% - 3px) * ' + u + ')';
+// A meter tick at share u, its 3 px inside the meter at either end, moved by the compositor (ph-pewq); w is the
+// meter's content width, 0 while hidden.
+const tickAt = (t, u, w) => { if (w) tx(t, snap((w - 3) * u)); };
 
 /**
  * The controller's media: the video element while a scene has a stream, else a silent clock over
@@ -1261,6 +1267,8 @@ export function createPlayer(api) {
     const moI = h('i', { class: 'fsp-tick int' }), moR = h('i', { class: 'fsp-tick real' });
     const mo = h('div', { class: 'fsp-mo' }, h('span', { class: 'fsp-mo-k', text: COPY.motionOnly }), openV('fsp-moopenv'),
       h('div', { class: 'fsp-meter', role: 'img', 'aria-label': COPY.meter }, moI, moR));
+    const meterW = new Map(), mro = new ResizeObserver((es) => { for (const e of es) meterW.set(e.target, e.contentRect.width); kick(); });
+    for (const t of [tickI, moI]) mro.observe(t.parentNode);
     // The stage (the kit's, ph-bw0o): a mouse click toggles Play once the double window passes and a double-click asks
     // fullscreen; a touch tap shows or hides the controls, a touch double-tap on a side third skips 10 s; the center
     // glyph plays and pauses. A turn to landscape with a video enters fullscreen and the turn back leaves (PR17); the
@@ -1431,6 +1439,7 @@ export function createPlayer(api) {
       toBar(on);
       root.toggleAttribute('data-media', on);
       render();
+      kick();
     };
     const fullscreen = () => {
       if (!media && st.scene && !st.scene.stream) return;
@@ -1628,11 +1637,14 @@ export function createPlayer(api) {
       if (d !== durSeen) { durSeen = d; time.style.minWidth = fmtTime(d).length + 'ch'; rem.style.minWidth = fmtTime(d).length + 1 + 'ch'; }
       setText(hbTime, tt);
       setText(nowM, fmtTime(m));
-      let buf = 0;
-      for (let i = 0, b = video.buffered; b && i < b.length; i++) if (b.start(i) * 1000 <= m + 500) buf = Math.max(buf, b.end(i) * 1000);
-      seek.max = d;
-      seek.value = m;
-      seek.buffered = buf;
+      // The hover bar's seek shows in fullscreen only (PR9): elsewhere it is not fed, and setMedia draws a frame.
+      if (media) {
+        let buf = 0;
+        for (let i = 0, b = video.buffered; b && i < b.length; i++) if (b.start(i) * 1000 <= m + 500) buf = Math.max(buf, b.end(i) * 1000);
+        seek.max = d;
+        seek.value = m;
+        seek.buffered = buf;
+      }
       lastSeek = NaN;
       if (comp && comp !== 'glance') anMount();
       if (comp !== 'glance') tl.frame(m, ctl.trace, analyzer && analyzer.kinetic);
@@ -1647,21 +1659,21 @@ export function createPlayer(api) {
         sp2.v *= rt;
         const cap = sp2.unit === 'mm/s' && ceil.vmax ? ceil.vmax : 0;
         setText(speedTxt, Math.round(sp2.v) + ' ' + sp2.unit);
-        speedBar.style.width = cap ? clamp(sp2.v / cap, 0, 1) * 100 + '%' : '0';
+        xform(speedBar, 'scaleX(' + (cap ? clamp(sp2.v / cap, 0, 1) : 0) + ')');
         speed.toggleAttribute('data-over', !!cap && sp2.v > cap);
         attr(speed, 'data-tip', cap && sp2.v > cap ? COPY.speedOver : COPY.speed);
-        const at = tickAt(applyT(posAt(st.shaped || st.script, m), st.T));
-        for (const t of [tickI, moI]) { prop(t, 'hidden', false); t.style.left = at; }
+        const at = applyT(posAt(st.shaped || st.script, m), st.T);
+        for (const t of [tickI, moI]) { prop(t, 'hidden', false); tickAt(t, at, meterW.get(t.parentNode)); }
       } else {
         setText(speedTxt, '');
-        speedBar.style.width = '0';
+        xform(speedBar, 'scaleX(0)');
         prop(tickI, 'hidden', true);
         prop(moI, 'hidden', true);
       }
       const pu = realShare(), stale = !!(fields.pos && api.stale(fields.pos));
       for (const t of [tickR, moR]) {
         prop(t, 'hidden', pu == null);
-        if (pu != null) t.style.left = tickAt(pu);
+        if (pu != null) tickAt(t, pu, meterW.get(t.parentNode));
         t.classList.toggle('stale', stale);
       }
       hubSeen = hubKey(pu, stale, ceil);
@@ -1692,6 +1704,7 @@ export function createPlayer(api) {
         menu.open = false;
         for (const t of META) vel.removeEventListener(t, onMeta);
         ro.disconnect();
+        mro.disconnect();
         tl.unmount();
         if (library) library.unmount();
         if (analyzer) analyzer.unmount();

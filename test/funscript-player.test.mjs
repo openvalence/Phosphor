@@ -1828,10 +1828,10 @@ if (!LIVE && !STASH_LIVE) {
     if (cls === 'portrait') ok('redesign ' + at + ': motion only keeps the 16:9 box', Math.abs(mo.vbox[3] - mo.vbox[2] * 9 / 16) <= 1.5, mo.vbox);
     if (cls === 'desktop' && w === 1428) {
       const n0 = hub.bundles.length;
-      const t0 = await page.locator(C + ' .fsp-mo .fsp-tick.int').evaluate((e) => e.style.left);
+      const t0 = await page.locator(C + ' .fsp-mo .fsp-tick.int').evaluate((e) => e.style.transform);
       await playBtn(page).click();
       await page.waitForTimeout(2500);
-      const t1 = await page.locator(C + ' .fsp-mo .fsp-tick.int').evaluate((e) => e.style.left);
+      const t1 = await page.locator(C + ' .fsp-mo .fsp-tick.int').evaluate((e) => e.style.transform);
       const norms = hub.segs(n0).map((s) => s.norm);
       ok('redesign: motion only, Play moves the machine on the clock (segments with changing positions), the meter moves',
         norms.length > 3 && new Set(norms).size >= 2 && t0 !== t1, { n: norms.length, t0, t1 });
@@ -3608,10 +3608,10 @@ if (!LIVE && !args.includes('--stash-live')) {
           && getComputedStyle(e).visibility !== 'hidden' && !e.closest('[hidden]'));
         const small = hits.filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && (r.width < 39.5 || r.height < 39.5); })
           .map((e) => (e.className || e.getAttribute('aria-label') || e.tagName) + ' ' + Math.round(e.getBoundingClientRect().width) + 'x' + Math.round(e.getBoundingClientRect().height));
-        // Shapes inside an <svg> report their unclipped geometry (the detail's curve runs past its window and slides,
-        // timeline.js); the <svg> box, which clips them, is measured.
+        // Shapes inside an <svg> report their unclipped geometry, and so do the detail's span layers (.fsp-sl: SLIDE
+        // windows wide, sliding, timeline.js); the detail's box, which clips them, is measured.
         const wide = [...root.querySelectorAll('*')].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && (r.right > o.right + 0.5 || r.left < o.left - 0.5)
-          && !(e instanceof SVGElement && e.ownerSVGElement)
+          && !(e instanceof SVGElement && e.ownerSVGElement) && !e.closest('.fsp-sl')
           && getComputedStyle(e).visibility !== 'hidden' && !e.closest('.ui-stage-overlay, .fsp-libbox, .fsp-anbox'); }).map((e) => e.className || e.tagName);
         const pg = root.closest('.fsp-page'), de = document.documentElement;
         return { comp: root.dataset.comp, small, wide: wide.slice(0, 5), pageOverflow: pg.scrollWidth - pg.clientWidth, shellOverflow: de.scrollWidth - de.clientWidth, card: [Math.round(o.width), Math.round(o.height)],

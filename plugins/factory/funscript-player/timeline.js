@@ -40,13 +40,18 @@
 // - `overlay` elements ride the detail (the caller positions them), pointer-events none.
 // - The A-B points are a selection: --highlight, a band on the heat and two lines in the detail.
 //   One button cycles start, end, clear (onLoop); setLoop draws what the controller holds.
-// - The curve, the dots, the lanes and the trace are drawn over a span SLIDE times the detail's window,
-//   centered on it, and moved with a transform: playback rebuilds the first three only when the window leaves
-//   that span or what they draw changes (ph-m1gy), and formats each trace point once per span (ph-jem5).
+// - The curve, the dots, the A-B lines, the lanes and the trace are drawn over a span SLIDE times the detail's window,
+//   centered on it, and slid with a CSS transform: playback rebuilds them only when the window leaves that span or
+//   what they draw changes (ph-m1gy), and formats each trace point once per span (ph-jem5).
 //   frame() draws nothing while the playhead, the trace and the render stand still.
+// - Per frame only CSS transforms move, each on its own layer (will-change), snapped to device pixels and written on
+//   change (tx, ph-pewq): the slide, the window box, the grip and the playheads. No per-frame attribute, left or
+//   width: those relayout or repaint every frame. Widths come from a ResizeObserver, never a per-frame read.
 // - The trace is measured, so its curve passes through every sample and adds no extreme (traceLines, monotone
-//   cubic); time only runs forward in it (ph-6eh7). The detail's tooltip says it is interpolated. It is drawn as
-//   500 ms path parts: a sample sets its own part and at most the one before, never the whole trace.
+//   cubic); time only runs forward in it (ph-6eh7). The detail's tooltip says it is interpolated. It is formatted as
+//   500 ms path parts (a sample formats its own part and at most the one before) and stroked on a canvas that slides
+//   with the span: a sample costs no layout or paint (ph-pewq). Its ink is the .plan and .real rules, read from
+//   unrendered paths, so a theme reaches it.
 // - The oscillator axes (raw Script.axes V8, V9) are thin lanes under the detail, its window and playhead,
 //   0..1 bottom to top, untransformed: the hub maps them (SPEC 9.7). The detail gives up their height, so the
 //   timeline's box never changes; without them there are no lanes.
@@ -241,18 +246,22 @@ export function pinchZoom(ms, scale) {
 
 export const CSS = `
 .fsp-tl { position: relative; display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
-.fsp-ph { position: absolute; top: 0; bottom: 0; width: 2px; translate: -1px 0; background: var(--highlight); pointer-events: none; z-index: 1; }
+.fsp-ph { position: absolute; top: 0; bottom: 0; left: 0; width: 2px; background: var(--highlight); pointer-events: none; z-index: 1; will-change: transform; }
 .fsp-tl > * { box-sizing: border-box; }
 .fsp-ov, .fsp-dt { background: var(--screen); box-shadow: inset 0 2px 8px rgba(var(--shade-rgb), .7); }
 .fsp-ov { position: relative; height: 24px; flex: none; border: 1px solid var(--line); border-radius: var(--r-s); user-select: none; cursor: pointer; }
 .fsp-ov::before { content: ''; position: absolute; inset: -8px 0; }
 .fsp-ovtip { bottom: calc(100% + 6px); z-index: 2; }
 .fsp-ov svg, .fsp-dt svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.fsp-wv { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.fsp-wv svg { overflow: visible; will-change: transform; }
+.fsp-sl { will-change: transform; }
+.fsp-dt canvas.fsp-sl { position: absolute; left: 0; top: 0; height: 100%; }
 .fsp-ov rect.bin.over { fill: var(--warn); }
 .fsp-ov rect.ab { fill: rgba(var(--highlight-rgb), .22); }
 .fsp-dt line.ab { stroke: var(--highlight); stroke-width: 1; stroke-dasharray: 3 3; }
 .fsp-ov rect.win { fill: rgba(var(--highlight-rgb), .08); stroke: var(--highlight); stroke-width: 1; vector-effect: non-scaling-stroke; }
-.fsp-scrub { position: absolute; top: 50%; width: var(--tap); height: var(--tap); margin: calc(var(--tap) / -2) 0 0 calc(var(--tap) / -2); outline: none; z-index: 1; }
+.fsp-scrub { position: absolute; top: 50%; left: 0; will-change: transform; width: var(--tap); height: var(--tap); margin: calc(var(--tap) / -2) 0 0 calc(var(--tap) / -2); outline: none; z-index: 1; }
 .fsp-scrub::after, .fsp-rh::after { content: ''; position: absolute; left: 50%; top: 50%; box-sizing: border-box; background: var(--bg-card); }
 .fsp-scrub::after { width: 9px; height: 20px; translate: -4.5px -10px; border-radius: 4.5px; border: 2px solid var(--highlight); }
 .fsp-dt { position: relative; height: var(--fsp-detail, 96px); flex: none; border: 1px solid var(--line); border-radius: var(--r-s); overflow: hidden;
@@ -299,6 +308,11 @@ const h = (tag, attrs = {}, ...kids) => {
 // Writes only on change: the frame redraws every animation frame while playing (ph-bw0o).
 const sa = (e, k, v) => { if (e.getAttribute(k) !== v) e.setAttribute(k, v); };
 const prop = (e, k, v) => { if (e[k] !== v) e[k] = v; };
+/** px in whole device pixels: a layer moved by a fraction is resampled, and a 1 px line blurs. */
+export const snap = (px) => { const r = globalThis.devicePixelRatio || 1; return Math.round(px * r) / r; };
+/** A layer's transform, written only when it changes: the compositor moves it, no layout or paint (ph-pewq). */
+export const xform = (e, v) => { if (e.fspT !== v) { e.fspT = v; e.style.transform = v; } };
+export const tx = (e, px) => xform(e, 'translateX(' + px + 'px)');
 const s = (tag, attrs = {}) => {
   const e = document.createElementNS(SVGNS, tag);
   for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
@@ -319,12 +333,16 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
   defs.append(grad);
   const band = s('rect', { class: 'heat', width: String(HEAT_BINS), height: '24', fill: 'url(#' + gid + ')' });
   const bins = s('g');
-  const win = s('rect', { class: 'win', y: '0', height: '24' });
+  const win = s('rect', { class: 'win', x: '0', y: '0', height: '24' });
   const abBand = s('rect', { class: 'ab', y: '0', height: '24' });
-  ovSvg.append(defs, band, bins, abBand, win);
+  ovSvg.append(defs, band, bins, abBand);
+  // The window box slides on its own layer; the static box clips it where the heat's svg clipped it.
+  const winSvg = s('svg', { viewBox: '0 0 ' + HEAT_BINS + ' 24', preserveAspectRatio: 'none', 'aria-hidden': 'true' });
+  winSvg.append(win);
+  const winBox = h('div', { class: 'fsp-wv' }, winSvg);
   const scrub = h('div', { class: 'fsp-scrub', role: 'slider', tabindex: '0', 'aria-label': COPY.scrub,
     'aria-orientation': 'horizontal', 'aria-valuemin': '0' });
-  const ov = h('div', { class: 'fsp-ov', role: 'group', 'aria-label': COPY.overview }, ovSvg, scrub);
+  const ov = h('div', { class: 'fsp-ov', role: 'group', 'aria-label': COPY.overview }, ovSvg, winBox, scrub);
   const at = (e) => {
     const r = ov.getBoundingClientRect();
     return seekAt(e.clientX - r.left, r.width, dur());
@@ -361,12 +379,19 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
   const dtSvg = s('svg', { viewBox: '0 0 1000 100', preserveAspectRatio: 'none', 'aria-hidden': 'true' });
   const rgLo = s('line', { class: 'rg', x1: '0', x2: '1000' });
   const rgHi = s('line', { class: 'rg', x1: '0', x2: '1000' });
+  dtSvg.append(rgLo, rgHi);
+  // The span's layers, SLIDE times the detail wide: the script's svg and the trace's canvas.
+  const scriptSvg = s('svg', { class: 'fsp-sl', viewBox: '0 0 ' + 1000 * SLIDE + ' 100', preserveAspectRatio: 'none', 'aria-hidden': 'true' });
+  const traceCv = h('canvas', { class: 'fsp-sl', 'aria-hidden': 'true' });
+  for (const e of [scriptSvg, traceCv]) e.style.width = SLIDE * 100 + '%';
   const curve = s('polyline', { class: 'int' });
   const dots = s('path', { class: 'dots' });
-  const real = s('g'), planG = s('g'), realG = s('g'), planEls = new Map(), realEls = new Map();   // plan under reality
-  real.append(planG, realG);
   const abA = s('line', { class: 'ab', y1: '0', y2: '100' }), abB = s('line', { class: 'ab', y1: '0', y2: '100' });
-  dtSvg.append(rgLo, rgHi, abA, abB, curve, dots, real);
+  scriptSvg.append(abA, abB, curve, dots);
+  const ink = { plan: s('path', { class: 'plan' }), real: s('path', { class: 'real' }), stale: s('path', { class: 'real stale' }) };
+  const inkSvg = s('svg', { 'aria-hidden': 'true' });
+  inkSvg.style.display = 'none';
+  inkSvg.append(ink.plan, ink.real, ink.stale);
   const zOut = h('button', { type: 'button', class: 'og-btn sm', 'data-tip': COPY.zoomOut, 'aria-label': COPY.zoomOut, text: COPY.zoomOutGlyph });
   const zIn = h('button', { type: 'button', class: 'og-btn sm', 'data-tip': COPY.zoomIn, 'aria-label': COPY.zoomIn, text: COPY.zoomInGlyph });
   const zSpan = h('output', { 'data-tip': COPY.span });
@@ -412,7 +437,7 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
     p.addEventListener('blur', commit);
     return p;
   });
-  const dt = h('div', { class: 'fsp-dt', role: 'group', 'aria-label': COPY.detail, 'data-tip': COPY.detailTip }, dtSvg, ...pills, ...overlay);
+  const dt = h('div', { class: 'fsp-dt', role: 'group', 'aria-label': COPY.detail, 'data-tip': COPY.detailTip }, dtSvg, scriptSvg, traceCv, inkSvg, ...pills, ...overlay);
   // Pinch on touch: two fingers on the detail step the zoom once per PINCH_STEP of distance.
   const touch = new Map();
   let pinch0 = 0;
@@ -435,17 +460,21 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
   dt.append(ph);
   const lanes = OSC_AXES.map((id) => {
     const line = s('polyline');
-    const svg = s('svg', { viewBox: '0 0 1000 100', preserveAspectRatio: 'none', 'aria-hidden': 'true' });
+    const svg = s('svg', { class: 'fsp-sl', viewBox: '0 0 ' + 1000 * SLIDE + ' 100', preserveAspectRatio: 'none', 'aria-hidden': 'true' });
+    svg.style.width = SLIDE * 100 + '%';
     svg.append(line);
-    return { id, line, el: h('div', { class: 'fsp-lane', role: 'img', 'aria-label': COPY[id], 'data-tip': COPY[id], 'data-axis': id }, svg) };
+    return { id, line, svg, el: h('div', { class: 'fsp-lane', role: 'img', 'aria-label': COPY[id], 'data-tip': COPY[id], 'data-axis': id }, svg) };
   });
   const lph = h('i', { class: 'fsp-ph', 'aria-hidden': 'true' });
   const laneBox = h('div', { class: 'fsp-lanes' }, ...lanes.map((l) => l.el), lph);
-  const slid = [curve, dots, ...lanes.map((l) => l.line), real];
   let axes = {};
   const root = h('div', { class: 'fsp-tl' }, dt, laneBox, ...(ovHost ? [] : [ov]));
   el.append(root);
   if (ovHost) ovHost.insertBefore(ov, ovBefore);
+  // Content boxes of the boxes the layers move in (0 wide while hidden: nothing moves there).
+  const box = new Map(), wOf = (e) => (box.get(e) || { width: 0 }).width;
+  const ro = new ResizeObserver((es) => { for (const e of es) box.set(e.target, e.contentRect); draw(); });
+  for (const e of [ov, dt, laneBox, ...lanes.map((l) => l.el)]) ro.observe(e);
 
   const eff = () => (preview ? { ...T, ...preview } : T);
 
@@ -471,29 +500,34 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
       for (const l of lanes) if (axes[l.id]) l.line.setAttribute('points', curvePoints(axes[l.id], a, b, W, 100));
       span = { a, b, zoom, script, kin: kk, T: Te, axes };
     }
-    const tx = 'translate(' + ((span.a - from) / zoom * 1000).toFixed(2) + ' 0)';
-    for (const e of slid) e.setAttribute('transform', tx);
-    // The trace is redrawn only on a new sample, a new span or a step of the left clip, which trails the window's left
-    // edge by under an eighth of it; the age trim at the front waits for the next sample. Only the parts whose text
-    // changed are set: a sample sets its own part and at most the one before.
+    // The trace before any write below: its ink read would otherwise force a second style pass.
+    // The trace is redrawn only on a new sample, a new span, a new size or a step of the left clip, which trails the
+    // window's left edge by under an eighth of it; the age trim at the front waits for the next sample.
     const last = trace[trace.length - 1], q = zoom / 8, cf = span.a + Math.floor((from - span.a) / q) * q;
-    if (traceFor.span !== span || traceFor.cf !== cf || traceFor.last !== last) {
-      traceFor = { span, cf, last };
-      for (const [key, g, map] of [['p', planG, planEls], ['u', realG, realEls]]) {
-        const seen = new Set();
-        for (const l of traceLines(trace, span.a, span.b, 1000 * SLIDE, 100, key, cf)) {
-          const cls = key === 'p' ? 'plan' : l.stale ? 'real stale' : 'real';
-          for (const pt of l.parts) {
-            const id = cls + pt.id;
-            let e = map.get(id);
-            if (!e) map.set(id, (e = { el: g.appendChild(s('path', { class: cls })) }));
-            if (e.k0 !== pt.k0 || e.k1 !== pt.k1 || e.n !== pt.n) { e.el.setAttribute('d', pt.d); Object.assign(e, { k0: pt.k0, k1: pt.k1, n: pt.n }); }
-            seen.add(id);
+    const r = globalThis.devicePixelRatio || 1, cb = box.get(dt) || { width: 0, height: 0 };
+    const cw = Math.round(cb.width * SLIDE * r), ch = Math.round(cb.height * r);
+    if (traceFor.span !== span || traceFor.cf !== cf || traceFor.last !== last || traceFor.cw !== cw || traceFor.ch !== ch) {
+      traceFor = { span, cf, last, cw, ch };
+      if (traceCv.width !== cw) traceCv.width = cw;
+      if (traceCv.height !== ch) traceCv.height = ch;
+      const g = traceCv.getContext('2d'), sc = { a: cw / (1000 * SLIDE), d: ch / 100 };
+      g.clearRect(0, 0, cw, ch);
+      if (cw && ch) {
+        for (const key of ['p', 'u']) {   // plan under reality
+          for (const l of traceLines(trace, span.a, span.b, 1000 * SLIDE, 100, key, cf)) {
+            const cs = getComputedStyle(key === 'p' ? ink.plan : l.stale ? ink.stale : ink.real), path = new Path2D();
+            for (const pt of l.parts) path.addPath(new Path2D(pt.d), sc);
+            g.globalAlpha = +cs.opacity;
+            g.strokeStyle = cs.stroke;
+            g.lineWidth = parseFloat(cs.strokeWidth) * r;
+            g.stroke(path);
           }
         }
-        for (const [id, e] of map) if (!seen.has(id)) { e.el.remove(); map.delete(id); }
       }
     }
+    const slide = (span.a - from) / zoom;
+    for (const e of [scriptSvg, traceCv]) tx(e, snap(slide * wOf(dt)));
+    for (const l of lanes) if (axes[l.id]) tx(l.svg, snap(slide * wOf(l.el)));
     for (const [line, v] of [[rgLo, Te.lo], [rgHi, Te.hi]]) {
       sa(line, 'y1', String(100 - v * 100));
       sa(line, 'y2', String(100 - v * 100));
@@ -508,17 +542,21 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
     prop(zIn, 'disabled', zoom === ZOOMS[0]);
     const zt = zoom / 1000 + ' s';
     if (zSpan.textContent !== zt) zSpan.textContent = zt;
-    sa(win, 'x', String(d ? from / d * HEAT_BINS : 0));
+    const share = d ? clamp(m / d, 0, 1) : 0;
+    tx(winSvg, snap((d ? from / d : 0) * wOf(ov)));
     sa(win, 'width', String(d ? zoom / d * HEAT_BINS : 0));
-    scrub.style.left = (d ? clamp(m / d, 0, 1) * 100 : 0) + '%';
+    tx(scrub, snap(share * wOf(ov)));
     sa(scrub, 'aria-valuemax', String(Math.round(d)));
-    sa(scrub, 'aria-valuenow', String(Math.round(m)));
-    sa(scrub, 'aria-valuetext', fmtTime(m));
+    // The grip's value in the tenths its text shows: a per-frame value would rewrite the attribute every frame.
+    const mt = Math.floor(m / 100) * 100;
+    sa(scrub, 'aria-valuenow', String(mt));
+    sa(scrub, 'aria-valuetext', fmtTime(mt));
     prop(scrub, 'hidden', !script);
-    ph.style.left = scrub.style.left;
+    // The bars' left edges (2 px, centered on the share) on device pixels.
+    tx(ph, snap(share * wOf(dt) - 1));
     prop(ph, 'hidden', !script);
-    lph.style.left = scrub.style.left;
-    const ax = (t) => String(((t - from) / zoom) * 1000);
+    tx(lph, snap(share * wOf(laneBox) - 1));
+    const ax = (t) => String(((t - span.a) / zoom) * 1000);
     sa(abBand, 'x', String(d && ab.b != null ? ab.a / d * HEAT_BINS : 0));
     sa(abBand, 'width', String(d && ab.b != null ? (ab.b - ab.a) / d * HEAT_BINS : 0));
     for (const [line, t] of [[abA, ab.a], [abB, ab.b]]) {
@@ -565,6 +603,6 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
       const r = dt.getBoundingClientRect(), from = m - clamp(m / d, 0, 1) * zoom;
       return r.width > 0 ? clamp(from + (x - r.left) / r.width * zoom, 0, d) : null;
     },
-    unmount() { root.remove(); ov.remove(); },
+    unmount() { ro.disconnect(); root.remove(); ov.remove(); },
   };
 }
