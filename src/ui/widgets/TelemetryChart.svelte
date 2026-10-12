@@ -150,7 +150,7 @@
     // The size comes from a ResizeObserver, never a read in the frame: one
     // there forces a layout behind whatever the page wrote this frame. A
     // resize clears the canvas, so it redraws at once.
-    let cssW = 0, cssH = 0;
+    let cssW = 0, cssH = 0, pxMs = 0;
     const ro = new ResizeObserver(() => {
       const w = canvasEl.clientWidth, h = canvasEl.clientHeight;
       if (w && h && (w !== cssW || h !== cssH)) {
@@ -159,6 +159,7 @@
         canvasEl.height = Math.round(h * dpr);
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         cssW = w; cssH = h;
+        pxMs = WINDOW_MS / Math.max(1, (w - 8) * dpr);   // the time one device pixel of scroll takes
         draw();
       }
       wake();
@@ -275,16 +276,19 @@
     // independent of this (the arrival effect above), and the HTML legend is
     // plain reactive markup, live either way.
     // At most 60 draws a second while it scrolls: on a 120 Hz screen the window moves about a device pixel a
-    // frame. The last frame always draws.
+    // frame. A narrow chart draws no faster than one device pixel of scroll a draw: between, the picture
+    // only antialiases. The last frame always draws. The wait between draws is a timer, not a frame
+    // callback per vsync: a 240 Hz screen would otherwise run four callbacks to draw one.
     const MIN_DRAW_MS = 1000 / 60 - 2;
     let raf = 0, timer = 0, drawnAt = 0;
     function frame(t) {
       raf = 0;
       const more = moving(Date.now());
-      if (!more || !(t - drawnAt < MIN_DRAW_MS)) { drawnAt = t; draw(); }
+      const gap = Math.max(MIN_DRAW_MS, pxMs - 2);
+      if (!more || !(t - drawnAt < gap)) { drawnAt = t; draw(); }
       if (!more) return;
-      if (reduced) timer = setTimeout(() => { timer = 0; raf = requestAnimationFrame(frame); }, 1000);
-      else raf = requestAnimationFrame(frame);
+      const wait = reduced ? 1000 : Math.max(0, drawnAt + gap - 2 - t);
+      timer = setTimeout(() => { timer = 0; raf = requestAnimationFrame(frame); }, wait);
     }
     wake = () => { if (!raf && !timer) raf = requestAnimationFrame(frame); };
 
