@@ -18,11 +18,13 @@ export const SPEC = {
   optionalChannels: { names: DRAFT.channels.names, vis: DRAFT.channels.visible, more: DRAFT.channels.visibleMore },
 };
 
-// The hub coalesces scans to one per 10 s, then a scan takes about 2 s.
-export const SCAN_WAIT_MS = 15000;
+// The ECHO of a scan means accepted, not done: the rows arrive on STATE with a new counter, or not at all.
+export const SCAN_WAIT_MS = 30000;
+// A scan refused for motion is asked again on this interval until motion stops.
+export const MOTION_RETRY_MS = 4000;
 
 // Registered spec-core NACK codes.
-const NACK = { busy: 0x0100, accessDenied: 0x0201, conflict: 0x0300, invalidValue: 0x0302 };
+const NACK = { accessDenied: 0x0201, conflict: 0x0300, invalidValue: 0x0302, interlock: 0x0402 };
 
 export const NO_RSSI = -128;
 export const NO_LIVE = 255;
@@ -103,8 +105,11 @@ export const scanSupported = (op, f) => !!(op && f && f.vis && Array.isArray(op.
 /** A refused wifi_join in words: the shell already names NETWORK_JOIN_FAILED and ACCESS_DENIED in r.error. */
 export const joinWords = (r) => (r && r.code === NACK.invalidValue ? refusalWords(r) : (r && r.error) || 'Join failed');
 
-/** The scan's refusal in words: BUSY is the hub's motion guard. */
-export const scanRefusal = (r) => (r && r.code === NACK.busy ? 'Stop motion to scan' : refusalWords(r) || 'Scan failed');
+/** A scan refused INTERLOCK: the machine is moving (detail "motion running"). */
+export const isInterlock = (r) => !!r && !r.ok && r.code === NACK.interlock;
+
+/** The scan's refusal in words. */
+export const scanRefusal = (r) => (isInterlock(r) ? 'Machine is moving' : refusalWords(r) || 'Scan failed');
 
 /** The finished-scan counter the visible list carries (0: none yet), or null with no sample. */
 export function scanOf(f, read) {
@@ -114,7 +119,7 @@ export function scanOf(f, read) {
 
 /**
  * The visible networks, strongest first, joined across the two halves only when their scan counters
- * match: [{ssid, rssi, secured, saved}]. `saved` also holds for any SSID in `list` (the saved list read
+ * are equal (the counter is a change marker: equality only, never order): [{ssid, rssi, secured, saved}]. `saved` also holds for any SSID in `list` (the saved list read
  * by readList), so a save shows before the next scan does. The connected entry of `list` leads, listed
  * by the scan or not: {connected: true}. Null before any sample.
  */
@@ -134,7 +139,7 @@ export function readVisible(f, read, list = null) {
   if (scan == null) return null;
   const more = f.more && read(f.more.scan) === scan ? half(f.more) : [];
   // The hub sorts each half; the halves are sorted again as one list.
-  const rows = scan ? [...half(f.vis), ...more].sort((a, b) => (b.rssi ?? NO_RSSI) - (a.rssi ?? NO_RSSI)) : [];
+  const rows = [...half(f.vis), ...more].sort((a, b) => (b.rssi ?? NO_RSSI) - (a.rssi ?? NO_RSSI));
   const named = list && list.named ? list.entries : [];
   for (const r of rows) r.saved = r.saved || named.some((e) => e.ssid === r.ssid);
   const live = named.find((e) => e.live);

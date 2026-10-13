@@ -778,10 +778,16 @@ Shipped:
   `scan` and the catalog declares `visible-networks`) it opens on the picker
   (`picker.js`): the networks the hub hears, strongest first, with signal bars,
   a lock on secured ones, a check on the connected one and `Saved` on saved
-  ones; opening asks one scan, the retained list shows until a newer scan
-  counter lands. A tap saves the network (`save`: stored, joined at the next
-  connect when strongest; `wifi_join` is refused over WebSocket), asking one
-  write-only password for a secured one. Below it `Other network…` (a hidden
+  ones; opening asks one scan, and the rows pushed at the grant show greyed
+  and untappable until the scan counter differs from its value at the grant
+  (equality only). Rows are keyed by SSID and the order is held while a press
+  is down, keyboard focus is in the list or a sheet is open. A scan refused
+  INTERLOCK in motion reads `Machine is moving` and is asked again every 4 s;
+  one that never lands times out at 30 s. A tap saves the network (`save`:
+  stored, joined at the next connect when strongest; `wifi_join` is refused
+  over WebSocket), asking one write-only password for a secured one. A saved
+  row never acts on a tap: its sheet offers the passphrase again, move and
+  remove. Below it `Other network…` (a hidden
   SSID by hand) and `Advanced`, which reveals the saved list (`slots.js`). The
   setup flow (`src/shell/SetupFlow.svelte`) mounts the same picker through
   `shellApi` (src/plugins/plugins.svelte.js, the API subset ui, field, value,

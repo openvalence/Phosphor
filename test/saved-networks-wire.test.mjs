@@ -4,7 +4,7 @@
  * visible list (detection, the two halves joined by scan counter, the connected row first, saved marks).
  * Run: node test/saved-networks-wire.test.mjs
  */
-import { DRAFT, SPEC, passphraseProblem, ssidProblem, readList, occupancy, refusalWords, isConflict, slotOf, scanSupported, scanRefusal, joinWords, readVisible, scanOf, bars } from '../plugins/factory/saved-networks/wire.js';
+import { DRAFT, SPEC, passphraseProblem, ssidProblem, readList, occupancy, refusalWords, isConflict, slotOf, scanSupported, scanRefusal, joinWords, readVisible, scanOf, isInterlock, bars } from '../plugins/factory/saved-networks/wire.js';
 
 let fails = 0;
 const ok = (name, cond, extra) => {
@@ -78,7 +78,9 @@ ok('a saved name marks its row before the next scan does', readVisible({ vis: ha
   .find((r) => r.ssid === 'cafe').saved);
 ok('no visible sample: null; the counter reads', readVisible({ vis: wrap({}) }, read) === null && scanOf(fv, read) === 3 && scanOf({ vis: null }, read) === null);
 ok('bars from dBm', bars(-42) === 4 && bars(-61) === 3 && bars(-75) === 2 && bars(-88) === 1 && bars(-128) === 0 && bars(undefined) === 0);
-ok('a scan refused for motion reads as stop motion', scanRefusal({ ok: false, code: 0x100, detail: 'motion running' }) === 'Stop motion to scan');
+ok('a scan refused INTERLOCK in motion reads as the machine moving', scanRefusal({ ok: false, code: 0x402, detail: 'motion running' }) === 'Machine is moving'
+  && isInterlock({ ok: false, code: 0x402 }) && !isInterlock({ ok: false, code: 0x100 }) && !isInterlock({ ok: true }));
+ok('a scan counter that wrapped to 0 still lists its rows (equality, not order)', readVisible({ vis: half(0, first.slice(0, 2)), more: null }, read, null).length === 2);
 ok('join refusals: the shell words, a bad passphrase as the rule', joinWords({ ok: false, code: 0x304, error: 'Wrong password' }) === 'Wrong password'
   && joinWords({ ok: false, code: 0x302, detail: 'passphrase length' }) === passphraseProblem('x') && joinWords({ ok: false }) === 'Join failed');
 

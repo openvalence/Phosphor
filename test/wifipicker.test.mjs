@@ -4,12 +4,17 @@
  *   join binding  the module alone in a page over the real kit, with a fake API standing in for the BLE
  *                 setup flow's credential binding: wifi_join carries the SSID and password, reports start
  *                 and done to the flow, success says Joined, the hub's "authentication failed" and
- *                 "network not found" read in words through provision.js, the field is cleared at send
+ *                 "network not found" read in words through provision.js, the field is cleared at send;
+ *                 rows pushed at the grant are greyed and untappable until the scan counter changes; the
+ *                 on-screen order is held under a press and under an open sheet and patched by SSID; a
+ *                 saved row opens a sheet (passphrase again, move, remove) and sends nothing on the tap;
+ *                 a scan refused INTERLOCK reads "Machine is moving" and is asked again until it lands;
+ *                 a scan that never lands times out at 30 s
  *   Network card  the shell bundle against a private valencesim with the scan twin (VALENCESIM=<exe>):
  *                 the list strongest first with the connected check, locks and Saved marks; no generic
  *                 cards for 0x000F/0x0017..0x001A; a short password refused by the hub in words; Save
- *                 for a secured and an open network; Other network for a hidden SSID; a saved row needs
- *                 nothing typed; Scan; Advanced reveals the slot card; the password nowhere the page keeps
+ *                 for a secured and an open network; Other network for a hidden SSID; a saved row opens its sheet
+ *                 and sends nothing on the tap; Scan; Advanced reveals the slot card; the password nowhere the page keeps
  * Screenshots: test/evidence/wifipicker-<list|password|advanced>-<1428|420>.png.
  *
  * Run: node test/wifipicker.test.mjs   (the Network card part SKIPs without a valencesim that lists networks)
@@ -74,23 +79,32 @@ import { provisionRefusal } from '/${LANE}/src/model/provision.js';
 import { NACK } from '/Valence/clients/js/index.js';
 import { mountPicker, pickerReady } from '/${LANE}/plugins/factory/saved-networks/picker.js';
 const F = (v) => ({ v });
-const row = (o, rows) => { o.count = F(rows.length); let sec = 0; rows.forEach(([s, r, k], i) => { o['ssid' + i] = F(s); o['rssi' + i] = F(r); if (k) sec |= 1 << i; }); o.secured = F(sec); o.saved = F(0); return o; };
+const Q = new URLSearchParams(location.search);
+const row = (o, rows) => { o.count = F(rows.length); let sec = 0, sav = 0; rows.forEach(([s, r, k, v], i) => { o['ssid' + i] = F(s); o['rssi' + i] = F(r); if (k) sec |= 1 << i; if (v) sav |= 1 << i; }); o.secured = F(sec); o.saved = F(sav); return o; };
+const DEFAULT = [['Workshop', -48, 1], ['Guest', -61, 0], ['Cafe', -75, 0, 1]];
 const f = {
-  nets: { generation: F(1), capacity: F(4), count: F(0), live: F(255), rssi0: F(-128), rssi1: F(-128), rssi2: F(-128), rssi3: F(-128) },
-  names: { generation: F(1), open: F(0), ssid0: F(''), ssid1: F(''), ssid2: F(''), ssid3: F('') },
-  vis: row({ scan: F(0) }, []), more: null, prov: {},
+  nets: { generation: F(1), capacity: F(4), count: F(1), live: F(255), rssi0: F(-75), rssi1: F(-128), rssi2: F(-128), rssi3: F(-128) },
+  names: { generation: F(1), open: F(1), ssid0: F('Cafe'), ssid1: F(''), ssid2: F(''), ssid3: F('') },
+  vis: Q.get('pre') ? row({ scan: F(7) }, DEFAULT) : row({ scan: F(0) }, []), more: null, prov: {},
 };
 const op = { channelId: 15, key: 1, options: ['reserved', 'wifi_join', 'save', 'remove', 'move', 'scan'] };
 const sent = [], events = [];
 let inst;
+// mode: auto lands the rows 50 ms after the ask; manual and hang accept and land nothing (land() is the test's);
+// interlock refuses the ask as the hub does in motion.
+const T = { sent, events, mode: Q.get('scan') || 'auto',
+  land: (spec = DEFAULT) => { const n = f.vis.scan.v + 1; row(f.vis, spec); f.vis.scan = F(n); inst.update(); } };
+window.T = T;
 const api = {
   ui: KIT, field: () => op, value: (x) => x && x.v, gate: () => '',
   write: async (o, value, payload) => {
     sent.push({ value, payload: { ...payload } });
     if (value === 5) {
-      setTimeout(() => { row(f.vis, [['Workshop', -48, 1], ['Guest', -61, 0], ['Cafe', -75, 0]]); f.vis.scan = F(1); inst.update(); }, 50);
+      if (T.mode === 'interlock') return { ok: false, error: 'Refused', code: 0x402, detail: 'motion running' };
+      if (T.mode === 'auto') setTimeout(() => T.land(), 50);
       return { ok: true, applied: { 8: 1 } };
     }
+    if (value === 3 || value === 4) return { ok: true, applied: { 8: 2 } };
     await new Promise((r) => setTimeout(r, 80));
     const ssid = payload[2], pass = payload[3];
     // The right password is written reversed: the page's own source must not hold it.
@@ -101,7 +115,7 @@ const api = {
   },
 };
 inst = mountPicker(api, document.getElementById('host'), f, { join: (e) => events.push({ phase: e.phase, channel: e.action.channelId, ok: e.ok, code: e.code, detail: e.detail, applied: e.applied }) });
-window.T = { sent, events, ready: pickerReady(api, f) };
+T.ready = pickerReady(api, f);
 </script>`;
   const srv = createServer((q, s) => {
     const url = decodeURIComponent(q.url.split('?')[0]);
@@ -154,6 +168,90 @@ window.T = { sent, events, ready: pickerReady(api, f) };
   const k = await kept(page);
   ok('no password on the page, in storage or in the console', ![RIGHT, WRONG].some((s) => k.includes(s) || logs.some((l) => l.includes(s))));
   ok('no page errors', !logs.some((l) => l.startsWith('pageerror')), logs);
+  await page.close();
+
+  // Rows pushed at the grant: stale until the scan counter changes.
+  const base = 'http://127.0.0.1:' + srv.address().port + '/';
+  const order = (pg) => pg.$$eval('.wp-row', (rs) => rs.map((r) => r.dataset.ssid).join());
+  const p1 = await ctx.newPage();
+  p1.on('pageerror', (e) => logs.push('pageerror: ' + e.message));
+  await p1.goto(base + '?pre=1&scan=manual');
+  await p1.waitForFunction(() => window.T && document.querySelectorAll('.wp-row').length === 3, null, { timeout: 10000 });
+  ok('stale: the rows of the grant are greyed and untappable', await p1.locator('.wp-list[data-stale]').count() === 1
+    && await p1.$$eval('.wp-row', (rs) => rs.every((r) => r.disabled)));
+  ok('stale: the status reads Scanning', await p1.locator('.wp-status').innerText() === 'Scanning');
+  await p1.evaluate(() => window.T.land());
+  ok('a fresh scan clears the stale mark and the rows answer', await p1.locator('.wp-list[data-stale]').count() === 0
+    && await p1.$$eval('.wp-row', (rs) => rs.every((r) => !r.disabled)) && await p1.locator('.wp-status').innerText() === '');
+
+  // The order is held while the user interacts; rows are patched by SSID, never by position.
+  const REORDER = [['Cafe', -40, 0, 1], ['Workshop', -60, 1], ['Guest', -80, 0]];
+  const BACK = [['Workshop', -48, 1], ['Guest', -61, 0], ['Cafe', -75, 0, 1]];
+  ok('order before: strongest first', await order(p1) === 'Workshop,Guest,Cafe');
+  const gb = await p1.locator('.wp-row[data-ssid="Guest"]').boundingBox();
+  await p1.mouse.move(gb.x + gb.width / 2, gb.y + gb.height / 2);
+  await p1.mouse.down();
+  await p1.evaluate((r) => window.T.land(r), REORDER);
+  await p1.waitForTimeout(200);
+  ok('a press holds the order', await order(p1) === 'Workshop,Guest,Cafe', await order(p1));
+  ok('a held row still takes its new signal, found by SSID', await p1.locator('.wp-row[data-ssid="Cafe"]').getAttribute('data-tip') === '-40 dBm'
+    && await p1.locator('.wp-row[data-ssid="Guest"]').getAttribute('data-tip') === '-80 dBm');
+  await p1.mouse.move(2, 2);
+  await p1.mouse.up();
+  await p1.waitForFunction(() => [...document.querySelectorAll('.wp-row')].map((r) => r.dataset.ssid).join() === 'Cafe,Workshop,Guest', null, { timeout: 3000 });
+  ok('on release the rows sort again', true);
+  await p1.click('.wp-row[data-ssid="Workshop"]');
+  await p1.evaluate((r) => window.T.land(r), BACK);
+  await p1.waitForTimeout(200);
+  ok('an open sheet holds the order', await order(p1) === 'Cafe,Workshop,Guest', await order(p1));
+  await p1.click('.wp-join .og-btn >> text=Cancel');
+  await p1.waitForFunction(() => [...document.querySelectorAll('.wp-row')].map((r) => r.dataset.ssid).join() === 'Workshop,Guest,Cafe', null, { timeout: 3000 });
+  ok('closing the sheet sorts again', true);
+
+  // A saved row: no one-tap join; passphrase again, move, remove.
+  const sentBefore = await p1.evaluate(() => window.T.sent.length);
+  await p1.click('.wp-row[data-ssid="Cafe"]');
+  ok('a saved row opens its sheet and sends nothing on the tap', await p1.locator('.wp-join').isVisible()
+    && await p1.evaluate(() => window.T.sent.length) === sentBefore && await p1.locator('.wp-manage').isVisible());
+  ok('the sheet offers move and remove; the only entry cannot move',
+    await p1.locator('.wp-manage .og-btn', { hasText: 'Move up' }).isDisabled() && await p1.locator('.wp-manage .og-btn', { hasText: 'Move down' }).isDisabled()
+    && await p1.locator('.wp-manage .og-btn', { hasText: 'Remove' }).isEnabled());
+  const rmBtn = p1.locator('.wp-manage .og-btn', { hasText: /Remove|Confirm/ });
+  await rmBtn.click();
+  ok('Remove asks first', await rmBtn.innerText() === 'Confirm' && await p1.evaluate(() => window.T.sent.length) === sentBefore);
+  await rmBtn.click();
+  await p1.waitForFunction(() => document.querySelector('.wp-status').textContent === 'Removed', null, { timeout: 3000 });
+  last = await p1.evaluate(() => window.T.sent.at(-1));
+  ok('Remove sends op 3 with the slot and the generation read', last.value === 3 && last.payload[6] === 0 && last.payload[8] === 1, last);
+  await p1.close();
+
+  // Scan refused in motion: INTERLOCK in plain words, asked again until it lands.
+  const clocked = async (qs) => {
+    const pg = await ctx.newPage();
+    pg.on('pageerror', (e) => logs.push('pageerror: ' + e.message));
+    await pg.clock.install();
+    await pg.goto(base + qs);
+    await pg.waitForTimeout(800);
+    return pg;
+  };
+  const p2 = await clocked('?scan=interlock');
+  ok('INTERLOCK: "Machine is moving", not a failure', await p2.locator('.wp-status').innerText() === 'Machine is moving', await p2.locator('.wp-status').innerText());
+  await p2.evaluate(() => { window.T.mode = 'auto'; });
+  await p2.clock.runFor(4200);
+  await p2.clock.runFor(200);
+  ok('asked again once motion stops: the rows land', (await p2.evaluate(() => window.T.sent.map((x) => x.value))).join() === '5,5'
+    && await p2.locator('.wp-row').count() === 3 && await p2.locator('.wp-status').innerText() === '');
+  await p2.close();
+
+  // A scan that never lands: the ECHO meant accepted, so it times out at 30 s.
+  const p3 = await clocked('?scan=hang');
+  ok('waiting: Scanning', await p3.locator('.wp-status').innerText() === 'Scanning');
+  await p3.clock.runFor(29000);
+  ok('29 s: still waiting', await p3.locator('.wp-status').innerText() === 'Scanning');
+  await p3.clock.runFor(1500);
+  ok('30 s: a plain timeout, Scan answers again', await p3.locator('.wp-status').innerText() === 'Scan timed out' && await p3.locator('.wp-scan').isEnabled());
+  await p3.close();
+  ok('no page errors in the rows rules', !logs.some((l) => l.startsWith('pageerror')), logs);
   await ctx.close();
   srv.close();
 }
@@ -220,6 +318,7 @@ if (!sim) {
     ok('signal bars: four on the strongest, one on the weakest',
       await page.locator('.wp-row[data-ssid="virtual"] .wp-bars path:not(.off)').count() === 4 && await page.locator('.wp-row[data-ssid="Garage"] .wp-bars path:not(.off)').count() === 1);
     ok('the hidden and enterprise networks are not listed', (await ssids(page)).length === 10);
+    ok('a fresh scan has landed: no stale mark', await page.locator('.wp-list[data-stale]').count() === 0);
     ok('the default view: no slot card, no generic cards for the network channels',
       await page.locator('.sn').isHidden() && await page.locator('[data-uid^="15:"], [data-uid^="23:"], [data-uid^="24:"], [data-uid^="25:"], [data-uid^="26:"]').count() === 0);
     ok('Other network… and Advanced at the bottom', await page.locator('.wp-foot .og-btn', { hasText: 'Other network…' }).isVisible()
@@ -252,7 +351,9 @@ if (!sim) {
     ok('an open network saves at once, nothing typed', await page.locator('.wp-join').isHidden());
 
     await page.click('.wp-row[data-ssid="Workshop"]');
-    ok('a saved row needs nothing typed: Saved', await page.locator('.wp-join').isHidden() && await status(page) === 'Saved');
+    ok('a saved row opens its sheet: passphrase again, move, remove; nothing is sent', await page.locator('.wp-join').isVisible()
+      && await page.locator('.wp-manage').isVisible() && await page.locator('.wp-join .og-btn.primary').isDisabled() && await status(page) === '');
+    await page.click('.wp-join .og-btn >> text=Cancel');
 
     await page.locator('.wp-foot .og-btn', { hasText: 'Other network…' }).click();
     await page.fill('.wp-join input[aria-label="Name"]', 'Attic');
