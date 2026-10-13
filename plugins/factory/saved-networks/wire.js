@@ -1,18 +1,30 @@
 // saved-networks wire: the RFC-116 draft numbers in one place, and the pure rules over them.
-// Constraints: no DOM and no host import (index.js owns both). A passphrase is a parameter here,
+// Constraints: no DOM and no host import (picker.js and slots.js own both). A passphrase is a parameter here,
 // never stored, returned or put in a message.
 
-// TODO(RFC-116): draft numbers and field names; the registry replaces them, and roles replace the channel ids.
+// TODO(RFC-116, RFC-118): draft numbers and field names; the registry replaces them, and roles replace the channel ids.
 export const DRAFT = {
-  channels: { networks: 0x0017, names: 0x0018 },
-  // Op 1 (wifi_join) is refused over WebSocket and never sent from here.
-  op: { save: 2, remove: 3, move: 4 },
+  channels: { networks: 0x0017, names: 0x0018, visible: 0x0019, visibleMore: 0x001A },
+  // Op 1 (wifi_join) is refused over WebSocket: sent only where the host lends a credential binding (opts.join).
+  op: { join: 1, save: 2, remove: 3, move: 4, scan: 5 },
   key: { ssid: 2, passphrase: 3, slot: 6, to: 7, generation: 8 },
   nack: { liveNetwork: 0x0308 },
 };
 
+// The hero's claim. The provisioning op is claimed by its role so its generic card leaves the page.
+export const SPEC = {
+  optional: { op: 'action.provision' },
+  channels: { nets: DRAFT.channels.networks },
+  optionalChannels: { names: DRAFT.channels.names, vis: DRAFT.channels.visible, more: DRAFT.channels.visibleMore },
+};
+
+// The ECHO of a scan means accepted, not done: the rows arrive on STATE with a new counter, or not at all.
+export const SCAN_WAIT_MS = 30000;
+// A scan refused for motion is asked again on this interval until motion stops.
+export const MOTION_RETRY_MS = 4000;
+
 // Registered spec-core NACK codes.
-const NACK = { accessDenied: 0x0201, conflict: 0x0300, invalidValue: 0x0302 };
+const NACK = { accessDenied: 0x0201, conflict: 0x0300, invalidValue: 0x0302, interlock: 0x0402 };
 
 export const NO_RSSI = -128;
 export const NO_LIVE = 255;
@@ -86,3 +98,58 @@ export const isConflict = (r) => !!r && !r.ok && r.code === NACK.conflict;
 
 /** The entry's slot in `list` by SSID identity (a slot number moves between reads), or -1. */
 export const slotOf = (list, ssid) => (list && list.named ? list.entries.findIndex((e) => e.ssid === ssid) : -1);
+
+/** RFC-118 detection (MUST): the op select lists scan and the catalog declares the visible-networks channel. */
+export const scanSupported = (op, f) => !!(op && f && f.vis && Array.isArray(op.options) && op.options[DRAFT.op.scan] === 'scan');
+
+/** A refused wifi_join in words: the shell already names NETWORK_JOIN_FAILED and ACCESS_DENIED in r.error. */
+export const joinWords = (r) => (r && r.code === NACK.invalidValue ? refusalWords(r) : (r && r.error) || 'Join failed');
+
+/** A scan refused INTERLOCK: the machine is moving (detail "motion running"). */
+export const isInterlock = (r) => !!r && !r.ok && r.code === NACK.interlock;
+
+/** The scan's refusal in words. */
+export const scanRefusal = (r) => (isInterlock(r) ? 'Machine is moving' : refusalWords(r) || 'Scan failed');
+
+/** The finished-scan counter the visible list carries (0: none yet), or null with no sample. */
+export function scanOf(f, read) {
+  const v = f && f.vis && f.vis.scan ? read(f.vis.scan) : undefined;
+  return Number.isInteger(v) ? v : null;
+}
+
+/**
+ * The visible networks, strongest first, joined across the two halves only when their scan counters
+ * are equal (the counter is a change marker: equality only, never order): [{ssid, rssi, secured, saved}]. `saved` also holds for any SSID in `list` (the saved list read
+ * by readList), so a save shows before the next scan does. The connected entry of `list` leads, listed
+ * by the scan or not: {connected: true}. Null before any sample.
+ */
+export function readVisible(f, read, list = null) {
+  const half = (c) => {
+    if (!c) return [];
+    const count = read(c.count), sec = read(c.secured) | 0, sav = read(c.saved) | 0;
+    if (!Number.isInteger(count)) return [];
+    const rows = [];
+    for (let i = 0; i < Math.min(count, 7); i++) {
+      const ssid = String(read(c['ssid' + i]) ?? '');
+      if (ssid) rows.push({ ssid, rssi: read(c['rssi' + i]), secured: !!((sec >> i) & 1), saved: !!((sav >> i) & 1) });
+    }
+    return rows;
+  };
+  const scan = scanOf(f, read);
+  if (scan == null) return null;
+  const more = f.more && read(f.more.scan) === scan ? half(f.more) : [];
+  // The hub sorts each half; the halves are sorted again as one list.
+  const rows = [...half(f.vis), ...more].sort((a, b) => (b.rssi ?? NO_RSSI) - (a.rssi ?? NO_RSSI));
+  const named = list && list.named ? list.entries : [];
+  for (const r of rows) r.saved = r.saved || named.some((e) => e.ssid === r.ssid);
+  const live = named.find((e) => e.live);
+  if (live) {
+    const at = rows.findIndex((r) => r.ssid === live.ssid);
+    const row = at >= 0 ? rows.splice(at, 1)[0] : { ssid: live.ssid, rssi: live.rssi, secured: !live.open, saved: true };
+    rows.unshift({ ...row, saved: true, connected: true });
+  }
+  return rows;
+}
+
+/** Signal bars, 1 to 4, from dBm. */
+export const bars = (rssi) => (!Number.isInteger(rssi) || rssi === NO_RSSI ? 0 : rssi >= -55 ? 4 : rssi >= -67 ? 3 : rssi >= -78 ? 2 : 1);

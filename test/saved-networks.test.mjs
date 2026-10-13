@@ -8,6 +8,8 @@
  *              removing the live entry is refused with the hub's reason in the card
  *   below      a control session: "2 of 4 saved", no names and no form
  *   fallback   the plugin disabled: the generic cards for the same channels
+ * On a hub that lists networks (RFC-118 draft) the card opens on the picker (test/wifipicker.test.mjs) and
+ * the slot list is under Advanced, which this suite opens first.
  * Screenshots: test/evidence/savednets-configure.png and savednets-below.png (1428x900).
  *
  * Needs a valencesim with the saved-network twin (VALENCESIM=<exe>, Nucleus worktree nets); SKIPs without it.
@@ -114,6 +116,11 @@ async function open({ token = null, disabled = false } = {}) {
   page.on('pageerror', (e) => logs.push('pageerror: ' + e.message));
   await page.goto(PAGE);
   await goTab(page, 'cat11');
+  if (token && !disabled) {
+    await page.waitForFunction(() => document.querySelector('.sn .ui-tile')?.offsetParent || document.querySelector('.wp-foot:not([hidden])'), null, { timeout: 20000 });
+    const adv = page.locator('.wp-foot:not([hidden]) .og-btn', { hasText: 'Advanced' });
+    if (await adv.count()) await adv.click();
+  }
   return { ctx, page, logs, hold };
 }
 
@@ -133,7 +140,7 @@ const cfg = await open({ token: TOKEN });
   ok('the list shows the occupancy and the hub\'s one network, marked live',
     await sum(page) === '1 of 4 saved' && (await titles(page)).join() === 'virtual'
     && /connected/.test(await page.locator('.sn .ui-tile-m').first().innerText()) && /dBm/.test(await page.locator('.sn .ui-tile-m').first().innerText()));
-  ok('the generic cards for these channels yield to it', await page.locator('[data-uid="23:generation"], [data-uid="24:ssid0"]').count() === 0);
+  ok('the generic cards for these channels yield to it', await page.locator('[data-uid^="15:"], [data-uid^="23:"], [data-uid^="24:"], [data-uid^="25:"], [data-uid^="26:"]').count() === 0);
 
   await page.fill('.sn-form input[aria-label="Name"]', 'cafe');
   await page.fill('.sn-form input[aria-label="Passphrase"]', SECRET);
@@ -164,6 +171,8 @@ const cfg = await open({ token: TOKEN });
   // Drag the second row above the first, then back.
   const drag = async (from, toBelow) => {
     const rows = page.locator('.sn .ui-tile-b');
+    // Under the picker the slot list can sit below the fold: the pointer needs it on screen.
+    await page.locator('.sn-list').scrollIntoViewIfNeeded();
     const a = await rows.nth(from).boundingBox(), b = await rows.nth(toBelow).boundingBox();
     await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
     await page.mouse.down();

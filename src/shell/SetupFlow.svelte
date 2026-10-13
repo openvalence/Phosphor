@@ -6,9 +6,11 @@
    * state machine); owns no state of its own.
    *
    * Constraints:
-   * - The wizard is ProvisionWizard over the catalog's setup category, never a
-   *   hub-specific screen. This file draws the steps around it: the list, the
-   *   Pair prompt, the handover.
+   * - The WiFi step is the network picker (the saved-networks plugin's module,
+   *   mounted here with this session's credential binding: Join) where the hub
+   *   lists networks (RFC-118 draft); elsewhere ProvisionWizard over the
+   *   catalog's setup category. Never a hub-specific screen. This file draws
+   *   the steps around it: the list, the Pair prompt, the handover.
    * - The status slot is one fixed line; a state change never moves a button.
    * - Needs-setup hubs sort first; every row still connects.
    */
@@ -18,6 +20,10 @@
   import { machine } from '../model/machine.svelte.js';
   import { provisionCategory } from '../ui/wizard/steps.js';
   import ProvisionWizard from '../ui/ProvisionWizard.svelte';
+  import PluginSlot from '../plugins/PluginSlot.svelte';
+  import { shellApi } from '../plugins/plugins.svelte.js';
+  import { mountNetworkPicker, networkPickerReady, NETWORK_PICKER_SPEC } from '../plugins/factory.js';
+  import { claimRoles } from '../model/roles.js';
   import '../ui/pane.css';
 
   const st = $derived(setup.st);
@@ -26,12 +32,26 @@
   // refused join returns to it with the reason as its note.
   const inWizard = $derived(st.step === SETUP.granted || st.step === SETUP.provisioning
     || (st.step === SETUP.failed && st.retry === 'join'));
+  const picked = $derived(machine.catalog.model ? claimRoles(machine.catalog.model.byRole, NETWORK_PICKER_SPEC) : null);
+  const picker = $derived(!!picked && networkPickerReady(shellApi, picked));
+  // PluginSlot's host surface over the shell-mounted picker; its join presses drive the flow (setupAct).
+  const PICKER = { host: {
+    mountHero: (h, node, f) => mountNetworkPicker(shellApi, node, f, { join: setupAct }),
+    updateHero: (i) => i && i.update(),
+    unmountHero: (i) => i && i.unmount(),
+  } };
   const note = $derived(st.text ? { phase: st.phase, text: st.text } : null);
   const listing = $derived(st.step === SETUP.scanning);
   const again = $derived(st.step === SETUP.failed ? { ask: 'Ask again', handover: 'Try again', connect: 'Reconnect' }[st.retry] : null);
 </script>
 
-{#if inWizard && cat}
+{#if inWizard && picker}
+  <div class="su" role="dialog" aria-labelledby="su-title">
+    <header><h2 id="su-title">Wi-Fi</h2></header>
+    <PluginSlot hero={PICKER} fields={picked} />
+    <div class="acts"><button type="button" class="og-btn" onclick={closeSetup}>Close</button></div>
+  </div>
+{:else if inWizard && cat}
   <ProvisionWizard category={cat} onclose={closeSetup} onact={setupAct} {note} />
 {:else}
   <div class="su" role="dialog" aria-labelledby="su-title">
