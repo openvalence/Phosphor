@@ -196,6 +196,19 @@ Nucleus's own board for the sim side).
   runs the 1.5 s LAN probe, then on no reply the BLE scan, appending its
   rows; Scan Bluetooth stays as the manual backup for a config-mode hub
   (BLE only, SPEC §13.4.1) beside a WiFi hub. The launch probe is LAN only.
+- **Set up a machine** (ph-e8f2; RFC-114 and RFC-117 drafts, built as if
+  accepted). A Bluetooth-only hub whose scan response says config mode or no
+  WS is marked "needs setup" (`needsSetup`, `src/shell/ble-setup.js`; an
+  unread scan response is unknown, never offline). The Hubs pane's Set up a
+  machine (or a row's Set up) opens `SetupFlow.svelte`: BLE connect with the
+  automatic WS hop off, a bare PAIR_REQ asking `configure`, the "Press Pair
+  on the machine" prompt while the ask is pending (120 s, then "ask again"),
+  then ProvisionWizard over the `setup` category with `provision` actions
+  waiting the §13.9 join timeout and reporting the outcome in words
+  (`src/model/provision.js`). On the ECHO the token is stored for the WS
+  origin too and the flow retries the WS connect for 30 s, falling back to UDP
+  discovery by `hub_instance_id`. Credentials live only in the wizard's
+  payload inputs and the one INTENT.
 - The UI kernel stays publishable as the community "webui framework" project
   regardless of §8's outcome.
 

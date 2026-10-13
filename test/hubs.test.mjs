@@ -7,6 +7,7 @@
  *   empty LAN result starts the BLE scan exactly once and its hit lists BLE.
  * - Scan Bluetooth works on its own beside LAN rows (restated 2026-10-03).
  * - A hub found both ways is one row, connecting over LAN (found.js).
+ * - Set up a machine lists Bluetooth hubs with no WiFi marked needs setup.
  * - ph-dwy: a remembered hub on 8282 redials 8282 at launch; the host field
  *   keeps the dialed port; a LAN reply moves a saved hub, port included, and
  *   its Connect then dials the new port.
@@ -245,6 +246,23 @@ console.log('\n--- Scan Bluetooth on its own: a config-mode hub beside a WiFi hu
   const r = await foundRows(page);
   ok('the button runs one Bluetooth scan after a LAN hit', (await page.evaluate(() => window.__bleScans)) === 1);
   ok('its row appends after the LAN rows, marked BLE', r.map((x) => x.via).join() === 'LAN,LAN,BLE', r.map((x) => x.via).join(' | '));
+  ok('no page errors', errors.length === 0, errors.join(' | '));
+  await ctx.close();
+}
+
+console.log('\n--- Set up a machine: the overlay lists a hub with no WiFi, marked, and closes ---');
+{
+  const { ctx, page, errors } = await boot({ shell_host: '10.0.0.9', shell_mode: 'ws', 'phosphor.prefs': JSON.stringify({ v: 1, reconnect: false }) }, []);
+  await page.locator('section[aria-labelledby="hp-find"] button', { hasText: /^Set up a machine$/ }).click();
+  await page.waitForSelector('.su .pane-list li', { timeout: 8000 });
+  const row = await page.$eval('.su .pane-list li', (l) => l.textContent.replace(/\s+/g, ' ').trim());
+  ok('the Bluetooth hit lists with the needs-setup mark', /nucleus-p4/.test(row) && /needs setup/.test(row), row);
+  await page.click('.su .pane-list li button');
+  await page.waitForFunction(() => /nucleus-p4/.test(document.querySelector('.su .pane-status')?.textContent || ''), null, { timeout: 5000 });
+  ok('Set up moves to connecting, the hub named', true);
+  await page.click('.su .acts button:has-text("Close")');
+  await page.waitForSelector('.su', { state: 'detached', timeout: 3000 }).catch(() => {});
+  ok('Close removes the overlay', (await page.locator('.su').count()) === 0);
   ok('no page errors', errors.length === 0, errors.join(' | '));
   await ctx.close();
 }
