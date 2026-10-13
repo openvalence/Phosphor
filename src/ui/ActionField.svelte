@@ -12,16 +12,21 @@
    *   hub's ECHO, never the tap, and lasts as long as its afterglow.
    * - Payload inputs are the operator's draft for the NEXT press, not device
    *   state; an empty input omits its key and the hub decides.
+   * - A provision op's answer is deferred until the join concludes (SPEC
+   *   §13.9), so the ladder and the intent wait that long, not 2 s.
+   * - onact reports a press to a host (the setup flow): start, then done with
+   *   runAction's result.
    */
   import { untrack } from 'svelte';
   import { machine, getSession } from '../model/machine.svelte.js';
   import { runAction, statusOf, shadowOf } from '../model/shadow.svelte.js';
   import { labelFor, optionLabel } from '../model/format.js';
-  import { needsConfirm, confirmCopy } from '../model/actions.js';
+  import { needsConfirm, confirmCopy, actionTag } from '../model/actions.js';
   import { askConfirm } from './confirm.svelte.js';
   import { CBOR_FIELD } from '../../../Valence/clients/js/frames.js';
+  import { ACTION_TAG, LIMITS } from '../../../Valence/clients/js/index.js';
 
-  let { action, titled = false } = $props();   // titled: the composite supplies the heading
+  let { action, titled = false, onact = null } = $props();   // titled: the composite supplies the heading
 
   const opLabel = (i) => optionLabel(action, i).replace(/_/g, ' ');
   const ops = $derived(action.options
@@ -71,7 +76,10 @@
     const fields = payloadFields();
     // A secret is sent once and never kept on screen (RFC-009.4).
     for (const p of action.payload || []) if (p.secret) delete draft[p.key];
-    runAction(action, v, fields);
+    const deferred = actionTag(action) === ACTION_TAG.provision;
+    onact?.({ phase: 'start', action });
+    const r = await runAction(action, v, fields, deferred ? { answerMs: LIMITS.provision_join_timeout_ms + 5000 } : undefined);
+    onact?.({ phase: 'done', action, ...r });
   }
 
   const statusText = $derived(

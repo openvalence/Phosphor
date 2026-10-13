@@ -84,6 +84,7 @@ import { motionTarget, createMotionDoor, latchWords } from './motion.js';
 import { noteSend } from './health/health.svelte.js';
 import { noteEstopPress, actionTag } from './actions.js';
 import { hubKey } from './prefs.js';
+import { provisionRefusal, isProvisioning } from './provision.js';
 import { noteStoreOp } from '../ui/widgets/roster.js';
 import { NACK, NACK_NAME, LOG_LEVEL_NAME, ACTION_TAG } from '../../../Valence/clients/js/index.js';
 
@@ -330,7 +331,7 @@ function fail(sh, why, err) {
  * can skip a rung. The timers live on the record and the next write clears
  * them, so they never touch a newer write. Returns the stamp.
  */
-function begin(sh, value) {
+function begin(sh, value, faultMs = FAULT_MS) {
   clearTimers(sh);
   sh.status = STATUS.pending;
   sh.requested = value;
@@ -343,7 +344,7 @@ function begin(sh, value) {
   }, OVERDUE_MS);
   sh._t2 = setTimeout(() => {
     if (sh.status === STATUS.pending || sh.status === STATUS.overdue) fail(sh, NO_ANSWER);
-  }, FAULT_MS);
+  }, faultMs);
   return sh.seq;
 }
 
@@ -405,13 +406,16 @@ export function setSettledHook(fn) {
  * @param {Object<number, *>} [extraFields] additional {key: value} pairs on
  *        the SAME intent (e.g. session-admin's `instance_id`/`role` alongside
  *        `op` — an admin decision is one atomic intent, not three).
- * @returns {Promise<{ok: boolean, error?: string, applied?: Object}>}
+ * @param {{answerMs?: number}} [o] answerMs: the longest the hub may take to
+ *        answer (a deferred ECHO, SPEC §13.9); the ladder and the intent wait
+ *        that long instead of FAULT_MS and the session's 3 s.
+ * @returns {Promise<{ok: boolean, error?: string, applied?: Object, code?: number, detail?: string}>}
  */
-export async function runAction(action, value = 1, extraFields = null) {
+export async function runAction(action, value = 1, extraFields = null, o = {}) {
   noteEstopPress(action, value);
   const shadowKey = keyOf('act', action.channelId, action.key);
   const sh = ensureShadow(shadowKey, action.channelId, labelFor(action));
-  const seq = begin(sh, value);
+  const seq = begin(sh, value, o.answerMs);
 
   const session = getSession();
   if (!session || !session.isLive) {
@@ -420,7 +424,7 @@ export async function runAction(action, value = 1, extraFields = null) {
   }
   const fields = extraFields ? { ...extraFields, [action.key]: value } : { [action.key]: value };
   try {
-    const echo = await session.sendIntent(action.channelId, fields);
+    const echo = await session.sendIntent(action.channelId, fields, o.answerMs ? { timeoutMs: o.answerMs } : undefined);
     const applied = (echo && echo.applied) || {};
     if (actionTag(action) === ACTION_TAG.store) {
       noteStoreOp(machine.catalog.entries, action, value, { ...fields, ...applied },
@@ -432,9 +436,9 @@ export async function runAction(action, value = 1, extraFields = null) {
     }
     return { ok: true, applied };
   } catch (err) {
-    const msg = whyOf(err);
+    const msg = (isProvisioning(action.channelId) && provisionRefusal(err)?.text) || whyOf(err);
     if (sh.seq === seq) fail(sh, msg, err);
-    return { ok: false, error: msg };
+    return { ok: false, error: msg, code: err?.code, detail: err?.detail };
   }
 }
 

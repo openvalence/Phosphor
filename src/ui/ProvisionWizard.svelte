@@ -11,6 +11,8 @@
    *   by pointer and by Tab mid-ceremony (§8.4 stop row).
    * - Closing hands back to the normal UI; the same fields live on their
    *   category page, and writes still in flight stay visible there.
+   * - A host (the BLE setup flow) may pass onact, which hears every action
+   *   press, and note, one status line it owns: the join outcome in words.
    */
   import { tick } from 'svelte';
   import Field from './Field.svelte';
@@ -20,7 +22,7 @@
   import { wizardSteps } from './wizard/steps.js';
   import { confirmUi } from './confirm.svelte.js';
 
-  let { category, onclose } = $props();
+  let { category, onclose, onact = null, note = null } = $props();
 
   const steps = $derived(wizardSteps(category));
   let at = $state(0);
@@ -74,10 +76,11 @@
     <h3>{step.title}</h3>
     <div class="body">
       {#each step.fields as f (f.uid)}
-        {#if f.widget === WIDGET.action}<ActionField action={f} />{:else}<Field field={f} />{/if}
+        {#if f.widget === WIDGET.action}<ActionField action={f} {onact} />{:else}<Field field={f} />{/if}
       {/each}
     </div>
-    {#if REASON[status]}<p class="status" role="status">{REASON[status]}</p>{/if}
+    {#if note}<p class="status" role="status" data-phase={note.phase}>{note.text}</p>
+    {:else if REASON[status]}<p class="status" role="status">{REASON[status]}</p>{/if}
   {/if}
 
   <div class="acts">
@@ -117,6 +120,8 @@
   h3 { margin: 0; font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-dim); }
   .count { color: var(--ink-faint); font-size: .8rem; }
   .note, .status { margin: 0; color: var(--ink-dim); font-size: .875rem; }
+  .status[data-phase='fault'] { color: var(--warn-ink); }
+  .status[data-phase='settled'] { color: var(--reality); }
   .rail { display: flex; flex-wrap: wrap; gap: var(--sp-3); margin: 0; padding: 0; list-style: none; }
   .rail li.on .og-btn { color: var(--ink-hi); border-color: var(--line-3); }
   .body { display: grid; gap: var(--sp-4); }
