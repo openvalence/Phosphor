@@ -21,6 +21,10 @@
  * - A live BLE session hops to WS once, automatically, when WELCOME offers
  *   an endpoint (SPEC 13.1 SHOULD). It hops only after a probe socket
  *   opens, and falls back to BLE if the WS session is not live in time.
+ * - Set up a machine (ble-setup.js) rides the same one session: a BLE connect
+ *   with the automatic WS hop off, because the flow hops itself once the hub
+ *   has joined WiFi. The wizard collects the credentials; this file never
+ *   sees them.
  * - shell_mode and shell_host keep their names, and shell_host stays a bare
  *   host: settings-pane.js reads both. The dialed port rides in shell_port
  *   (ph-dwy).
@@ -29,10 +33,13 @@ import { untrack } from 'svelte';
 import { invoke } from '@tauri-apps/api/core';
 import { startScan, stopScan, checkPermissions } from '@mnlphlp/plugin-blec';
 import { WS_SUBPROTOCOL } from '../../../Valence/clients/js/generated/registry_vocab.js';
-import { machine, connect, disconnect, hostLabel } from '../model/machine.svelte.js';
+import { machine, connect, disconnect, hostLabel, getSession } from '../model/machine.svelte.js';
+import { setPairedToken } from '../../../Valence/clients/js/index.js';
 import { savedHubs } from '../model/prefs.js';
 import { makeBleWebSocket, BLE_SERVICE, MTU_FLOOR, bleStats, holdForMigration, releaseHeld } from './ble-ws.js';
 import { upgradeTarget, advFlags } from './ble-adv.js';
+import { createSetupFlow, setupFirst, SETUP } from './ble-setup.js';
+import { isProvisioning } from '../model/provision.js';
 import { mergeFound, learnBleId } from './found.js';
 import { lan } from './lan.svelte.js';
 
@@ -241,4 +248,99 @@ async function hop(t, dev) {
   if (live) { hubs.note = 'Upgraded to ' + url; return; }
   hubs.note = 'WiFi upgrade failed, back on Bluetooth';
   connectBle(dev);
+}
+
+// ---- Set up a machine (ble-setup.js) ----------------------------------------
+
+const SETUP_WELCOME_MS = 20000;
+
+/** The setup overlay's state: open flag, the chosen hub, and the flow's state. */
+export const setup = $state({ open: false, dev: null, st: null, devs: [] });
+
+const flow = createSetupFlow({
+  onChange: (s) => { setup.st = s; },
+  setToken: (origin, token) => { setPairedToken(origin, token); },
+  reach: wsReachable,
+  connect: async ({ host, port }) => {
+    if (hubs.mode === 'ble' && machine.link.phase === 'live') holdForMigration();
+    connectWs(host, port);
+    const live = await untilLive(WS_LIVE_MS);
+    await releaseHeld();
+    return live;
+  },
+  hubId: () => machine.link.hubIdentity?.hub_instance_id || null,
+  rediscover: async (id) => {
+    const hit = (await invoke('discover_hubs', { timeoutMs: LAN_SCAN_MS })).find((h) => h.hub_instance_id === id);
+    return hit ? { host: hit.ip, port: hit.ws_port } : null;
+  },
+});
+setup.st = flow.state;
+
+$effect.root(() => {
+  // Needs-setup hubs first; rows keep scan order inside each group.
+  $effect(() => {
+    setup.devs = setupFirst(hubs.found.filter((f) => f.ble).map((f) => f.ble), (d) => advFlags(d));
+  });
+  // A link that never reaches WELCOME or gives up mid-ceremony is the flow's failure.
+  $effect(() => {
+    const p = machine.link.phase;
+    if (!setup.open || setup.st.step !== SETUP.connecting) return;
+    if (p === 'retrying' || p === 'failed') untrack(() => flow.failLink('Bluetooth connect failed'));
+  });
+});
+
+/** Open the overlay and start a Bluetooth scan for hubs. */
+export async function openSetup() {
+  setup.open = true;
+  flow.scanning();
+  if (!hubs.scanning && !hubs.finding) await scan();
+}
+
+/** Close the overlay; a ceremony that did not finish drops its Bluetooth link. */
+export function closeSetup() {
+  const step = setup.st.step;
+  flow.stop();
+  setup.open = false;
+  setup.dev = null;
+  if (step !== SETUP.done && step !== SETUP.handingOver && step !== SETUP.joined) disconnect();
+}
+
+/** Connect to one hub over Bluetooth and ask configure once WELCOME lands. */
+export async function startSetup(dev) {
+  setup.open = true;
+  setup.dev = dev;
+  flow.stop();
+  flow.connecting(dev.name || dev.address);
+  upgradeTried = true;
+  await connectBle(dev);
+  const s = getSession();
+  if (!s) return;
+  const timer = setTimeout(() => {
+    off();
+    if (flow.state.step === SETUP.connecting) flow.failLink('No answer over Bluetooth');
+  }, SETUP_WELCOME_MS);
+  const off = s.on('welcome', () => {
+    clearTimeout(timer);
+    off();
+    flow.attach(s);
+  });
+}
+
+/** The failed state's retry; a dropped link reconnects to the same hub. */
+export function retrySetup() {
+  if (flow.retry() === 'connect' && setup.dev) startSetup(setup.dev);
+}
+
+/** Back to the hub list from a failed or finished state. */
+export function backToList() {
+  flow.stop();
+  setup.dev = null;
+  disconnect();
+  flow.scanning();
+}
+
+/** The wizard's action presses: only the provisioning op belongs to the flow. */
+export function setupAct(e) {
+  if (!isProvisioning(e.action.channelId)) return;
+  if (e.phase === 'start') flow.joinBegin(); else flow.joinResult(e);
 }

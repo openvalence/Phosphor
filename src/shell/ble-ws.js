@@ -8,9 +8,10 @@
  *   implements the exact WebSocket subset session.js touches (binaryType,
  *   send, close, onopen/onmessage/onclose/onerror, readyState) so it can be
  *   passed as createSession({ WebSocketImpl }).
- * - One GATT notification = one Valence frame; one write = one frame
- *   (SPEC §13.4: no fragmentation — an oversized frame is a hard error,
- *   never split).
+ * - One GATT notification or write = one Valence frame or one §5.6 fragment
+ *   (ble-frag.js). Control frames over ATT_MTU-3 are split on send and
+ *   reassembled on receive; an oversized STATE or STREAM frame is dropped
+ *   with bleStats.lastError set, never split.
  * - Writes are chained on a queue: frame ORDER is protocol-critical and
  *   concurrent plugin calls must not reorder HELLO/SUBSCRIBE/INTENT.
  * - UUIDs are registry `ble_identity` values (same source as the firmware's
@@ -25,6 +26,7 @@ import {
   getMtu,
   setAndroidMtu,
 } from '@mnlphlp/plugin-blec';
+import { Reassembler, fragmentFrame } from './ble-frag.js';
 
 export const BLE_SERVICE = '56414c45-4e43-4531-8000-000000000001';
 const CHAR_C2H_WRITE = '56414c45-4e43-4531-8000-000000000002';
@@ -78,6 +80,7 @@ export function makeBleWebSocket(address) {
       this._dead = false;
       this._writeQ = Promise.resolve();
       this._held = false;
+      this._rx = new Reassembler();
       bleStats.rx = 0;
       bleStats.tx = 0;
       bleStats.mtu = 0;
@@ -93,7 +96,9 @@ export function makeBleWebSocket(address) {
         await blecSubscribe(CHAR_H2C_NOTIFY, BLE_SERVICE, (data) => {
           if (this._dead || !this.onmessage) return;
           bleStats.rx++;
-          this.onmessage({ data: new Uint8Array(data).buffer });
+          const r = this._rx.accept(new Uint8Array(data), performance.now());
+          if (r?.error) bleStats.lastError = r.error;
+          else if (r) this.onmessage({ data: r.frame.buffer.slice(r.frame.byteOffset, r.frame.byteOffset + r.frame.byteLength) });
         });
         this.mtu = bleStats.mtu = await getMtu().catch(() => 0);
         if (this._dead) { blecDisconnect().catch(() => {}); return; }
@@ -126,17 +131,22 @@ export function makeBleWebSocket(address) {
         : ArrayBuffer.isView(buf) ? new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength)
         : null;
       if (!bytes) { this._fail(new Error('ble-ws: non-binary send')); return; }
-      const arr = Array.from(bytes);
+      // Unknown MTU (0) sends whole; otherwise the link payload is MTU-3.
+      const frames = this.mtu > 3 ? fragmentFrame(bytes, this.mtu - 3) : [bytes];
+      if (!frames) { bleStats.lastError = 'ble-ws: frame over the link payload'; return; }
       // withoutResponse, deliberately: the firmware's RX char is WRITE|WRITE_NR,
       // and Android's write-WITH-response completion callback proved lossy on
       // real hardware (one lost ATT ack jammed the one-op-in-flight GATT queue
       // forever — 45 retry-failures on a 12-byte frame, phone field test
       // 2026-07-28). Unacked c2h mirrors the unacked h2c NOTIFY (§13.1); frame
       // order is still kept by the ATT bearer + this promise chain.
-      this._writeQ = this._writeQ.then(
-        () => blecSend(CHAR_C2H_WRITE, arr, 'withoutResponse', BLE_SERVICE),
-      ).then(() => { bleStats.tx++; })
-        .catch((e) => this._fail(e));
+      for (const frame of frames) {
+        const arr = Array.from(frame);
+        this._writeQ = this._writeQ.then(
+          () => blecSend(CHAR_C2H_WRITE, arr, 'withoutResponse', BLE_SERVICE),
+        ).then(() => { bleStats.tx++; })
+          .catch((e) => this._fail(e));
+      }
     }
 
     close() {

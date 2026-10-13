@@ -21,7 +21,7 @@
 import {
   PACKED, UI_RANK, UI_ARCHETYPE, VALUE_ASPECT, UI_CATEGORY, SAFETY_OP, FIELD_ROLE, LIMITS,
 } from '../../../Valence/clients/js/index.js';
-import { ROLE, ROLE_LABEL, isActionRole } from './roles.js';
+import { ROLE, ROLE_LABEL, isActionRole, indexChannels } from './roles.js';
 import { isPersistentAction } from './actions.js';
 
 // ---------------------------------------------------------------------------
@@ -631,6 +631,7 @@ export function buildSettingsModel(entries) {
       return { ...c, groups: groups.sort((a, b) => at(a) - at(b)) };
     });
 
+  indexChannels(byRole, fields);
   return { categories, actions, looseActions, byRole, fields };
 }
 

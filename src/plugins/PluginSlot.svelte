@@ -57,12 +57,10 @@
       if (!f || !f.uid) return;
       now.push(displayValue(f, machine.samples[f.channelId]), statusOf(f), staleReason(freshness(f.channelId)));
     };
+    // A claim's value is a field, or a list or map of them (instances, channels): walked to its fields.
+    const walk = (f) => { if (f && f.uid) watch(f); else if (f && typeof f === 'object') for (const j of Object.values(f)) walk(j); };
     const fs = sameFields;
-    for (const k in fs) {
-      const f = fs[k];
-      if (Array.isArray(f)) for (const m of f) for (const j in m) watch(m[j]);
-      else watch(f);
-    }
+    for (const k in fs) walk(fs[k]);
     now.push(machine.link.phase, machine.link.roles, machine.link.stale, machine.link.sessionId,
       machine.safety, machine.samples[CH_CONTROL_OWNER], inst);
     if (now.length === seen.length && now.every((v, k) => same(v, seen[k]))) return;

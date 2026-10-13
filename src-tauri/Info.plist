@@ -4,7 +4,7 @@
 <dict>
   <!-- macOS kills an app that touches these without a usage string (TCC). -->
   <key>NSBluetoothAlwaysUsageDescription</key>
-  <string>Phosphor scans for a Valence hub over Bluetooth when the network scan finds none.</string>
+  <string>Phosphor finds a Valence hub over Bluetooth and sets up its WiFi.</string>
   <key>NSLocalNetworkUsageDescription</key>
   <string>Phosphor finds and talks to Valence hubs on your local network.</string>
 </dict>

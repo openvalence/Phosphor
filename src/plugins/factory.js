@@ -11,10 +11,13 @@ import * as arcade from '../../plugins/factory/arcade/index.js';
 import arcadeManifest from '../../plugins/factory/arcade/manifest.json' with { type: 'json' };
 import * as quickAccess from '../../plugins/factory/quick-access/index.js';
 import quickAccessManifest from '../../plugins/factory/quick-access/manifest.json' with { type: 'json' };
+import * as savedNetworks from '../../plugins/factory/saved-networks/index.js';
+import savedNetworksManifest from '../../plugins/factory/saved-networks/manifest.json' with { type: 'json' };
 
 export const FACTORY = [
   { manifest: advancedPenetrationManifest, module: advancedPenetration },
   { manifest: funscriptPlayerManifest, module: funscriptPlayer },
   { manifest: quickAccessManifest, module: quickAccess },
   { manifest: arcadeManifest, module: arcade },
+  { manifest: savedNetworksManifest, module: savedNetworks },
 ];
