@@ -154,6 +154,8 @@ const NAME_BINDING = [
 
 const fieldNames = deviceFieldNames();
 const harvestedCount = fieldNames.size;
+// Spec-core wire keys the catalog also declares (SPEC 13.8 DISCOVER_REPLY, 13.9 provisioning ECHO): protocol, not device.
+for (const n of ['ws_port']) fieldNames.delete(n);
 for (const n of RETIRED_NAMES) fieldNames.add(n);
 const findings = [];
 
