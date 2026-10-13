@@ -601,13 +601,15 @@ ok('an unknown role is carried, not rejected', weird.fields[0].role === 'some.fu
   // renderer never makes) plus the preset store's CRUD verb, which is
   // uncategorized and so rides Overview until a generator-advanced widget
   // claims it (ph-vdk.11).
+  // The draft provisioning verb (0x000F, setup category) draws as a generic card too;
+  // the wizard drives it, the settings tab is its fallback.
   const real = buildSettingsModel(decodeCatalog(new Uint8Array(readFileSync(
     new URL('./fixtures/valencesim-catalog.bin', import.meta.url)))));
   const generic = real.categories.flatMap((c) => c.groups.flatMap((g) => g.fields))
     .filter((f) => f.widget === WIDGET.action);
   const drawn = generic.map((f) => f.role).concat(real.looseActions.map((a) => a.role));
   ok('fixture hub: safety/home verbs are not duplicated onto settings tabs',
-     !drawn.some((r) => r !== 'action.store'), drawn.join(',') || 'none');
+     !drawn.some((r) => r !== 'action.store' && r !== 'action.provision'), drawn.join(',') || 'none');
   ok('fixture hub: the settings-trial verb is never a generic trigger',
      real.actions.some((a) => a.role === 'action.trial') && !drawn.includes('action.trial'), drawn.join(',') || 'none');
   ok('fixture hub: the preset store verb is reachable exactly once',
