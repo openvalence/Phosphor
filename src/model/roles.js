@@ -334,7 +334,33 @@ export function claimRoles(byRole, spec) {
     out[name] = list;
     for (const m of list) for (const k of keys) out.claimed.add(m[k].uid);
   }
+  // `channels: { key: id }` and `optionalChannels`: a whole channel as {fieldName: field}, for a channel
+  // the registry gives no roles yet. Do not use for a registered role: bind by role (RENDERING law 6).
+  // TODO(RFC-116): the draft network channels are the only user; roles replace this when it lands.
+  for (const [optional, group] of [[false, spec.channels], [true, spec.optionalChannels]]) {
+    for (const [name, id] of Object.entries(group || {})) {
+      const list = (CHANNEL_FIELDS.get(byRole) || new Map()).get(id);
+      if (!list) {
+        if (!optional) return null;
+        out[name] = null;
+        continue;
+      }
+      out[name] = Object.fromEntries(list.map((f) => [f.name, f]));
+      for (const f of list) out.claimed.add(f.uid);
+    }
+  }
   return out;
+}
+
+// Every field by channel id, per role index (settings.js indexChannels), for the claim spec's `channels`.
+const CHANNEL_FIELDS = new WeakMap();
+export function indexChannels(byRole, fields) {
+  const m = new Map();
+  for (const f of fields) {
+    if (!m.has(f.channelId)) m.set(f.channelId, []);
+    m.get(f.channelId).push(f);
+  }
+  CHANNEL_FIELDS.set(byRole, m);
 }
 
 /**

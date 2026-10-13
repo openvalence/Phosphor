@@ -35,6 +35,7 @@ const ALLOW = [
   ['src/ui/TopStrip.svelte', '+ 64px +', 'the strip clears the 64 px mini rail'],
   ['funscript-player/', 'grid-template-columns', 'the player is its own composition (compositionOf), rows of ch-sized label, slider and value tracks'],
   ['funscript-player/timeline.js', 'inset: -8px 0', 'a pointer hit extension of the 24 px strip'],
+  ['saved-networks/index.js', 'grid-template-columns: 2.25rem', 'the kit tile 16:9 thumbnail column narrowed to a slot number'],
 ];
 
 const files = [];

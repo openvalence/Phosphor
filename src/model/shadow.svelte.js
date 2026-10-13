@@ -135,9 +135,11 @@ export const lastRefusal = $state({
 });
 
 const NO_ANSWER = 'no answer from the hub';
+// NACK codes the generated tables lack. TODO(RFC-116): draft number; drop the row when the registry has it.
+const DRAFT_NACK_NAME = { 0x308: 'LIVE_NETWORK' };
 const NOT_TRIALABLE = 'not trialable here, write directly';
 /** A fault's words: only a NACK reads as the hub refusing (ph-xec). */
-const whyOf = (err) => (err && err.code != null ? 'refused: ' + (err.name || NACK_NAME[err.code]) : NO_ANSWER);
+const whyOf = (err) => (err && err.code != null ? 'refused: ' + (DRAFT_NACK_NAME[err.code] || err.name || NACK_NAME[err.code]) : NO_ANSWER);
 
 function noteRefusal(err, why, channelId, label) {
   lastRefusal.code = (err && err.code != null) ? err.code : null;
@@ -409,7 +411,8 @@ export function setSettledHook(fn) {
  * @param {{answerMs?: number}} [o] answerMs: the longest the hub may take to
  *        answer (a deferred ECHO, SPEC §13.9); the ladder and the intent wait
  *        that long instead of FAULT_MS and the session's 3 s.
- * @returns {Promise<{ok: boolean, error?: string, applied?: Object, code?: number, detail?: string}>}
+ * @returns {Promise<{ok: boolean, error?: string, code?: number|null, detail?: string|null, applied?: Object}>}
+ *          a refusal carries the NACK's own `code` and `detail`, null for a timeout or no link
  */
 export async function runAction(action, value = 1, extraFields = null, o = {}) {
   noteEstopPress(action, value);
@@ -438,7 +441,7 @@ export async function runAction(action, value = 1, extraFields = null, o = {}) {
   } catch (err) {
     const msg = (isProvisioning(action.channelId) && provisionRefusal(err)?.text) || whyOf(err);
     if (sh.seq === seq) fail(sh, msg, err);
-    return { ok: false, error: msg, code: err?.code, detail: err?.detail };
+    return { ok: false, error: msg, code: err && err.code != null ? err.code : null, detail: (err && err.detail) || null };
   }
 }
 
