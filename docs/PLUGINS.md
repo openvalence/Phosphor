@@ -48,7 +48,11 @@ export function activate(api) {
 A hero plugs into the **same claim pass** as the built-in heroes
 (`src/model/roles.js` `claimAll`, called from `src/ui/heroes.js`): built-ins
 first, then active plugins. `require` must all resolve or the hero declines
-and its fields stay generic; claimed fields leave the generic tree unless the
+and its fields stay generic. A spec may also carry `channels: {key: id}` and
+`optionalChannels`, claiming a whole channel by id as `{fieldName: field}` for
+a channel the registry gives no roles yet (the RFC-116 draft network channels,
+`saved-networks`); a registered role is never claimed this way, and roles
+replace the ids when the RFC registers them; claimed fields leave the generic tree unless the
 hero sets `absorb: false` (a read-only view that must not take a control
 away; the stroke-gauge example does). Plugin
 heroes are **card zone only**: they render as home modules and as cards on
@@ -388,6 +392,7 @@ and moved on a reorder, so a control keeps its in-flight write.
 | `age(field)` | ms since the field's channel last reported: since its hub sample time where the channel carries a `telemetry.sample_time` field (RFC-113 draft), else since its arrival (dim when stale, RENDERING §13 law 8) | **freeze candidate** |
 | `catalog()` | the whole settings model (categories, `byRole`, `fields`, `actions`) for channel-bound plugins | **freeze candidate** |
 | `write(field, value)` | routes to `writeSetting` / `sendCommand` / `runAction` by field shape. Needs `intent` | **freeze candidate** |
+| `write`'s result on a refused action | `{ok: false, error, code, detail}`: the hub's NACK code and detail string, both null for a timeout or no link | experimental |
 | `write`'s third argument `payload` and its confirm | an action's other schema keys, `{key: value}`. The host renders the confirm first (`source.background_run` enable, a confirm-tagged or destructive op, an `action.store` delete) and a cancel resolves `{ok: false, error: 'canceled'}` | experimental |
 | `writeTrial(field, value)` | a setting applied live and not stored until `commitTrial()` (Valence RFC-099, SPEC §9.3); same shadow lifecycle as `write`. `{ok: false, error}` on a hub without settings-trial or a field that is not a setting. Needs `intent` | experimental |
 | `commitTrial()` / `revertTrial()` | a Promise of `{ok, error?}`: store, or put back, every trial value this client holds. Needs `intent` | experimental |
@@ -767,6 +772,18 @@ An example is documentation. It is never loaded by default; install one by
 copying its folder.
 
 Shipped:
+
+- `plugins/factory/saved-networks/`: the Network page's saved Wi-Fi list
+  (RFC-116 draft: provisioning save, remove and move, the `networks` and
+  `network-names` STATE channels). At configure: names, signal in dBm and a
+  `connected` mark on the live entry; Add (name and a write-only passphrase,
+  cleared at send), Remove (asks first: the host's confirm where the catalog
+  flags the op destructive, else a two-tap confirm), and drag or the arrows to
+  reorder. Below configure: `N of M saved` only, since a lower tier cannot
+  subscribe to the names. Every write carries the generation last read; a
+  stale one is retried once on the next list, the entry found again by name.
+  The hub's refusal is the card's one status line. With the plugin off the
+  generic cards show the same channels. The draft numbers live in `wire.js`.
 
 - `plugins/factory/advanced-penetration/`: the pattern card. It substitutes
   both RENDERING §10 `generator-advanced` and `pattern-panel` (`replaces:
