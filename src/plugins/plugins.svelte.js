@@ -21,7 +21,7 @@ import {
 } from '../model/shadow.svelte.js';
 import { bumpAll, seq, watch } from '../model/changes.js';
 import { WIDGET, isFieldEnabled, modTargetUid } from '../model/settings.js';
-import { needsConfirm, settingNeedsConfirm, confirmCopy, railOwners, railOwned } from '../model/actions.js';
+import { needsConfirm, settingNeedsConfirm, confirmCopy, railOwners, railOwned, actionTag } from '../model/actions.js';
 import { streamGate, conflictWords, latchWords } from '../model/motion.js';
 import { askConfirm } from '../ui/confirm.svelte.js';
 import { pendingSlots, enumerateStore, storeOfRoster, rosterOfStore, rosterCount, slotHint } from '../ui/widgets/roster.js';
@@ -31,7 +31,7 @@ import { KIT } from './kit.js';
 import { hubKey } from '../model/prefs.js';
 import { view } from '../model/viewport.svelte.js';
 import {
-  LOG_LEVEL_NAME, CHANNEL_CLASS, CH_CONTROL_OWNER, CH_SETTINGS_TRIAL, FIELD_ROLE, TRIAL_OP,
+  LOG_LEVEL_NAME, CHANNEL_CLASS, CH_CONTROL_OWNER, CH_SETTINGS_TRIAL, FIELD_ROLE, TRIAL_OP, ACTION_TAG, LIMITS,
 } from '../../../Valence/clients/js/index.js';
 import { STORE_OP } from '../../../Valence/clients/js/generated/registry_vocab.js';
 
@@ -68,7 +68,9 @@ export async function write(field, value, payload) {
     if (needsConfirm(field, value) && !(await askConfirm(confirmCopy(field, value)))) return CANCELED;
     const roster = rosterOf(field);
     const before = roster && machine.samples[roster.id];
-    const r = await runAction(field, value, payload || null);
+    // A provision op's answer is deferred until a join concludes (SPEC 13.9), as ActionField waits.
+    const r = await runAction(field, value, payload || null,
+      actionTag(field) === ACTION_TAG.provision ? { answerMs: LIMITS.provision_join_timeout_ms + 5000 } : undefined);
     if (roster && r && r.ok && value !== STORE_OP.load) storeOpRoster.set(roster.id, before);
     return r;
   }
@@ -275,6 +277,15 @@ $effect.root(() => {
 export function currentHub() {
   return machine.link.host && machine.catalog.ready ? hubKey(machine.link.hubIdentity, machine.link.host, machine.link.port) : null;
 }
+
+/** The plugin API subset (host.js) the shell lends a factory widget it mounts itself: the setup flow's network picker. */
+export const shellApi = Object.freeze({
+  ui: KIT,
+  field: (role) => machine.catalog.model?.byRole?.get(role)?.[0] || null,
+  value: (field) => (field ? displayValue(field, machine.samples[field.channelId]) : undefined),
+  gate: (field) => (field ? gate(field) : ''),
+  write,
+});
 
 /** Active plugin heroes, ready for heroes.js's claim pass. */
 export function pluginHeroes() {

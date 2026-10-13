@@ -14,6 +14,9 @@ import quickAccessManifest from '../../plugins/factory/quick-access/manifest.jso
 import * as savedNetworks from '../../plugins/factory/saved-networks/index.js';
 import savedNetworksManifest from '../../plugins/factory/saved-networks/manifest.json' with { type: 'json' };
 
+// The setup flow mounts the network picker itself, with its credential binding (SetupFlow.svelte).
+export { mountPicker as mountNetworkPicker, pickerReady as networkPickerReady, SPEC as NETWORK_PICKER_SPEC } from '../../plugins/factory/saved-networks/index.js';
+
 export const FACTORY = [
   { manifest: advancedPenetrationManifest, module: advancedPenetration },
   { manifest: funscriptPlayerManifest, module: funscriptPlayer },

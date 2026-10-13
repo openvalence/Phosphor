@@ -1,10 +1,10 @@
 {
   "name": "saved-networks",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "api": 1,
   "kind": "widget",
   "entry": "index.js",
-  "description": "The hub's saved Wi-Fi networks: add, remove, reorder",
+  "description": "The hub's Wi-Fi: the networks it hears, a tap to save one, the saved list under Advanced",
   "roles": ["action.provision"],
   "channels": [],
   "permissions": ["intent"]
