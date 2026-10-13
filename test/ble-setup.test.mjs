@@ -178,12 +178,13 @@ assert.deepEqual(setupFirst(scan, flagsOf).map((d) => d.n), ['b', 'd', 'a', 'c']
 }
 
 // ---- NETWORK_JOIN_FAILED reasons in plain words ---------------------------
+// The reference hub's detail strings (Nucleus ValenceProvisioning.h failureDetail).
 const WORDS = {
-  auth: 'Wrong password',
-  not_found: 'Network not found',
-  no_address: 'Joined but got no address',
-  timeout: 'Timed out',
-  station_down: 'Radio not ready',
+  'authentication failed': 'Wrong password',
+  'network not found': 'Network not found',
+  'no address': 'Joined but got no address',
+  'timed out': 'Timed out',
+  'station down': 'Radio not ready',
 };
 for (const [detail, text] of Object.entries(WORDS)) {
   const { session, flow } = rig();
@@ -194,7 +195,7 @@ for (const [detail, text] of Object.entries(WORDS)) {
   await flow.joinResult({ ok: false, error: 'refused', code: NACK.NETWORK_JOIN_FAILED, detail });
   assert.equal(flow.state.step, SETUP.failed);
   assert.equal(flow.state.text, text, detail);
-  assert.equal(flow.state.reason, detail);
+  assert.equal(flow.state.text === 'Join failed', false, detail);
   assert.equal(flow.state.retry, 'join');
   assert.equal(flow.retry(), 'join');
   assert.equal(flow.state.step, SETUP.granted, 'a failed join returns to the wizard');

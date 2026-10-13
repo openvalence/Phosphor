@@ -18,6 +18,7 @@ const JOIN_WHY = {
   not_found: 'Network not found',
   no_address: 'Joined but got no address',
   timeout: 'Timed out',
+  timed_out: 'Timed out',   // the reference hub's words (Nucleus ValenceProvisioning.h)
   station_down: 'Radio not ready',
 };
 export const JOIN_FAILED = 'Join failed';
