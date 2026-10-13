@@ -50,7 +50,7 @@ ok('refusals read in words',
   && refusalWords({ code: 0x201 }) === 'Needs configure access'
   && refusalWords({ ok: true }) === '' && refusalWords({ ok: false, error: 'no link' }) === 'no link');
 ok('only a CONFLICT refusal retries', isConflict({ ok: false, code: 0x300 }) && !isConflict({ ok: false, code: 0x302 }) && !isConflict({ ok: true }));
-
+
 // ---- RFC-118 draft: the visible networks ----
 const op = (opts) => ({ options: opts });
 const OPS = ['reserved', 'wifi_join', 'save', 'remove', 'move', 'scan'];

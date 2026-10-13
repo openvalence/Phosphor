@@ -1,5 +1,5 @@
 // saved-networks wire: the RFC-116 draft numbers in one place, and the pure rules over them.
-// Constraints: no DOM and no host import (index.js owns both). A passphrase is a parameter here,
+// Constraints: no DOM and no host import (picker.js and slots.js own both). A passphrase is a parameter here,
 // never stored, returned or put in a message.
 
 // TODO(RFC-116, RFC-118): draft numbers and field names; the registry replaces them, and roles replace the channel ids.
@@ -133,7 +133,8 @@ export function readVisible(f, read, list = null) {
   const scan = scanOf(f, read);
   if (scan == null) return null;
   const more = f.more && read(f.more.scan) === scan ? half(f.more) : [];
-  const rows = scan ? [...half(f.vis), ...more] : [];
+  // The hub sorts each half; the halves are sorted again as one list.
+  const rows = scan ? [...half(f.vis), ...more].sort((a, b) => (b.rssi ?? NO_RSSI) - (a.rssi ?? NO_RSSI)) : [];
   const named = list && list.named ? list.entries : [];
   for (const r of rows) r.saved = r.saved || named.some((e) => e.ssid === r.ssid);
   const live = named.find((e) => e.live);

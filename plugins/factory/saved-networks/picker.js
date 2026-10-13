@@ -14,7 +14,7 @@
  * - The hub decides: a row is saved or connected when its STATE says so; a refusal is the hub's reason in
  *   the one status line, which is reserved up front.
  */
-import { DRAFT, SCAN_WAIT_MS, readList, readVisible, scanOf, scanSupported, scanRefusal, refusalWords, joinWords, isConflict, bars } from './wire.js';
+import { DRAFT, SCAN_WAIT_MS, readList, readVisible, scanOf, scanSupported, scanRefusal, refusalWords, joinWords, bars } from './wire.js';
 import { mountSlots } from './slots.js';
 
 const COPY = {
@@ -103,7 +103,7 @@ export function mountPicker(api, host, f, opts = {}) {
   const opField = () => api.field(OP_ROLE);
   const joining = typeof opts.join === 'function';
 
-  let mode = 'slots', list = null, rows = null, busy = false, waitAt = null, waitTimer = 0, target = null, sig = '', asked = false;
+  let mode = 'slots', list = null, rows = null, busy = false, waitAt = null, waitTimer = 0, target = null, sig = '', asked = false, dead = false;
 
   const items = el('ul', 'wp-list');
   items.setAttribute('aria-label', 'Networks');
@@ -169,7 +169,7 @@ export function mountPicker(api, host, f, opts = {}) {
     const r = await api.write(op, DRAFT.op.scan, {});
     if (!r || !r.ok) { stopWait(); say(scanRefusal(r)); draw(); return; }
     // The ECHO carries no rows: they come on the visible-networks STATE with a new scan counter.
-    if (waitAt === at) waitTimer = setTimeout(() => { stopWait(); say(COPY.noScan); draw(); }, SCAN_WAIT_MS);
+    if (waitAt === at && !dead) waitTimer = setTimeout(() => { stopWait(); if (status.textContent === COPY.scanning) say(COPY.noScan); draw(); }, SCAN_WAIT_MS);
   }
 
   async function act(name, secret) {
@@ -184,11 +184,8 @@ export function mountPicker(api, host, f, opts = {}) {
       r = await api.write(op, DRAFT.op.join, { [DRAFT.key.ssid]: name, [DRAFT.key.passphrase]: secret });
       opts.join({ phase: 'done', action: op, ...r });
     } else {
-      // A save stale against the list (CONFLICT) is sent once more on the list as read now.
-      for (let i = 0; i < 2; i++) {
-        r = await api.write(op, DRAFT.op.save, { [DRAFT.key.generation]: list ? list.generation : 0, [DRAFT.key.ssid]: name, [DRAFT.key.passphrase]: secret });
-        if (!isConflict(r)) break;
-      }
+      // A CONFLICT (the list changed under the save) is the hub's words, not retried: the secret is gone by then.
+      r = await api.write(op, DRAFT.op.save, { [DRAFT.key.generation]: list ? list.generation : 0, [DRAFT.key.ssid]: name, [DRAFT.key.passphrase]: secret });
     }
     busy = false;
     if (r && r.ok) {
@@ -236,10 +233,10 @@ export function mountPicker(api, host, f, opts = {}) {
     const g = gate();
     const listing = mode === 'list';
     const advOpen = !listing || !!adv.pressed;
-    adv.setAttribute('aria-expanded', String(!!adv.pressed));
     pick.hidden = !listing || !!target;
     form.hidden = !listing || !target;
     foot.hidden = !listing || !!target;
+    rescan.hidden = joining;
     status.hidden = !listing;
     slotBox.hidden = !advOpen || (listing && !!target);
     if (!listing) return;
@@ -253,12 +250,20 @@ export function mountPicker(api, host, f, opts = {}) {
       go.disabled = !!g || busy || (target.other ? !ssid.value : target.secured && !pass.value);
       go.tip = g;
     }
-    const next = JSON.stringify([rows, !!g, busy]);
+    // Rows are rebuilt only when what a tap acts on changes; a rescan's new signal is patched in place, so a
+    // rebuild never lands between a press and its click.
+    const next = JSON.stringify([(rows || []).map((r) => [r.ssid, r.secured, r.saved, !!r.connected]), !!g, busy]);
     if (next !== sig) {
       sig = next;
       items.replaceChildren(...(rows || []).map(rowEl));
       for (const b of items.querySelectorAll('.wp-row')) b.disabled = !!g || busy;
     }
+    (rows || []).forEach((r, i) => {
+      const b = items.children[i] && items.children[i].firstChild;
+      if (!b) return;
+      b.dataset.tip = r.rssi != null ? r.rssi + ' dBm' : '';
+      b.querySelectorAll('.wp-bars path').forEach((p, k) => p.classList.toggle('off', k >= bars(r.rssi)));
+    });
     empty.hidden = !!(rows && rows.length) || waitAt != null;
   }
 
@@ -267,7 +272,8 @@ export function mountPicker(api, host, f, opts = {}) {
     rows = f.vis ? readVisible(f, read, list) : null;
     const was = mode;
     mode = pickMode();
-    if (waitAt != null && scanOf(f, read) !== waitAt) { stopWait(); if (status.textContent === COPY.scanning) say(''); }
+    if (mode !== 'list' && target) { target = null; pass.value = ''; }
+    if (waitAt != null && (scanOf(f, read) ?? 0) !== waitAt) { stopWait(); if (status.textContent === COPY.scanning) say(''); }
     slots.update();
     draw();
     if (mode === 'list' && was !== 'list' && !asked) { asked = true; scan(); }
@@ -276,6 +282,6 @@ export function mountPicker(api, host, f, opts = {}) {
 
   return {
     update,
-    unmount() { stopWait(); pass.value = ''; slots.unmount(); root.remove(); },
+    unmount() { dead = true; stopWait(); pass.value = ''; slots.unmount(); root.remove(); },
   };
 }
