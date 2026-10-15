@@ -364,7 +364,7 @@ if (UNIT || fails) {
 //              segments STREAM
 //   idle       nothing is sent before Play
 //   preroll    one positioning segment, the video starts at its end
-//   timing     every start lies within half the horizon (250, 1000) of its arrival;
+//   timing     every start lies within the lead cap (horizon less 100 ms, never under half; 250, 1000) of its arrival;
 //              starts tile; each segment once; the host lands each start on
 //              the instant the player asked for; the knots land on the
 //              frames they belong to

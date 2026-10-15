@@ -42,7 +42,7 @@ Output targets read that number on their own clock:
 
 The player is closer to polled than to fixed: one segment per span. It
 differs in two ways that matter: it sends each span before it starts
-(half the granted horizon, stamped in execution time), and the machine's
+(the granted horizon less 100 ms, never under half of it, stamped in execution time), and the machine's
 planner, not the client, turns the span into a curve (SPEC §9.6).
 
 ## 1. Interpolation
@@ -365,8 +365,8 @@ of playback speed; a report pulls the internal clock a third of the way.
   not throttle, and the host owns time (D3). The player's timing does not
   ride a client tick at all: each segment carries an absolute execution
   start (`t_base + t_off`, 0.1 ms grid) and the hub executes it on its
-  own clock. Client jitter only has to stay inside the lead (half the
-  horizon, 125 ms at 250), which `requestAnimationFrame` meets with a
+  own clock. Client jitter only has to stay inside the lead (the horizon
+  less 100 ms, never under half: 150 ms at 250, 900 ms at 1000), which `requestAnimationFrame` meets with a
   wide margin. MFP's jitter problem is a sampled-pipeline problem.
 - **Offload elapsed time** has no analog: no per-tick ramps exist.
 - **Compensation is already more than MFP's.** The player stamps from

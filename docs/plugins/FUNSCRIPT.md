@@ -84,8 +84,8 @@ default 250 ms horizon):
 
 | | segments (chosen) | samples via submitMotion |
 |---|---|---|
-| lead | 125 ms of scheduled motion | none: each point is chased on arrival |
-| stall tolerance | about 105 ms before a knot moves | the chase budget, then a lurch |
+| lead | the horizon less 100 ms, never under half: 150 ms at 250 ms, 900 ms at 1000 ms | none: each point is chased on arrival |
+| stall tolerance | a stall shorter than the lead never reaches the motion | the chase budget, then a lurch |
 | frames/s | the action rate, 2 to 6 typical | 50 |
 | knot timing | t_off 0.1 ms, duration 1 ms | on a 20 ms grid |
 | seek | one superseding bundle, one RTT | no flush |
@@ -246,8 +246,8 @@ window on the last: Kinetic² renders a reversal flat at every
 - **I7** A knot between two chords of one sign carries their mean (at most
   1.5 x the lesser); a reversal, a hold edge, the
   ends and the seek glide's landing are free. A free knot rests until its
-  successor is scheduled (SPEC §9.6, RFC-058), and at the 125 ms lead the
-  hub then re-shapes only the last 125 ms of the piece toward it. Measured
+  successor is scheduled (SPEC §9.6, RFC-058), and at the lead the
+  hub then re-shapes only the last lead's worth of the piece toward it. Measured
   on the twin (Nucleus 91243d4; 400 to 697 ms staircase spans; vmax 1200
   mm/s, amax 100000, jerk 2e7): left free, the carriage passed
   same-direction knots at 0.52 of the chord speed (least 0.43; 0.81 at a
@@ -270,7 +270,7 @@ window on the last: Kinetic² renders a reversal flat at every
   not the script's next action), a seek's landing, a reversal (the chord's
   sign flips) and a hold edge (a flat chord on either side). Amended
   2026-10-08 (`ph-hcof`): on the machine a free reversal whose span outlasts
-  the 125 ms lead was rendered moving on along the last chord before its
+  the lead (125 ms then) was rendered moving on along the last chord before its
   successor arrived (the plan dipped past a trough and came back).
   `EXPECT_MS` restates the registry's `stream_quiet_release_ms`: the plugin
   API publishes no grant horizon, and the hub's window is never shorter.
@@ -1272,7 +1272,7 @@ key `play`. Each choice below is veto-able.
   50 ms, narrowed the clock ring to 8 frames and raised the slew to 15 ms/s.
   It moved no alignment (stamps are absolute: the felt latency is the
   offset), and measured worse on every axis but one, so the one clock
-  filter (32 frames, 5 ms/s) and the 125 ms lead stay; a stored
+  filter (32 frames, 5 ms/s) and the lead (125 ms then) stay; a stored
   `lowLatency` is dropped. Measured against the default (node, seeded; the
   twin at Nucleus 91243d4):
 
@@ -1564,7 +1564,7 @@ Decisions (veto-able):
   hover, repainted by a token change with no request, in IndexedDB
   (`--library` runs (L) and (L2) alone; `--shots <dir>` adds dark and
   Paper at every size); nothing sent before Play; preroll then video start;
-  every start within half the horizon of its send; starts tile; seek
+  every start within the lead cap of its send (horizon less 100 ms, never under half); starts tile; seek
   re-stamps from now; Pause sends exactly one hold then silence; offset
   +50 moves stamps by 50 ms; rate 1.5 divides durations; a pushed PAUSE
   pauses the video within 100 ms with the latch words and nothing is sent

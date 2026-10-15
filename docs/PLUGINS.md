@@ -458,8 +458,10 @@ the kept CLOCK exchange with the least RTT/2 plus age x 50 ppm, SPEC §7.1) and
 stamps it `schedule_latency_us` earlier (RFC-059: execution = stamp +
 latency). A start already past the earliest executable instant is clipped
 there, keeping its end; anything left under 10 ms is consumed, not sent.
-Offsets round to 100 us. One bundle carries what starts within HALF the
-granted horizon (RFC-014's SHOULD, kept by RFC-087), at most 32 records and
+Offsets round to 100 us. One bundle carries what starts within the lead cap, the
+granted horizon less 100 ms and never under half of it (`leadCapMs` in
+`src/model/motion.js`, RFC-115): 150 ms at a 250 ms horizon, 900 ms at 1000 ms.
+At most 32 records and
 one transport payload, end velocity `unspecified`. `sent` counts the leading
 items done with through the last one packed; offer each once and advance by
 it, and a later bundle supersedes from its first start. An empty list warms
