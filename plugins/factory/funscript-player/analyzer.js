@@ -39,8 +39,8 @@
 //   renewed with each catalog and dropped on unmount.
 
 import { posAt } from './funscript.js';
-import { applyT } from './scheduler.js';
-import { createKinetic, segmentsOf, tuningOf, ANOMALIES, EVERY, FREE } from './kinetic/kinetic.js';
+import { applyT, EXPECT_MS } from './scheduler.js';
+import { createKinetic, segmentsOf, tuningOf, ANOMALIES, EVERY, FREE, HORIZON_MS, LEAD_MS } from './kinetic/kinetic.js';
 
 export const TUNING = 'Tuning';
 export const LIMIT_ROLES = Object.freeze(['limit.input.speed', 'limit.input.accel', 'limit.input.jerk']);
@@ -301,17 +301,21 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
     if (kinState !== 'wasm' || !sc || !sc.at.length) return;
     if (fresh || !inputs || inputs.t !== t) {
       const v = (role) => (roleIt.has(role) ? shown(roleIt.get(role)) : roleV[role]);
-      const limits = { vmax: v('limit.input.speed'), amax: v('limit.input.accel'), jmax: v('limit.input.jerk'), rail: v('geometry.max_travel'), horizonMs: 0 };
+      const limits = { vmax: v('limit.input.speed'), amax: v('limit.input.accel'), jmax: v('limit.input.jerk'), rail: v('geometry.max_travel') };
       const win = [v('window.min'), v('window.max')];
       const ok = Object.values(limits).slice(0, 4).every((x) => x > 0) && win[1] > win[0];
       const tuning = ok ? tuningOf(rows.map((it) => [it.f, shown(it)])) : null;
       inputs = { t, ok, limits, win, tuning, key: ok ? JSON.stringify([limits, win, tuning, t]) : '' };
     }
-    const { limits, win, tuning, key } = inputs;
+    const { win, tuning } = inputs;
     if (!inputs.ok) { kinR = { error: COPY.noLimits }; kinSc = null; return; }
+    // The grant's horizon and the lead the host stamps with (api.schedule); the defaults before the grant or on an older host.
+    const sch = (api.schedule && api.schedule()) || { horizonMs: HORIZON_MS, leadMs: LEAD_MS };
+    const limits = { ...inputs.limits, horizonMs: sch.horizonMs }, key = inputs.key + sch.horizonMs;
     const run = (s, w, map, done) => {
-      const id = busy = ++seq, { segs, t0, steps } = segmentsOf(s, t), every = Math.max(EVERY, Math.ceil(steps / KIN_MAX_SAMPLES));
-      kin.render({ limits, window: w, tuning, segs: map ? segs.map(map) : segs, steps, stepMs: 1, every }).then((r) => {
+      const id = busy = ++seq, { segs, t0, steps } = segmentsOf(s, t, sch.leadMs), every = Math.max(EVERY, Math.ceil(steps / KIN_MAX_SAMPLES));
+      kin.render({ limits, window: w, tuning, segs: map ? segs.map(map) : segs, steps, stepMs: 1, every,
+        leadMs: sch.leadMs, expectMs: Math.max(EXPECT_MS, sch.horizonMs) }).then((r) => {
         if (busy === id) busy = 0;
         if (r) done(r, t0, every);
         onRender();

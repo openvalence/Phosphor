@@ -387,6 +387,11 @@ export function createMotionDoor(deps) {
     if (!r.ok) tail = null;
     return r;
   };
+  /** The segments grant's {horizonMs, leadMs: leadCapMs(horizonMs)}, null before the grant (it is asked for on first send). */
+  submit.schedule = function () {
+    const s = deps.session(), st = s && stream(STREAM_KIND.segments), g = st && s.state.grantedPublishes.get(st.id);
+    return g ? { horizonMs: g.scheduleHorizonMs, leadMs: leadCapMs(g.scheduleHorizonMs) } : null;
+  };
   function segments(list) {
     const held = deps.halted ? deps.halted() : '';
     if (held) return { ok: false, sent: 0, reason: held };

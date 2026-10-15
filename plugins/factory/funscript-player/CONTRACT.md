@@ -257,7 +257,7 @@ export function applyT(norm, T);   // -> T.lo + (T.invert ? 1 - norm : norm) * (
 export function strokeSpeed(script, mediaMs, T, spanMm);   // spanMm: number | null -> {v, unit: 'mm/s' | '%/s'};
                                                            // at rate 1; the caller scales it by the rate
 export const EXPECT_MS = 500;   // registry limits.stream_quiet_release_ms, restated: the least window the hub expects
-  // successors for (it takes the larger of this and the grant's horizon, which the plugin API does not publish)
+  // successors for (it takes the larger of this and the grant's horizon, api.schedule().horizonMs)
 export function knotVel(t, i, j, n, rate = 1, p = null);   // knot j's endVel over accessors t(j) (media ms), i(j)
   // (script index), p(j) (position): 0 at the last knot, before a successor over EXPECT_MS of wall time away
   // ((t(j+1) - t(j)) / rate), at a loop wrap (i(j+1) !== i(j) + 1), at a reversal (the chord's sign flips) and
@@ -486,6 +486,7 @@ export function submitSamples(role, list);   // -> motionDoor.samples(role, list
 export const MOTION_HOLD_MS = 500;
 export function isHubUrl(u, host, port);   // deps.isHub's rule, exported for the node test
 api.submitSegments(list);   // need('motion'); producer lock; -> SegResult
+api.schedule();   // need('motion'); -> deps.segmentSchedule(): {horizonMs, leadMs} of the segments grant, null before it
 api.submitSamples(role, list);   // need('motion'); no lock; a role not a non-empty string: 'no role';
                             // -> deps.submitSamples(role, list), 'NO_STREAM' without it (ph-6dr6)
 api.gate(field);            // unchanged signature; calls deps.gate(field, busy), busy the lock's words
@@ -863,14 +864,15 @@ segmented field of more than two options renders as a select.
 
 ```js
 // bytes.js: export const WASM;   // base64 kinetic.wasm, written by node test/kinetic-pin.mjs --write; never edited
-export const LEAD_MS = 125, PREROLL_MS = 1200, TAIL_MS = 1000, EVERY = 5, FREE = -32768;
+export const HORIZON_MS = 250, LEAD_MS = 150, PREROLL_MS = 1200, TAIL_MS = 1000, EVERY = 5, FREE = -32768;
 export const TUNING;      // [[member, byte offset, 'f'|'u']]: kinetic_tuning (32 B, Kinetic²), Nucleus tools/kinetic-wasm/README.md
 export const FLAGS = ['busy', 'shaped', 'clamped', 'refused'];   // kinetic_sample.flags bits 0..3
 export const ANOMALIES;   // kinetic2::AnomalyKind names by value 0..6 ('' for none; 6, piece over ceiling, renders, never a drop)
 export function tuningOf(pairs: [field, value][]);   // -> [[member, offset, type, value]]: by member name, an
   // _ms field to its _us member times 1000; non-numbers skipped
-export function segmentsOf(script, T);   // -> { segs: [startMs, pos_e4, durMs, endVelE3][], t0, steps }
-  // engine clock: a preroll to the first knot (start 2 x LEAD_MS, PREROLL_MS long) arriving at media 0, then one
+export function segmentsOf(script, T, leadMs = LEAD_MS);   // leadMs: api.schedule().leadMs, LEAD_MS (leadCapMs at HORIZON_MS) without a grant
+  // -> { segs: [startMs, pos_e4, durMs, endVelE3][], t0, steps }
+  // engine clock: a preroll to the first knot (start 2 x leadMs, PREROLL_MS long) arriving at media 0, then one
   // segment per span at pad + at[k-1], endVelE3 the scheduler's endVel at rate 1 (knotVel): 0 at a rest, FREE
   // (-32768, registry segment_end_vel_unspecified) where the knot is free (the preroll 0); t0 = T.offsetMs - pad is the media ms of engine 0; steps runs TAIL_MS past
 export function* renderCore(k, q);   // k: the wasm exports; q: {limits: {vmax, amax, jmax, rail, horizonMs},

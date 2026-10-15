@@ -2931,8 +2931,8 @@ if (!LIVE) {
     await p2.waitForTimeout(3000);
     await playBtn(p2).click();
     const ahead = h2.segs().filter((x) => !clipped(x)).map((x) => (x.exec - x.arrival) / 1000);
-    ok('horizon 1000: every start within 500 ms of its arrival, the lead widened past 250',
-      ahead.length > 3 && ahead.every((a) => a <= 502) && Math.max(...ahead) > 250, { n: ahead.length, max: Math.max(...ahead) });
+    ok('horizon 1000: every start within 900 ms of its arrival (RFC-115: the horizon less 100 ms), the lead widened past 250',
+      ahead.length > 3 && ahead.every((a) => a <= 902) && Math.max(...ahead) > 250, { n: ahead.length, max: Math.max(...ahead) });
     clearInterval(h2.timer);
     await c2.close();
   }

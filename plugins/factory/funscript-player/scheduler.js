@@ -41,7 +41,7 @@ export const TRANSIENT = Object.freeze(new Set(['waiting for the stream grant', 
 export const HOME_MIN_MS = 400;
 export const COMP_MAX_MS = 100, COMP_STEP_MS = 2, LAG_WINDOW = 32, LAG_MIN = 8, LAG_MATCH_MS = 100;
 // Registry limits.stream_quiet_release_ms (SPEC 11.4), restated: a plugin imports nothing outside its folder.
-// The hub expects for the larger of it and the grant's horizon; the plugin API does not publish the horizon.
+// The hub expects for the larger of it and the grant's horizon (api.schedule().horizonMs).
 export const EXPECT_MS = 500;
 
 const T0 = Object.freeze({ offsetMs: 0, lo: 0, hi: 1, invert: false });

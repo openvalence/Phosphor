@@ -562,6 +562,8 @@ console.log('(e2) segments lookahead door, streamGate, railOwners');
   await tick();
   const e0 = d1.segments([]);
   ok('an empty list warms the grant: ok, sent 0, the rate, nothing published', e0.ok && e0.sent === 0 && e0.rateHz === s1.asked[0][0][1] && !s1.sent.length);
+  ok('schedule(): the horizon and the lead cap of the grant, null before it', d1.schedule() && d1.schedule().horizonMs === 250 && d1.schedule().leadMs === leadCapMs(250)
+    && segDoor(fakeSeg({ grant: false })).d.schedule() === null);
   ok('a bad segment is refused whole', ['atMs', 'norm'].every((k) => d1.segments([{ ...seg(20, 100), [k]: NaN }]).reason === 'bad segment')
     && d1.segments([seg(20, 0)]).reason === 'bad segment' && d1.segments([seg(60, 50), seg(20, 50)]).reason === 'bad segment'
     && !s1.sent.length);

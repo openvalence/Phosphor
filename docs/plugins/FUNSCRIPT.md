@@ -1447,7 +1447,7 @@ behaves the same on the machine, without rendering anything on the hub.
 - **Input.** The wire Script's segments (`ctl.wire`, scale.js `wire()`,
   through `segmentsOf`) as the host sends them: one per span ending at the
   same end velocity (free, or 0 at a rest, I8), no curve family, each
-  submitted `LEAD_MS` (125, half the 250 ms horizon) before its start, after
+  submitted `leadMs` before its start (`api.schedule()`: the grant's horizon less 100 ms, never under half of it, `leadCapMs` in `src/model/motion.js`; `LEAD_MS` is 150, the 250 ms default, before the grant), after
   a 1200 ms preroll from rest at 0 mm to the first knot at media 0. Limits
   (`limit.input.*`), the rail (`geometry.max_travel`) and the window
   (`window.min`, `window.max`) by role; the Tuning rows by `kinetic_tuning`
@@ -1456,7 +1456,7 @@ behaves the same on the machine, without rendering anything on the hub.
   is bound and ignored (on the board it is the samples grant's latency). The values are the ones the analyzer shows: in Preview
   the hub's trial values, during a drag the draft, before anything is
   written. Every render calls `kinetic_expect` with the scheduler's
-  `EXPECT_MS`, so the preview and the Auto fit render the hub's expectation.
+  the larger of `EXPECT_MS` and the horizon, so the preview and the Auto fit render the hub's expectation.
   Any change re-renders; a newer render supersedes the older, which
   frees its handle at its next 8192-step chunk.
 - **Output.** 1 ms steps, kept every 5 ms (more on scripts past 1000 s, at

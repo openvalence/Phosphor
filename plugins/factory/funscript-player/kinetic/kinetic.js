@@ -6,8 +6,8 @@
 //   file (ruling R-C) and connect-src refuses a plugin's fetch. Compiling it needs 'wasm-unsafe-eval'.
 // - renderCore, instantiate and versionOf are stringified into the worker: each may reference nothing
 //   outside its own body (the shell build renames module bindings).
-// - Segments are submitted as the host sends them, LEAD_MS before their start (half the 250 ms horizon),
-//   and the clock steps at stepMs (the board ticks at 1 ms). Same calls in, same bits out (kinetic-trace test).
+// - Segments are submitted as the host sends them, leadMs before their start (api.schedule(): the grant's horizon less
+//   100 ms, never under half of it; LEAD_MS is that at the default 250 ms horizon), and the clock steps at stepMs (the board ticks at 1 ms). Same calls in, same bits out (kinetic-trace test).
 // - A newer render supersedes: the older one resolves null and its handle is destroyed at its next chunk.
 // - Every render expects successors for the scheduler's EXPECT_MS (kinetic_expect), as the hub does for a stream.
 // - Kinetic² only: the worker refuses a module whose kinetic_version() does not name kinetic2.
@@ -17,7 +17,7 @@
 import { applyT, knotVel, EXPECT_MS } from '../scheduler.js';
 import { WASM } from './bytes.js';
 
-export const LEAD_MS = 125, PREROLL_MS = 1200, TAIL_MS = 1000, EVERY = 5;
+export const HORIZON_MS = 250, LEAD_MS = 150, PREROLL_MS = 1200, TAIL_MS = 1000, EVERY = 5;
 // Registry limits.segment_end_vel_unspecified: a free knot (the hub's smoothness shapes it). Restated: a plugin imports nothing outside its folder.
 export const FREE = -32768;
 export const TUNING = Object.freeze([['jmax_ovr', 0, 'f'], ['vmax_ovr', 4, 'f'], ['amax_ovr', 8, 'f'],
@@ -46,14 +46,14 @@ export function tuningOf(pairs) {
  * t0, the media ms of engine 0: a preroll to the first knot arriving at media 0, then one segment per span.
  * The scheduler's knots, each span ending at its knot's endVel at rate 1 (knotVel): 0 at a rest, else FREE; the
  * preroll ends at rest.
- * The preroll is submitted LEAD_MS in: the window set parks and reseeds on the first tick, dropping
+ * The preroll is submitted leadMs in: the window set parks and reseeds on the first tick, dropping
  * anything queued before it.
  */
-export function segmentsOf(script, T) {
-  const pad = 2 * LEAD_MS + PREROLL_MS, { at, pos } = script;
+export function segmentsOf(script, T, leadMs = LEAD_MS) {
+  const pad = 2 * leadMs + PREROLL_MS, { at, pos } = script;
   const e4 = (n) => Math.round(clamp(applyT(n, T), 0, 1) * 10000);
   const e3 = (k) => (knotVel((j) => at[j], (j) => j, k, at.length, 1, (j) => pos[j]) === 0 ? 0 : FREE);
-  const segs = [[2 * LEAD_MS, e4(pos[0]), PREROLL_MS, 0]];
+  const segs = [[2 * leadMs, e4(pos[0]), PREROLL_MS, 0]];
   for (let k = 1; k < at.length; k++) if (at[k] > at[k - 1]) segs.push([pad + at[k - 1], e4(pos[k]), at[k] - at[k - 1], e3(k)]);
   return { segs, t0: (T.offsetMs || 0) - pad, steps: Math.ceil(pad + at[at.length - 1] + TAIL_MS) };
 }
@@ -78,7 +78,7 @@ export function* renderCore(k, q) {
     }
     k.kinetic_set_tuning(h, tb);
     if (q.expectMs != null) k.kinetic_expect(h, q.expectMs);
-    const step = q.stepMs || 1, every = Math.max(1, q.every | 0), lead = q.leadMs ?? 125, n = Math.ceil(q.steps / every);
+    const step = q.stepMs || 1, every = Math.max(1, q.every | 0), lead = q.leadMs ?? 150, n = Math.ceil(q.steps / every);
     const pos = new Float32Array(n), vel = new Float32Array(n), acc = new Float32Array(n), raw = new Float32Array(n), flags = new Uint8Array(n);
     const anomalies = new Uint32Array(32), counts = new Uint32Array(4), segs = q.segs;
     let next = 0, accepted = 0, refused = 0;

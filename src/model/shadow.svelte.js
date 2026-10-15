@@ -520,6 +520,11 @@ export function submitSegments(list) {
   return motionDoor.segments(list);
 }
 
+/** The segments grant's {horizonMs, leadMs} (motion.js submit.schedule), null before the grant. */
+export function segmentSchedule() {
+  return motionDoor.schedule();
+}
+
 /** The role door (motion.js submit.samples): role, [{atMs, values}] -> {ok, sent, rateHz, reason}. */
 export function submitSamples(role, list) {
   return motionDoor.samples(role, list);

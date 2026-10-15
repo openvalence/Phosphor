@@ -17,7 +17,7 @@ import { createPluginHost, isHubUrl } from './host.js';
 import PluginSlot from './PluginSlot.svelte';
 import { machine, getSession, freshness, staleReason, subscribed } from '../model/machine.svelte.js';
 import {
-  writeSetting, runAction, sendCommand, submitMotion, submitSegments, submitSamples, displayValue, statusOf, shadowOf, shadows,
+  writeSetting, runAction, sendCommand, submitMotion, submitSegments, segmentSchedule, submitSamples, displayValue, statusOf, shadowOf, shadows,
 } from '../model/shadow.svelte.js';
 import { bumpAll, seq, watch } from '../model/changes.js';
 import { WIDGET, isFieldEnabled, modTargetUid } from '../model/settings.js';
@@ -239,6 +239,7 @@ export const host = createPluginHost({
     return r.ok ? r : { ...r, reason: conflictWords(r.reason,
       railOwners(entryOf(CH_CONTROL_OWNER), machine.samples[CH_CONTROL_OWNER]), machine.link.sessionId) };
   },
+  segmentSchedule,
   submitSamples,
   now: () => performance.now(),
   registerTheme,

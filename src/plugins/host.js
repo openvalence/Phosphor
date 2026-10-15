@@ -112,6 +112,7 @@ class PermissionError extends Error {
  *   storeSlots(field)             -> Promise<slot records | null> for an action.store writer
  *   submitMotion(norm, durationMs)-> {ok, reason?}
  *   submitSegments(list)          -> {ok, sent, rateHz?, reason?} (motion.js submit.segments)
+ *   segmentSchedule()             -> {horizonMs, leadMs} of the segments grant, null before it (motion.js submit.schedule)
  *   submitSamples(role, list)     -> {ok, sent, rateHz?, reason?} (motion.js submit.samples)
  *   now()                         -> ms clock of submitSegments' atMs (default performance.now)
  *   registerTheme(theme)          -> adds a preset to the theme table
@@ -312,6 +313,12 @@ export function createPluginHost(deps) {
           takeLock(name, end + MOTION_HOLD_MS);
         }
         return r;
+      },
+
+      // The grant's horizon and the lead submitSegments stamps with (RFC-115), for a plugin that previews the machine.
+      schedule: () => {
+        need(rec, 'motion');
+        return (deps.segmentSchedule && deps.segmentSchedule()) || null;
       },
 
       // A c2h samples STREAM found by channel role (SPEC 9.7 osc.drive). Not motion input: no producer lock.
