@@ -24,6 +24,7 @@
   import { deferring } from './defer.js';
   import { modStep, dragGain, snap as modSnap } from '../model/nudge.js';
   import { PACKED } from '../../../Valence/clients/js/index.js';
+  import { tierGate } from '../model/tier.js';
   import {
     formatParts, formatWithUnit, unitOf, optionLabel, precisionFor, labelFor, statTag,
     hubClockNow, hubSecToWallMs, wallMsToHubSec, armMoment, staleMoment,
@@ -82,7 +83,7 @@
   // The gate in words (law 3). A composite (range, color) names the first
   // closed gate among its own fields.
   const gateOf = (f) => (!linkUp ? 'no hub link'
-    : !canWrite(f) ? 'session not authorized'
+    : !canWrite(f) ? tierGate(writeEntry(f), f.settingKey, undefined, machine.link.roles) || 'session not authorized'
     : !isFieldEnabled(f, machine.samples[f.channelId]) ? 'disabled by the machine'
     : '');
   const reason = $derived(
@@ -94,14 +95,15 @@
 
   /**
    * Does this session's access tier permit writing here? The INTENT channel
-   * advertises its own required access; we compare rather than assume, so a
-   * watch-tier viewer grays the write plane instead of discovering it by NACK.
+   * and the key advertise their own required access (tier.js); we compare
+   * rather than assume, so a session short of it grays the write plane
+   * instead of discovering it by NACK.
    */
+  const writeEntry = (f) => machine.catalog.entries.find((x) => x.id === f.writeChannel);
   function canWrite(f) {
     if (f.readOnly) return false;
-    const e = machine.catalog.entries.find((x) => x.id === f.writeChannel);
-    if (!e) return false;
-    return (machine.link.roles | 0) >= (e.access | 0);
+    const e = writeEntry(f);
+    return !!e && !tierGate(e, f.settingKey, undefined, machine.link.roles);
   }
 
   function commit(v) {

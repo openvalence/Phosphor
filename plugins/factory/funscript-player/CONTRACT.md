@@ -431,7 +431,7 @@ export function conflictWords(reason, owners, self);   // -> 'refused: rail owne
     past the lead cap).
 
 `streamGate` (pure) returns the first that applies: `'no hub link'`,
-`'session not authorized'` (roles below access), `halted`,
+`'needs control: Pair this client'` (roles below access, tier.js), `halted`,
 `'stop the pattern first'` (running), `busy`, else `''`. It never reads
 control-owner (main's rail ruling, 6052b5f, operator 2026-10-03): a slot
 stays held for its session's life, so a foreign stream holding the rail is

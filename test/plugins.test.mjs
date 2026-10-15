@@ -693,7 +693,7 @@ console.log('(e2) segments lookahead door, streamGate, railOwners');
   }
   order.push(streamGate(g));
   ok('streamGate order: link, tier, latch, generator, busy, clear', JSON.stringify(order) === JSON.stringify(['no hub link',
-    'session not authorized', 'e-stop latched', 'stop the pattern first', 'motion input in use by x', '']), order);
+    'needs control: Pair this client', 'e-stop latched', 'stop the pattern first', 'motion input in use by x', '']), order);
 
   // The rail ruling (main 6052b5f): control-owner never grays Play, a running generator does, the hub's NACK names the owner.
   const ownerEntry = entries.find((e) => e.id === CH_CONTROL_OWNER);

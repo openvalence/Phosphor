@@ -87,6 +87,7 @@ import { hubKey } from './prefs.js';
 import { provisionRefusal, isProvisioning } from './provision.js';
 import { noteStoreOp } from '../ui/widgets/roster.js';
 import { NACK, NACK_NAME, LOG_LEVEL_NAME, ACTION_TAG } from '../../../Valence/clients/js/index.js';
+import { tierRefusal } from './tier.js';
 
 const OVERDUE_MS = 500;
 const FAULT_MS = 2000;
@@ -139,7 +140,8 @@ const NO_ANSWER = 'no answer from the hub';
 const DRAFT_NACK_NAME = { 0x308: 'LIVE_NETWORK' };
 const NOT_TRIALABLE = 'not trialable here, write directly';
 /** A fault's words: only a NACK reads as the hub refusing (ph-xec). */
-const whyOf = (err) => (err && err.code != null ? 'refused: ' + (DRAFT_NACK_NAME[err.code] || err.name || NACK_NAME[err.code]) : NO_ANSWER);
+const whyOf = (err) => (err && err.code != null
+  ? tierRefusal(err.code) || 'refused: ' + (DRAFT_NACK_NAME[err.code] || err.name || NACK_NAME[err.code]) : NO_ANSWER);
 
 function noteRefusal(err, why, channelId, label) {
   lastRefusal.code = (err && err.code != null) ? err.code : null;

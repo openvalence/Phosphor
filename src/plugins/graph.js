@@ -235,7 +235,8 @@ export function graphRuntime(api, shell, env) {
     write(ref, v, ms) {
       if (ref.kind === 'bp') return bpWrite(ref, v, ms);
       const f = fieldFor(ref.key);
-      if (f) api.write(f, v);
+      // A gated target (a tier the session lacks, no link) writes nothing; its node shows why.
+      if (f && !api.gate(f)) api.write(f, v);
     },
     armed: () => interlock(env.live(), env.safety()),
   };

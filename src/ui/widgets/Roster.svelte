@@ -15,6 +15,7 @@
    */
   import { untrack } from 'svelte';
   import { machine, getSession, subscribed } from '../../model/machine.svelte.js';
+  import { needsText } from '../../model/tier.js';
   import { SLOT, pendingSlots, enumerateStore, storeLocked, rosterCount, slotHint } from './roster.js';
   import { hubKey } from '../../model/prefs.js';
   import { sheet } from '../../plugins/kit.js';
@@ -29,7 +30,7 @@
   const live = $derived(machine.link.phase === 'live');
   const locked = $derived(storeLocked(store, machine.link.roles));
   const reason = $derived(!live ? 'no hub link'
-    : locked ? 'session not authorized' : '');
+    : locked ? needsText(store.access | 0) : '');
 
   function refresh() {
     if (ctl) ctl.abort();

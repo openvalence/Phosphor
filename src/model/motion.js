@@ -20,6 +20,7 @@
 
 import { ROLE } from './roles.js';
 import { reportedValue } from './settings.js';
+import { needsText } from './tier.js';
 import { CHANNEL_CLASS, STREAM_KIND, UNIT_ID, LIMITS, PACKED, FIELD_ROLE } from '../../../Valence/clients/js/index.js';
 
 const first = (byRole, role) => {
@@ -511,7 +512,7 @@ export function createMotionDoor(deps) {
  */
 export function streamGate({ live, roles, access, halted, running, busy }) {
   if (!live) return 'no hub link';
-  if ((roles | 0) < (access | 0)) return 'session not authorized';
+  if ((roles | 0) < (access | 0)) return needsText(access | 0);
   if (halted) return halted;
   if (running) return 'stop the pattern first';
   return busy || '';

@@ -51,6 +51,7 @@
    */
   import { untrack } from 'svelte';
   import { machine, getSession, specSafetyAction, estopLabel, retryNow } from '../model/machine.svelte.js';
+  import { tierGate } from '../model/tier.js';
   import { runAction, lastRefusal, clearLastRefusal } from '../model/shadow.svelte.js';
   import { SAFETY_OP, HOME_OP, CH_SAFETY_INTENTS, CH_CONTROL_OWNER, NACK } from '../../../Valence/clients/js/index.js';
   import { needsConfirm, confirmCopy, isUnattended, railOwnerName, foreignOwner, anyOwner } from '../model/actions.js';
@@ -283,7 +284,10 @@
   }
   function reasonFor(action, value) {
     if (machine.link.phase !== 'live') return 'no hub link';
-    if (!canFire(action, value)) return 'session not authorized';
+    if (!canFire(action, value)) {
+      return tierGate(machine.catalog.entries.find((x) => x.id === action.channelId), action.key, value, machine.link.roles)
+        || 'session not authorized';
+    }
     return '';
   }
 

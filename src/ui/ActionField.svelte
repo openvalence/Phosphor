@@ -19,6 +19,7 @@
    */
   import { untrack } from 'svelte';
   import { machine, getSession } from '../model/machine.svelte.js';
+  import { tierGate } from '../model/tier.js';
   import { runAction, statusOf, shadowOf } from '../model/shadow.svelte.js';
   import { labelFor, optionLabel } from '../model/format.js';
   import { needsConfirm, confirmCopy, actionTag } from '../model/actions.js';
@@ -54,8 +55,8 @@
     void machine.link.roles; void machine.catalog.ready;
     if (machine.link.phase !== 'live') return 'no hub link';
     const s = getSession();
-    if (!s || !s.canUse(action.channelId, action.key, v)) return 'session not authorized';
-    return '';
+    if (!s) return 'session not authorized';
+    return tierGate(machine.catalog.entries.find((x) => x.id === action.channelId), action.key, v, machine.link.roles);
   }
   const reasons = $derived([...new Set(ops.map((o) => reasonFor(o.value)).filter(Boolean))]);
 

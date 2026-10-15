@@ -9,6 +9,7 @@
    */
   import { machine } from '../../model/machine.svelte.js';
   import { isFieldEnabled } from '../../model/settings.js';
+  import { tierGate } from '../../model/tier.js';
   import { writeSetting, displayValue, statusOf } from '../../model/shadow.svelte.js';
   import { optionLabel, labelFor } from '../../model/format.js';
   import Field from '../Field.svelte';
@@ -33,7 +34,9 @@
     if (!f || f.readOnly) return 'read-only';
     if (machine.link.phase !== 'live') return 'no hub link';
     const e = machine.catalog.entries.find((x) => x.id === f.writeChannel);
-    if (!e || (machine.link.roles | 0) < (e.access | 0)) return 'session not authorized';
+    if (!e) return 'session not authorized';
+    const tier = tierGate(e, f.settingKey, undefined, machine.link.roles);
+    if (tier) return tier;
     if (!isFieldEnabled(f, sampleOf(f))) return 'disabled by the machine';
     return '';
   }
