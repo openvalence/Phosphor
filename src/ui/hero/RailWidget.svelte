@@ -73,6 +73,7 @@
   import { machine, getSession, freshness } from '../../model/machine.svelte.js';
   import { railOwned } from '../../model/actions.js';
   import { isFieldEnabled, reportedValue } from '../../model/settings.js';
+  import { tierGate } from '../../model/tier.js';
   import { askConfirm } from '../confirm.svelte.js';
   import { writeSetting, sendCommand, displayValue, statusOf, shadowOf, STATUS } from '../../model/shadow.svelte.js';
   import { formatValue, unitOf, labelFor } from '../../model/format.js';
@@ -125,6 +126,9 @@
   const maxVal = $derived(pend && pend.max != null ? pend.max : displayValue(max, sampleOf(max)));
 
   const minEnabled = $derived(enabledOf(min));
+  // The window's tier, in words, while the session is short of it (tier.js).
+  const windowTier = $derived(min && machine.link.phase === 'live' ? tierGate(
+    machine.catalog.entries.find((x) => x.id === min.writeChannel), min.settingKey, undefined, machine.link.roles) : '');
   const maxEnabled = $derived(enabledOf(max));
   const bandEnabled = $derived(minEnabled && maxEnabled);
 
@@ -217,7 +221,10 @@
   const moveReason = $derived.by(() => {
     if (!move) return '';
     if (machine.link.phase !== 'live') return 'no hub link';
-    if (!moveAllowed) return 'session not authorized';
+    if (!moveAllowed) {
+      return tierGate(machine.catalog.entries.find((x) => x.id === move.channelId), move.key, 0, machine.link.roles)
+        || 'session not authorized';
+    }
     return jogBlock;
   });
 
@@ -1207,7 +1214,7 @@
 
     {#if haveWindow}
       <!-- The window's catalog description rides the band's own tooltip. -->
-      <div class="rail-band" data-tip={(windowDesc ? windowDesc + '\n' : '') + 'Drag the window or its edges'}
+      <div class="rail-band" data-tip={windowTier || (windowDesc ? windowDesc + '\n' : '') + 'Drag the window or its edges'}
            class:disabled={!bandEnabled}
            class:pending={!!pend || statusOf(min) !== STATUS.confirmed || statusOf(max) !== STATUS.confirmed}
            role="slider" tabindex={bandEnabled ? 0 : -1}

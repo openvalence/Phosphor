@@ -21,6 +21,7 @@ import {
 } from '../model/shadow.svelte.js';
 import { bumpAll, seq, watch } from '../model/changes.js';
 import { WIDGET, isFieldEnabled, modTargetUid } from '../model/settings.js';
+import { tierGate } from '../model/tier.js';
 import { needsConfirm, settingNeedsConfirm, confirmCopy, railOwners, railOwned, actionTag } from '../model/actions.js';
 import { streamGate, conflictWords, latchWords } from '../model/motion.js';
 import { askConfirm } from '../ui/confirm.svelte.js';
@@ -93,11 +94,13 @@ export function gate(field, busy = '') {
   if (machine.link.phase !== 'live') return 'no hub link';
   const s = getSession();
   if (field.widget === WIDGET.action) {
-    return s && s.canUse(field.channelId, field.key) ? '' : 'session not authorized';
+    return s ? tierGate(entryOf(field.channelId), field.key, undefined, machine.link.roles) : 'session not authorized';
   }
   if (field.readOnly) return 'read-only: the machine reports this, it is not a setting';
   const e = entryOf(field.isIntentField ? field.channelId : field.writeChannel);
-  if (!e || (machine.link.roles | 0) < (e.access | 0)) return 'session not authorized';
+  if (!e) return 'session not authorized';
+  const tier = tierGate(e, field.isIntentField ? field.key : field.settingKey, undefined, machine.link.roles);
+  if (tier) return tier;
   if (!field.isIntentField && !isFieldEnabled(field, machine.samples[field.channelId])) {
     return 'disabled by the machine';
   }

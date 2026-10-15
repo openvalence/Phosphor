@@ -19,6 +19,7 @@
 import { untrack } from 'svelte';
 import { FIELD_ROLE } from '../../../Valence/clients/js/index.js';
 import { machine } from './machine.svelte.js';
+import { tierGate } from './tier.js';
 import { writeSetting, setSettledHook, shadowOf, displayValue, STATUS } from './shadow.svelte.js';
 import { reportedValue, isFieldEnabled } from './settings.js';
 import { settingNeedsConfirm, confirmCopy } from './actions.js';
@@ -68,7 +69,9 @@ const currentOf = (f) => reportedValue(f, machine.samples[f.channelId]);
 function whyNot(f) {
   if (machine.link.phase !== 'live') return 'no hub link';
   const e = machine.catalog.entries.find((x) => x.id === f.writeChannel);
-  if (!e || (machine.link.roles | 0) < (e.access | 0)) return 'session not authorized';
+  if (!e) return 'session not authorized';
+  const tier = tierGate(e, f.settingKey, undefined, machine.link.roles);
+  if (tier) return tier;
   if (!isFieldEnabled(f, machine.samples[f.channelId])) return 'disabled by the machine';
   return '';
 }

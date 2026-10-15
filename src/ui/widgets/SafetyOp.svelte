@@ -33,6 +33,7 @@
    *   inset ring, which shrank the box's face (ph-vdk.65).
    */
   import { machine, getSession, estopLabel } from '../../model/machine.svelte.js';
+  import { tierGate } from '../../model/tier.js';
   import { runAction } from '../../model/shadow.svelte.js';
   import { needsConfirm } from '../../model/actions.js';
   import { askConfirm } from '../confirm.svelte.js';
@@ -94,7 +95,8 @@
     if (!action) return machine.catalog.ready ? 'no safety intents on this hub' : 'no catalog yet';
     if (!(action.options || [])[send]) return 'no ' + SAFETY_OP_NAME[send] + ' op on this hub';
     const s = getSession();
-    return s && s.canUse(action.channelId, action.key, send) ? '' : 'session not authorized';
+    if (!s) return 'session not authorized';
+    return tierGate(machine.catalog.entries.find((x) => x.id === action.channelId), action.key, send, machine.link.roles);
   });
 
   let phase = $state('');   // '' | pending | overdue | confirmed | fault
