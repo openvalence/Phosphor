@@ -10,7 +10,7 @@
  *
  *   Build:  cmake --build ../Nucleus/sim/valencesim/build
  *   Run it: ../Nucleus/sim/valencesim/build/valencesim.exe machine \
- *             --homed --headless --duration 240 --port 82 --http 80 --no-mdns
+ *             --homed --headless --duration 240 --port 82 --http 80 --no-mdns --pairing-window
  *   Then:   node test/valence-sim.mjs [--host 127.0.0.1] [--port 82] [--http 80]
  *   Or:     node test/valence-sim.mjs --integral   (no exe: the app's built-in machine, the
  *           vendored wasm through src/model/integral-bridge.js over a MessageChannel; no fixture write)
@@ -98,6 +98,7 @@ async function openSession(label, extra = {}) {
     port: PORT,
     clientKind: 'webui',
     clientName: 'valence-js sim-test',
+    instanceId: new Uint8Array(8).fill(0x51), // one client, so s2 can present s1's ledger token
     autoReconnect: false,
     catalogStore,
     // Bare sessions land at watch; every intent below needs control, so each
@@ -197,6 +198,22 @@ async function main() {
   // ========================================================================
   // INTENT → post-clamp ECHO, encoded from the catalog's own schema.
   // ========================================================================
+  console.log('\nWrite tier (RFC-119 draft: config-set and the other setting writes need configure):');
+  let refused = null;
+  try { await s1.sendConfigSet({ 1: 0, 2: 500 }); } catch (e) { refused = e; }
+  ok('a control session is refused config-set ACCESS_DENIED', !!refused && refused.name === 'ACCESS_DENIED',
+    refused ? refused.name + ' ' + refused.message : 'no refusal!');
+  // The presence window opens on a PAIR press (native: --pairing-window); the first knock on a fresh ledger grants configure.
+  const granted = new Promise((res, rej) => {
+    const t = setTimeout(() => rej(new Error('no PAIR_GRANT in 5 s')), 5000);
+    s1.on('pairGrant', (g) => { clearTimeout(t); res(g); });
+  });
+  if (bridge) bridge.post({ op: 'pair' });
+  await delay(100);
+  s1.sendPairReq();
+  const grant = await granted;
+  ok('push-to-pair grants configure', grant.role === ACCESS.configure);
+
   console.log('\nWrite plane (config-set 0x3000, catalog-typed, restored):');
   const cfg0 = seen1.states.get(CH.MACHINE_CONFIG);
   const origMin = cfg0.window_min, origMax = cfg0.window_max;
@@ -476,7 +493,7 @@ async function main() {
   // SESSION 2 — warm cache, back-to-back, NO sim restart (field bug #3).
   // ========================================================================
   console.log('\nSession 2 (WARM — cached etag rides HELLO; back-to-back, no restart):');
-  const { s: s2, seen: seen2 } = await openSession('s2');
+  const { s: s2, seen: seen2 } = await openSession('s2', { token: grant.token }); // the ledger token lands at configure
   ok('catalog came from the CACHE — zero transfer frames',
     !!seen2.catalogMeta && seen2.catalogMeta.cached === true);
   ok('readiness was INHERITED from the HELLO etag (no CATALOG_READY needed)',
