@@ -119,6 +119,30 @@ jobs:
             Phosphor/src-tauri/target/${{ matrix.triple }}/release/bundle/deb/*.deb
             Phosphor/src-tauri/target/${{ matrix.triple }}/release/bundle/appimage/*.AppImage
 
+      # The plain built exe: the frontend is embedded, no resources or sidecars.
+      # It needs the WebView2 runtime. Named after the installer's version.
+      - name: Portable exe
+        if: runner.os == 'Windows'
+        shell: bash
+        working-directory: Phosphor/src-tauri/target/${{ matrix.triple }}/release
+        run: |
+          setup=$(ls bundle/nsis/Phosphor_*_x64-setup.exe)
+          v=$(basename "$setup" | sed -E 's/^Phosphor_(.+)_x64-setup\.exe$/\1/')
+          mkdir -p portable && cp phosphor.exe "portable/Phosphor_${v}_x64-portable.exe"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: runner.os == 'Windows'
+        with:
+          name: phosphor-${{ matrix.triple }}-portable
+          if-no-files-found: error
+          path: Phosphor/src-tauri/target/${{ matrix.triple }}/release/portable/*.exe
+      - name: Portable exe into the draft release
+        if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        working-directory: Phosphor/src-tauri/target/${{ matrix.triple }}/release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.ref_name }}" portable/*.exe --clobber -R "${{ github.repository }}"
+
       # Skipped, not failed, until the SignPath variables exist (docs/BUILD.md,
       # Windows signing). The artifact zip holds nsis/<installer>.exe.
       - name: Sign the installer (SignPath)
