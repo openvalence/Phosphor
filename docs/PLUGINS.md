@@ -781,7 +781,7 @@ Shipped:
   `scan` and the catalog declares `visible-networks`) it opens on the picker
   (`picker.js`): the networks the hub hears, strongest first, with signal bars,
   a lock on secured ones, a check on the connected one and `Saved` on saved
-  ones; opening asks one scan, and the rows pushed at the grant show greyed
+  ones; the first scan is asked when the picker is on screen, never from a mount out of view, and the rows pushed at the grant show greyed
   and untappable until the scan counter differs from its value at the grant
   (equality only). Rows are keyed by SSID and the order is held while a press
   is down, keyboard focus is in the list or a sheet is open. A scan refused

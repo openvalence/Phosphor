@@ -120,6 +120,9 @@ export function mountPicker(api, host, f, opts = {}) {
   const joining = typeof opts.join === 'function';
 
   let mode = 'slots', list = null, rows = null, busy = false, waitAt = null, waitTimer = 0, retryTimer = 0, target = null, sig = '', dead = false;
+  // A scan is a radio sweep off the hub's channel: asked only while the picker is on screen (the setup flow's is, by
+  // being mounted), never from a hero mounted out of view, a page load or a catalog change.
+  let shown = joining;
   // view: the rows as drawn (held order); pointer: a press is in the list; granted/grantAt/fresh: the stale rule.
   let view = null, pointer = false, granted = false, grantAt = null, fresh = false, needAsk = false, armed = false, armTimer = 0;
   const rowsBy = new Map(), btnBy = new Map();
@@ -177,6 +180,11 @@ export function mountPicker(api, host, f, opts = {}) {
   root.append(el('style', null, CSS), pick, form, foot, status, slotBox);
   host.append(root);
   const slots = mountSlots(api, slotBox, f);
+  const io = !joining && typeof IntersectionObserver === 'function' ? new IntersectionObserver((e) => {
+    shown = e[e.length - 1].isIntersecting;
+    if (shown && !dead) update();
+  }) : null;
+  if (io) io.observe(root); else shown = true;
 
   const say = (text, tone = 'warn', tip = '') => {
     status.textContent = text;
@@ -389,7 +397,7 @@ export function mountPicker(api, host, f, opts = {}) {
     if (waitAt != null && (scanOf(f, read) ?? 0) !== waitAt) { stopWait(); if (status.textContent === COPY.scanning) say(''); }
     slots.update();
     draw();
-    if (mode === 'list' && needAsk) { needAsk = false; scan(); }
+    if (mode === 'list' && needAsk && shown) { needAsk = false; scan(); }
   }
   update();
 
@@ -397,6 +405,7 @@ export function mountPicker(api, host, f, opts = {}) {
     update,
     unmount() {
       dead = true;
+      io?.disconnect();
       stopWait();
       clearTimeout(retryTimer);
       clearTimeout(releaseTimer);

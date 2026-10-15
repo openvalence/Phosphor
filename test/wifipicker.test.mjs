@@ -114,7 +114,10 @@ const api = {
     return { ok: false, error: provisionRefusal(err).text, code: err.code, detail: err.detail };
   },
 };
-inst = mountPicker(api, document.getElementById('host'), f, { join: (e) => events.push({ phase: e.phase, channel: e.action.channelId, ok: e.ok, code: e.code, detail: e.detail, applied: e.applied }) });
+// ?card=1: the Network card (no credential binding), mounted out of view until T.reveal().
+const hostEl = document.getElementById('host');
+if (Q.get('card')) { hostEl.hidden = true; T.reveal = () => { hostEl.hidden = false; }; }
+inst = mountPicker(api, hostEl, f, Q.get('card') ? {} : { join: (e) => events.push({ phase: e.phase, channel: e.action.channelId, ok: e.ok, code: e.code, detail: e.detail, applied: e.applied }) });
 T.ready = pickerReady(api, f);
 </script>`;
   const srv = createServer((q, s) => {
@@ -251,6 +254,19 @@ T.ready = pickerReady(api, f);
   await p3.clock.runFor(1500);
   ok('30 s: a plain timeout, Scan answers again', await p3.locator('.wp-status').innerText() === 'Scan timed out' && await p3.locator('.wp-scan').isEnabled());
   await p3.close();
+
+  // The card sends no scan until it is on screen: a hub that declares 0x000F, granted and updated, hears nothing.
+  const pc = await ctx.newPage();
+  pc.on('pageerror', (e) => logs.push('pageerror: ' + e.message));
+  await pc.goto(base + '?card=1');
+  await pc.waitForFunction(() => window.T, null, { timeout: 10000 });
+  await pc.evaluate(() => { window.T.land(); });
+  await pc.waitForTimeout(600);
+  ok('out of view: no scan intent on mount, grant or a catalog update', (await pc.evaluate(() => window.T.sent.length)) === 0, await pc.evaluate(() => window.T.sent));
+  await pc.evaluate(() => window.T.reveal());
+  await pc.waitForFunction(() => window.T.sent.length === 1, null, { timeout: 5000 });
+  ok('opened: the first scan is asked then, once', (await pc.evaluate(() => window.T.sent.map((x) => x.value))).join() === '5');
+  await pc.close();
   ok('no page errors in the rows rules', !logs.some((l) => l.startsWith('pageerror')), logs);
   await ctx.close();
   srv.close();
@@ -355,6 +371,8 @@ if (!sim) {
       && await page.locator('.wp-manage').isVisible() && await page.locator('.wp-join .og-btn.primary').isDisabled() && await status(page) === '');
     await page.click('.wp-join .og-btn >> text=Cancel');
 
+    // The hub paces its STATE pushes: the next save reads the generation the picker has, so wait for Workshop and Guest in the list.
+    await page.waitForFunction(() => document.querySelectorAll('.sn .ui-tile').length === 3, null, { timeout: 15000 });
     await page.locator('.wp-foot .og-btn', { hasText: 'Other network…' }).click();
     await page.fill('.wp-join input[aria-label="Name"]', 'Attic');
     await page.fill('.wp-join input[type=password]', RIGHT);
