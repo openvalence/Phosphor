@@ -65,7 +65,7 @@ const half = (scan, rows, over = {}) => {
   return wrap({ ...o, ...over });
 };
 const first = [['virtual', -42, 1, 1], ['Workshop', -48, 1, 0], ['Workshop-Lab', -55, 1, 0], ['Guest', -61, 0, 0], ['Neighbor', -67, 1, 0], ['Printer-Direct', -72, 1, 0], ['Cafe', -75, 0, 0]];
-const second = [['Upstairs', -78, 1, 0], ['Linksys', -83, 1, 0], ['Garage', -88, 1, 0]];
+const second = [['Upstairs', -78, 1, 0], ['Attic', -83, 1, 0], ['Garage', -88, 1, 0]];
 const liveList = readList(nets(7, { count: 1 }), names(7, { ssid1: '' }), read);
 const fv = { vis: half(3, first), more: half(3, second) };
 const vis = readVisible(fv, read, liveList);

@@ -324,7 +324,7 @@ if (!sim) {
   if (!listed && !await page.locator('.wp-row').count()) {
     console.log('SKIP: this valencesim lists no networks (RFC-118 twin absent)');
   } else {
-    const NEIGHBORS = ['virtual', 'Workshop', 'Workshop-Lab', 'Guest', 'Neighbor', 'Printer-Direct', 'Cafe', 'Upstairs', 'Linksys', 'Garage'];
+    const NEIGHBORS = ['virtual', 'Workshop', 'Workshop-Lab', 'Guest', 'Neighbor', 'Printer-Direct', 'Cafe', 'Upstairs', 'Attic', 'Garage'];
     ok('the list: both halves, strongest first', (await ssids(page)).join() === NEIGHBORS.join(), await ssids(page));
     const first = page.locator('.wp-row').first();
     ok('the connected network leads with its check and Connected', await first.getAttribute('aria-current') === 'true'
