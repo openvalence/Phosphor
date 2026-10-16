@@ -1589,8 +1589,13 @@ Neutrino built into Phosphor stays exactly as it is (10.10).
   WebSocket address (a click copies it), the client count, the theme, Launch
   another, and a big E-STOP that presses and releases the machine's contacts
   (the latch is the hub's; a client releases it). Rail to scale: travel, rail
-  ends, the stroke window, the target, the carriage 40 ms behind the newest
-  sample, and the plan strip's 128 ms drawn running down from the rail.
+  ends, the stroke window, the target, the carriage, and the plan strip's
+  128 ms drawn running down from the rail. Rail and scope draw on every
+  display frame at one render instant: the display's time minus a jitter
+  buffer (Phosphor's render clock, about 37 ms at 30 Hz snapshots), the 1 ms
+  samples interpolated there; the loop stops when nothing in view changes.
+  Blur (Off, 180°, 360°, remembered) is a shutter: the carriage's time
+  coverage of each pixel column over that share of the frame interval.
   Readouts: position, speed, acceleration, state, window, limits. Scope:
   position and velocity from the 1 ms samples, each lane scaled to what the
   window holds; spans 0.5 to 60 s by button or wheel, Pause (Space). Clients:
@@ -1717,3 +1722,4 @@ Neutrino built into Phosphor stays exactly as it is (10.10).
 | 2026-10-15 | §10.10 | The built-in machine's name is Neutrino everywhere a name appears (Hubs row, hub name in the top bar, Connect, logs, Open to LAN text, docs, site); the word "virtual" stays only in its badge, now the `ν` glyph alone in the third accent (`--highlight`) with a tip and aria-label, never amber (caution). Supersedes the 2026-10-08 "just Virtual" row. Replays of a saved hub (Sim) keep "virtual". | operator ("can we name virtual to neutrino so it shows neutrino in the top bar and virtual stays only in the badge"; "it's pink or the tertiary color not yellow"; "the V and remove virtual, make it hover and find out") |
 | 2026-10-16 | §10.17 | Neutrino as a standalone dev tool: a second Tauri 2 + Svelte 5 app in this repo (`neutrino/`) running the native Neutrino as its sidecar on a real port, drawn from a localhost dev tool channel with physical inputs and network faults; the wasm Neutrino in Phosphor is unchanged (`ph-1wa3`, Nucleus `val-sf7.7`). | operator ("neutrino available as a dev tool, standalone ... a virtual machine you can see on your screen, simple gui"; the stack); text commands in and JSON out, loss as a retransmit, RTT measured at the hub, the default `--homed --home-sense-at -20`, port 80 for the first window only, the portable pair of files and the panel layout are the agent's (the icon, Valence assets/icons/neutrino-*.svg, is the orchestrator's), veto-able |
 | 2026-10-16 | copy, §10.17 | Copy voice (COPY.md rule 12): plain technical terms of motion control and industrial equipment, no jokes, winks, reassurance or the obvious. The Neutrino dev tool's strings say what each control does in network and machine terms; Virtual Valence's standing status reads `Virtual: settings stage for Merge`, its link dot `Virtual: replay of the saved catalog`, and Neutrino's badge tip drops "machine". | operator ("no need for this smarmy voice ... use standardized and recognized verbiage for motion machines, industrial equipment"; "not literally banned": a voice rule, no lint). The wording of each string is the agent's, veto-able |
+| 2026-10-16 | §10.17 | Neutrino's rail and scope play the 1 ms samples back on the display's frames at a render instant behind a jitter buffer, and the rail gains a motion-blur shutter (Off, 180°, 360°). The twin's broadcaster wakes on the hub's publish instead of sleeping (a sleep in the windowless sidecar rounded to 47 ms). | operator ("neutrino also seems to be fps limited or not smooth ... add a blur option, to the rail, so rapid movements make sense"); 30 Hz snapshots kept, the shutter choices, the square-root tone curve and the outline at the render instant are the agent's, veto-able |

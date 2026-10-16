@@ -25,4 +25,5 @@ Blender tooltip (operator ruling 2026-10-02).
 | No log lines yet. The hub's log and plugin messages arrive here while a session is live. | No log lines yet |
 | refused: this edge would close a feedback loop (the hub refuses it too, SPEC 8.11) | refused: feedback loop (SPEC 8.11) |
 | Phosphor slows down over time (its tooltip the same words) | Memory up 140 MB in 35 min (tooltip: lowest reading per 5 min 28 to 168 MB, since, the threshold, Restart Phosphor to free it) |
-| Nothing moves either way (the Neutrino dev tool's Drop Wi-Fi) | Wi-Fi outage: frames held both ways, no UDP discovery |
+| Nothing moves either way (the Neutrino dev tool's Drop Wi-Fi) | Wi-Fi outage: link down, packets queued, UDP unanswered |
+| Frames retransmitted: 200 ms late, holding those behind (its Loss) | Retransmit rate: 200 ms RTO, head-of-line blocking |

@@ -8,11 +8,12 @@
   import { onMount } from 'svelte';
   import Rail from './Rail.svelte';
   import Scope from './Scope.svelte';
-  import { createRing, push, idx, before } from './ring.js';
+  import { createRing, createPlayhead, push, idx, before } from './ring.js';
   import { THEMES, applyTheme, currentTheme } from '../src/model/theme.js';
 
   const TAURI = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
   const ring = createRing(65536);
+  const play = createPlayhead(ring);
   let info = $state(null);
   let hello = $state(null);
   let snap = $state.raw(null);
@@ -37,7 +38,9 @@
     if (m.t === 'hello') { hello = m; return; }
     if (m.t !== 'snap') return;
     const s = m.s;
+    const prev = ring.n ? ring.t[idx(ring, ring.n - 1)] : NaN;
     for (let i = 0; i + 2 < s.length; i += 3) push(ring, s[i], s[i + 1], s[i + 2]);
+    play.arrive(prev);
     if (m.log.length) log = [...log, ...m.log].slice(-500);
     if (!netSeeded) { net = { ...m.net }; netSeeded = true; }
     const slots = new Set();
@@ -146,7 +149,7 @@
 
   <main class="grid">
     <section class="col main">
-      <Rail {ring} {snap} />
+      <Rail {ring} {play} {snap} />
       <div class="readouts">
         <div class="ro"><span>Position</span><b>{snap ? fmt(snap.m.pos, 2) : '--'}</b><i>mm</i></div>
         <div class="ro"><span>Speed</span><b>{snap ? fmt(snap.m.vel, 1) : '--'}</b><i>mm/s</i></div>
@@ -156,7 +159,7 @@
         <div class="ro"><span>Window</span><b>{snap ? fmt(snap.m.wmin, 0) + '..' + fmt(snap.m.wmax, 0) : '--'}</b><i>of {snap ? fmt(snap.m.rail, 0) : '--'} mm</i></div>
         <div class="ro"><span>Limits</span><b>{snap ? fmt(snap.m.vmax, 0) : '--'}</b><i>mm/s, {snap ? fmt(snap.m.amax / 1000, 1) : '--'} m/s²</i></div>
       </div>
-      <Scope {ring} />
+      <Scope {ring} {play} />
 
       <div class="panel">
         <h2>Clients</h2>
@@ -227,14 +230,14 @@
         <h2>Network</h2>
         <label class="knob"><span data-tip="One-way delay added to every client">Latency</span><input type="range" min="0" max="500" bind:value={net.lat} onchange={sendNet} /><b>{net.lat} ms</b></label>
         <label class="knob"><span data-tip="Random extra one-way delay, 0 to this value">Jitter</span><input type="range" min="0" max="200" bind:value={net.jit} onchange={sendNet} /><b>{net.jit} ms</b></label>
-        <label class="knob"><span data-tip="Frames retransmitted: 200 ms late, holding those behind">Loss</span><input type="range" min="0" max="30" step="0.5" bind:value={net.loss} onchange={sendNet} /><b>{net.loss} %</b></label>
+        <label class="knob"><span data-tip="Retransmit rate: 200 ms RTO, head-of-line blocking">Loss</span><input type="range" min="0" max="30" step="0.5" bind:value={net.loss} onchange={sendNet} /><b>{net.loss} %</b></label>
         <div class="row">
           <input class="og-num secs" type="number" min="1" max="600" bind:value={dropS} aria-label="Outage seconds" />
           {#if snap && snap.wifi.dropLeft > 0}
             <button class="og-btn sm" onclick={() => send('wifi-drop 0')}>Restore Wi-Fi</button>
             <span class="chip warn">Wi-Fi down {(snap.wifi.dropLeft / 1000).toFixed(1)} s</span>
           {:else}
-            <button class="og-btn sm" onclick={() => send('wifi-drop ' + dropS)} data-tip="Wi-Fi outage: frames held both ways, no UDP discovery">Drop Wi-Fi</button>
+            <button class="og-btn sm" onclick={() => send('wifi-drop ' + dropS)} data-tip="Wi-Fi outage: link down, packets queued, UDP unanswered">Drop Wi-Fi</button>
           {/if}
         </div>
       </div>
