@@ -1,4 +1,4 @@
-// lan.rs -- Open to LAN: the Virtual's hub on this PC's LAN. A WebSocket
+// lan.rs -- Open to LAN: Neutrino's hub on this PC's LAN. A WebSocket
 // listener and the SPEC 13.8 UDP port whose bytes the page carries to the
 // Neutrino worker and back (src/shell/lan.svelte.js). Desktop shell only.
 //

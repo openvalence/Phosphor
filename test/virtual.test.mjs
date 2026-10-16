@@ -145,8 +145,24 @@ async function until(fn, ms = 8000) {
 console.log('virtual: Sim from the Hubs pane, then Merge onto the real machine');
 await openTab('shell:hubs');
 const rows = page.locator('.pane-list.rows').first().locator('li');
-ok('the built-in machine is the last saved-hub row, badged virtual',
-  (await rows.last().locator('.name').innerText()).startsWith('Virtual') && await rows.last().locator('.mark').innerText() === 'ν virtual');
+ok('the built-in machine is the last saved-hub row, named Neutrino',
+  (await rows.last().locator('.name').innerText()).startsWith('Neutrino'));
+{
+  const b = rows.last().locator('.mark');
+  const tip = await b.getAttribute('data-tip');
+  ok('its badge is the glyph alone, named and tipped (tip.js), focusable',
+    (await b.innerText()) === '' && (await b.evaluate((e) => getComputedStyle(e, '::before').content)) === '"ν"'
+    && /^Virtual machine/.test(tip || '') && (await b.getAttribute('aria-label')) === tip && (await b.getAttribute('tabindex')) === '0', tip);
+  ok('its badge is not amber', await b.evaluate((e) => {
+    const c = getComputedStyle(e).color, w = getComputedStyle(document.documentElement).getPropertyValue('--warn').trim().toLowerCase();
+    const hex = '#' + (c.match(/\d+/g) || []).slice(0, 3).map((n) => (+n).toString(16).padStart(2, '0')).join('');
+    return hex !== w;
+  }));
+  await page.keyboard.press('Shift');
+  await b.focus();
+  ok('keyboard focus shows the tip', await until(async () => (await page.locator('#ph-tip').textContent().catch(() => '')) === tip, 3000));
+  await page.keyboard.press('Escape');
+}
 const sim = page.getByRole('button', { name: 'Sim Bench' });
 ok('the saved hub offers Sim from its vault record', await sim.isEnabled());
 if (SHOTS) await page.screenshot({ path: join(SHOTS, 'hubs-pane.png') });
@@ -222,7 +238,7 @@ ok('the hub value now reads the applied one', await until(async () => (await row
 console.log('virtual: the built-in machine (Nucleus twin as wasm, in a worker)');
 await openTab('shell:hubs');
 const vrow = () => page.locator('.pane-list.rows').first().locator('li.virtual');
-ok('the last row is the built-in machine', (await vrow().locator('.name').innerText()).startsWith('Virtual'), await vrow().locator('.name').innerText());
+ok('the last row is the built-in machine', (await vrow().locator('.name').innerText()).startsWith('Neutrino'), await vrow().locator('.name').innerText());
 const opensBefore = wire.opens;
 await vrow().getByRole('button', { name: 'Connect' }).click();
 ok('Connect boots it and reaches LIVE', await until(async () => (await chip()) === 'live', 15000), await chip());

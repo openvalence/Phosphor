@@ -33,7 +33,7 @@
   import { nameInput, opensName } from './rename.js';
   import { since, endpointLabel } from '../model/format.js';
   import { hasMachine } from '../model/vault.js';
-  import { BUILTIN_MACHINE_NAME, BUILTIN_MACHINE_BADGE } from '../model/builtin.js';
+  import { BUILTIN_MACHINE_NAME, BUILTIN_MACHINE_BADGE, BUILTIN_MACHINE_BADGE_TIP } from '../model/builtin.js';
   import { openVirtual, sim, onSim } from './virtual.svelte.js';
   import '../ui/pane.css';
 
@@ -115,7 +115,7 @@
         {/each}
         <li class="virtual">
           <span class="who">
-            <span class="name">{BUILTIN_MACHINE_NAME}<span class="mark virt">{BUILTIN_MACHINE_BADGE}</span></span>
+            <span class="name">{BUILTIN_MACHINE_NAME}<span class="mark virt" role="img" tabindex="0" data-glyph={BUILTIN_MACHINE_BADGE} data-tip={BUILTIN_MACHINE_BADGE_TIP} aria-label={BUILTIN_MACHINE_BADGE_TIP}></span></span>
             <span class="meta mono" data-tip={builtinMeta}>{builtinMeta}</span>
           </span>
           <span class="seen mono">{onSim() ? 'connected' : 'built in'}</span>
@@ -187,7 +187,9 @@
   .acts { display: flex; gap: var(--sp-2); }
   .mark { margin-left: var(--sp-3); padding: 0 var(--sp-2); font-size: .68rem; font-weight: 400; border: 1px solid var(--reality); border-radius: var(--r-s); color: var(--reality); }
   .mark.setup { border-color: var(--intent); color: var(--intent); }
-  .mark.virt { border-color: var(--warn); color: var(--warn-ink, var(--warn)); }
+  /* The third accent, never warn: amber means caution. The glyph is generated so the tip is not a repeat of visible text (tip.js). */
+  .mark.virt { border-color: var(--highlight); color: var(--highlight); }
+  .mark.virt::before { content: attr(data-glyph); }
   .mark.via { border-color: var(--line); color: var(--tx-mut); }
   .nick input {
     width: 100%;

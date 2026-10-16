@@ -38,7 +38,7 @@ export const DEFAULTS = Object.freeze({
   railHide: true,     // the hide tab on the rail strip is available (feature switch)
   railHidden: false,  // the rail is hidden right now (state)
   closeIdle: true,    // shell: the window closes with no hold while the machine is idle (DESIGN §10.3)
-  openToLan: false,   // desktop shell: the Virtual's hub on the LAN while it runs (shell/lan.svelte.js)
+  openToLan: false,   // desktop shell: Neutrino's hub on the LAN while it runs (shell/lan.svelte.js)
   lanPort: 82,        // its WebSocket port; unbindable, the OS picks one
 });
 

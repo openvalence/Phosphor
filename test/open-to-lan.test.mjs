@@ -3,8 +3,8 @@
  * own WebView2 profile, driven over CDP, and valence-js in node as the phone on the PC's LAN address.
  *
  * - The requested port is held by a plain TCP server: Open to LAN falls back and the status names it.
- * - Discovery answers only while Open to LAN is up: not before the Virtual runs, not after it is turned off.
- *   While up, the reply is the Virtual's: name, the bound port, the remote's own WELCOME hub_instance_id.
+ * - Discovery answers only while Open to LAN is up: not before Neutrino runs, not after it is turned off.
+ *   While up, the reply is Neutrino's: name, the bound port, the remote's own WELCOME hub_instance_id.
  * - The remote lands at watch; its knock is not granted before the Pairing window press, and is after it.
  * - The remote subscribes and jogs; the local session's Pairing pane lists the remote's session as the owner.
  * - Latency: the remote's CLOCK round trips against the PC's own session's, over 20 s.
@@ -89,21 +89,21 @@ try {
   const status = () => page.locator('[aria-labelledby="set-lan"] .pane-status').innerText().catch(() => '');
 
   await openTab('shell:settings');
-  ok('on with no Virtual: waits for it', await until(async () => (await status()) === 'Starts with the Virtual'), await status());
-  ok('no discovery before the Virtual runs', (await probe('127.0.0.1')) === null);
+  ok('on with no Neutrino: waits for it', await until(async () => (await status()) === 'Starts with Neutrino'), await status());
+  ok('no discovery before Neutrino runs', (await probe('127.0.0.1')) === null);
 
   await openTab('shell:hubs');
   await page.locator('.pane-list.rows').first().locator('li.virtual').getByRole('button', { name: 'Connect' }).click();
   await openTab('shell:settings');
   const UP = /^Open to LAN · ([\d.]+|no LAN address):(\d+) · (\d+) connected/;
-  ok('the Virtual runs: Open to LAN is up', await until(async () => UP.test(await status()), 20000), await status());
+  ok('Neutrino runs: Open to LAN is up', await until(async () => UP.test(await status()), 20000), await status());
   const [, addr, portText] = UP.exec(await status()) || [];
   const IP = addr && addr !== 'no LAN address' ? addr : '127.0.0.1';
   const PORT = Number(portText);
   ok('a port it cannot bind falls back and says so', PORT && PORT !== HELD && (await status()).includes(HELD + ' unavailable'), await status());
 
   const r1 = await probe(IP);
-  ok('discovery answers with the Virtual on the bound port', !!r1 && r1.hub_name === 'Virtual' && r1.ws_port === PORT, JSON.stringify(r1));
+  ok('discovery answers with Neutrino on the bound port', !!r1 && r1.hub_name === 'Neutrino' && r1.ws_port === PORT, JSON.stringify(r1));
   ok('its pairing window is closed (opened to the LAN)', !!r1 && !r1.pairing_window_open);
 
   // ---- the phone ------------------------------------------------------------------------------

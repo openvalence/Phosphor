@@ -61,7 +61,7 @@
   const lanText = $derived(!$prefs.openToLan ? ''
     : lan.port ? ['Open to LAN', (lan.addrs[0] || 'no LAN address') + ':' + lan.port, lan.remotes + ' connected',
       lan.note, !lan.discovery && 'no discovery', sim.info && pairingOpen && 'pairing open'].filter(Boolean).join(' · ')
-    : lan.note || 'Starts with the Virtual');
+    : lan.note || 'Starts with Neutrino');
 </script>
 
 <div class="pane-stack set">
@@ -99,7 +99,7 @@
       </label>
       <p class="pane-note">Windows asks to allow it the first time</p>
       <div class="row">
-        <button type="button" class="og-btn" disabled={!sim.info} data-tip="The Virtual's PAIR button" onclick={lanPairPress}>Pairing window</button>
+        <button type="button" class="og-btn" disabled={!sim.info} data-tip="Neutrino's PAIR button" onclick={lanPairPress}>Pairing window</button>
       </div>
       <p class="pane-status" role="status" data-phase={lan.port ? 'settled' : lan.note ? 'fault' : null}
          data-tip={lan.addrs.join(', ')}>{lanText}</p>

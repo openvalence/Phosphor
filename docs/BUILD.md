@@ -18,8 +18,8 @@ ButtplugIO/   branch `valence`, Cargo path deps of src-tauri
 
 ## The built-in machine
 
-The built-in machine, Virtual in the UI (`src/model/builtin.js`), is
-Neutrino, the emulator: the Nucleus hub firmware built to wasm, run in process
+The built-in machine, Neutrino in the UI (`src/model/builtin.js`), is
+the emulator: the Nucleus hub firmware built to wasm, run in process
 in a worker in every build: Windows, macOS, Linux and Android (DESIGN 10.10).
 Its files keep the name `integral.*` until Nucleus renames them (`val-7ai`).
 
