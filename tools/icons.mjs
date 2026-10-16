@@ -1,6 +1,7 @@
 // icons.mjs -- regenerates every Phosphor and site icon from the sources in
 // ../Valence/assets/icons (README there names the variants and sizes).
-// Run: npm run icons
+// Run: npm run icons (Phosphor), npm run icons:neutrino (neutrino-*.svg into
+// neutrino/src-tauri/icons/ only; no Android, Flatpak or site output).
 // Writes src-tauri/icons/ (Android: see below), flatpak/org.openvalence.Phosphor.svg and
 // ../openvalence.github.io/icons/ (site.webmanifest there is hand-written).
 // Layers at 16 to 32 px come from icon-16.svg and icon-small.svg, never a
@@ -15,8 +16,11 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const src = root + '../Valence/assets/icons/';
 const site = root + '../openvalence.github.io/icons/';
-const out = root + 'src-tauri/icons/';
-const CHASSIS = '#111318';
+const neutrino = process.argv.includes('neutrino');
+const [APP, SMALL, TINY] = ['app', 'small', '16'].map((v) => (neutrino ? 'neutrino-' : 'icon-') + v + '.svg');
+const proj = neutrino ? root + 'neutrino/' : root;   // tauri icon resolves src-tauri from its cwd
+const out = proj + 'src-tauri/icons/';
+const CHASSIS = neutrino ? '#0E4683' : '#111318';
 const tmp = mkdtempSync(join(tmpdir(), 'phosphor-icons-'));
 
 const browser = await chromium.launch();
@@ -60,12 +64,23 @@ function writeIco(file, pngs) {
   writeFileSync(file, Buffer.concat([head, ...pngs.map(([, d]) => d)]));
 }
 
-const app = await render('icon-app.svg', 1024, join(tmp, 'app.png'));
-const mac = await render('icon-app.svg', 1024, join(tmp, 'mac.png'), { mac: true });
-execSync(`npx tauri icon "${app}" --ios-color "${CHASSIS}"`, { cwd: root, stdio: 'inherit' });
-execSync(`npx tauri icon "${mac}" -o "${join(tmp, 'mac')}"`, { cwd: root, stdio: 'inherit' });
+const app = await render(APP, 1024, join(tmp, 'app.png'));
+const mac = await render(APP, 1024, join(tmp, 'mac.png'), { mac: true });
+execSync(`npx tauri icon "${app}" --ios-color "${CHASSIS}"`, { cwd: proj, stdio: 'inherit' });
+execSync(`npx tauri icon "${mac}" -o "${join(tmp, 'mac')}"`, { cwd: proj, stdio: 'inherit' });
 copyFileSync(join(tmp, 'mac', 'icon.icns'), out + 'icon.icns');
 
+await render(SMALL, 32, out + '32x32.png', { pad: 1 });
+await render(SMALL, 30, out + 'Square30x30Logo.png', { pad: 1 });
+const layers = [];
+for (const s of [16, 24, 32, 48, 64, 256]) {
+  const svg = s === 16 ? TINY : s <= 32 ? SMALL : APP;
+  const f = await render(svg, s, join(tmp, `ico-${s}.png`), { pad: 1 });
+  layers.push([s, readFileSync(f)]);
+}
+writeIco(out + 'icon.ico', layers);
+
+if (!neutrino) {
 // tauri icon writes Android into gen/ when that exists, else into
 // icons/android. Keep its legacy mipmaps; the adaptive icon is the
 // hand-written vector (tools/android-icons.mjs), never a foreground PNG.
@@ -79,16 +94,6 @@ for (const d of ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi']) {
 execSync('git checkout -- src-tauri/icons/android/mipmap-anydpi-v26', { cwd: root, stdio: 'inherit' });
 if (existsSync(gen)) execSync('node tools/android-icons.mjs', { cwd: root, stdio: 'inherit' });
 
-await render('icon-small.svg', 32, out + '32x32.png', { pad: 1 });
-await render('icon-small.svg', 30, out + 'Square30x30Logo.png', { pad: 1 });
-const layers = [];
-for (const s of [16, 24, 32, 48, 64, 256]) {
-  const svg = s === 16 ? 'icon-16.svg' : s <= 32 ? 'icon-small.svg' : 'icon-app.svg';
-  const f = await render(svg, s, join(tmp, `ico-${s}.png`), { pad: 1 });
-  layers.push([s, readFileSync(f)]);
-}
-writeIco(out + 'icon.ico', layers);
-
 copyFileSync(src + 'icon-app.svg', root + 'flatpak/org.openvalence.Phosphor.svg');
 
 mkdirSync(site, { recursive: true });
@@ -96,6 +101,7 @@ copyFileSync(src + 'icon-16.svg', site + 'favicon.svg');
 await render('icon-small.svg', 32, site + 'favicon-32.png');
 await render('icon-app.svg', 180, site + 'apple-touch-icon.png', { bg: CHASSIS });
 await render('icon-app.svg', 512, site + 'icon-512.png');
+}
 
 await browser.close();
 rmSync(tmp, { recursive: true, force: true });
