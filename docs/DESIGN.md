@@ -656,7 +656,7 @@ question in §10.8).
     again, never "packets lost". The client figure carries its scope and
     unit: on Windows it is all TCP on this PC, in segments (the tooltip says
     so); on macOS the unit is bytes. A value not reported reads `--`, never a
-    number invented (the Virtual reports none). The tooltip gives every
+    number invented (Neutrino reports none). The tooltip gives every
     reported value in words: the client's, the machine's resent share, its
     radio's transmit retries and its signal in dBm.
   - The render readout is `N fps` (`-- fps` until a rail draws); its tooltip
@@ -1111,9 +1111,10 @@ connected, then merge the setting changes onto the machine, ticked per item.
   holds at its snapshot. It never sends a `hub_instance_id`. Sim on a saved
   hub is always this replay.
 - **The built-in machine** (operator rulings 2026-10-08, `ph-5u0g.1`): the
-  user sees `Virtual` (row name) and `ν virtual` (badge), both from
-  `src/model/builtin.js`; how it works is never a UI string. Virtual is
-  Neutrino, the hub firmware built to wasm, running in process (the
+  user sees `Neutrino` (row name, hub name, log tag) and a `ν` badge
+  (operator 2026-10-15; the word "virtual" lives only in the badge's tip),
+  both from `src/model/builtin.js`; how it works is never a UI string.
+  Neutrino is the hub firmware built to wasm, running in process (the
   emulator; Nucleus `sim/valencesim/wasm`, files still `integral.*`),
   vendored in `src/model/integral/` and pinned in `integral.pin`, on every
   platform. A worker (`src/model/integral.worker.js`, inlined
@@ -1131,7 +1132,7 @@ connected, then merge the setting changes onto the machine, ticked per item.
   log lines land in the Log tab under its name. The exe is standalone.
 - **Open to LAN** (operator rulings 2026-10-10, `ph-li30`): a desktop shell
   setting, off by default (Settings, `openToLan`, port `lanPort` 82). While it
-  is on and Virtual runs, `src-tauri/src/lan.rs` listens for WebSocket on every
+  is on and Neutrino runs, `src-tauri/src/lan.rs` listens for WebSocket on every
   IPv4 interface and answers the SPEC 13.8 UDP port; `src/shell/lan.svelte.js`
   carries each remote's frames and each datagram to the worker over one ordered
   Channel and back by batched invoke. Every remote is one more session of the
@@ -1139,18 +1140,21 @@ connected, then merge the setting changes onto the machine, ticked per item.
   ownership are the hub's own; the hub also builds the discovery reply and
   latches an RFC-053 ESTOP datagram (`integral_datagram`, the board's
   responder). Nothing serves `/uitoken` on the LAN: a remote starts at
-  `watch` and pairs. Opened to the LAN, Virtual boots with its pairing window
+  `watch` and pairs. Opened to the LAN, Neutrino boots with its pairing window
   closed; the section's Pairing window button is the twin's PAIR press
   (`integral_pair_press`). A port it cannot bind (taken, or under 1024 without
   privileges on Linux and macOS) falls back to one the OS assigns, and
-  discovery advertises the bound one. Off, a port change, Virtual stopping or
+  discovery advertises the bound one. Off, a port change, Neutrino stopping or
   Phosphor exiting sends every remote GOODBYE `NORMAL_CLOSURE` and closes it;
   while the hub lives on, each remote's session also gets that GOODBYE so the
   hub releases what it owned. The status line reads `Open to LAN · <address>:<port>
-  · <n> connected`; this PC's own Virtual never appears among its LAN scan
+  · <n> connected`; this PC's own Neutrino never appears among its LAN scan
   results. Windows asks about the firewall the first time; the shell never
   edits firewall rules.
-- **Picker**: the Hubs pane lists Virtual last, always, badged `ν virtual`;
+- **Picker**: the Hubs pane lists Neutrino last, always, badged `ν` in the
+  third accent (`--highlight`, never warn amber), focusable, with the tip
+  `Virtual machine: real Nucleus firmware, emulated in the app` (tip.js, and its
+  aria-label);
   the subline reads `The hub as software`, then `Nucleus <version>` with a
   Stop while it runs; Connect boots it.
   Each saved hub with a vault record offers Sim (the replay above). Never
@@ -1674,3 +1678,4 @@ of the default Theme, **Phosphor**. The Display pane lists Themes first, then th
 | 2026-10-11 | §10.3, plugins | The funscript player behaves like the video players people know (`ph-bw0o`, docs/plugins/FUNSCRIPT.md PP1 to PP6): on a phone upright the stage is the video's own box with the timeline and bar right under it; a touch tap on the video shows or hides the controls and never plays, the center glyph (the kit's play or pause, no disc) and the bar play and pause, the controls hide after 2.5 s playing and stay paused; a mouse click plays or pauses and a double-click toggles fullscreen, the pointer hiding with the controls; previous and next walk videos (previous restarts past 3 s) and the chapters move to the stage's and timeline's menus; a mute button beside the volume and a time readout over the heat on the desktop. A `mediaFullscreen` page's fullscreen draws no caret and the close ask leaves it, so the removed In window mode is gone for good. | operator (the double-tap side skip of 10 s is the orchestrator's addition, veto-able; loads by previous and next never playing, the measured stage cap and the chapters in the menus are the agent's, veto-able) |
 | 2026-10-13 | plugins, §10.11 | Saved Wi-Fi networks (RFC-116 draft): the Network page's card is the factory plugin `saved-networks`: at configure the names, signal and the live mark with Add, a confirmed Remove and reorder by drag or arrows; below it `N of M saved` and no names. A plugin hero may claim a whole channel by id (`channels`, `optionalChannels`) while the registry gives it no roles, to be replaced by roles when the RFC lands; a refused action write returns the NACK's code and detail; 0x0308 is named LIVE_NETWORK as a draft name. | operator (the list, add, remove, reorder and occupancy-only tier split are the brief's; the by-id claim, the card's own status line beside the strip's refusal chip, and the two-tap confirm where the catalog does not flag the op destructive are the agent's, veto-able) |
 | 2026-10-13 | plugins, §10.11 | The Wi-Fi picker (RFC-118 draft, `ph-nqbh`): where the hub lists networks the Network card opens on the networks it hears, strongest first (signal bars, a lock on secured ones, a check on the connected one, which leads even when the scan missed it, `Saved` on saved ones); a tap asks one write-only password for a secured network and acts, an open one acts at once; progress, then the outcome in the card's one status line. At the bottom `Other network…` (a hidden SSID by hand) and `Advanced`, which reveals the saved-slot card; the generic cards for provisioning and the network channels do not draw while the plugin is on. Set up a machine shows the same picker in place of the setup wizard; there the act is `wifi_join` (Join), on the Network card `save` (Save: stored, joined at the next connect when strongest). Opening asks one scan; the rows pushed at the grant show greyed and untappable until the scan counter changes (RFC-118 item 6), a scan refused INTERLOCK in motion reads `Machine is moving` and is asked again, one that never lands times out at 30 s. Rows are keyed by SSID and the order is held while the user interacts. A saved row never acts on a tap: its sheet offers the passphrase again, move and remove. Without RFC-118, or below configure, the card is the saved-slot card and the setup flow the wizard. | operator ("hide all the extra boxes behind an advanced mode, start by showing available networks, then an advanced or custom at the bottom, ie phone"); Save rather than Join on the Network card, the setup flow's other settings left to the Setup page, the password asked for every secured network in the setup flow, and the provisioning op claimed by role are the agents', veto-able (`bd notes ph-nqbh`) |
+| 2026-10-15 | §10.10 | The built-in machine's name is Neutrino everywhere a name appears (Hubs row, hub name in the top bar, Connect, logs, Open to LAN text, docs, site); the word "virtual" stays only in its badge, now the `ν` glyph alone in the third accent (`--highlight`) with a tip and aria-label, never amber (caution). Supersedes the 2026-10-08 "just Virtual" row. Replays of a saved hub (Sim) keep "virtual". | operator ("can we name virtual to neutrino so it shows neutrino in the top bar and virtual stays only in the badge"; "it's pink or the tertiary color not yellow"; "the V and remove virtual, make it hover and find out") |

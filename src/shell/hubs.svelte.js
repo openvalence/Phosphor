@@ -11,8 +11,8 @@
  *   RFC-046): the SPEC 13.8 probe runs and lists every reply; only an empty
  *   LAN result runs the BLE scan. No mDNS (RFC-072 ruling, 2026-10-01). The
  *   launch probe is LAN only: it never raises a Bluetooth permission prompt.
- * - This PC's own Virtual, Open to LAN (lan.svelte.js), is never a LAN row:
- *   dialing it would stop the Virtual it reaches.
+ * - This PC's own Neutrino, Open to LAN (lan.svelte.js), is never a LAN row:
+ *   dialing it would stop the Neutrino it reaches.
  * - A LAN reply carrying a saved hub's hub_instance_id moves that saved
  *   endpoint, port included. Discovery never adds a saved hub: a hub is saved
  *   once it is live over WiFi (settings-pane.js).
