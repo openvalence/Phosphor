@@ -1,13 +1,13 @@
 // icons.mjs -- regenerates every Phosphor and site icon from the sources in
 // ../Valence/assets/icons (README there names the variants and sizes).
 // Run: npm run icons (Phosphor), npm run icons:neutrino (neutrino-*.svg into
-// neutrino/src-tauri/icons/ only; no Android, Flatpak or site output).
+// neutrino/src-tauri/icons/, pruned to the bundle's list; no Flatpak or site output).
 // Writes src-tauri/icons/ (Android: see below), flatpak/org.openvalence.Phosphor.svg and
 // ../openvalence.github.io/icons/ (site.webmanifest there is hand-written).
 // Layers at 16 to 32 px come from icon-16.svg and icon-small.svg, never a
 // downscale of the 1024.
 import { chromium } from 'playwright';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -101,6 +101,12 @@ copyFileSync(src + 'icon-16.svg', site + 'favicon.svg');
 await render('icon-small.svg', 32, site + 'favicon-32.png');
 await render('icon-app.svg', 180, site + 'apple-touch-icon.png', { bg: CHASSIS });
 await render('icon-app.svg', 512, site + 'icon-512.png');
+}
+
+// Neutrino keeps only what its bundle lists (tauri icon also drops Store, iOS and Android sets).
+if (neutrino) {
+  const keep = JSON.parse(readFileSync(proj + 'src-tauri/tauri.conf.json', 'utf8')).bundle.icon.map((p) => p.replace('icons/', ''));
+  for (const f of readdirSync(out)) if (!keep.includes(f)) rmSync(out + f, { recursive: true, force: true });
 }
 
 await browser.close();
