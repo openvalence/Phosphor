@@ -94,6 +94,7 @@
   --reality: #4DA6FF;
   --intent:  #A78BFA;
   --highlight: #FF5CB3;
+  --neutrino: var(--highlight);   /* the virtual-machine badge; the engine pinks it on light chassis */
   --warn:    #F5B94D;   /* never themed: safety */
   --bad:     #FF4757;   /* never themed: safety */
   /* The same two safety colors as rgb triples, for tints and glows; never

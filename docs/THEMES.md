@@ -511,6 +511,10 @@ old `skin` field reads as `style`.
 | intent | requested, not yet confirmed | `--intent`, `--intent-rgb`, `--intent-deep-rgb`, `--glow-intent` |
 | highlight | focus rings, text selection, the dragged thumb, a pressed button, the active swatch | `--highlight`, `--highlight-rgb` |
 
+`--neutrino` is not an accent but a derived token of its own: the virtual-machine badge's ink and border. A dark
+chassis gives it `var(--highlight)`; a light chassis gives it a pink (`#B0306A`, darkened to read 4.5:1 on the
+chassis' four surfaces), because a light Variant's highlight is often blue. Pin it in Overrides to choose another.
+
 `highlight: null` follows reality, so every preset that predates it looks as
 it did. Highlight never means a state: an active (on) control, a confirmed
 value and a live readout stay reality.

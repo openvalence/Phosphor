@@ -43,7 +43,7 @@ import { goTab } from './nav.mjs';
 import { lowContrast, lowContrastOver } from './audit.mjs';
 import { cbMap, cbUint, cbBstr, cbTstr, cbArray, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
 import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K } from '../../Valence/clients/js/frames.js';
-import { THEMES, STYLES, deriveTokens, fromOklch, inkFloor, contrast } from '../src/model/theme.js';
+import { THEMES, STYLES, deriveTokens, fromOklch, inkFloor, contrast, nearSafety, toOklch } from '../src/model/theme.js';
 import { paletteTheme } from '../src/model/dynamicColor.js';
 import { ICON_NAMES } from '../src/ui/navIcons.js';
 
@@ -84,6 +84,10 @@ ok('every variant clears 4.5:1 for text and for reality on every surface, 3:1 fo
 const inkBad = THEMES.filter((t) => { const d = deriveTokens(t); return d.inkOn.some((s) => Object.values(d.ink).some((c) => contrast(c, s) < inkFloor(t.style))); })
   .map((t) => t.id + ' (' + inkFloor(t.style) + ':1)');
 ok('every variant\'s safety inks clear its Theme\'s floor on every surface', inkBad.length === 0, inkBad.join(','));
+// The Neutrino badge: the highlight on a dark chassis; on a light one a pink that reads 4.5:1 on every surface, clear of the safety hues.
+const nuBad = THEMES.filter((t) => { const d = deriveTokens(t), v = d.base['--neutrino'];
+  return d.dark ? v !== 'var(--highlight)' : !(d.inkOn.every((s) => contrast(v, s) >= 4.5) && !nearSafety(v) && Math.abs(((toOklch(v)[2] + 540) % 360) - 180) < 10); }).map((t) => t.id);
+ok('every variant\'s Neutrino badge reads 4.5:1, pink on a light chassis', nuBad.length === 0, nuBad.join(','));
 // html::before and ::after and body::before and ::after are the Themes' (docs/THEMES.md, Chrome hooks): the shell never draws there.
 const SRC = fileURLToPath(new URL('../src/', import.meta.url));
 const ROOT_PSEUDO = /(^|[\s,}(>])(html|:root|body)(\[[^\]]*\]|\.[\w-]+|:not\([^)]*\))*::?(before|after)\b/;
