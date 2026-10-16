@@ -187,8 +187,8 @@
   .acts { display: flex; gap: var(--sp-2); }
   .mark { margin-left: var(--sp-3); padding: 0 var(--sp-2); font-size: .68rem; font-weight: 400; border: 1px solid var(--reality); border-radius: var(--r-s); color: var(--reality); }
   .mark.setup { border-color: var(--intent); color: var(--intent); }
-  /* The third accent, never warn: amber means caution. The glyph is generated so the tip is not a repeat of visible text (tip.js). */
-  .mark.virt { border-color: var(--highlight); color: var(--highlight); }
+  /* Its own token, never warn: amber means caution. The glyph is generated so the tip is not a repeat of visible text (tip.js). */
+  .mark.virt { border-color: var(--neutrino); color: var(--neutrino); }
   .mark.virt::before { content: attr(data-glyph); }
   .mark.via { border-color: var(--line); color: var(--tx-mut); }
   .nick input {

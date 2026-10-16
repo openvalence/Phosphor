@@ -154,6 +154,8 @@ export const LOCKED = {
 export const SAFETY = ['--warn', '--bad', '--estop'];
 /** style.css's locked values; test/theme.test.mjs holds them equal. */
 const SAFETY_HEX = { amber: '#F5B94D', red: '#FF4757' };
+/** The Neutrino badge's pink on a light chassis; safetyInk darkens it to read. Its hue stays 20 degrees clear of the safety red. */
+const NEUTRINO_LIGHT = '#B0306A';
 
 /**
  * 'amber' or 'red' when an accent's OKLCH hue sits within 20 degrees of that
@@ -356,6 +358,8 @@ function derive(t) {
   const surf = ['--bg', '--bg-card', '--bg-sunken'].map(hex).filter(Boolean);
   const ratio = (k) => (hex(k) && surf.length ? +Math.min(...surf.map((b) => contrast(hex(k), b))).toFixed(2) : null);
   const inkOn = ['--bg', '--bg-raised', '--bg-card', '--bg-sunken'].map((k) => hex(k) || n[k]);
+  // A dark chassis keeps the highlight; a light one gets the pink, darkened to read 4.5:1 on its surfaces.
+  base['--neutrino'] = dark ? 'var(--highlight)' : safetyInk(NEUTRINO_LIGHT, inkOn, false);
   const near = {};
   for (const k of ['reality', 'intent', 'highlight']) {
     const v = hex('--' + k);
