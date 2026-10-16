@@ -31,3 +31,9 @@ test/evidence/flagship-*.png
 test/evidence/ph-*/
 test/evidence/quick-access-*.png
 test/evidence/add-to-dash-*.png
+
+# The Neutrino dev tool (neutrino/): page build, cargo output, the sidecar tools/neutrino-sim.mjs builds.
+neutrino/dist/
+neutrino/src-tauri/target/
+neutrino/src-tauri/gen/
+neutrino/src-tauri/binaries/

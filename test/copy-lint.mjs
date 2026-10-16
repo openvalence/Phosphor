@@ -1,6 +1,7 @@
 /**
  * copy-lint.mjs -- the mechanical half of docs/COPY.md. Fails on a literal
- * title=, data-tip= or placeholder= string in src/ that is over 60
+ * title=, data-tip= or placeholder= string in src/ or neutrino/ (the dev
+ * tool's page) that is over 60
  * characters, holds a second sentence (". "), or uses a story word.
  *
  * Constraints:
@@ -23,7 +24,7 @@ const BANNED = [/\. /, /\bso that\b/i, /\ballows you\b/i, /\bsimply\b/i, /\bjust
 function walk(dir, out = []) {
   for (const n of readdirSync(dir)) {
     const p = join(dir, n);
-    if (statSync(p).isDirectory()) walk(p, out);
+    if (statSync(p).isDirectory()) { if (n !== 'src-tauri' && n !== 'dist') walk(p, out); }
     else if (/\.(svelte|js)$/.test(n)) out.push(p);
   }
   return out;
@@ -64,7 +65,7 @@ function literals(expr) {
 }
 
 const findings = [];
-for (const file of walk(join(ROOT, 'src'))) {
+for (const file of [...walk(join(ROOT, 'src')), ...walk(join(ROOT, 'neutrino'))]) {
   const s = readFileSync(file, 'utf8');
   const rel = relative(ROOT, file).replace(/\\/g, '/');
   const re = /(?<=\s)(title|data-tip|placeholder)=(["{])/g;

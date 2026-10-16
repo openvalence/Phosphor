@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "the one window: core only",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

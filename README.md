@@ -39,6 +39,9 @@ npm run build:only           # skip the checks
 
 npm run tauri dev            # the shell, live-reloading against vite
 npm run tauri build          # bundled installers under src-tauri/target/release/bundle/
+
+npm run neutrino:dev         # Neutrino, the dev tool: the native machine on screen (neutrino/)
+npm run neutrino:build       # its portable build, neutrino/src-tauri/target/release/
 ```
 
 Neutrino, the built-in machine (the hub firmware as wasm), is vendored in

@@ -47,11 +47,56 @@ Its files keep the name `integral.*` until Nucleus renames them (`val-7ai`).
   end-to-end client proof against the vendored wasm through the app's own
   bridge (`src/model/integral-bridge.js`) and jogs it.
 - The native exe (`Nucleus/sim/valencesim/build/valencesim[.exe]`) is not
-  bundled. It stays for the suites that dial a real WebSocket hub
+  bundled in Phosphor (the Neutrino dev tool, below, bundles its own build).
+  It stays for the suites that dial a real WebSocket hub
   (`test/valence-sim.mjs` without `--integral`, the `--live` modes,
   `test/pairing-roundtrip.mjs`, `test/buttplug-estop-sim.mjs`), the bench,
   and recording `test/fixtures/valencesim-catalog.*`. Its build is Nucleus
   `sim/valencesim/README.md`.
+
+## Neutrino, the dev tool
+
+`neutrino/` is a second Tauri app in this repo (DESIGN 10.17): one window
+drawing one native Neutrino, the machine the suites dial, with its physical
+buttons and network faults. It shares `src/style.css`, the themes and
+`src/ui/tip.js`; its page is `neutrino/` (`App.svelte`, `Rail.svelte`,
+`Scope.svelte`), its shell `neutrino/src-tauri` (crate `neutrino`, its own
+`Cargo.lock`, seeded from Phosphor's so the Tauri crates match the npm
+packages).
+
+- The machine is the native exe built from the sibling Nucleus at the commit
+  `neutrino/neutrino-native.pin` names, with Kinetic at that commit's
+  `kinetic.pin`, by `tools/neutrino-sim.mjs`, into
+  `neutrino/src-tauri/binaries/neutrino-sim-<host triple>[.exe]` (Tauri's
+  `externalBin`; gitignored, rebuilt when its stamp misses the pin). Nucleus
+  must sit clean at the pinned sha; `node tools/neutrino-sim.mjs --write`
+  pins Nucleus HEAD and builds. The build dir persists under
+  `neutrino/src-tauri/target/neutrino-sim`.
+- `npm run neutrino:dev`: the sidecar, then `tauri dev` from `neutrino/`
+  (vite on port 5183).
+- `npm run neutrino:build`: the sidecar, then a release build without an
+  installer. The portable app is the two files side by side in
+  `neutrino/src-tauri/target/release/`: `neutrino[.exe]` and
+  `neutrino-sim[.exe]`; copy both.
+- Run: `neutrino` takes the first free WebSocket port from 82, `/uitoken` on
+  80 when free (else the WebSocket port plus 8000), the dev tool channel on
+  an ephemeral loopback port, and keeps the machine's state per port under the
+  app's local data dir (`machine-<port>/`). Arguments after `--` go to the
+  machine (`neutrino -- --motor-switch`; `-- --bind 127.0.0.1 --no-discovery`
+  keeps it off the LAN and the firewall prompt away). Launch another starts a
+  second window on the next free port; only the first gets port 80, so a
+  later one's clients start at `watch` and pair with its PAIR button.
+- Windows asks about the firewall the first time the machine binds the LAN.
+- macOS and Linux: the same two npm scripts with a C++23 GCC or Clang, CMake,
+  Ninja and git (Nucleus `sim/valencesim/README.md`); ports under 1024 need
+  privileges on Linux, so pass `-- --port 8082 --http 8080` there. Untried on
+  both.
+- Not in CI yet. Adding it: a job per OS that checks out Nucleus at
+  `neutrino-native.pin` (not `main`) with Valence and Kinetic, installs CMake
+  and Ninja (and WinLibs MinGW on Windows, or teaches `tools/neutrino-sim.mjs`
+  an MSVC or clang-cl toolchain), runs `npm run neutrino:build` and uploads
+  the two files as one zip; signing and a macOS `.app` carrying the sidecar
+  come after.
 
 ## Windows
 

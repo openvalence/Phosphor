@@ -1567,6 +1567,42 @@ of the default Theme, **Phosphor**. The Display pane lists Themes first, then th
   is created transparent on Windows and macOS, every other Theme paints an opaque body, and a fullscreen page is
   always opaque. Without the material the Theme draws an opaque look of the same style.
 
+### 10.17 Neutrino, the dev tool (operator 2026-10-16, `ph-1wa3`)
+
+A standalone desktop app, `neutrino/` in this repo, for visual testing and
+validation of Valence clients: one window, one machine you can see. The wasm
+Neutrino built into Phosphor stays exactly as it is (10.10).
+
+- **Processes.** The app (Tauri 2 + Svelte 5) runs the native Neutrino, the
+  Nucleus twin that compiles the board's own hub, delegate, arbiter and
+  generators, as a sidecar on a real WebSocket port with discovery and
+  `/uitoken`, so Phosphor, Garnet, MultiFunPlayer and scripts connect to it as
+  to a machine. Build and pin: docs/BUILD.md, Neutrino, the dev tool.
+- **The channel.** The page talks only to the machine's dev tool channel
+  (Nucleus `sim/valencesim/README.md`): 127.0.0.1, text commands in, JSON
+  snapshots out at 30 Hz with the 1 ms samples. It carries what the protocol
+  never may: the PAIR and HOME buttons, the e-stop contacts, drive and switch
+  faults, network faults. The page reuses Phosphor's tokens, themes and tips
+  and nothing of `src/model/` but the theme engine: it is not a Valence
+  client and never appears in the clients list.
+- **The window.** Header: the `ν` badge, the machine's name and version, its
+  WebSocket address (a click copies it), the client count, the theme, Launch
+  another, and a big E-STOP that presses and releases the machine's contacts
+  (the latch is the hub's; a client releases it). Rail to scale: travel, rail
+  ends, the stroke window, the target, the carriage 40 ms behind the newest
+  sample, and the plan strip's 128 ms drawn running down from the rail.
+  Readouts: position, speed, acceleration, state, window, limits. Scope:
+  position and velocity from the 1 ms samples, each lane scaled to what the
+  window holds; spans 0.5 to 60 s by button or wheel, Pause (Space). Clients:
+  slot, name, tier, session state, RTT at the hub, queued frames, drops,
+  retransmits, each client's own latency, jitter and loss, Disconnect.
+  Physical: PAIR (hold it, or Tap, Double, Hold 5 s) with its light, HOME (a
+  press homes, a 3 s hold reboots and the app restarts the machine), Drive
+  alarm, Switch fault. Network: latency, jitter and loss for every client,
+  Drop Wi-Fi for N s. Log with a filter and a level.
+- **Faults are a network's.** A frame is never lost: loss is a 200 ms
+  retransmit that holds the frames behind it, as TCP under a WebSocket does.
+
 ## Amendments
 
 | Date | Section | Change | Approved by |
@@ -1679,3 +1715,4 @@ of the default Theme, **Phosphor**. The Display pane lists Themes first, then th
 | 2026-10-13 | plugins, §10.11 | Saved Wi-Fi networks (RFC-116 draft): the Network page's card is the factory plugin `saved-networks`: at configure the names, signal and the live mark with Add, a confirmed Remove and reorder by drag or arrows; below it `N of M saved` and no names. A plugin hero may claim a whole channel by id (`channels`, `optionalChannels`) while the registry gives it no roles, to be replaced by roles when the RFC lands; a refused action write returns the NACK's code and detail; 0x0308 is named LIVE_NETWORK as a draft name. | operator (the list, add, remove, reorder and occupancy-only tier split are the brief's; the by-id claim, the card's own status line beside the strip's refusal chip, and the two-tap confirm where the catalog does not flag the op destructive are the agent's, veto-able) |
 | 2026-10-13 | plugins, §10.11 | The Wi-Fi picker (RFC-118 draft, `ph-nqbh`): where the hub lists networks the Network card opens on the networks it hears, strongest first (signal bars, a lock on secured ones, a check on the connected one, which leads even when the scan missed it, `Saved` on saved ones); a tap asks one write-only password for a secured network and acts, an open one acts at once; progress, then the outcome in the card's one status line. At the bottom `Other network…` (a hidden SSID by hand) and `Advanced`, which reveals the saved-slot card; the generic cards for provisioning and the network channels do not draw while the plugin is on. Set up a machine shows the same picker in place of the setup wizard; there the act is `wifi_join` (Join), on the Network card `save` (Save: stored, joined at the next connect when strongest). Opening asks one scan; the rows pushed at the grant show greyed and untappable until the scan counter changes (RFC-118 item 6), a scan refused INTERLOCK in motion reads `Machine is moving` and is asked again, one that never lands times out at 30 s. Rows are keyed by SSID and the order is held while the user interacts. A saved row never acts on a tap: its sheet offers the passphrase again, move and remove. Without RFC-118, or below configure, the card is the saved-slot card and the setup flow the wizard. | operator ("hide all the extra boxes behind an advanced mode, start by showing available networks, then an advanced or custom at the bottom, ie phone"); Save rather than Join on the Network card, the setup flow's other settings left to the Setup page, the password asked for every secured network in the setup flow, and the provisioning op claimed by role are the agents', veto-able (`bd notes ph-nqbh`) |
 | 2026-10-15 | §10.10 | The built-in machine's name is Neutrino everywhere a name appears (Hubs row, hub name in the top bar, Connect, logs, Open to LAN text, docs, site); the word "virtual" stays only in its badge, now the `ν` glyph alone in the third accent (`--highlight`) with a tip and aria-label, never amber (caution). Supersedes the 2026-10-08 "just Virtual" row. Replays of a saved hub (Sim) keep "virtual". | operator ("can we name virtual to neutrino so it shows neutrino in the top bar and virtual stays only in the badge"; "it's pink or the tertiary color not yellow"; "the V and remove virtual, make it hover and find out") |
+| 2026-10-16 | §10.17 | Neutrino as a standalone dev tool: a second Tauri 2 + Svelte 5 app in this repo (`neutrino/`) running the native Neutrino as its sidecar on a real port, drawn from a localhost dev tool channel with physical inputs and network faults; the wasm Neutrino in Phosphor is unchanged (`ph-1wa3`, Nucleus `val-sf7.7`). | operator ("neutrino available as a dev tool, standalone ... a virtual machine you can see on your screen, simple gui"; the stack); text commands in and JSON out, loss as a retransmit, RTT measured at the hub, the default `--homed --home-sense-at -20`, port 80 for the first window only, the portable pair of files and the panel layout are the agent's (the icon, Valence assets/icons/neutrino-*.svg, is the orchestrator's), veto-able |
