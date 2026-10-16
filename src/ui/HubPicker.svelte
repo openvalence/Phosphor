@@ -14,6 +14,7 @@
    *   Showing a second one here would be two doors to one room.
    */
   import HostEntry from './HostEntry.svelte';
+  import MarkSpinner from './MarkSpinner.svelte';
   import { machine, retryNow, switchHub, hostLabel } from '../model/machine.svelte.js';
   import { ACCESS } from '../../../Valence/clients/js/index.js';
 
@@ -41,6 +42,8 @@
   const receiveS = $derived(link.since ? Math.max(0, Math.floor((now - link.since) / 1000)) : 0);
 
   const down = $derived(link.phase === 'retrying' || link.phase === 'failed');
+  // the link is on its way: dialing, handshaking, or receiving the catalog (this view is pre-catalog)
+  const loading = $derived(!!hub && (link.phase === 'connecting' || link.phase === 'handshaking' || link.phase === 'live'));
   const status = $derived.by(() => {
     if (!hub) return 'No hub chosen';
     switch (link.phase) {
@@ -60,7 +63,7 @@
 {#if mode === 'boot'}
   <section class="picker og-panel" aria-labelledby="picker-title">
     <h2 id="picker-title" class="pk-title">Hub</h2>
-    <p class="pk-status" role="status" data-phase={link.phase}>{status}</p>
+    <p class="pk-status" role="status" data-phase={link.phase}>{#if loading}<MarkSpinner />{/if}<span>{status}</span></p>
     {#if down}
       <button type="button" class="og-btn primary" onclick={retryNow}>Retry now</button>
     {/if}
@@ -96,7 +99,7 @@
     letter-spacing: .1em;
     color: var(--ink-faint);
   }
-  .pk-status { color: var(--ink); }
+  .pk-status { display: flex; align-items: center; gap: var(--sp-3); color: var(--ink); }
   .pk-status[data-phase='retrying'],
   .pk-status[data-phase='failed'] { color: var(--warn-ink); }
   .picker > .og-btn { align-self: flex-start; }

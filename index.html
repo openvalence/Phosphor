@@ -9,8 +9,20 @@
   <meta name="theme-color" content="#08090B">
   <meta name="color-scheme" content="dark">
   <title>Phosphor</title>
+  <!-- The launch splash. Constraints: it appears only once the page is 250 ms in, so a fast start
+       never shows it; main.js animates it (ui/mark-anim.js) and removes it when the app mounts. -->
+  <style>
+    #splash { position: fixed; inset: 0; z-index: 2147483000; display: grid; place-items: center; pointer-events: none;
+      background: var(--bg, #08090B); opacity: 0; animation: splash-in .35s ease-out .25s forwards;
+      --mark-ring: var(--intent, #A78BFA); --mark-core: var(--reality, #4DA6FF); --mark-bg: var(--bg, #08090B); }
+    #splash > * { grid-area: 1 / 1; width: min(32vmin, 176px); height: min(32vmin, 176px); }
+    #splash path { fill: none; stroke: var(--mark-ring); }
+    #splash circle { fill: var(--mark-core); }
+    @keyframes splash-in { to { opacity: 1; } }
+  </style>
 </head>
 <body>
+  <div id="splash" aria-hidden="true"><svg viewBox="-550 -550 1100 1100"><path d="M-297.99 34.71A300 300 0 0 1 -118.93 -275.42" stroke-width="80" stroke-linecap="round"/><circle r="54" transform="rotate(0) translate(0 -300)"/><path d="M118.93 -275.42A300 300 0 0 1 297.99 34.71" stroke-width="80" stroke-linecap="round"/><circle r="54" transform="rotate(120) translate(0 -300)"/><path d="M179.05 240.71A300 300 0 0 1 -179.05 240.71" stroke-width="80" stroke-linecap="round"/><circle r="54" transform="rotate(240) translate(0 -300)"/><circle r="136"/></svg></div>
   <div id="app"></div>
   <script type="module" src="/src/main.js"></script>
 </body>

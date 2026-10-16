@@ -24,7 +24,8 @@ import { connect, machine, parseHost, recentHubs } from './model/machine.svelte.
 import { applyStoredTheme, onTheme } from './model/theme.js';
 import { installDynamicColor } from './model/dynamicColor.js';
 import { installReveal } from './ui/reveal.js';
-import { setMinimized } from './ui/still.svelte.js';
+import { setMinimized, isStill } from './ui/still.svelte.js';
+import { phosphor } from './ui/mark-anim.js';
 import { loadPlugins } from './plugins/plugins.svelte.js';
 import { bindControls } from './plugins/kit.js';
 import { mountBound } from './ui/BoundControl.svelte';
@@ -50,6 +51,25 @@ installReveal();
 applyStoredTheme();
 // Android 12+: the Material Theme takes the system's palette (MainActivity.kt publishes it).
 installDynamicColor();
+
+// The launch splash (index.html): the static mark until here, then its phosphor loop while boot()
+// runs. index.html shows it only after 250 ms, so a fast start never sees it; held still, it stays
+// the static mark. Removed when the app mounts.
+const splash = document.getElementById('splash');
+let splashAnim = null;
+if (splash && !isStill()) {
+  const box = splash.appendChild(document.createElement('div'));
+  box.style.opacity = '0';
+  splashAnim = phosphor(box);
+  splashAnim.play();
+  box.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 400, easing: 'ease-out', fill: 'forwards' });
+  splash.firstElementChild.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 400, easing: 'ease-in', fill: 'forwards' });
+}
+function closeSplash() {
+  if (!splash) return;
+  splash.animate([{ opacity: getComputedStyle(splash).opacity }, { opacity: 0 }], { duration: 220, easing: 'ease-in', fill: 'forwards' })
+    .finished.catch(() => {}).then(() => { splashAnim?.destroy(); splash.remove(); });
+}
 try {
   if (localStorage.getItem('ui_hivis') === '1') document.documentElement.classList.add('hivis');
   if (localStorage.getItem('ui_terse') === '1') document.documentElement.classList.add('terse');
@@ -174,4 +194,5 @@ if (SHELL) {
 // window controls, never the strip's e-stop.
 boot()
   .catch((e) => { bootFault('shell chrome', e); return null; })
-  .then((shell) => mount(App, { target: document.getElementById('app'), props: { shell } }));
+  .then((shell) => mount(App, { target: document.getElementById('app'), props: { shell } }))
+  .finally(closeSplash);

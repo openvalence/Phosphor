@@ -23,6 +23,7 @@
    *   of its vault record.
    */
   import HostEntry from '../ui/HostEntry.svelte';
+  import MarkSpinner from '../ui/MarkSpinner.svelte';
   import { advFlags } from './ble-adv.js';
   import { needsSetup } from './ble-setup.js';
   import SetupFlow from './SetupFlow.svelte';
@@ -84,7 +85,7 @@
               data-tip={hubs.target ? '' : 'No WiFi endpoint known'}
               onclick={upgrade}>Upgrade to WiFi{hubs.target ? ' (' + hubs.target.host + ':' + hubs.target.port + ')' : ''}</button>
     </div>
-    <p class="pane-status" role="status" data-phase={ladder.phase} data-tip={ladder.text}>{ladder.text}</p>
+    <p class="pane-status" role="status" data-phase={ladder.phase} data-tip={ladder.text}>{#if ladder.phase === 'pending'}<MarkSpinner />{/if} {ladder.text}</p>
   </section>
 
   <section class="pane-sec og-panel" aria-labelledby="hp-saved">
