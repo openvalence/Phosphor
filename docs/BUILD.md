@@ -26,8 +26,8 @@ Its files keep the name `integral.*` until Nucleus renames them (`val-7ai`).
 - `src/model/integral/` holds the vendored build: `integral.js` (the
   emscripten loader, verbatim), `bytes.js` (`integral.wasm` as base64; the
   page posts the bytes to the worker) and `integral.pin` (the Nucleus sha,
-  the boot etag, and the size and SHA-256 of both files). About 541 KB of
-  wasm, 722 KB as base64, 169 KB gzipped.
+  the boot etag, and the size and SHA-256 of both files). About 660 KB of
+  wasm, 881 KB as base64, 207 KB gzipped.
 - `node test/integral-pin.mjs` (in `npm run check`) checks both files against
   the pin and boots the machine to its pinned etag. `--rebuild` also rebuilds
   from the sibling Nucleus when it sits clean at the pinned sha and
