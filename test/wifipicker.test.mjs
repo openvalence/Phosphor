@@ -324,7 +324,7 @@ if (!sim) {
   if (!listed && !await page.locator('.wp-row').count()) {
     console.log('SKIP: this valencesim lists no networks (RFC-118 twin absent)');
   } else {
-    const NEIGHBORS = ['virtual', 'Workshop', 'Workshop-Lab', 'Guest', 'Neighbor', 'Printer-Direct', 'Cafe', 'Upstairs', 'Attic', 'Garage'];
+    const NEIGHBORS = ['Neutrino', 'Workshop', 'Workshop-Lab', 'Guest', 'Neighbor', 'Printer-Direct', 'Cafe', 'Upstairs', 'Attic', 'Garage'];
     ok('the list: both halves, strongest first', (await ssids(page)).join() === NEIGHBORS.join(), await ssids(page));
     const first = page.locator('.wp-row').first();
     ok('the connected network leads with its check and Connected', await first.getAttribute('aria-current') === 'true'
@@ -332,7 +332,7 @@ if (!sim) {
     ok('locks on secured rows only', await page.locator('.wp-row[data-ssid="Guest"] .wp-lock').count() === 0
       && await page.locator('.wp-row[data-ssid="Workshop"] .wp-lock').count() === 1 && await page.locator('.wp-row[data-ssid="Cafe"] .wp-lock').count() === 0);
     ok('signal bars: four on the strongest, one on the weakest',
-      await page.locator('.wp-row[data-ssid="virtual"] .wp-bars path:not(.off)').count() === 4 && await page.locator('.wp-row[data-ssid="Garage"] .wp-bars path:not(.off)').count() === 1);
+      await page.locator('.wp-row[data-ssid="Neutrino"] .wp-bars path:not(.off)').count() === 4 && await page.locator('.wp-row[data-ssid="Garage"] .wp-bars path:not(.off)').count() === 1);
     ok('the hidden and enterprise networks are not listed', (await ssids(page)).length === 10);
     ok('a fresh scan has landed: no stale mark', await page.locator('.wp-list[data-stale]').count() === 0);
     ok('the default view: no slot card, no generic cards for the network channels',
@@ -388,7 +388,7 @@ if (!sim) {
     await page.locator('.wp-foot .og-btn', { hasText: 'Advanced' }).click();
     await page.waitForSelector('.sn .ui-tile', { timeout: 5000 });
     const titles = await page.$$eval('.sn .ui-tile-t', (ts) => ts.map((t) => t.textContent));
-    ok('Advanced reveals the slot card: the four saved, in order', titles.join() === 'virtual,Workshop,Guest,Attic', titles);
+    ok('Advanced reveals the slot card: the four saved, in order', titles.join() === 'Neutrino,Workshop,Guest,Attic', titles);
     await page.locator('.sn').scrollIntoViewIfNeeded();
     await page.waitForTimeout(300);
     await shot(page, 'advanced', 1428);

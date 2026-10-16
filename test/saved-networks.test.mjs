@@ -1,6 +1,6 @@
 /**
  * saved-networks.test.mjs -- the saved Wi-Fi list (factory plugin saved-networks, RFC-116 draft) on
- * the shell bundle against a private native valencesim, which boots with one saved network, "virtual",
+ * the shell bundle against a private native valencesim, which boots with one saved network, "Neutrino",
  * live. Asserts:
  *   configure  names, the live mark and the signal; Add (count 2, the passphrase field cleared and the
  *              secret nowhere on the page, in storage or in the console); drag and the arrows reorder;
@@ -138,7 +138,7 @@ const cfg = await open({ token: TOKEN });
   const { page, logs, hold } = cfg;
   await page.waitForSelector('.sn .ui-tile', { timeout: 20000 });
   ok('the list shows the occupancy and the hub\'s one network, marked live',
-    await sum(page) === '1 of 4 saved' && (await titles(page)).join() === 'virtual'
+    await sum(page) === '1 of 4 saved' && (await titles(page)).join() === 'Neutrino'
     && /connected/.test(await page.locator('.sn .ui-tile-m').first().innerText()) && /dBm/.test(await page.locator('.sn .ui-tile-m').first().innerText()));
   ok('the generic cards for these channels yield to it', await page.locator('[data-uid^="15:"], [data-uid^="23:"], [data-uid^="24:"], [data-uid^="25:"], [data-uid^="26:"]').count() === 0);
 
@@ -147,8 +147,8 @@ const cfg = await open({ token: TOKEN });
   ok('Add is on with a valid name and passphrase', await page.locator('.sn-form button').isEnabled());
   await page.click('.sn-form button');
   await waitSum(page, '2 of 4 saved');
-  await waitTitles(page, ['virtual', 'cafe']);
-  ok('Add: the hub took it, count 2', await sum(page) === '2 of 4 saved' && (await titles(page)).join() === 'virtual,cafe');
+  await waitTitles(page, ['Neutrino', 'cafe']);
+  ok('Add: the hub took it, count 2', await sum(page) === '2 of 4 saved' && (await titles(page)).join() === 'Neutrino,cafe');
   ok('the passphrase field is cleared after the send', await page.inputValue('.sn-form input[aria-label="Passphrase"]') === '');
   ok('the name field is cleared after a save', await page.inputValue('.sn-form input[aria-label="Name"]') === '');
   ok('the signal shows for the new entry', /dBm/.test(await page.locator('.sn .ui-tile-m').nth(1).innerText()));
@@ -162,7 +162,7 @@ const cfg = await open({ token: TOKEN });
     await waitSum(low.page, '2 of 4 saved');
     const text = await low.page.locator('.sn').innerText();
     ok('below configure: occupancy only, no names, no form',
-      !/virtual|cafe/.test(text) && await low.page.locator('.sn-form').isHidden() && await low.page.locator('.sn .ui-tile').count() === 0, text);
+      !/Neutrino|cafe/.test(text) && await low.page.locator('.sn-form').isHidden() && await low.page.locator('.sn .ui-tile').count() === 0, text);
     await low.page.waitForTimeout(300);
     await low.page.screenshot({ path: join(EVIDENCE, 'savednets-below.png') });
     await low.ctx.close();
@@ -181,21 +181,21 @@ const cfg = await open({ token: TOKEN });
     await page.mouse.up();
   };
   await drag(1, 0);
-  await waitTitles(page, ['cafe', 'virtual']);
-  ok('drag: cafe moved above virtual', (await titles(page)).join() === 'cafe,virtual');
+  await waitTitles(page, ['cafe', 'Neutrino']);
+  ok('drag: cafe moved above Neutrino', (await titles(page)).join() === 'cafe,Neutrino');
   await drag(0, 1);
-  await waitTitles(page, ['virtual', 'cafe']);
-  ok('drag: and back', (await titles(page)).join() === 'virtual,cafe');
+  await waitTitles(page, ['Neutrino', 'cafe']);
+  ok('drag: and back', (await titles(page)).join() === 'Neutrino,cafe');
 
   const arrow = (i, name) => page.locator('.sn .ui-tile').nth(i).locator('.ui-tile-act .og-btn[aria-label="' + name + '"]');
   ok('the first row cannot move up, the last cannot move down',
     await arrow(0, 'Move up').isDisabled() && await arrow(1, 'Move down').isDisabled() && await arrow(0, 'Move down').isEnabled());
   await arrow(0, 'Move down').click();
-  await waitTitles(page, ['cafe', 'virtual']);
-  ok('Move down: virtual moved below cafe', (await titles(page)).join() === 'cafe,virtual');
+  await waitTitles(page, ['cafe', 'Neutrino']);
+  ok('Move down: Neutrino moved below cafe', (await titles(page)).join() === 'cafe,Neutrino');
   await arrow(1, 'Move up').click();
-  await waitTitles(page, ['virtual', 'cafe']);
-  ok('Move up: and back', (await titles(page)).join() === 'virtual,cafe');
+  await waitTitles(page, ['Neutrino', 'cafe']);
+  ok('Move up: and back', (await titles(page)).join() === 'Neutrino,cafe');
 
   // The click lands on a stale list or a fresh one; either way the entry named cafe is the one removed
   // (found again by name after a CONFLICT).
@@ -208,7 +208,7 @@ const cfg = await open({ token: TOKEN });
   await sleep(800);
   await arrow(0, 'Move down').waitFor();
   await page.waitForFunction(() => !document.querySelector('.sn .ui-tile-act .og-btn.rm[disabled]'), null, { timeout: 8000 });
-  ok('the held page still shows the old order', (await titles(page)).join() === 'virtual,cafe');
+  ok('the held page still shows the old order', (await titles(page)).join() === 'Neutrino,cafe');
   await page.locator('.sn .ui-tile', { hasText: 'cafe' }).locator('.ui-tile-act .og-btn.rm').click();
   await ask.locator('button.confirm').click();
   await sleep(500);
@@ -221,23 +221,23 @@ const cfg = await open({ token: TOKEN });
   }
   ok('the hub refused the stale generation and the card retried once', asked === 1, asked);
   await waitSum(page, '1 of 4 saved');
-  ok('stale list: cafe is removed by name, virtual stays, no error shown',
-    (await titles(page)).join() === 'virtual' && (await status(page)) === '', await status(page));
+  ok('stale list: cafe is removed by name, Neutrino stays, no error shown',
+    (await titles(page)).join() === 'Neutrino' && (await status(page)) === '', await status(page));
   await page.fill('.sn-form input[aria-label="Name"]', 'cafe');
   await page.fill('.sn-form input[aria-label="Passphrase"]', SECRET);
   await page.click('.sn-form button');
-  await waitTitles(page, ['virtual', 'cafe']);
+  await waitTitles(page, ['Neutrino', 'cafe']);
 
   const removeBtn = (i) => page.locator('.sn .ui-tile').nth(i).locator('.ui-tile-act .og-btn.rm');
   await removeBtn(1).click();
   await ask.waitFor();
   await ask.locator('button:not(.confirm)').click();
   await ask.waitFor({ state: 'hidden' });
-  ok('Remove asks first (the hub flags the op destructive); Cancel leaves the list', await sum(page) === '2 of 4 saved' && (await titles(page)).join() === 'virtual,cafe');
+  ok('Remove asks first (the hub flags the op destructive); Cancel leaves the list', await sum(page) === '2 of 4 saved' && (await titles(page)).join() === 'Neutrino,cafe');
   await removeBtn(1).click();
   await ask.locator('button.confirm').click();
   await waitSum(page, '1 of 4 saved');
-  ok('Remove: confirmed, cafe is gone', (await titles(page)).join() === 'virtual');
+  ok('Remove: confirmed, cafe is gone', (await titles(page)).join() === 'Neutrino');
 
   await removeBtn(0).click();
   await ask.locator('button.confirm').click();

@@ -21,12 +21,12 @@ ok('a name is 1 to 32 bytes of UTF-8', ssidProblem('') !== '' && ssidProblem('a'
 const wrap = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, { v }]));
 const read = (f) => f.v;
 const nets = (generation, over = {}) => wrap({ generation, capacity: 4, count: 2, live: 0, rssi0: -42, rssi1: -128, rssi2: -128, rssi3: -128, ...over });
-const names = (generation, over = {}) => wrap({ generation, open: 0b10, ssid0: 'virtual', ssid1: 'cafe', ssid2: '', ssid3: '', ...over });
+const names = (generation, over = {}) => wrap({ generation, open: 0b10, ssid0: 'Neutrino', ssid1: 'cafe', ssid2: '', ssid3: '', ...over });
 
 const paired = readList(nets(7), names(7), read);
 ok('equal generations: names, open bits, signal and the live entry',
   paired.named && paired.generation === 7 && paired.entries.length === 2 && paired.entries[0].live && paired.entries[0].rssi === -42
-  && paired.entries[1].rssi === null && paired.entries[1].open === true && paired.entries[0].ssid === 'virtual', paired);
+  && paired.entries[1].rssi === null && paired.entries[1].open === true && paired.entries[0].ssid === 'Neutrino', paired);
 
 const ahead = readList(nets(8, { count: 1 }), names(7), read, paired);
 ok('generations differ: the last matched list stays whole', ahead === paired);
@@ -64,16 +64,16 @@ const half = (scan, rows, over = {}) => {
   rows.forEach(([ssid, rssi, sec, sav], i) => { o['ssid' + i] = ssid; o['rssi' + i] = rssi; if (sec) o.secured |= 1 << i; if (sav) o.saved |= 1 << i; });
   return wrap({ ...o, ...over });
 };
-const first = [['virtual', -42, 1, 1], ['Workshop', -48, 1, 0], ['Workshop-Lab', -55, 1, 0], ['Guest', -61, 0, 0], ['Neighbor', -67, 1, 0], ['Printer-Direct', -72, 1, 0], ['Cafe', -75, 0, 0]];
+const first = [['Neutrino', -42, 1, 1], ['Workshop', -48, 1, 0], ['Workshop-Lab', -55, 1, 0], ['Guest', -61, 0, 0], ['Neighbor', -67, 1, 0], ['Printer-Direct', -72, 1, 0], ['Cafe', -75, 0, 0]];
 const second = [['Upstairs', -78, 1, 0], ['Attic', -83, 1, 0], ['Garage', -88, 1, 0]];
 const liveList = readList(nets(7, { count: 1 }), names(7, { ssid1: '' }), read);
 const fv = { vis: half(3, first), more: half(3, second) };
 const vis = readVisible(fv, read, liveList);
-ok('matching halves join: 10 rows, the connected one first and saved', vis.length === 10 && vis[0].ssid === 'virtual' && vis[0].connected && vis[0].saved
+ok('matching halves join: 10 rows, the connected one first and saved', vis.length === 10 && vis[0].ssid === 'Neutrino' && vis[0].connected && vis[0].saved
   && vis[3].ssid === 'Guest' && !vis[3].secured && vis[9].ssid === 'Garage' && vis[1].secured && !vis[1].saved, vis);
 ok('halves of different scans: the first half only', readVisible({ vis: half(4, first), more: half(3, second) }, read, liveList).length === 7);
-ok('scan 0 (none yet): no rows, the connected network still shows', (() => { const r = readVisible({ vis: half(0, []), more: null }, read, liveList); return r.length === 1 && r[0].connected && r[0].ssid === 'virtual'; })());
-ok('the connected network the scan missed leads the list', (() => { const r = readVisible({ vis: half(5, first.slice(1)) }, read, liveList); return r[0].ssid === 'virtual' && r[0].connected && r.length === 7; })());
+ok('scan 0 (none yet): no rows, the connected network still shows', (() => { const r = readVisible({ vis: half(0, []), more: null }, read, liveList); return r.length === 1 && r[0].connected && r[0].ssid === 'Neutrino'; })());
+ok('the connected network the scan missed leads the list', (() => { const r = readVisible({ vis: half(5, first.slice(1)) }, read, liveList); return r[0].ssid === 'Neutrino' && r[0].connected && r.length === 7; })());
 ok('a saved name marks its row before the next scan does', readVisible({ vis: half(5, [['cafe', -70, 1, 0]]) }, read, readList(nets(7), names(7), read))
   .find((r) => r.ssid === 'cafe').saved);
 ok('no visible sample: null; the counter reads', readVisible({ vis: wrap({}) }, read) === null && scanOf(fv, read) === 3 && scanOf({ vis: null }, read) === null);
