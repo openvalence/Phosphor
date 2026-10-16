@@ -56,7 +56,7 @@
         + (link.retryAt ? ' in ' + Math.max(0, Math.ceil((link.retryAt - now) / 1000)) + ' s' : '')
         + (link.closeReason ? ': ' + link.closeReason : '') };
       case 'failed': return { phase: 'fault', text: 'Failed: ' + (link.error || link.closeReason || 'the hub closed the link') };
-      case 'live': return link.virtual ? { phase: 'settled', text: 'Virtual: nothing moves' }
+      case 'live': return link.virtual ? { phase: 'settled', text: 'Virtual: settings stage for Merge' }
         : { phase: 'settled', text: 'Live on ' + who + (hubs.mode === 'ble' ? ' over Bluetooth (watch tier)' : '') };
       default: return { phase: null, text: 'Not connected' };
     }

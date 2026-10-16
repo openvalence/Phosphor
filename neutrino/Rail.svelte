@@ -47,7 +47,7 @@
     ctx.font = '11px ' + (c.font || 'monospace');
     if (!snap) {
       ctx.fillStyle = c.mut;
-      ctx.fillText('Waiting for the machine', 12, 24);
+      ctx.fillText('Waiting for the dev channel', 12, 24);
       return;
     }
     const m = snap.m;

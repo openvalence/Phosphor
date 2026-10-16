@@ -152,7 +152,7 @@ ok('the built-in machine is the last saved-hub row, named Neutrino',
   const tip = await b.getAttribute('data-tip');
   ok('its badge is the glyph alone, named and tipped (tip.js), focusable',
     (await b.innerText()) === '' && (await b.evaluate((e) => getComputedStyle(e, '::before').content)) === '"ν"'
-    && /^Virtual machine/.test(tip || '') && (await b.getAttribute('aria-label')) === tip && (await b.getAttribute('tabindex')) === '0', tip);
+    && /^Virtual: /.test(tip || '') && (await b.getAttribute('aria-label')) === tip && (await b.getAttribute('tabindex')) === '0', tip);
   ok('its badge is not amber', await b.evaluate((e) => {
     const c = getComputedStyle(e).color, w = getComputedStyle(document.documentElement).getPropertyValue('--warn').trim().toLowerCase();
     const hex = '#' + (c.match(/\d+/g) || []).slice(0, 3).map((n) => (+n).toString(16).padStart(2, '0')).join('');

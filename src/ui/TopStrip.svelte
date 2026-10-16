@@ -250,7 +250,7 @@
     if (latestSafety) return { kind: 'edge' };
     if (health.slot) return { kind: 'health', text: health.slot.text, title: health.slot.title };
     if (page && page.text) return { kind: 'note', text: page.text, title: page.title };
-    if (link.virtual) return { kind: 'virtual', text: 'Virtual: nothing moves' };
+    if (link.virtual) return { kind: 'virtual', text: 'Virtual: settings stage for Merge' };
     return { kind: 'idle' };
   });
   // A SOURCE_CONFLICT names the source holding the rail when the hub labels it.

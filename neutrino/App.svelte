@@ -68,7 +68,7 @@
         simNote = 'Rebooted';
         setTimeout(() => { if (simNote === 'Rebooted') simNote = ''; }, 15000);
       });
-      listen('sim-exited', (e) => { simNote = 'Machine stopped: ' + e.payload; });
+      listen('sim-exited', (e) => { simNote = 'Emulator stopped: ' + e.payload; });
     } else {
       info = { devtool: Number(q.get('devtool')) || 0, ws: Number(q.get('ws')) || 82, http: 80, host: location.hostname || '127.0.0.1' };
     }
@@ -124,7 +124,7 @@
 
 <div class="app">
   <header class="top">
-    <span class="nu" data-tip="Virtual machine: real Nucleus firmware, emulated" aria-label="Virtual machine">ν</span>
+    <span class="nu" data-tip="Virtual: Nucleus firmware emulated on this computer" aria-label="Virtual">ν</span>
     <div class="name">
       <b>{hello ? hello.name : 'Neutrino'}</b>
       <span class="sub">{hello ? hello.product + ' ' + hello.version : linkUp ? '' : 'Starting'}</span>
@@ -132,14 +132,14 @@
     <button class="og-btn sm url" onclick={copyUrl} data-tip="Copy the WebSocket address">{url || '--'}</button>
     <span class="chip" data-tip="Connected clients">{live} {live === 1 ? 'client' : 'clients'}</span>
     {#if simNote}<span class="chip warn">{simNote}</span>{/if}
-    {#if !linkUp}<span class="chip warn">No channel</span>{/if}
+    {#if !linkUp}<span class="chip warn">Dev channel down</span>{/if}
     <span class="grow"></span>
     <select bind:value={themeId} onchange={() => applyTheme(themeId)} aria-label="Theme">
       {#each THEMES as t (t.id)}<option value={t.id}>{t.name}</option>{/each}
     </select>
-    {#if TAURI}<button class="og-btn sm" onclick={launchAnother} data-tip="Another machine on the next free port">Launch another</button>{/if}
+    {#if TAURI}<button class="og-btn sm" onclick={launchAnother} data-tip="Start another Neutrino on the next free ports">Launch another</button>{/if}
     <button class="estop" class:down={estopDown} onclick={() => send(estopDown ? 'estop up' : 'estop down')}
-      data-tip={estopDown ? 'Twist to release the contacts' : 'Press the machine e-stop'}>
+      data-tip={estopDown ? 'Release the button; the latch holds until a client clears it' : 'Press the e-stop: the hub latches it and halts the axis'}>
       {estopDown ? 'RELEASE' : 'E-STOP'}
     </button>
   </header>
@@ -199,10 +199,10 @@
         <div class="phys">
           <button class="round pair" class:down={snap && snap.phys.pair} data-look={snap ? snap.pair.look : 'quiet'}
             onpointerdown={() => press('pair')} onpointerup={() => release('pair')} onpointerleave={() => snap && snap.phys.pair && release('pair')}
-            data-tip="Hold to press">PAIR</button>
+            data-tip="Momentary: closed while held">PAIR</button>
           <div class="stack">
             <div class="row">
-              <button class="og-btn sm" onclick={() => pairScript('tap')} data-tip="Open the pairing window">Tap</button>
+              <button class="og-btn sm" onclick={() => pairScript('tap')} data-tip="Open the presence window (offline: approve the ask)">Tap</button>
               <button class="og-btn sm" onclick={() => pairScript('double')} data-tip="Approve the configure ask">Double</button>
               <button class="og-btn sm" onclick={() => pairScript('hold')} data-tip="Demote every client to watch">Hold 5 s</button>
             </div>
@@ -215,8 +215,8 @@
             data-tip="Press to home, hold 3 s to reboot">HOME</button>
           <div class="stack">
             <div class="row">
-              <button class="og-btn sm danger" onclick={() => send('drive-alarm')} data-tip="Assert DRV_ALM once">Drive alarm</button>
-              <button class="og-btn sm" onclick={() => send('switch-fault')} data-tip="MSW_FLT_N low 2 s, needs --motor-switch">Switch fault</button>
+              <button class="og-btn sm danger" onclick={() => send('drive-alarm')} data-tip="Assert DRV_ALM once: the hub latches e-stop, cause fault">Drive alarm</button>
+              <button class="og-btn sm" onclick={() => send('switch-fault')} data-tip="MSW_FLT_N low 2 s, latches e-stop; needs --motor-switch">Switch fault</button>
             </div>
             <span class="sub">{snap ? (snap.m.homed ? 'Homed' : 'Unhomed') + (snap.m.homes ? ' · ' + snap.m.homes + ' cycles' : '') : ''}</span>
           </div>
@@ -225,16 +225,16 @@
 
       <div class="panel">
         <h2>Network</h2>
-        <label class="knob"><span>Latency</span><input type="range" min="0" max="500" bind:value={net.lat} onchange={sendNet} /><b>{net.lat} ms</b></label>
-        <label class="knob"><span>Jitter</span><input type="range" min="0" max="200" bind:value={net.jit} onchange={sendNet} /><b>{net.jit} ms</b></label>
-        <label class="knob"><span>Loss</span><input type="range" min="0" max="30" step="0.5" bind:value={net.loss} onchange={sendNet} /><b>{net.loss} %</b></label>
+        <label class="knob"><span data-tip="One-way delay added to every client">Latency</span><input type="range" min="0" max="500" bind:value={net.lat} onchange={sendNet} /><b>{net.lat} ms</b></label>
+        <label class="knob"><span data-tip="Random extra one-way delay, 0 to this value">Jitter</span><input type="range" min="0" max="200" bind:value={net.jit} onchange={sendNet} /><b>{net.jit} ms</b></label>
+        <label class="knob"><span data-tip="Frames retransmitted: 200 ms late, holding those behind">Loss</span><input type="range" min="0" max="30" step="0.5" bind:value={net.loss} onchange={sendNet} /><b>{net.loss} %</b></label>
         <div class="row">
-          <input class="og-num secs" type="number" min="1" max="600" bind:value={dropS} aria-label="Seconds" />
+          <input class="og-num secs" type="number" min="1" max="600" bind:value={dropS} aria-label="Outage seconds" />
           {#if snap && snap.wifi.dropLeft > 0}
             <button class="og-btn sm" onclick={() => send('wifi-drop 0')}>Restore Wi-Fi</button>
             <span class="chip warn">Wi-Fi down {(snap.wifi.dropLeft / 1000).toFixed(1)} s</span>
           {:else}
-            <button class="og-btn sm" onclick={() => send('wifi-drop ' + dropS)} data-tip="Nothing moves either way">Drop Wi-Fi</button>
+            <button class="og-btn sm" onclick={() => send('wifi-drop ' + dropS)} data-tip="Wi-Fi outage: frames held both ways, no UDP discovery">Drop Wi-Fi</button>
           {/if}
         </div>
       </div>

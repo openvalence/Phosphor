@@ -107,7 +107,7 @@
   const dotCls = $derived(dotState(machine.link.phase, machine.link.stale));
   const dotWord = $derived(machine.link.virtual && dotCls === 'live' ? 'Virtual'
     : dotCls === 'stale' ? 'Stale' : PHASE_WORD[machine.link.phase] || String(machine.link.phase));
-  const dotTip = $derived(dotCls === 'live' ? (machine.link.virtual ? 'Virtual: a simulated machine' : 'Live: frames arriving')
+  const dotTip = $derived(dotCls === 'live' ? (machine.link.virtual ? 'Virtual: replay of the saved catalog' : 'Live: frames arriving')
     : dotCls === 'stale' ? 'Stale: no frames for ' + ago(machine.stats.lastRxMs) : dotWord);
 
   // The loss readout (machine.stats.link, linkstats.js): TCP sent again, this client's and the machine's.

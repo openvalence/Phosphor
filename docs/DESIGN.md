@@ -1107,9 +1107,9 @@ connected, then merge the setting changes onto the machine, ticked per item.
   page-resident hub on the session's `WebSocketImpl` seam. The normal
   `connect()` rides it, so every pane, the builder, plugins, the graph and the
   strip work unchanged (the Prime Rule, §2). It validates and clamps writes,
-  latches the safety ops and arbitrates sources; nothing moves and telemetry
-  holds at its snapshot. It never sends a `hub_instance_id`. Sim on a saved
-  hub is always this replay.
+  latches the safety ops and arbitrates sources; it models no motion, and
+  position and telemetry hold at the snapshot. It never sends a
+  `hub_instance_id`. Sim on a saved hub is always this replay.
 - **The built-in machine** (operator rulings 2026-10-08, `ph-5u0g.1`): the
   user sees `Neutrino` (row name, hub name, log tag) and a `ν` badge
   (operator 2026-10-15; the word "virtual" lives only in the badge's tip),
@@ -1153,7 +1153,7 @@ connected, then merge the setting changes onto the machine, ticked per item.
   edits firewall rules.
 - **Picker**: the Hubs pane lists Neutrino last, always, badged `ν` in the
   third accent (`--highlight`, never warn amber), focusable, with the tip
-  `Virtual machine: real Nucleus firmware, emulated in the app` (tip.js, and its
+  `Virtual: Nucleus firmware emulated in the app` (tip.js, and its
   aria-label);
   the subline reads `The hub as software`, then `Nucleus <version>` with a
   Stop while it runs; Connect boots it.
@@ -1162,8 +1162,8 @@ connected, then merge the setting changes onto the machine, ticked per item.
 - **Marking**: the hub title reads `<name> (virtual)`, the phase chip reads
   `virtual` (warn) where a machine reads `live`. The strip stays
   rendered and acts on the virtual hub.
-  **(planned)** the strip's status slot carries a standing
-  `Virtual: nothing moves` at the lowest priority (`ph-2eo`).
+  The strip's status slot carries a standing
+  `Virtual: settings stage for Merge` at the lowest priority (`ph-2eo`).
 - **Merge** (`src/model/merge.js`, the Merge pane): a replay's ECHO on a
   `setting_key` field stages (machine key, field uid) to the applied value;
   never a secret, never `pattern.running` or `advgen.running` (a merge never
@@ -1716,3 +1716,4 @@ Neutrino built into Phosphor stays exactly as it is (10.10).
 | 2026-10-13 | plugins, §10.11 | The Wi-Fi picker (RFC-118 draft, `ph-nqbh`): where the hub lists networks the Network card opens on the networks it hears, strongest first (signal bars, a lock on secured ones, a check on the connected one, which leads even when the scan missed it, `Saved` on saved ones); a tap asks one write-only password for a secured network and acts, an open one acts at once; progress, then the outcome in the card's one status line. At the bottom `Other network…` (a hidden SSID by hand) and `Advanced`, which reveals the saved-slot card; the generic cards for provisioning and the network channels do not draw while the plugin is on. Set up a machine shows the same picker in place of the setup wizard; there the act is `wifi_join` (Join), on the Network card `save` (Save: stored, joined at the next connect when strongest). Opening asks one scan; the rows pushed at the grant show greyed and untappable until the scan counter changes (RFC-118 item 6), a scan refused INTERLOCK in motion reads `Machine is moving` and is asked again, one that never lands times out at 30 s. Rows are keyed by SSID and the order is held while the user interacts. A saved row never acts on a tap: its sheet offers the passphrase again, move and remove. Without RFC-118, or below configure, the card is the saved-slot card and the setup flow the wizard. | operator ("hide all the extra boxes behind an advanced mode, start by showing available networks, then an advanced or custom at the bottom, ie phone"); Save rather than Join on the Network card, the setup flow's other settings left to the Setup page, the password asked for every secured network in the setup flow, and the provisioning op claimed by role are the agents', veto-able (`bd notes ph-nqbh`) |
 | 2026-10-15 | §10.10 | The built-in machine's name is Neutrino everywhere a name appears (Hubs row, hub name in the top bar, Connect, logs, Open to LAN text, docs, site); the word "virtual" stays only in its badge, now the `ν` glyph alone in the third accent (`--highlight`) with a tip and aria-label, never amber (caution). Supersedes the 2026-10-08 "just Virtual" row. Replays of a saved hub (Sim) keep "virtual". | operator ("can we name virtual to neutrino so it shows neutrino in the top bar and virtual stays only in the badge"; "it's pink or the tertiary color not yellow"; "the V and remove virtual, make it hover and find out") |
 | 2026-10-16 | §10.17 | Neutrino as a standalone dev tool: a second Tauri 2 + Svelte 5 app in this repo (`neutrino/`) running the native Neutrino as its sidecar on a real port, drawn from a localhost dev tool channel with physical inputs and network faults; the wasm Neutrino in Phosphor is unchanged (`ph-1wa3`, Nucleus `val-sf7.7`). | operator ("neutrino available as a dev tool, standalone ... a virtual machine you can see on your screen, simple gui"; the stack); text commands in and JSON out, loss as a retransmit, RTT measured at the hub, the default `--homed --home-sense-at -20`, port 80 for the first window only, the portable pair of files and the panel layout are the agent's (the icon, Valence assets/icons/neutrino-*.svg, is the orchestrator's), veto-able |
+| 2026-10-16 | copy, §10.17 | Copy voice (COPY.md rule 12): plain technical terms of motion control and industrial equipment, no jokes, winks, reassurance or the obvious. The Neutrino dev tool's strings say what each control does in network and machine terms; Virtual Valence's standing status reads `Virtual: settings stage for Merge`, its link dot `Virtual: replay of the saved catalog`, and Neutrino's badge tip drops "machine". | operator ("no need for this smarmy voice ... use standardized and recognized verbiage for motion machines, industrial equipment"; "not literally banned": a voice rule, no lint). The wording of each string is the agent's, veto-able |

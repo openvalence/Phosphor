@@ -2,4 +2,4 @@
 // Its name is Neutrino everywhere a name appears; "virtual" lives only in the badge's tip.
 export const BUILTIN_MACHINE_NAME = 'Neutrino';
 export const BUILTIN_MACHINE_BADGE = 'ν';
-export const BUILTIN_MACHINE_BADGE_TIP = 'Virtual machine: real Nucleus firmware, emulated in the app';
+export const BUILTIN_MACHINE_BADGE_TIP = 'Virtual: Nucleus firmware emulated in the app';
