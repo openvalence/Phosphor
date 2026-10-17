@@ -133,7 +133,7 @@
         <button class="og-btn sm" class:on={span === s} onclick={() => setSpan(s)}>{s} s</button>
       {/each}
     </div>
-    <button class="og-btn sm" class:on={paused} onclick={togglePause} data-tip="Freeze the scope (Space)">{paused ? 'Resume' : 'Pause'}</button>
+    <button class="og-btn sm" class:on={paused} onclick={togglePause} data-tip={paused ? "Resume the scope (Space)" : "Freeze the scope (Space)"}>{paused ? 'Resume' : 'Pause'}</button>
   </div>
   <canvas bind:this={canvas} onwheel={wheel} aria-label="Position and velocity"></canvas>
 </div>

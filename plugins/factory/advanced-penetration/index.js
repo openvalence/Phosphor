@@ -1028,7 +1028,7 @@ function mountCard(api, el, fields) {
       const btn = h('button', { type: 'button', role: 'tab' }, h('span', { text: name }));
       btn.addEventListener('click', () => { cur = i; show(); });
       // Enable: off writes amount 0 (RFC-066: no modulation) and keeps the amount here to restore.
-      const cb = h('input', { type: 'checkbox', role: 'switch', 'aria-label': name + ' modifier' });
+      const cb = h('input', { type: 'checkbox', role: 'switch', 'aria-label': name + ' modifier', 'data-tip': name + ' modifier on or off' });
       const sw = h('label', { class: 'og-switch ap-mon' }, cb, h('span', { class: 'track' }));
       cb.addEventListener('change', () => {
         const a = Number(api.value(m.amount));

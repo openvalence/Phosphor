@@ -73,7 +73,7 @@
   const deadman = $derived(deadmanMs ? deadmanMs / 1000 + ' s' : '--');
   const offsetUs = $derived(machine.stats.clockOffsetUs);
   const rttUs = $derived(machine.stats.clockRttUs);
-  const usTitle = (us) => (us != null ? us + ' µs' : undefined);
+  const usTitle = (label, us) => (us != null ? label + ': ' + us.toLocaleString('en-US') + ' µs' : undefined);
   // Per-frame counters read on the tick: a write per STATE push is a style pass per push.
   const rxAge = $derived(ageLabel(untrack(() => machine.stats.lastRxMs), nowTick));
   const pushes = $derived((void nowTick, untrack(() => machine.stats.statePushes)));
@@ -100,8 +100,8 @@
   <div class="facts">
     <span data-part="status-fact" class="fact d6" data-tip="{machine.stats.reconnects} reconnects"><span class="k">reconnects</span><span class="v mono" style="--w: 3ch">{compact(machine.stats.reconnects)}</span></span>
     <span data-part="status-fact" class="fact d4" data-tip="{pushes} state pushes"><span class="k">state pushes</span><span class="v mono" style="--w: 5ch">{compact(pushes)}</span></span>
-    <span data-part="status-fact" class="fact d1" data-tip={usTitle(offsetUs)}><span class="k">clock offset</span><span class="v mono" style="--w: 11ch">{offsetUs != null ? seconds(offsetUs) : '--'}</span></span>
-    <span data-part="status-fact" class="fact d2" data-tip={usTitle(rttUs)}><span class="k">clock rtt</span><span class="v mono" style="--w: 7ch">{rttUs != null ? seconds(rttUs) : '--'}</span></span>
+    <span data-part="status-fact" class="fact d1" data-tip={usTitle('Hub clock offset', offsetUs)}><span class="k">clock offset</span><span class="v mono" style="--w: 11ch">{offsetUs != null ? seconds(offsetUs) : '--'}</span></span>
+    <span data-part="status-fact" class="fact d2" data-tip={usTitle('Hub round trip', rttUs)}><span class="k">clock rtt</span><span class="v mono" style="--w: 7ch">{rttUs != null ? seconds(rttUs) : '--'}</span></span>
     <span data-part="status-fact" class="fact d3" data-tip={deadmanMs ? deadmanMs + ' ms' : undefined}><span class="k">deadman</span><span class="v mono" style="--w: 5ch">{deadman}</span></span>
     <span data-part="status-fact" class="fact d7"><span class="k">last rx</span><span class="v mono" style="--w: 6ch">{rxAge}</span></span>
     <span data-part="status-fact" class="fact fact-ui" data-tip="UI build {uiCell}, catalog etag {etag || '--'}"><span class="k">ui</span><span class="v mono" style="--w: 18ch">{uiCell}</span></span>

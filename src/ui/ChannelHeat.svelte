@@ -220,7 +220,7 @@
 {#if flat.length && coarse}
   <!-- A finger cannot pick a 5 px block: one 40 px target that opens the Link page. -->
   <button type="button" class="heat one" data-part="heat" data-ambient class:compact style="--tick: {TICK_MS}ms" onclick={() => onopen && onopen(null)}
-          aria-label={'Channel activity' + (warnings ? ', ' + warnings + (warnings === 1 ? ' warning' : ' warnings') : '')}>
+          data-tip="Open the Link page" aria-label={'Channel activity' + (warnings ? ', ' + warnings + (warnings === 1 ? ' warning' : ' warnings') : '')}>
     {#each shown as g (g.key)}
       <span class="grp">{#each g.blocks as b (b.key)}<span class="blk" data-part="heat-blk" class:warn={b.warn} style="--lv: {pct(b.lv)}%"></span>{/each}</span>
     {/each}
@@ -234,6 +234,7 @@
         {#each g.blocks as b (b.key)}
           <button type="button" class="blk" data-part="heat-blk" class:warn={b.warn} class:on={activeKey === b.key}
                   style="--lv: {pct(b.lv)}%" tabindex={b.key === rover ? 0 : -1}
+                  data-tip={b.name + ', ' + b.cls}
                   aria-label={b.name + ', ' + b.cls + (b.warn ? ', warning' : '')}
                   aria-describedby={activeKey === b.key ? uid : undefined}
                   onpointerenter={() => (hoverKey = b.key)}

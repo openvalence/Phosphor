@@ -216,7 +216,7 @@
       {#each SAFETY as k (k)}
         <span class="lock" data-tip={'Locked: ' + LOCKED[k]}><i style="background:var({k})" aria-hidden="true"></i><span class="mono">{k}</span></span>
       {/each}
-      <span class="pane-note">Locked: safety colors (law 13)</span>
+      <span class="pane-note">Locked: safety colors</span>
     </div>
   </section>
 
