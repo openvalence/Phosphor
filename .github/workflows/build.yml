@@ -155,8 +155,11 @@ jobs:
       # The sideload MSIX around the same exe. Its Publisher must equal the
       # signing certificate's subject (vars.MSIX_PUBLISHER); unsigned, it does
       # not install, so only the signed one goes into a release.
+      # Allowed to fail until it has passed on a GitHub runner (makeappx on windows-latest is unproven).
       - name: MSIX package
+        id: msix
         if: runner.os == 'Windows'
+        continue-on-error: true
         shell: bash
         working-directory: Phosphor
         env:
@@ -167,7 +170,7 @@ jobs:
           v=$(basename "$rel"/portable/*.exe | sed -E 's/^Phosphor_(.+)_x64-portable\.exe$/\1/')
           mkdir -p "$rel/msix" && cp src-tauri/target/msix/phosphor-x86_64.msix "$rel/msix/Phosphor_${v}_x64.msix"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && steps.msix.outcome == 'success'
         with:
           name: phosphor-${{ matrix.triple }}-msix
           if-no-files-found: error
