@@ -57,7 +57,8 @@ console.log('(a) bp://motion maps like the TCode adapter');
     ['L025I40', { position: 0.25, ms: 40 }],
     ['L09999I1000', { position: 0.9999, ms: 1000 }],
   ]) {
-    for (const s of tcode.parseL0(line)) viaTcode.api.submitMotion(s.pos, s.durationMs);
+    const s = tcode.parseLine(line).l0;
+    viaTcode.api.submitMotion(s.pos, s.durationMs);
     bp.onMotion(viaBp.api, payload);
   }
   ok('one submitMotion per payload, same (position, duration) as TCode',
@@ -121,7 +122,7 @@ console.log('(e) paused: refused with a reason, resumed only by the operator');
   const host = createPluginHost({
     model: () => null, sample: () => undefined, sampleAge: () => Infinity,
     display: () => undefined, status: () => 'confirmed', write: () => {},
-    submitMotion: door, registerTheme: () => {}, prefs: null, now: () => clock,
+    submitMotion: door, submitSegments: door.segments, registerTheme: () => {}, prefs: null, now: () => clock,
     listenTcp: async (port, fn) => { onLine = fn; return () => {}; },
     log: (name, level, msg) => logs.push({ name, level, msg }),
   });

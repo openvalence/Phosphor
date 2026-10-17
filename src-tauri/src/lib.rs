@@ -64,6 +64,7 @@ pub fn run() {
       plugins::plugins_list,
       plugins::plugin_tcp_listen,
       plugins::plugin_tcp_close,
+      plugins::plugin_tcp_reply,
       #[cfg(desktop)]
       plugins::plugin_open_url,
       #[cfg(desktop)]

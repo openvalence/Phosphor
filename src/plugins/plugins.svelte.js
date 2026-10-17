@@ -168,7 +168,8 @@ async function listenTcp(port, onLine) {
   const { invoke } = await import('@tauri-apps/api/core');
   const { listen } = await import('@tauri-apps/api/event');
   const unlisten = await listen('plugin-tcp-line', (e) => {
-    if (e.payload && e.payload.port === port) onLine(e.payload.line);
+    const p = e.payload;
+    if (p && p.port === port) onLine(p.line, (text) => invoke('plugin_tcp_reply', { port, conn: p.conn, text: String(text) }).catch(() => {}));
   });
   try {
     await invoke('plugin_tcp_listen', { port });

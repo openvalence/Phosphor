@@ -9,8 +9,9 @@
  *       back to the generic renderer;
  *   (c) the API object a plugin gets has no session/socket/transport handle,
  *       and its gated methods refuse undeclared permissions;
- *   (d) the TCode parser maps L0 lines to normalized samples, and a line
- *       arriving over the (fake) listener reaches submitMotion;
+ *   (d) the TCode parser maps L0 lines to normalized commands, and a line
+ *       arriving over the (fake) listener reaches submitSegments and its D1
+ *       is answered;
  *   (e) submitMotion's router sends a samples STREAM when the catalog has one
  *       and the hub grants it, and the command.position setpoint otherwise;
  *   (e2) the segments lookahead door: latch, role lookup, shared lazy grant,
@@ -301,25 +302,27 @@ console.log('(c1) ui.menu');
 // ---- (d) TCode L0 parsing and the adapter path ------------------------------
 console.log('(d) TCode adapter');
 {
-  const p = tcode.parseL0;
+  const p = (l) => tcode.parseLine(l).l0;
   const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  ok('L05 -> 0.5, no interval', eq(p('L05'), [{ pos: 0.5, durationMs: null }]));
-  ok('L0500I100 -> 0.5 over 100 ms', eq(p('L0500I100'), [{ pos: 0.5, durationMs: 100 }]));
-  ok('lowercase l09999i20 -> 0.9999 over 20 ms', eq(p('l09999i20\r'), [{ pos: 0.9999, durationMs: 20 }]));
-  ok('L00 -> 0', eq(p('L00'), [{ pos: 0, durationMs: null }]));
-  ok('other axes ignored, S suffix gives no duration', eq(p('R05 L02S100 V09'), [{ pos: 0.2, durationMs: null }]));
-  ok('device commands and junk ignored', eq(p('D1'), []) && eq(p('DSTOP'), []) && eq(p('L0'), []) && eq(p('L0abc'), []) && eq(p(''), []));
+  ok('L0500I100 -> 0.5 over 100 ms', eq(p('L0500I100'), { pos: 0.5, durationMs: 100, speed: null, endVel: null }));
+  ok('device commands are not motion', p('D1') === null && p('DSTOP') === null && p('L0') === null && p('') === null);
+  // The parser, the timeline and the D replies: test/tcode-adapter.test.mjs.
 
   let onLine = null;
   let closed = 0;
+  const segs = [];
   const { host, calls } = makeHost({
     listenTcp: async (port, fn) => { onLine = { port, fn }; return () => { closed++; }; },
+    submitSegments: (list) => { segs.push(...list); return { ok: true, sent: list.length, rateHz: 50 }; },
   });
   host.add(tcodeManifest, tcode);
   await new Promise((r) => setTimeout(r, 0));
   ok('adapter listens on the manifest port (8000)', onLine && onLine.port === 8000);
-  onLine.fn('L0250I200');
-  ok('a TCP line reaches submitMotion with its duration, (0.25, 200)', eq(calls.motion, [[0.25, 200]]));
+  const replies = [];
+  onLine.fn('L0250I200 D1', (t) => replies.push(t));
+  ok('a TCP line reaches submitSegments as one segment, 0.25 over 200 ms', segs.length === 1 && segs[0].norm === 0.25
+    && segs[0].durationMs === 200 && calls.motion.length === 0, JSON.stringify(segs));
+  ok('and D1 is answered on its connection', eq(replies, ['TCode v0.4']));
   host.setEnabled('tcode-adapter', false);
   ok('disabling closes the listener', closed >= 1);
 }

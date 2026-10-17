@@ -280,8 +280,8 @@ try {
   const logs = [];
   const host = createPluginHost({
     model: () => ad.model, sample: (ch) => ad.samples[ch], sampleAge: () => 0, display: reportedValue, status: () => 'confirmed',
-    write: () => {}, submitMotion: door, registerTheme: () => {}, prefs: null, log: (name, level, msg) => logs.push(name + ': ' + msg),
-    listenTcp: async (port, onLine) => { tcodeLine = onLine; return () => {}; },
+    write: () => {}, submitMotion: door, submitSegments: door.segments, registerTheme: () => {}, prefs: null,
+    log: (name, level, msg) => logs.push(name + ': ' + msg), listenTcp: async (port, onLine) => { tcodeLine = onLine; return () => {}; },
   });
   let bpApi = null;
   host.add(bp.manifest, { activate: (a) => { bpApi = a; } });

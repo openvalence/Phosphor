@@ -1,10 +1,10 @@
 {
   "name": "tcode-adapter",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "api": 1,
   "kind": "adapter",
   "entry": "index.js",
-  "description": "TCode L0 over local TCP as motion input",
-  "roles": ["command.position", "window.min", "window.max"],
+  "description": "TCode v0.4 L0 over local TCP as motion segments",
+  "roles": ["command.position", "window.min", "window.max", "telemetry.position"],
   "permissions": ["motion", "net.listen:8000"]
 }

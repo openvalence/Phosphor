@@ -116,7 +116,7 @@ class PermissionError extends Error {
  *   submitSamples(role, list)     -> {ok, sent, rateHz?, reason?} (motion.js submit.samples)
  *   now()                         -> ms clock of submitSegments' atMs (default performance.now)
  *   registerTheme(theme)          -> adds a preset to the theme table
- *   listenTcp(port, onLine)       -> Promise<close()>  (absent outside the shell)
+ *   listenTcp(port, onLine)       -> Promise<close()>  (absent outside the shell); onLine(line, reply(text))
  *   fetch(url, init)              -> Promise<Response>, CORS-free in the shell; null where none
  *   openUrl(url)                  -> Promise<bool>, the system browser on a page; absent where none
  *   isHub(URL)                    -> true for the connected hub's own origins
@@ -432,7 +432,7 @@ export function createPluginHost(deps) {
           if (!deps.listenTcp) throw new Error('TCP listen is only available in the Tauri shell');
           let close;
           try {
-            close = await deps.listenTcp(port, (line) => guard(rec, 'tcp line', () => onLine(line)));
+            close = await deps.listenTcp(port, (line, reply) => guard(rec, 'tcp line', () => onLine(line, reply)));
           } catch (e) {
             fault(rec, 'listenTcp ' + port, e);
             throw e;

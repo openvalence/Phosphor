@@ -1470,7 +1470,7 @@ mod tests {
     }
   }
 
-  /// The TCode adapter's L0 mapping (plugins/examples/tcode-adapter parseL0):
+  /// The TCode adapter's L0 mapping (plugins/examples/tcode-adapter parseLine):
   /// the digits are a fraction, `I` is the duration in ms.
   fn tcode_l0(digits: &str, interval: u32) -> (f64, u32) {
     (format!("0.{digits}").parse().unwrap(), interval)

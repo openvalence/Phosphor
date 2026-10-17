@@ -13,25 +13,31 @@
 //   an operator ruling, not a flag.
 // - Lines are capped at MAX_LINE bytes; a longer run is discarded up to the
 //   next newline rather than buffered without bound.
+// - Replies: plugin_tcp_reply writes one line back on the connection a line
+//   came from (its `conn`). The queue is REPLY_QUEUE lines; a full queue or a
+//   closed connection refuses the reply, never blocks.
 // - The webview is the only caller and plugin code runs in it with the
 //   page's authority, so manifest permissions are enforced in JS. Rust cannot
 //   tell a plugin's invoke from the kernel's.
 // See: docs/PLUGINS.md
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use serde::Serialize;
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager, State};
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
+use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 
 const MAX_MANIFEST: u64 = 64 * 1024;
 const MAX_ENTRY: u64 = 2 * 1024 * 1024;
 const MAX_LINE: usize = 1024;
+const REPLY_QUEUE: usize = 64;
 
 #[derive(Serialize)]
 pub struct PluginFiles {
@@ -125,11 +131,45 @@ pub struct TcpListeners(Mutex<HashMap<u16, tauri::async_runtime::JoinHandle<()>>
 #[derive(Clone, Serialize)]
 struct TcpLine {
     port: u16,
+    conn: u64,
     line: String,
 }
 
+/// (port, conn) -> that connection's reply queue. Its Conn guard removes the
+/// entry when the connection task ends or is aborted.
+static REPLIES: Mutex<BTreeMap<(u16, u64), mpsc::Sender<String>>> = Mutex::new(BTreeMap::new());
+static NEXT_CONN: AtomicU64 = AtomicU64::new(1);
+
+struct Conn {
+    key: (u16, u64),
+    writer: tauri::async_runtime::JoinHandle<()>,
+}
+
+impl Drop for Conn {
+    fn drop(&mut self) {
+        if let Ok(mut m) = REPLIES.lock() {
+            m.remove(&self.key);
+        }
+        self.writer.abort();
+    }
+}
+
 async fn read_lines(app: AppHandle, port: u16, sock: tokio::net::TcpStream) {
-    let mut rd = BufReader::new(sock);
+    let conn = NEXT_CONN.fetch_add(1, Ordering::Relaxed);
+    let (rd, mut wr) = sock.into_split();
+    let (tx, mut rx) = mpsc::channel::<String>(REPLY_QUEUE);
+    let writer = tauri::async_runtime::spawn(async move {
+        while let Some(s) = rx.recv().await {
+            if wr.write_all(s.as_bytes()).await.is_err() {
+                break;
+            }
+        }
+    });
+    if let Ok(mut m) = REPLIES.lock() {
+        m.insert((port, conn), tx);
+    }
+    let _conn = Conn { key: (port, conn), writer };
+    let mut rd = BufReader::new(rd);
     let mut buf: Vec<u8> = Vec::with_capacity(128);
     let mut discarding = false;
     loop {
@@ -156,7 +196,7 @@ async fn read_lines(app: AppHandle, port: u16, sock: tokio::net::TcpStream) {
             if !discarding {
                 let line = String::from_utf8_lossy(&buf).trim().to_string();
                 if !line.is_empty() {
-                    let _ = app.emit("plugin-tcp-line", TcpLine { port, line });
+                    let _ = app.emit("plugin-tcp-line", TcpLine { port, conn, line });
                 }
             }
             buf.clear();
@@ -207,6 +247,27 @@ pub fn plugin_tcp_close(state: State<'_, TcpListeners>, port: u16) -> Result<(),
         t.abort();
     }
     Ok(())
+}
+
+/// One line back on connection `conn` of `port`: newlines in `text` become
+/// spaces, the line is capped at MAX_LINE bytes and ends in a newline.
+#[tauri::command]
+pub fn plugin_tcp_reply(port: u16, conn: u64, text: String) -> Result<(), String> {
+    let mut line = text.replace(['\r', '\n'], " ");
+    if line.len() > MAX_LINE {
+        let mut i = MAX_LINE;
+        while !line.is_char_boundary(i) {
+            i -= 1;
+        }
+        line.truncate(i);
+    }
+    line.push('\n');
+    let m = REPLIES.lock().map_err(|e| e.to_string())?;
+    let tx = m.get(&(port, conn)).ok_or("connection closed")?;
+    tx.try_send(line).map_err(|e| match e {
+        mpsc::error::TrySendError::Full(_) => "reply queue full".to_string(),
+        mpsc::error::TrySendError::Closed(_) => "connection closed".to_string(),
+    })
 }
 
 /// api.net.open (docs/PLUGINS.md): an http or https URL in the system browser.

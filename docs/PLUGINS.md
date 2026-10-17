@@ -412,7 +412,7 @@ and moved on a reorder, so a control keeps its in-flight write.
 | `submitSegments(list)` returning `{ok, sent, rateHz, reason}` | lookahead motion input: `[{atMs, norm, durationMs, endVel?}]`, `atMs` the `performance.now()` instant the machine starts each, ascending, `endVel` its end velocity in norm/s (absent: `unspecified`, a free knot the hub shapes and, on a stream, passes moving while it expects a successor; 0 for a real stop); advance by `sent`. Needs `motion` (`ph-smvd.2`) | experimental |
 | `schedule()` returning `{horizonMs, leadMs}` or null | the segments grant's schedule horizon and the lead `submitSegments` stamps with (`leadCapMs`, RFC-115); null before the grant, which the first `submitSegments` call asks for. For a plugin that previews the machine. Needs `motion` | experimental |
 | `submitSamples(role, list)` returning `{ok, sent, rateHz, latencyMs, reason}` | a c2h `samples` STREAM found by channel role (e.g. SPEC 9.7's `osc.drive`): `[{atMs, values}]`, `atMs` the `performance.now()` instant each sample describes, ascending, `values` in the role's layout order; one bundle per call, advance by `sent`; `latencyMs` the grant's `schedule_latency_us`, the least notice a point needs (RFC-110 item 4): send each that far ahead or more, never past the 250 ms lead cap; `reason` `NO_STREAM` when the hub has no such entry. Not motion input: no producer lock. Needs `motion` (`ph-6dr6`) | experimental |
-| `net.listenTcp(port, onLine)` returning `close()` | loopback TCP line service, shell only. Needs `net.listen:<port>` | experimental |
+| `net.listenTcp(port, onLine)` returning `close()` | loopback TCP line service, shell only. `onLine(line, reply)`: `reply(text)` writes `text` as one line back on the connection the line came from (newlines become spaces, 1024 bytes at most, 64 lines queued, dropped when full or closed); absent in a host without the shell's reply path. Needs `net.listen:<port>` | experimental |
 | `net.open(url)` returning a `Promise<boolean>` | an http(s) URL in the system browser (the shell's OS launcher on desktop; a new tab on the served page); false where nothing could open it. Only inside the user's own act (a click, a menu pick: transient activation). Needs `net.fetch` | experimental |
 | `ui.menu(el, items, {title})` returning `off()` | the plugin's own items on its own element in the shell context menu (Context menus) | experimental |
 | `net.fetch(url, init)` returning a `Promise<Response>` | HTTP(S) to a non-machine service (a media library), CORS-free through the shell's HTTP plugin; vite dev uses the page's `fetch`. Refuses other schemes and the connected hub's own origins (its host on 80, 443 or its WS port). Needs `net.fetch` (ruling R-A, `ph-smvd.2`) | experimental |
@@ -748,12 +748,48 @@ Production builds compile that path out.
   settings card of rows (a switch, a slider, a select) and a page with a
   card, a bar, a sheet and a warning in the status. It draws nothing of its
   own.
-- `plugins/examples/tcode-adapter/`: RFC-044 rung 1 as an adapter. The shell
-  listens on 127.0.0.1:8000 (MultiFunPlayer's default endpoint port; the
-  spec pins none, drafted as Valence RFC-061), each line is parsed for `L0`
-  (`L0500I100` = 0.5 over 100 ms; other axes, `S` and device commands are
-  ignored) and submitted with `submitMotion`, the `I` interval as its
-  duration. The hub receives Valence motion input only, never TCode.
+- `plugins/examples/tcode-adapter/`: RFC-044 rung 1 as an adapter for TCode
+  v0.4. The shell listens on 127.0.0.1:8000 (Valence RFC-061 item 1). The
+  hub receives Valence motion input only, never TCode.
+  - Parsing: only `L0` moves (RFC-061 item 2). A line executes on its
+    newline and a later `L0` in it overwrites an earlier one; other axes and
+    junk tokens are skipped. Magnitude digits are a fraction (`L0500` = 0.5).
+    `I<ms>` is the duration. `S<n>` is a speed, 1000 = one axis length a
+    second (the TCode definition; its own `S10` example is 10x off), turned
+    into a duration from the last commanded `L0`, else the reported
+    `telemetry.position`, else a full stroke. `G<n>` (same unit, signed) is
+    the end velocity in norm/s; it needs `I` or `S`. Easing (`<`, `>`, `<>`)
+    is accepted and sends no end velocity, so the hub shapes the knot. A
+    command with neither `I` nor `S` lasts the measured line cadence (100 ms
+    before one is known).
+  - Timing: TCode is arrival-relative, so arrival jitter would become motion
+    jitter. The adapter rebuilds the sender's timeline: each segment starts
+    where the previous one ends, and a phase-locked loop (phase gain 0.03,
+    frequency gain 0.000225, error clamped to 10 ms) holds that chain to the
+    arrival times, absorbing drift and a sender whose cadence differs a
+    little from its `I`. Each segment leaves through `submitSegments` at its
+    timeline time plus the lead (80 ms, Lead on the plugin's settings card,
+    50 to 140, never past `schedule().leadMs`). A segment shorter than 1.25 s
+    over the grant's rate (25 ms at 50/s) is merged into the next, so 125 Hz
+    input stays under the grant; a lone last knot leaves on a 20 ms flush
+    timer. The chain restarts from the arrival on the first line, on a line
+    over 250 ms late (a pause), on a second line in a row too late to start
+    in time (lead less the merge floor less 10 ms) that arrives half a
+    cadence or more after the first (a seek), and on a line over 50 ms
+    early; that bundle supersedes the sent tail from its start. A stall's
+    burst of late lines keeps the chain: the door clips their starts and
+    the knots stay on the sender's grid. A sender whose `I` runs well past
+    its cadence restarts on every line, which is arrival stamping. A hub
+    without a segments STREAM gets `submitMotion` per segment.
+  - Device commands, answered on the line's connection: `D0`
+    `Phosphor TCode adapter <version>`, `D1` `TCode v0.4`, `D2`
+    `L0 0 9999 Stroke` (the full range: L0 already spans the hub's window),
+    `DSTOP` `STOP` after one 200 ms segment starting now and braking to
+    rest (end velocity 0) from where the plan has the carriage, which
+    supersedes the sent tail; the plugin API has no halt, and Pause stays
+    the operator's. `$` saves are ignored,
+    logged once.
+  - Never re-arms: under PAUSE every send is refused and logged once.
 
 ## Factory plugins
 
@@ -994,7 +1030,7 @@ Shipped:
 `node test/plugins.test.mjs` (part of `npm run check`) loads both examples
 through the real host and claim loop against the fixture catalog: hero
 claims, containment of throwing plugins, the no-transport API, permission
-refusals, the TCode parser, and the window mapping. It also loads every
+refusals, the TCode adapter's line path, and the window mapping. It also loads every
 factory plugin and checks Advanced Penetration's substitution and each way
 it falls back. `node test/advanced-penetration.test.mjs` drives it in the
 shell bundle against a fake hub (`--live` against neutrino-sim).
