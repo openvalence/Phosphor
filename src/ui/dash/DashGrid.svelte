@@ -799,7 +799,7 @@
                 onclick={undoOnce}>Undo</button>
         <button type="button" class="og-btn sm" onclick={newNest}>New nest</button>
         {#if palette.shown}
-          <button type="button" class="og-btn sm palette-toggle" aria-pressed={palette.open} data-tip="Show or hide module palette"
+          <button type="button" class="og-btn sm palette-toggle" aria-pressed={palette.open} data-tip="Toggle palette visibility"
                   onclick={() => (palette.open = !palette.open)}>Modules</button>
         {/if}
         <button type="button" class="og-btn sm" popovertarget={menuId} style={'anchor-name: --' + menuId}>Layout…</button>
