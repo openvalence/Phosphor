@@ -264,7 +264,7 @@ async function runStep(n, minutes, { perWorker, seed0, tickUs, label, lockstep: 
   console.log('     flags: ' + (Object.entries(kinds).map(([k, v]) => k + ' x' + v.length + ' (seed ' + v.slice(0, 5).join(',') + ')').join('; ') || 'none'));
   const logs = minutesAgg.reduce((a, m) => sum(a, m.logs), {});
   step.hubLog = Object.fromEntries(Object.entries(logs).sort((a, b) => b[1] - a[1]));
-  console.log('     hub warn/error lines: ' + Object.entries(step.hubLog).filter(([k]) => !/valencesim:/.test(k)).slice(0, 10).map(([k, v]) => v + ' x ' + k).join(' | '));
+  console.log('     hub warn/error lines: ' + Object.entries(step.hubLog).filter(([k]) => !/neutrino-sim:/.test(k)).slice(0, 10).map(([k, v]) => v + ' x ' + k).join(' | '));
   console.log('     anomalies, clean hubs: ' + JSON.stringify(split.clean));
   console.log('     anomalies, impaired hubs: ' + JSON.stringify(split.impaired));
   console.log(`     home while oscillating: ${homeOsc.tried || 0} tried, ${homeOsc.refused || 0} refused, ${homeOsc.accepted || 0} accepted (xfail, val-dzf)`);

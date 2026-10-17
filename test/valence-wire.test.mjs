@@ -448,13 +448,13 @@ const body = decodeEventBody(new Map([[1, 5], [2, 42], [9, 'unknown']]), evtEntr
 assert('EVENT body: schema field names resolved', body.kind === 5 && body.detail === 42);
 assert('EVENT body: unknown key kept, never dropped (§4.3)', body.key9 === 'unknown');
 
-// ---- Golden fixture: the REAL catalog fetched from valencesim ------------------
-// Captured by test/valence-sim.mjs from its device-fidelity simulator.
+// ---- Golden fixture: the REAL catalog fetched from neutrino-sim ------------------
+// Captured by test/neutrino-twin.mjs from its device-fidelity simulator.
 // Hashing the real hub's real catalog bytes and matching the etag IT
 // declared is a cross-implementation check of this file's SHA-256 against
 // lib/valence's C++ Sha256.
-const FIXTURE = new URL('./fixtures/valencesim-catalog.bin', import.meta.url);
-const FIXTURE_ETAG = new URL('./fixtures/valencesim-catalog.etag', import.meta.url);
+const FIXTURE = new URL('./fixtures/neutrino-catalog.bin', import.meta.url);
+const FIXTURE_ETAG = new URL('./fixtures/neutrino-catalog.etag', import.meta.url);
 if (existsSync(FIXTURE) && existsSync(FIXTURE_ETAG)) {
   const catBytes = new Uint8Array(readFileSync(FIXTURE));
   const hubEtag = readFileSync(FIXTURE_ETAG, 'utf8').trim();
@@ -479,7 +479,7 @@ if (existsSync(FIXTURE) && existsSync(FIXTURE_ETAG)) {
   assert('fixture: 0x1100 motion carries the raw_10um field (7 -> 9 B)',
     !!motion && motion.layout.some((f) => f.name === 'raw_10um'));
 } else {
-  console.log('  [SKIP] real-catalog fixture (regenerate via test/valence-sim.mjs)');
+  console.log('  [SKIP] real-catalog fixture (regenerate via test/neutrino-twin.mjs)');
 }
 
 console.log('');

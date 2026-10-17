@@ -997,7 +997,7 @@ claims, containment of throwing plugins, the no-transport API, permission
 refusals, the TCode parser, and the window mapping. It also loads every
 factory plugin and checks Advanced Penetration's substitution and each way
 it falls back. `node test/advanced-penetration.test.mjs` drives it in the
-shell bundle against a fake hub (`--live` against valencesim).
+shell bundle against a fake hub (`--live` against neutrino-sim).
 `node test/quick-access.test.mjs` drives the context menu, the dock, the
 field-bound controls and the quick-access plugin in the shell bundle against a
 fake hub at 1428x900, 1024x768 and 420x860. `plugins.test.mjs` also checks
@@ -1006,7 +1006,7 @@ every identity's path round trip and the three capabilities' checks.
 player's contract exports, prefs and hero spec; without `--unit`
 (`npm run check:funscript`, needs ffmpeg) it plays a generated clip in the
 shell bundle against a fake hub and the fake Stash, and `--live --port P
---http P+7` against valencesim on spare ports; `--live-playback` there plays
+--http P+7` against neutrino-sim on spare ports; `--live-playback` there plays
 loop, auto-home, the seek glide, auto latency and a Preview write.
 
 `plugins/` sits outside `src/`, so `test/check-device-knowledge.mjs` never

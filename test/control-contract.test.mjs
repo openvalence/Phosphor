@@ -6,7 +6,7 @@
  * Field/Control/ActionField, no App) into a temp dir; dist/ is untouched.
  *
  * Fake mode (default): Playwright's WebSocket route is the hub, the recorded
- * valencesim catalog is pre-seeded into the etag cache, and every INTENT is
+ * neutrino-sim catalog is pre-seeded into the etag cache, and every INTENT is
  * answered per the test's chosen mode: echo, hold (echo on release), silent
  * (no answer) or nack. Asserts, per presentation (slider, knob, stepper):
  * pending then confirmed on an echo, overdue past 500 ms, fault on a NACK and
@@ -33,7 +33,7 @@
  * secret's input empties once its write lands, never echoes, and never enters
  * history (ph-buvu).
  *
- * Live mode (--live): the same page against a running valencesim; one
+ * Live mode (--live): the same page against a running neutrino-sim; one
  * slider-class field driven through slider, knob and stepper, the two-valued
  * toggle pressed to B and back to A, and the narrowed slider, each value
  * confirmed on a second, raw session (C-8), which then puts every value back.
@@ -41,7 +41,7 @@
  *
  * Run: node test/control-contract.test.mjs
  *      node test/control-contract.test.mjs --live [--host 127.0.0.1] [--port 8882] [--http 8880]
- *        (valencesim --homed --port 8882 --http 8880)
+ *        (neutrino-sim --homed --port 8882 --http 8880)
  */
 import { chromium } from 'playwright';
 import { build } from 'vite';
@@ -79,7 +79,7 @@ const ok = (name, cond, extra) => {
 // bitfield and no unroled toggle, so one synthetic setting channel pair
 // carrying them is appended, and the etag is the hash of the bytes served.
 const XS = 0x7e00, XI = 0x7e01;
-const CAT = withExtras(new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url))));
+const CAT = withExtras(new Uint8Array(readFileSync(new URL('./fixtures/neutrino-catalog.bin', import.meta.url))));
 function withExtras(raw) {
   const ai = raw[0] & 0x1f;
   const [n, hl] = ai < 24 ? [ai, 1] : ai === 24 ? [raw[1], 2] : [(raw[1] << 8) | raw[2], 3];
@@ -154,7 +154,7 @@ async function probe(host, port) {
   });
 }
 if (LIVE && !(await probe(HOST, SIM_PORT))) {
-  console.log('SKIP: no valencesim answering on ' + HOST + ':' + SIM_PORT + ' -- start it (see file header) and re-run.');
+  console.log('SKIP: no neutrino-sim answering on ' + HOST + ':' + SIM_PORT + ' -- start it (see file header) and re-run.');
   process.exit(0);
 }
 

@@ -22,7 +22,7 @@
  *
  * The page must be loaded FROM THE DEVICE (same reason as browser-check.mjs:
  * /uitoken is same-origin-only; a localhost origin gets watch tier). With no
- * host it runs against its own private valencesim (test/live-sim.mjs: the
+ * host it runs against its own private neutrino-sim (test/live-sim.mjs: the
  * built page, /uitoken proxied to the sim's mint; build first: npm run
  * build:only) and SKIPS (exit 0) without the exe; it rides test:browser as
  * check:flagship.
@@ -39,7 +39,7 @@ import { startSim, serveBundle, SIM } from './live-sim.mjs';
 
 const HOST = process.argv[2];
 const own = HOST ? null : await startSim();
-if (!HOST && !own) { console.log('SKIP: no host given and no valencesim at ' + SIM); process.exit(0); }
+if (!HOST && !own) { console.log('SKIP: no host given and no neutrino-sim at ' + SIM); process.exit(0); }
 const PAGE_URL = HOST ? 'http://' + HOST + '/' : await serveBundle(own.port, own.http);
 const OUT = EVIDENCE;
 mkdirSync(OUT, { recursive: true });

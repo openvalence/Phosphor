@@ -1,6 +1,6 @@
 /**
  * saved-networks.test.mjs -- the saved Wi-Fi list (factory plugin saved-networks, RFC-116 draft) on
- * the shell bundle against a private native valencesim, which boots with one saved network, "Neutrino",
+ * the shell bundle against a private native neutrino-sim, which boots with one saved network, "Neutrino",
  * live. Asserts:
  *   configure  names, the live mark and the signal; Add (count 2, the passphrase field cleared and the
  *              secret nowhere on the page, in storage or in the console); drag and the arrows reorder;
@@ -12,7 +12,7 @@
  * the slot list is under Advanced, which this suite opens first.
  * Screenshots: test/evidence/savednets-configure.png and savednets-below.png (1428x900).
  *
- * Needs a valencesim with the saved-network twin (VALENCESIM=<exe>, Nucleus worktree nets); SKIPs without it.
+ * Needs a neutrino-sim with the saved-network twin (NEUTRINO_SIM=<exe>, Nucleus worktree nets); SKIPs without it.
  * Run: node test/saved-networks.test.mjs
  * Constraints: the sim and the page run on private ports; the sim is killed on every exit path. The test
  * passphrase is a fixture string and is asserted absent from everything the page keeps.
@@ -39,7 +39,7 @@ const INSTANCE = new Uint8Array(8).fill(0xd1);
 
 // ---- live ----
 const sim = await startSim({ extra: ['--pairing-window'] });
-if (!sim) { console.log('SKIP: no valencesim (set VALENCESIM)'); process.exit(fails ? 1 : 0); }
+if (!sim) { console.log('SKIP: no neutrino-sim (set NEUTRINO_SIM)'); process.exit(fails ? 1 : 0); }
 
 // The first knock in the pairing window is granted configure: its token is what the configure page presents.
 const knock = createSession({ host: '127.0.0.1', port: sim.port, clientKind: 'webui', clientName: 'saved-networks test',

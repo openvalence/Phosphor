@@ -48,7 +48,7 @@ await build({
 });
 const HTML = readFileSync(join(OUT, 'index.html'));
 rmSync(OUT, { recursive: true, force: true });
-const CATALOG = readFileSync(join(HERE, 'fixtures', 'valencesim-catalog.bin'));
+const CATALOG = readFileSync(join(HERE, 'fixtures', 'neutrino-catalog.bin'));
 const srv = createServer((q, s) => {
   if (q.url === '/catalog.bin') { s.writeHead(200, { 'Content-Type': 'application/octet-stream' }); s.end(CATALOG); return; }
   s.writeHead(200, { 'Content-Type': 'text/html' }); s.end(HTML);

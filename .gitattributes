@@ -1,2 +1,2 @@
-# The vendored loader is hashed in integral.pin: byte-exact, never line-ending converted.
-src/model/integral/integral.js -text
+# The vendored loader is hashed in neutrino.pin: byte-exact, never line-ending converted.
+src/model/neutrino/neutrino.js -text

@@ -1,5 +1,5 @@
 /**
- * live-sim.mjs -- a private native valencesim and the built page in front of
+ * live-sim.mjs -- a private native neutrino-sim and the built page in front of
  * it, for the live suites. Test-only.
  *
  * Constraints:
@@ -16,8 +16,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DIST_HTML } from './dist.mjs';
 
-// VALENCESIM names another build (a Nucleus worktree's) for one run.
-export const SIM = process.env.VALENCESIM || fileURLToPath(new URL('../../Nucleus/sim/valencesim/build/valencesim.exe', import.meta.url));
+// NEUTRINO_SIM names another build (a Nucleus worktree's) for one run.
+export const SIM = process.env.NEUTRINO_SIM || fileURLToPath(new URL('../../Nucleus/sim/neutrino/build/neutrino-sim.exe', import.meta.url));
 
 const answers = (port) => new Promise((resolve) => {
   const ws = new WebSocket('ws://127.0.0.1:' + port + '/');

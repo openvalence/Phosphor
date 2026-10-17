@@ -10,7 +10,7 @@
  * - Never remembered, never auto-connected, never the reconnect target: no
  *   shell_host or shell_mode write, and settings-pane.js saves no virtual hub.
  * - Staging takes only what the virtual hub ECHOed (merge.js).
- * - The built-in machine is the Nucleus twin compiled to wasm (integral.worker.js), on every platform. It
+ * - The built-in machine is the Nucleus twin compiled to wasm (neutrino.worker.js), on every platform. It
  *   is a full hub joined by the normal connect over an in-page socket; only its host marks it (onSim). It
  *   stops on any disconnect, never on a hidden page; its state blob persists in localStorage under STATE_KEY.
  * - Open to LAN (lan.svelte.js) shares this hub while it runs. Opened to the LAN, it boots with its pairing
@@ -18,9 +18,9 @@
  */
 import { untrack } from 'svelte';
 import { createLocalHub } from '../../../Valence/clients/js/index.js';
-import IntegralWorker from '../model/integral.worker.js?worker&inline';
-import { WASM } from '../model/integral/bytes.js';
-import { bridgeIntegral } from '../model/integral-bridge.js';
+import NeutrinoWorker from '../model/neutrino.worker.js?worker&inline';
+import { WASM } from '../model/neutrino/bytes.js';
+import { bridgeNeutrino } from '../model/neutrino-bridge.js';
 import { BUILTIN_MACHINE_NAME } from '../model/builtin.js';
 import { connect, disconnect, getSession, machine } from '../model/machine.svelte.js';
 import { loadMachine, hubOptions, catalogStoreFor } from '../model/vault.js';
@@ -81,11 +81,11 @@ function saveState(blob) {
 async function openSim() {
   disconnect();
   stopSim();
-  const w = worker = new IntegralWorker();
+  const w = worker = new NeutrinoWorker();
   let bridge;
   const up = new Promise((resolve, reject) => {
     w.onerror = (e) => reject(new Error(e.message || 'worker failed'));
-    bridge = bridgeIntegral(w, (m) => {
+    bridge = bridgeNeutrino(w, (m) => {
       if (m.op === 'up') resolve(m);
       else if (m.op === 'down') reject(new Error(m.error));
       else if (m.op === 'log') logLine(m.line);

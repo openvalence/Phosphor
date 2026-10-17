@@ -1,6 +1,6 @@
 /**
  * link-page.test.mjs -- the Link page (DESIGN.md "The Link page", ph-bszw) on the built app
- * against a fake hub on the recorded valencesim catalog. Asserts:
+ * against a fake hub on the recorded neutrino-sim catalog. Asserts:
  *   refusals  grouped by code, newest first, with the registry's family and
  *             meaning (registry-tables.js), the count past the 60-deep ring,
  *             the last time, the causing channel or range, the hub's detail;
@@ -42,8 +42,8 @@ let fails = 0;
 const ok = (n, c, extra) => { console.log('  [' + (c ? 'PASS' : 'FAIL') + '] ' + n + (extra !== undefined && !c ? '  -- ' + JSON.stringify(extra) : '')); if (!c) fails++; };
 
 const HTML = readFileSync(DIST_HTML);
-const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
-const ETAG = readFileSync(new URL('./fixtures/valencesim-catalog.etag', import.meta.url), 'utf8').trim();
+const CAT = new Uint8Array(readFileSync(new URL('./fixtures/neutrino-catalog.bin', import.meta.url)));
+const ETAG = readFileSync(new URL('./fixtures/neutrino-catalog.etag', import.meta.url), 'utf8').trim();
 const ENTRIES = decodeCatalog(CAT);
 const PAPER = THEMES.find((t) => t.id === 'paper');
 const hex = (n) => '0x' + n.toString(16).toUpperCase().padStart(4, '0');

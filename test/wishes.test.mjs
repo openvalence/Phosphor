@@ -61,7 +61,7 @@ console.log('\naccess (ph-rpir)');
 
 console.log('\nlive catalog growth (RFC-077)');
 {
-  const rec = decodeCatalog(new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url))));
+  const rec = decodeCatalog(new Uint8Array(readFileSync(new URL('./fixtures/neutrino-catalog.bin', import.meta.url))));
   const opts = { maxSubs: 64, telemetryIds: telemetryChannelIds(buildSettingsModel(rec)), skip: new Set(), reserved: 0 };
   const first = regrow([], rec, new Set(), opts);
   const held = new Set(first.fresh.map((w) => w[0]));

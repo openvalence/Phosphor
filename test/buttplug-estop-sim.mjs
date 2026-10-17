@@ -6,12 +6,12 @@
  * proves the hub latch alone gates the buttplug path: the
  * REAL plugin host, the REAL buttplug adapter (src/plugins/buttplug.js) and
  * the REAL motion door (src/model/motion.js) stream bp://motion payloads into
- * valencesim; the machine moves; an e-stop is asserted while the stream keeps
+ * neutrino-sim; the machine moves; an e-stop is asserted while the stream keeps
  * coming; the machine stops moving anyway. Fields are found by role, never by
  * name.
  *
- * Starts its own valencesim on free ports with a throwaway state prefix.
- * Run: node test/buttplug-estop-sim.mjs [--sim <path to valencesim.exe>]
+ * Starts its own neutrino-sim on free ports with a throwaway state prefix.
+ * Run: node test/buttplug-estop-sim.mjs [--sim <path to neutrino-sim.exe>]
  * Exit 2 = skipped (no sim binary).
  */
 import { spawn } from 'node:child_process';
@@ -38,7 +38,7 @@ const argv = process.argv.slice(2);
 const simIdx = argv.indexOf('--sim');
 const SIM_EXE = simIdx >= 0
   ? argv[simIdx + 1]
-  : new URL('../../Nucleus/sim/valencesim/build/valencesim.exe', import.meta.url).pathname.replace(/^\//, '');
+  : new URL('../../Nucleus/sim/neutrino/build/neutrino-sim.exe', import.meta.url).pathname.replace(/^\//, '');
 if (!existsSync(SIM_EXE)) {
   console.log('[SKIP] buttplug-estop-sim: no device twin at ' + SIM_EXE);
   process.exit(2);

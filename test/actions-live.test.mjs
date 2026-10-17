@@ -1,12 +1,12 @@
 /**
  * actions-live.test.mjs -- live verification of generic action triggers
  * (ph-vdk.3) and the pattern-panel background_run toggle + unattended chip
- * (ph-vdk.10), against a REAL valencesim (not a Playwright-faked hub).
+ * (ph-vdk.10), against a REAL neutrino-sim (not a Playwright-faked hub).
  *
  * Both beads closed host-tested only because the fixture/sim catalog had no
- * pattern plane; Nucleus 631f31d ports the pattern generator into valencesim,
+ * pattern plane; Nucleus 631f31d ports the pattern generator into neutrino-sim,
  * so this reads the real wire (a second, independent Valence session, exactly
- * like test/valence-sim.mjs) as ground truth against what the built page
+ * like test/neutrino-twin.mjs) as ground truth against what the built page
  * renders.
  *
  * The raw session mints its own /uitoken: the sim's floor is `watch`, and a
@@ -14,7 +14,7 @@
  * (SPEC §11.4 step 4) before any source ownership is consulted (ph-mk0).
  *
  * With no --port it starts its own two sims (homed and unhomed) on private
- * ports and state from ../Nucleus/sim/valencesim/build/valencesim.exe, and
+ * ports and state from ../Nucleus/sim/neutrino/build/neutrino-sim.exe, and
  * SKIPS (exit 0) without that exe; it rides test:browser as check:live.
  * With --port it runs against that sim instead and SKIPS when none answers;
  * the unhomed pass then needs --unhomed-port (a sim started without --homed).
@@ -51,8 +51,8 @@ mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 if (OWN) {
-  const SIM = fileURLToPath(new URL('../../Nucleus/sim/valencesim/build/valencesim.exe', import.meta.url));
-  if (!existsSync(SIM)) { console.log('SKIP: no valencesim at ' + SIM); process.exit(0); }
+  const SIM = fileURLToPath(new URL('../../Nucleus/sim/neutrino/build/neutrino-sim.exe', import.meta.url));
+  if (!existsSync(SIM)) { console.log('SKIP: no neutrino-sim at ' + SIM); process.exit(0); }
   const TMP = mkdtempSync(join(tmpdir(), 'actions-live-'));
   const sims = [[PORT, HTTP, ['--homed']], [+UNHOMED_PORT, +UNHOMED_HTTP, []]].map(([p, h, extra]) =>
     spawn(SIM, ['machine', '--headless', '--no-mdns', '--no-discovery', '--no-estop-udp', '--duration', '600',
@@ -81,7 +81,7 @@ async function probe(host, port) {
 }
 if (!(await probe(HOST, PORT))) {
   if (OWN) { console.log('FAIL: the sim this test started never answered on ' + HOST + ':' + PORT); process.exit(1); }
-  console.log('SKIP: no valencesim answering on ' + HOST + ':' + PORT
+  console.log('SKIP: no neutrino-sim answering on ' + HOST + ':' + PORT
     + ' -- start it (see file header) and re-run.');
   process.exit(0);
 }
@@ -108,7 +108,7 @@ await new Promise((r) => srv.listen(0, '127.0.0.1', r));
 const STATIC_PORT = srv.address().port;
 
 // ---- wire ground truth: a plain read-only session, exactly like the node
-// tests (test/valence-sim.mjs) -- never the page's own session. ------------
+// tests (test/neutrino-twin.mjs) -- never the page's own session. ------------
 async function wireSession(extraSubs = []) {
   const cache = new Map();
   const catalogStore = { load: (h) => cache.get(h) || null, save: (h, e, b) => cache.set(h, { etag: e, bytes: b }), clear: (h) => cache.delete(h) };
@@ -126,12 +126,12 @@ async function wireSession(extraSubs = []) {
   });
   return { s, seen };
 }
-// Graceful close ONLY: valencesim (this exact bring-up build) has been
+// Graceful close ONLY: neutrino-sim (this exact bring-up build) has been
 // observed to exit nonzero after the third ABRUPT (no close-frame) socket
 // teardown in a row -- an artifact of a quick catalog probe that called
 // process.exit() without s.close() first, not anything this test relies on.
 // Every session here closes cleanly and waits a beat, same discipline as
-// test/valence-sim.mjs's back-to-back sessions.
+// test/neutrino-twin.mjs's back-to-back sessions.
 async function closeWire(w) { try { w.s.close(); } catch (e) { /* */ } await sleep(300); }
 
 async function openApp(browser, { w, h, touch, hub }) {
@@ -340,7 +340,7 @@ for (const [tag, w, h, touch] of [['390x844-touch', 390, 844, true], ['1280x800-
 // not skipped silently.
 // =============================================================================
 console.log('\n[confirm layer] reboot/reset-tagged actions: none in this catalog'
-  + ' (machine-admin/action.admin is absent -- valencesim has no has_drive here).'
+  + ' (machine-admin/action.admin is absent -- neutrino-sim has no has_drive here).'
   + ' background_run above already exercised the same overlay component.');
 
 // =============================================================================

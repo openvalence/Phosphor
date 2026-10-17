@@ -35,8 +35,8 @@ import { buildShellPage, TAURI_STUB } from './shell-build.mjs';
 import { cbMap, cbUint, cbBstr, cbTstr, cbArray, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
 import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K } from '../../Valence/clients/js/frames.js';
 
-const CAT = readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)).toString('hex');
-const ETAG = readFileSync(new URL('./fixtures/valencesim-catalog.etag', import.meta.url), 'utf8').trim();
+const CAT = readFileSync(new URL('./fixtures/neutrino-catalog.bin', import.meta.url)).toString('hex');
+const ETAG = readFileSync(new URL('./fixtures/neutrino-catalog.etag', import.meta.url), 'utf8').trim();
 
 // The same fake hub test/a11y-basics.test.mjs boots against: WELCOME with the
 // fixture etag (the catalog is pre-seeded in the cache), GRANT whatever is asked.

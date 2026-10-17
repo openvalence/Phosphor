@@ -274,7 +274,7 @@ if the media is before it.
   that bends the script for up to 4 s after every seek; segments carry
   knots, not samples, and SPEC §9.6 puts feasibility on the hub (the hub's
   `limit.input.speed` already stops a seek from becoming a slam: on
-  valencesim an 8333 mm/s ask peaked at 1000 mm/s).
+  neutrino-sim an 8333 mm/s ask peaked at 1000 mm/s).
 - **What does map: blend at the knots.** On a restart after `seeked`,
   the scheduler may replace the targets of the knots inside the first
   `D` ms with `norm_k' = lerp(here, norm_k, w(tau_k))`, `tau_k` the knot's

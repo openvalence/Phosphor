@@ -35,8 +35,8 @@ import {
 import { CORE_CHANNEL, LOG_EVENT_KIND, PAIRING_EVENT_KIND, SAFETY_EVENT_KIND } from '../../Valence/clients/js/generated/registry_vocab.js';
 
 const HTML = readFileSync(DIST_HTML);
-const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
-const ETAG = readFileSync(new URL('./fixtures/valencesim-catalog.etag', import.meta.url), 'utf8').trim();
+const CAT = new Uint8Array(readFileSync(new URL('./fixtures/neutrino-catalog.bin', import.meta.url)));
+const ETAG = readFileSync(new URL('./fixtures/neutrino-catalog.etag', import.meta.url), 'utf8').trim();
 const ENTRIES = decodeCatalog(CAT);
 const toHex = (b) => Buffer.from(b).toString('hex');
 const SHELL = await buildShellPage();

@@ -9,7 +9,7 @@ import { decodeCatalog } from '../../Valence/clients/js/index.js';
 import { buildSettingsModel } from '../src/model/settings.js';
 import { stageEcho, mergeRows, defaultTicks, applyRows, unstage, sameValue } from '../src/model/merge.js';
 
-const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
+const CAT = new Uint8Array(readFileSync(new URL('./fixtures/neutrino-catalog.bin', import.meta.url)));
 const fields = buildSettingsModel(decodeCatalog(CAT)).fields;
 const K = 'feedc0de00000001';
 const uid = (ch, name) => ch + ':' + name;

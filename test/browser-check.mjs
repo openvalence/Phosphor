@@ -10,7 +10,7 @@
  * tier and every write control correctly grays out. Useful for layout, useless
  * for proving the write plane. The bundle must be deployed and loaded from the
  * device for this to mean anything. With no host it runs against its own
- * private valencesim instead (test/live-sim.mjs: the built page, /uitoken
+ * private neutrino-sim instead (test/live-sim.mjs: the built page, /uitoken
  * proxied to the sim's mint) and SKIPS (exit 0) without the exe; it rides
  * test:browser as check:browsercheck.
  *
@@ -45,7 +45,7 @@ import { startSim, serveBundle, SIM } from './live-sim.mjs';
 
 const HOST = process.argv[2];
 const own = HOST ? null : await startSim();
-if (!HOST && !own) { console.log('SKIP: no host given and no valencesim at ' + SIM); process.exit(0); }
+if (!HOST && !own) { console.log('SKIP: no host given and no neutrino-sim at ' + SIM); process.exit(0); }
 const PAGE_URL = HOST ? 'http://' + HOST + '/' : await serveBundle(own.port, own.http);
 const OUT = join(fileURLToPath(new URL('.', import.meta.url)), 'evidence');
 mkdirSync(OUT, { recursive: true });

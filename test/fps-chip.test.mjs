@@ -30,7 +30,7 @@ const RAF = () => {
     return window.__raf.ms ? setTimeout(() => cb(performance.now()), window.__raf.ms) : real(cb);
   };
 };
-const SIM = fileURLToPath(new URL('../../Nucleus/sim/valencesim/build/valencesim.exe', import.meta.url));
+const SIM = fileURLToPath(new URL('../../Nucleus/sim/neutrino/build/neutrino-sim.exe', import.meta.url));
 const SHELL = await buildShellPage();
 const srv = createServer((q, s) => { s.writeHead(200, { 'Content-Type': 'text/html' }); s.end(SHELL); });
 await new Promise((r) => srv.listen(0, '127.0.0.1', r));
@@ -88,7 +88,7 @@ ok('the chip is back within 600 ms of showing again', (await chip()).n != null);
 
 console.log('\n--- Health reads the same sampler ---');
 // Health's Log feed needs a catalog, so this part runs a page against the sim; SKIPs without it.
-if (!existsSync(SIM)) console.log('  SKIP: no valencesim at ' + SIM);
+if (!existsSync(SIM)) console.log('  SKIP: no neutrino-sim at ' + SIM);
 else {
   const PORT = 20000 + Math.floor(Math.random() * 20000);
   const tmp = mkdtempSync(join(tmpdir(), 'fps-'));

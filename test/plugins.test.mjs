@@ -66,7 +66,7 @@ const ok = (name, cond, extra) => {
 };
 const json = (p) => JSON.parse(readFileSync(new URL(p, import.meta.url), 'utf8'));
 
-const entries = decodeCatalog(new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url))));
+const entries = decodeCatalog(new Uint8Array(readFileSync(new URL('./fixtures/neutrino-catalog.bin', import.meta.url))));
 const model = buildSettingsModel(entries);
 
 function makeHost(over = {}) {

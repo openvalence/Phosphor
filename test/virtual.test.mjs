@@ -30,8 +30,8 @@ const args = process.argv.slice(2);
 const SHOTS = args.includes('--shots') ? args[args.indexOf('--shots') + 1] : null;
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 
-const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
-const ETAG = readFileSync(new URL('./fixtures/valencesim-catalog.etag', import.meta.url), 'utf8').trim();
+const CAT = new Uint8Array(readFileSync(new URL('./fixtures/neutrino-catalog.bin', import.meta.url)));
+const ETAG = readFileSync(new URL('./fixtures/neutrino-catalog.etag', import.meta.url), 'utf8').trim();
 const ENTRIES = decodeCatalog(CAT);
 const toHex = (b) => Buffer.from(b).toString('hex');
 const ID = 'feedc0de00000001';
@@ -48,7 +48,7 @@ Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
 } });
 const { recorder } = await import('../src/model/vault.js');
 const rec = recorder();
-rec.welcome({ hub_instance_id: ID, hub_name: 'Bench', product: 'valencesim', estop_cuts_power: false }, '127.0.0.1', 82);
+rec.welcome({ hub_instance_id: ID, hub_name: 'Bench', product: 'neutrino-sim', estop_cuts_power: false }, '127.0.0.1', 82);
 rec.catalog(CAT);
 rec.flush();
 const SEED = Object.fromEntries(mem);
@@ -75,7 +75,7 @@ function fakeHub(ws) {
           [K.limits, cbMap([[WELCOME_LIMITS_K.max_frame, cbUint(4096)], [WELCOME_LIMITS_K.max_subscriptions, cbUint(64)],
             [WELCOME_LIMITS_K.retained_pending, cbUint(subs.filter((w) => wire.snaps.has(w.get(K.channel_id))).length)], [WELCOME_LIMITS_K.max_subscriptions_per_frame, cbUint(16)]])],
           [K.roles, cbUint(2)], [K.deadman_ms, cbUint(2000)], [K.grants, cbArray(grants)],
-          [K.identity, cbMap([[IDENTITY_K.product, cbTstr('valencesim')], [IDENTITY_K.hub_name, cbTstr('Bench')],
+          [K.identity, cbMap([[IDENTITY_K.product, cbTstr('neutrino-sim')], [IDENTITY_K.hub_name, cbTstr('Bench')],
             [IDENTITY_K.hub_instance_id, cbUint(BigInt('0x' + ID))], [IDENTITY_K.estop_cuts_power, cbBool(false)]])],
         ]));
         for (const w of subs) { const ch = w.get(K.channel_id); if (wire.snaps.has(ch)) send(FRAME.STATE, ch, wire.snaps.get(ch)); }

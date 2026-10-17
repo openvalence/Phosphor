@@ -1,6 +1,6 @@
 /**
  * soak-player.test.mjs -- the funscript player over a long session (ph-1qs5.10): a synthesized script
- * looped against the native valencesim with Motion on, sampled every 10 s.
+ * looped against the native neutrino-sim with Motion on, sampled every 10 s.
  *
  * Per sample: JS heap after a forced GC, DOM nodes and listeners (CDP Memory.getDOMCounters), the
  * renderer's and GPU process's working set (CDP SystemInfo.getProcessInfo pids, tasklist), canvases and contexts,
@@ -11,7 +11,7 @@
  *
  * The default clip (120 s, looped) wraps twice in 5 minutes on purpose: a per-frame cost that grows
  * per lap (ph-1qs5.10, the player's trace) fails the lag and lead bounds within minutes.
- * Slow (not in test:browser): needs ../Nucleus/sim/valencesim/build/valencesim.exe and ffmpeg.
+ * Slow (not in test:browser): needs ../Nucleus/sim/neutrino/build/neutrino-sim.exe and ffmpeg.
  * Run: node test/soak-player.test.mjs [--minutes 5] [--clip 120] [--port P]
  *      [--churn N]  N page switches and plugin Reloads first, the worker count after each
  *      [--snap]     heap census (object counts by constructor) at minute 2 and at the end, the growth
@@ -35,7 +35,7 @@ const CLIP_S = Number(argOf('--clip', 120));
 const PORT = Number(argOf('--port', 20000 + Math.floor(Math.random() * 20000)));
 const HTTP = PORT + 1;
 const EVERY_MS = 10000;
-const SIM = fileURLToPath(new URL('../../Nucleus/sim/valencesim/build/valencesim.exe', import.meta.url));
+const SIM = fileURLToPath(new URL('../../Nucleus/sim/neutrino/build/neutrino-sim.exe', import.meta.url));
 // The last minute against the first full minute (minute 1..2; minute 0 is warm-up).
 const BOUNDS = { heapMB: 8, nodes: 500, listeners: 200, lagP95: 25, renders: 3, leadMin: 60 };
 
@@ -46,7 +46,7 @@ const ok = (name, cond, extra) => {
   console.log('  [' + (cond ? 'PASS' : 'FAIL') + '] ' + name + (extra !== undefined ? '  -- ' + JSON.stringify(extra) : ''));
   if (!cond) fails++;
 };
-if (!existsSync(SIM)) { console.log('SKIP: no valencesim at ' + SIM); process.exit(0); }
+if (!existsSync(SIM)) { console.log('SKIP: no neutrino-sim at ' + SIM); process.exit(0); }
 
 // ---- the clip and the script ----
 const TMP = mkdtempSync(join(tmpdir(), 'soak-'));

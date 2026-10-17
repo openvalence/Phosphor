@@ -23,8 +23,8 @@ import { goTab, tabIds } from './nav.mjs';
 import { buildShellPage, TAURI_STUB } from './shell-build.mjs';
 
 const HTML = readFileSync(DIST_HTML);
-const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
-const ETAG = readFileSync(new URL('./fixtures/valencesim-catalog.etag', import.meta.url), 'utf8').trim();
+const CAT = new Uint8Array(readFileSync(new URL('./fixtures/neutrino-catalog.bin', import.meta.url)));
+const ETAG = readFileSync(new URL('./fixtures/neutrino-catalog.etag', import.meta.url), 'utf8').trim();
 const toHex = (b) => Buffer.from(b).toString('hex');
 
 // ---- HTTP: the bundle, plus a /uitoken mint so the session is control tier --

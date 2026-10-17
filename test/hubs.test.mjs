@@ -51,8 +51,8 @@ ok('replies without an id key on their endpoint, port kept', noId.map((r) => r.k
 
 // ---- the shell bundle ------------------------------------------------------------
 const SHELL = await buildShellPage();
-const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
-const ETAG = readFileSync(new URL('./fixtures/valencesim-catalog.etag', import.meta.url), 'utf8').trim();
+const CAT = new Uint8Array(readFileSync(new URL('./fixtures/neutrino-catalog.bin', import.meta.url)));
+const ETAG = readFileSync(new URL('./fixtures/neutrino-catalog.etag', import.meta.url), 'utf8').trim();
 const srv = createServer((q, s) => {
   if (q.url.startsWith('/uitoken')) { s.writeHead(404); s.end(); return; }
   s.writeHead(200, { 'Content-Type': 'text/html' }); s.end(SHELL);

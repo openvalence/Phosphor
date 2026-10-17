@@ -1,6 +1,6 @@
 /**
  * health-browser.test.mjs -- the health system end to end (ph-9t5l, ph-9t5l.1):
- * the funscript player streams a script to the native valencesim and each
+ * the funscript player streams a script to the native neutrino-sim and each
  * cutout cause is injected and must come back classified in the Log and on the
  * Health view; then the report review, Hold to send and its URL.
  *
@@ -15,7 +15,7 @@
  *
  * Screenshots with --shots [dir] (default test/evidence/health): the Health
  * view and the review at 1428x900 and 420x860, dark and Paper.
- * Needs ../Nucleus/sim/valencesim/build/valencesim.exe; SKIPs without it.
+ * Needs ../Nucleus/sim/neutrino/build/neutrino-sim.exe; SKIPs without it.
  * Run: node test/health-browser.test.mjs [--shots [dir]]
  * Constraints: the sim and the page run on private ports; the sim is killed on every exit path.
  */
@@ -36,7 +36,7 @@ const SHOT = argv.includes('--shots');
 const SHOTS = (SHOT && argOf('--shots') && !argOf('--shots').startsWith('-') && argOf('--shots')) || join(EVIDENCE, 'health');
 const PORT = 20000 + Math.floor(Math.random() * 20000);
 const HTTP = PORT + 1;
-const SIM = fileURLToPath(new URL('../../Nucleus/sim/valencesim/build/valencesim.exe', import.meta.url));
+const SIM = fileURLToPath(new URL('../../Nucleus/sim/neutrino/build/neutrino-sim.exe', import.meta.url));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let fails = 0;
 const failed = [];
@@ -44,7 +44,7 @@ const ok = (name, cond, extra) => {
   console.log('  [' + (cond ? 'PASS' : 'FAIL') + '] ' + name + (extra !== undefined ? '  -- ' + JSON.stringify(extra) : ''));
   if (!cond) { fails++; failed.push(name + (extra !== undefined ? ' ' + JSON.stringify(extra).slice(0, 600) : '')); }
 };
-if (!existsSync(SIM)) { console.log('SKIP: no valencesim at ' + SIM); process.exit(0); }
+if (!existsSync(SIM)) { console.log('SKIP: no neutrino-sim at ' + SIM); process.exit(0); }
 // An unknown flag prints the usage line: it names --plan-delay-ms once the sim has it.
 const PLAN_DELAY = /--plan-delay-ms/.test(spawnSync(SIM, ['--usage'], { encoding: 'utf8', windowsHide: true, timeout: 5000 }).stderr || '');
 mkdirSync(SHOTS, { recursive: true });
@@ -172,7 +172,7 @@ async function waitFor(page, cond, ms) {
 }
 
 // ---- 1. the causes (injected on the player page, read on Health after) ---------
-console.log('\n--- causes, against valencesim ---');
+console.log('\n--- causes, against neutrino-sim ---');
 const { ctx, page, errors } = await open();
 await play(page);
 await page.waitForTimeout(4000);
@@ -214,7 +214,7 @@ const moved = await page.evaluate(() => Object.fromEntries([...document.querySel
 ok('Health holds the address, the control list and the firmware', !!moved.Address && moved.Address !== '--'
   && / B|KB|MB/.test(moved['Control list'] || '') && !!moved.Firmware, moved);
 
-if (!PLAN_DELAY) console.log('  [SKIP] hub late: valencesim has no --plan-delay-ms yet');
+if (!PLAN_DELAY) console.log('  [SKIP] hub late: neutrino-sim has no --plan-delay-ms yet');
 else {
   // Hub late: every solve on a second sim lands 300 ms after it starts, past the stream's lead; the moves left and arrived on time.
   await startSim(PORT + 2, ['--plan-delay-ms', '300']);

@@ -3,7 +3,7 @@
  *
  * Renders the built app (dist/index.html) against a fake hub: Playwright's
  * WebSocket route answers HELLO, SUBSCRIBE and PING, pushes STATE from the
- * recorded valencesim catalog's layouts, and answers each INTENT with an echo,
+ * recorded neutrino-sim catalog's layouts, and answers each INTENT with an echo,
  * or holds it (hub.mode 'hold') until the test releases it. Asserts:
  *   tabs       no Overview tab; the first machine tab is Home
  *   seed       a home the user never built shows what Overview showed
@@ -33,12 +33,12 @@
  *              toggling twice lands every card where it began
  *              (DESIGN §10.11)
  *
- * Live mode (--live): the build-and-reload check against a running valencesim
+ * Live mode (--live): the build-and-reload check against a running neutrino-sim
  * (catalog fetched, not seeded). Skips (exit 0) when no sim answers.
  *
  * Build first (`npm run build:only`). Run: node test/home.test.mjs
  *      node test/home.test.mjs --live [--port 8882] [--http 8880]
- *        (valencesim --homed --headless --port 8882 --http 8880)
+ *        (neutrino-sim --homed --headless --port 8882 --http 8880)
  */
 import { goTab, tabIds } from './nav.mjs';
 import { DIST_HTML } from './dist.mjs';
@@ -65,7 +65,7 @@ const ok = (name, cond, extra) => {
 };
 
 const HTML = readFileSync(DIST_HTML);
-const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
+const CAT = new Uint8Array(readFileSync(new URL('./fixtures/neutrino-catalog.bin', import.meta.url)));
 const ETAG = toHex(catalogEtag(CAT, LIMITS.etag_bytes));
 const BEFORE = JSON.parse(readFileSync(new URL('./fixtures/overview-before.json', import.meta.url), 'utf8'));
 const ENTRIES = decodeCatalog(CAT);
@@ -84,7 +84,7 @@ if (LIVE) {
     ws.onopen = () => { clearTimeout(t); ws.close(); resolve(true); };
     ws.onerror = () => { clearTimeout(t); resolve(false); };
   });
-  if (!up) { console.log('SKIP: no valencesim answering on 127.0.0.1:' + SIM_PORT); process.exit(0); }
+  if (!up) { console.log('SKIP: no neutrino-sim answering on 127.0.0.1:' + SIM_PORT); process.exit(0); }
 }
 
 // ---- HTTP: the bundle, plus /uitoken (minted here, or proxied to the sim) --
@@ -813,7 +813,7 @@ if (!LIVE) {
   await hh.ctx.close();
 } else {
   // ---- live: build a home from the palette, reload, it restores ---------------
-  console.log('\n[live valencesim 127.0.0.1:' + SIM_PORT + ']');
+  console.log('\n[live neutrino-sim 127.0.0.1:' + SIM_PORT + ']');
   const { ctx, page, up } = await open(1280, 900);
   ok('catalog adopted from the sim', up);
   await editBtn(page).click();

@@ -22,7 +22,7 @@ const { exportBackup } = await import('../src/model/prefs.js');
 const { createLocalHub, createSession, encodeFrame, FRAME, catalogEtag, LIMITS, toHex } =
   await import('../../Valence/clients/js/index.js');
 
-const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
+const CAT = new Uint8Array(readFileSync(new URL('./fixtures/neutrino-catalog.bin', import.meta.url)));
 const frame = (type, ch, bytes) => { const f = encodeFrame(type, ch, bytes); return f.buffer.slice(f.byteOffset, f.byteOffset + f.byteLength); };
 const ID = 'feedc0de00000001';
 

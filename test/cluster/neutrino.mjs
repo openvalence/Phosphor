@@ -1,9 +1,9 @@
 /**
- * neutrino.mjs -- one Neutrino (Nucleus integral.wasm, the vendored src/model/integral) per call, booted from a
+ * neutrino.mjs -- one Neutrino (Nucleus neutrino.wasm, the vendored src/model/neutrino) per call, booted from a
  * compiled WebAssembly.Module, and the in-memory socket a valence-js session runs over.
  *
  * Constraints:
- * - The host contract is Nucleus sim/valencesim/README.md (The host contract); wasm/check.mjs there is the
+ * - The host contract is Nucleus sim/neutrino/README.md (The host contract); wasm/check.mjs there is the
  *   reference. The host owns time: tick(nowUs) is the only clock, and drain() delivers after each tick.
  * - One machine per instance; a restart is a new instance. Each instance has its own memory (the module
  *   exports it), so the hub's process-wide singletons never meet.
@@ -11,8 +11,8 @@
  * - Sockets deliver synchronously: send() lands in the hub's 32-frame ring (a full ring drops, counted in
  *   ringDrops), onmessage fires inside drain().
  */
-import createIntegral from '../../src/model/integral/integral.js';
-import { WASM } from '../../src/model/integral/bytes.js';
+import createNeutrino from '../../src/model/neutrino/neutrino.js';
+import { WASM } from '../../src/model/neutrino/bytes.js';
 
 export const wasmBytes = () => new Uint8Array(Buffer.from(WASM, 'base64'));
 const BANNER = /: \S+ (\S+), catalog .*, etag ([0-9a-f]+)/;
@@ -20,7 +20,7 @@ const BANNER = /: \S+ (\S+), catalog .*, etag ([0-9a-f]+)/;
 export async function bootNeutrino(module, opts = {}, onLog = () => {}) {
   let banner = null;
   const log = (l) => { banner = banner || BANNER.exec(l); onLog(l); };
-  const M = await createIntegral({
+  const M = await createNeutrino({
     print: log, printErr: log,
     instantiateWasm: (imports, done) => { WebAssembly.instantiate(module, imports).then((i) => done(i, module)); return {}; },
   });
@@ -28,7 +28,7 @@ export async function bootNeutrino(module, opts = {}, onLog = () => {}) {
   const u32 = (p) => M.HEAPU32[p >> 2];
   const out = () => M.HEAPU8.slice(u32(cell), u32(cell) + u32(cell + 4));
   const str = (s, fn) => { const p = M.stringToNewUTF8(s); try { return fn(p); } finally { M._free(p); } };
-  if (str(JSON.stringify(opts), (o) => M._integral_create(o, 0, 0)) !== 1) throw new Error('integral_create refused');
+  if (str(JSON.stringify(opts), (o) => M._neutrino_create(o, 0, 0)) !== 1) throw new Error('neutrino_create refused');
 
   const sockets = new Map();
   let nextId = 1;
@@ -46,7 +46,7 @@ export async function bootNeutrino(module, opts = {}, onLog = () => {}) {
       this.id = nextId++;
       queueMicrotask(() => {
         if (this.readyState !== 0) return;
-        if (guard(() => M._integral_connect(this.id)) !== 1) { this._closed(1013); return; }
+        if (guard(() => M._neutrino_connect(this.id)) !== 1) { this._closed(1013); return; }
         sockets.set(this.id, this);
         this.readyState = 1;
         if (this.onopen) this.onopen({});
@@ -58,13 +58,13 @@ export async function bootNeutrino(module, opts = {}, onLog = () => {}) {
       guard(() => {
         const p = M._malloc(Math.max(1, b.length));
         M.HEAPU8.set(b, p);
-        if (M._integral_send(this.id, p, b.length) !== 1) hub.ringDrops++;
+        if (M._neutrino_send(this.id, p, b.length) !== 1) hub.ringDrops++;
         M._free(p);
       });
     }
     close() {
       if (this.readyState >= 2) return;
-      if (this.readyState === 1) guard(() => M._integral_disconnect(this.id));
+      if (this.readyState === 1) guard(() => M._neutrino_disconnect(this.id));
       this._closed(1000);
     }
     _closed(code) {
@@ -78,11 +78,11 @@ export async function bootNeutrino(module, opts = {}, onLog = () => {}) {
   return Object.assign(hub, {
     WebSocket: NeutrinoSocket,
     /** Every 1 ms pass up to nowUs (BigInt-safe number); bit0 = the state blob changed. */
-    tick: (nowUs) => guard(() => M._integral_tick(BigInt(Math.floor(nowUs)))),
+    tick: (nowUs) => guard(() => M._neutrino_tick(BigInt(Math.floor(nowUs)))),
     drain() {
       for (const s of [...sockets.values()]) {
         for (;;) {
-          const r = guard(() => M._integral_poll(s.id, cell, cell + 4));
+          const r = guard(() => M._neutrino_poll(s.id, cell, cell + 4));
           if (r === 0) break;
           if (r < 0) { s._closed(1006); break; }
           if (s.onmessage) s.onmessage({ data: out().buffer });
@@ -92,7 +92,7 @@ export async function bootNeutrino(module, opts = {}, onLog = () => {}) {
     /** A session's token provider: a fresh /uitoken per connect, retried past the 250 ms mint gate (429). */
     token: async () => {
       for (let i = 0; i < 6; i++) {
-        const r = guard(() => str('GET', (me) => str('/uitoken', (pa) => M._integral_http(me, pa, 0, 0, cell, cell + 4))));
+        const r = guard(() => str('GET', (me) => str('/uitoken', (pa) => M._neutrino_http(me, pa, 0, 0, cell, cell + 4))));
         if (r === 200) return Uint8Array.from(JSON.parse(new TextDecoder().decode(out())).token.match(/../g), (h) => parseInt(h, 16));
         if (r !== 429) return null;
         await new Promise((res) => setTimeout(res, 300));

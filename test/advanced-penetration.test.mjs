@@ -49,7 +49,7 @@
  *              hover; one case per role; the unit as the host draws it; one
  *              switch design; tabs never truncate; the wave says stopped
  *
- * Live mode (--live): against valencesim, the deep drag (echo and numeric
+ * Live mode (--live): against neutrino-sim, the deep drag (echo and numeric
  * twin), the link rescale (one intent, keys 2, 5, 6, echoed), Advanced
  * running with its playhead and told-wave, a 0.5 crest dwell (plan style
  * hold, the playhead parked at the deep bound), and both SOURCE_CONFLICT
@@ -58,7 +58,7 @@
  *
  * Run: node test/advanced-penetration.test.mjs [--shot out.png]
  *      node test/advanced-penetration.test.mjs --live [--port 8882] [--http 8880] [--shot out.png]
- *        (valencesim --homed --headless --port 8882 --http 8880)
+ *        (neutrino-sim --homed --headless --port 8882 --http 8880)
  */
 import { goTab, tabIds } from './nav.mjs';
 import { chromium } from 'playwright';
@@ -234,7 +234,7 @@ if (LIVE) {
   for (let i = 0; i < 50 && live && !sess.catalog; i++) await sleep(100);
   const roled = live && (sess.catalog || []).some((e) => (e.layout || []).some((f) => f.role === 'advgen.master'));
   try { sess.close(); } catch (e) { /* gone */ }
-  if (!roled) { console.log('SKIP: no valencesim with advgen.* roles on 127.0.0.1:' + SIM_PORT); process.exit(0); }
+  if (!roled) { console.log('SKIP: no neutrino-sim with advgen.* roles on 127.0.0.1:' + SIM_PORT); process.exit(0); }
 }
 
 // ---- the page ---------------------------------------------------------------
@@ -352,7 +352,7 @@ const tagOf = async (loc) => (await loc.locator('.ap-tag').textContent()).trim()
 const toAdvanced = async (page) => { const t = page.locator('main.pane .ap-tabs button', { hasText: 'Advanced' }); if (await t.count()) await t.click(); };
 
 if (LIVE) {
-  console.log('Advanced Penetration, live (valencesim on ' + SIM_PORT + ')');
+  console.log('Advanced Penetration, live (neutrino-sim on ' + SIM_PORT + ')');
   const { ctx, page, up } = await open();
   ok('live: the shell adopted the sim catalog', up);
   ok('live: the pattern card renders on the sim', await toPatternPage(page));

@@ -19,7 +19,7 @@
  * The page must be loaded FROM THE DEVICE (same reason as browser-check.mjs:
  * /uitoken is same-origin-only; a localhost origin gets watch tier and the
  * tape correctly disables). With no host it runs against its own private
- * homed valencesim (test/live-sim.mjs) and SKIPS (exit 0) without the exe;
+ * homed neutrino-sim (test/live-sim.mjs) and SKIPS (exit 0) without the exe;
  * it rides test:browser as check:taptomove.
  *
  * Run: node test/tap-to-move-live.mjs [host]
@@ -34,7 +34,7 @@ import { catalogTabs } from './nav.mjs';
 import { startSim, serveBundle, SIM } from './live-sim.mjs';
 
 const own = process.argv[2] ? null : await startSim();
-if (!process.argv[2] && !own) { console.log('SKIP: no host given and no valencesim at ' + SIM); process.exit(0); }
+if (!process.argv[2] && !own) { console.log('SKIP: no host given and no neutrino-sim at ' + SIM); process.exit(0); }
 const HOST = own ? '127.0.0.1' : process.argv[2];
 const WS_PORT = own ? own.port : 82;
 const PAGE_URL = own ? await serveBundle(own.port, own.http) : 'http://' + HOST + '/';

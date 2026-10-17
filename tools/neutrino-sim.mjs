@@ -13,12 +13,12 @@
  */
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, chmodSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { delimiter, join } from 'node:path';
+import { delimiter, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-// The twin's home in Nucleus and its CMake target: the one place the rename pass (val-7ai) edits.
-const TWIN = { dir: 'sim/valencesim', target: 'valencesim' };
+// The twin's home in Nucleus and its CMake target.
+const TWIN = { dir: 'sim/neutrino', target: 'neutrino-sim' };
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const APP = join(ROOT, 'neutrino');
@@ -57,6 +57,10 @@ function build(sha) {
     try { git(KINETIC, 'worktree', 'add', '--detach', kdir, kin); } catch (e) {
       fail('cannot check out Kinetic ' + kin.slice(0, 12) + ' from ' + KINETIC + ': ' + String(e.stderr || e.message).trim());
     }
+    // A build dir configured from another source (a moved twin, another Nucleus checkout) is refused by CMake.
+    const cache = join(out, 'CMakeCache.txt');
+    const home = existsSync(cache) && (readFileSync(cache, 'utf8').match(/^CMAKE_HOME_DIRECTORY:INTERNAL=(.*)$/m) || [])[1];
+    if (home && resolve(home).toLowerCase() !== resolve(NUCLEUS, TWIN.dir).toLowerCase()) rmSync(out, { recursive: true, force: true });
     const env = { ...process.env };
     const args = ['-S', join(NUCLEUS, TWIN.dir), '-B', out, '-G', 'Ninja', '-DCMAKE_BUILD_TYPE=Release',
       '-DKINETIC_ROOT=' + kdir, '-DVALENCE_ROOT=' + VALENCE];

@@ -35,7 +35,7 @@ jobs:
     steps:
       # The sibling layout Phosphor builds against: Valence (the JS client),
       # Nucleus and Kinetic (the built-in machine's sources, pinned in
-      # src/model/integral/integral.pin and vendored), ButtplugIO (Cargo path
+      # src/model/neutrino/neutrino.pin and vendored), ButtplugIO (Cargo path
       # deps), all beside Phosphor.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

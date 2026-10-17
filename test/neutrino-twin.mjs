@@ -1,21 +1,21 @@
 /**
- * valence-sim.mjs — end-to-end proof of valence-js v1.0 against VALENCESIM.
+ * neutrino-twin.mjs — end-to-end proof of valence-js v1.0 against Neutrino.
  *
- * valencesim lives in the SIBLING machine repo (../Nucleus/sim/valencesim)
+ * neutrino-sim lives in the SIBLING machine repo (../Nucleus/sim/neutrino)
  * and embeds the REAL valence::Hub, the REAL kinetic engine and the REAL device
  * catalog behind a real WebSocket server, so this exercises the same library the
  * firmware runs — without touching the machine. Valence Bench is NOT a stand-in:
  * it has no motion engine and grants every session `configure`, which defeats
  * steps 2 through 4 below. Blocked on ph-3gi until Nucleus lands sim/.
  *
- *   Build:  cmake --build ../Nucleus/sim/valencesim/build
- *   Run it: ../Nucleus/sim/valencesim/build/valencesim.exe machine \
+ *   Build:  cmake --build ../Nucleus/sim/neutrino/build
+ *   Run it: ../Nucleus/sim/neutrino/build/neutrino-sim.exe machine \
  *             --homed --headless --duration 240 --port 82 --http 80 --no-mdns --pairing-window
- *   Then:   node test/valence-sim.mjs [--host 127.0.0.1] [--port 82] [--http 80]
- *   Or:     node test/valence-sim.mjs --integral   (no exe: the app's built-in machine, the
- *           vendored wasm through src/model/integral-bridge.js over a MessageChannel; no fixture write)
+ *   Then:   node test/neutrino-twin.mjs [--host 127.0.0.1] [--port 82] [--http 80]
+ *   Or:     node test/neutrino-twin.mjs --wasm   (no exe: the app's built-in machine, the
+ *           vendored wasm through src/model/neutrino-bridge.js over a MessageChannel; no fixture write)
  *
- * KILL ANY STALE VALENCESIM ON 80/82 FIRST or you are testing the wrong binary.
+ * KILL ANY STALE neutrino-sim ON 80/82 FIRST or you are testing the wrong binary.
  *
  * What it proves, in order:
  *   1. COLD session — HELLO with no etag → WELCOME → BLOB_REQ → BLOB_CHUNK
@@ -31,7 +31,7 @@
  *      Run back-to-back with no sim restart, which is this project's mandatory
  *      session-lifecycle regression pattern (field bug #3).
  *
- * It also writes test/fixtures/valencesim-catalog.{bin,etag} so the OFFLINE
+ * It also writes test/fixtures/neutrino-catalog.{bin,etag} so the OFFLINE
  * wire test can decode the real catalog and cross-check the etag.
  */
 
@@ -47,21 +47,21 @@ const argOf = (flag, def) => { const i = args.indexOf(flag); return i >= 0 ? arg
 const HOST = argOf('--host', '127.0.0.1');
 const PORT = parseInt(argOf('--port', '82'), 10);
 const HTTP = argOf('--http', null);
-const INTEGRAL = args.includes('--integral');
+const IN_PROCESS = args.includes('--wasm');
 
-// The app's own path: hostIntegral is what integral.worker.js runs, bridgeIntegral what the page runs.
+// The app's own path: hostNeutrino is what neutrino.worker.js runs, bridgeNeutrino what the page runs.
 let bridge = null;
-if (INTEGRAL) {
-  const { hostIntegral, bridgeIntegral } = await import('../src/model/integral-bridge.js');
-  const { default: createIntegral } = await import('../src/model/integral/integral.js');
-  const { WASM } = await import('../src/model/integral/bytes.js');
+if (IN_PROCESS) {
+  const { hostNeutrino, bridgeNeutrino } = await import('../src/model/neutrino-bridge.js');
+  const { default: createNeutrino } = await import('../src/model/neutrino/neutrino.js');
+  const { WASM } = await import('../src/model/neutrino/bytes.js');
   const { port1, port2 } = new MessageChannel();
-  hostIntegral(port1, createIntegral);
+  hostNeutrino(port1, createNeutrino);
   const up = new Promise((res, rej) => {
-    bridge = bridgeIntegral(port2, (m) => (m.op === 'up' ? res(m) : m.op === 'down' ? rej(new Error(m.error)) : null));
+    bridge = bridgeNeutrino(port2, (m) => (m.op === 'up' ? res(m) : m.op === 'down' ? rej(new Error(m.error)) : null));
   });
   bridge.boot(new Uint8Array(Buffer.from(WASM, 'base64')), null, { homed: true });
-  console.log('integral: Nucleus ' + (await up).version);
+  console.log('neutrino: Nucleus ' + (await up).version);
 }
 
 let failures = 0;
@@ -132,7 +132,7 @@ async function openSession(label, extra = {}) {
 }
 
 async function main() {
-  console.log('valence-js ⇆ ' + (INTEGRAL ? 'the built-in machine (wasm)' : 'valencesim  ws://' + HOST + ':' + PORT + '/') + '\n');
+  console.log('valence-js ⇆ ' + (IN_PROCESS ? 'the built-in machine (wasm)' : 'neutrino-sim  ws://' + HOST + ':' + PORT + '/') + '\n');
 
   // ========================================================================
   // SESSION 1 — cold: no cached catalog, so the full RFC-015 gate runs.
@@ -187,12 +187,12 @@ async function main() {
   // ========================================================================
   // Write the golden fixture for the offline test.
   // ========================================================================
-  if (!INTEGRAL) {
+  if (!IN_PROCESS) {
     const here = dirname(fileURLToPath(import.meta.url));
     mkdirSync(here + '/fixtures', { recursive: true });
-    writeFileSync(here + '/fixtures/valencesim-catalog.bin', Buffer.from(s1.catalogBytes));
-    writeFileSync(here + '/fixtures/valencesim-catalog.etag', toHex(w.catalogEtag) + '\n');
-    info('fixture written: test/fixtures/valencesim-catalog.{bin,etag}');
+    writeFileSync(here + '/fixtures/neutrino-catalog.bin', Buffer.from(s1.catalogBytes));
+    writeFileSync(here + '/fixtures/neutrino-catalog.etag', toHex(w.catalogEtag) + '\n');
+    info('fixture written: test/fixtures/neutrino-catalog.{bin,etag}');
   }
 
   // ========================================================================
@@ -505,7 +505,7 @@ async function main() {
   const echo2 = await s2.sendConfigSet({ 1: origMin, 2: origMax });
   ok('a second back-to-back session can still write (ownership teardown clean)',
     typeof echo2.applied[1] === 'number');
-  if (INTEGRAL) {
+  if (IN_PROCESS) {
     // The built-in machine moves: a jog lands (the Nucleus wasm/check.mjs proof, through the app's bridge).
     const move = (s2.catalog || []).find((e) => e.name === 'move');
     const pos = () => seen2.states.get(CH.MOTION) && seen2.states.get(CH.MOTION).pos_10um;

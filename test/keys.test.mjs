@@ -15,7 +15,7 @@
  *            nothing until release, then once; a cancelled one never
  *
  * The built app on a fake hub (Playwright's WebSocket route; the recorded
- * valencesim catalog pre-seeded in the etag cache). Build first
+ * neutrino-sim catalog pre-seeded in the etag cache). Build first
  * (`npm run build:only`).
  * Run: node test/keys.test.mjs [--shots <dir>]
  */
@@ -145,7 +145,7 @@ ok('keys.js wording is terse (under eight words per field)', KEYS.every((g) => g
 
 // ---- the app on a fake hub ---------------------------------------------------
 const HTML = readFileSync(DIST_HTML);
-const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
+const CAT = new Uint8Array(readFileSync(new URL('./fixtures/neutrino-catalog.bin', import.meta.url)));
 const ETAG = toHex(catalogEtag(CAT, LIMITS.etag_bytes));
 const ENTRIES = decodeCatalog(CAT);
 const MODEL = buildSettingsModel(ENTRIES);

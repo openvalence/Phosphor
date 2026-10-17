@@ -211,12 +211,12 @@ if (lanRtt.length) {
   const pg = await cr.newPage();
   await pg.goto('http://127.0.0.1:' + srv.address().port + '/');
   const inApp = await pg.evaluate(async (lane) => {
-    const { bridgeIntegral } = await import('/' + lane + '/src/model/integral-bridge.js');
-    const { WASM } = await import('/' + lane + '/src/model/integral/bytes.js');
+    const { bridgeNeutrino } = await import('/' + lane + '/src/model/neutrino-bridge.js');
+    const { WASM } = await import('/' + lane + '/src/model/neutrino/bytes.js');
     const { createSession } = await import('/Valence/clients/js/index.js');
-    const w = new Worker('/' + lane + '/src/model/integral.worker.js', { type: 'module' });
+    const w = new Worker('/' + lane + '/src/model/neutrino.worker.js', { type: 'module' });
     let bridge;
-    const up = new Promise((res) => { bridge = bridgeIntegral(w, (m) => (m.op === 'up' ? res() : null)); });
+    const up = new Promise((res) => { bridge = bridgeNeutrino(w, (m) => (m.op === 'up' ? res() : null)); });
     bridge.boot(Uint8Array.from(atob(WASM), (c) => c.charCodeAt(0)), null, { homed: true });
     await up;
     const s = createSession({ host: 'builtin', port: 0, clientKind: 'webui', clientName: 'in app', autoReconnect: false, WebSocketImpl: bridge.WebSocket });

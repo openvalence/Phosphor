@@ -55,7 +55,7 @@ integrates last. Shared kernel files (`host.js`, `plugins.svelte.js`,
  -> motion.js door.segments           latch, segments STREAM by role, lazy grant,
                                       exec time -> hub stamp, lead-cap head
  -> session.publishSegment            library: span, horizon, token bucket
- -> STREAM frame on the segments channel (0x2101 on valencesim, by role)
+ -> STREAM frame on the segments channel (0x2101 on neutrino-sim, by role)
  -> hub arbiter and planner
 ```
 
@@ -76,7 +76,7 @@ horizon"). At the reference hub's 1000 ms horizon a WiFi stall under about
 900 ms never reaches the motion. `sent` tells the player how
 far to advance; each segment is sent once.
 
-Measured on valencesim 0.1.6-p4hub (design 2's probe): the segments grant
+Measured on neutrino-sim 0.1.6-p4hub (design 2's probe): the segments grant
 is rate 50, `schedule_latency_us` 1000, no horizon key (250).
 
 Why segments, not 20 ms samples through `submitMotion` (numbers at the
@@ -251,7 +251,7 @@ window on the last: Kinetic² renders a reversal flat at every
   on the twin (Nucleus 91243d4; 400 to 697 ms staircase spans; vmax 1200
   mm/s, amax 100000, jerk 2e7): left free, the carriage passed
   same-direction knots at 0.52 of the chord speed (least 0.43; 0.81 at a
-  240 ms lead); with the mean, 0.97 (least 0.95). On valencesim 0.1.30
+  240 ms lead); with the mean, 0.97 (least 0.95). On neutrino-sim 0.1.30
   (`--live-playback`) the plan's speed through non-reversal knots read 0.28
   of the span peak free and 0.94 to 0.97 with the mean. Cost: `smoothness`
   does not reach a same-direction knot (RFC-108 item 6: an authored knot
@@ -340,7 +340,7 @@ window on the last: Kinetic² renders a reversal flat at every
    one restart on release.
 7. **Hub clock.** The library resyncs from one CLOCK exchange every 10 s and
    adopts each one, so an asymmetric RTT moves the offset by up to RTT/2.
-   Measured on valencesim (localhost RTT 1 to 16 ms): plan lag against the
+   Measured on neutrino-sim (localhost RTT 1 to 16 ms): plan lag against the
    knot followed the adopted offset (slope 0.92, r 0.99), stepping at each
    resync, and pass A's adherence spread p95 read 3.1 to 7.1 ms. On this
    sim the error is one-sided: the hub stamps t1 when its tick reads the
@@ -407,7 +407,7 @@ window on the last: Kinetic² renders a reversal flat at every
   refuses under the latch. Any gate or fatal refusal pauses the video in
   the same frame, sends nothing, and shows the words: the rail then
   belongs to a generator, another session, another plugin or the latch,
-  and a hold would land in their stream (on valencesim, which accepts both
+  and a hold would land in their stream (on neutrino-sim, which accepts both
   sources, it did: G2).
 - **A refusal the gate cannot see.** A STREAM bundle has no answer, so a
   `SOURCE_CONFLICT` from a source the gate does not show arrives as a
@@ -435,7 +435,7 @@ window on the last: Kinetic² renders a reversal flat at every
   interleave with the player in one stream source.
 - **Bounded output.** Targets clamp to 0..1 of the hub's window and the hub
   clamps again. Speed is not clamped here: durations are the script's and
-  the hub's planner holds `limit.input.speed` (valencesim: a script asking
+  the hub's planner holds `limit.input.speed` (neutrino-sim: a script asking
   8333 mm/s peaked at its 1000 mm/s limit). The meter, the heat and the
   status slot (`Script past the input speed limit`) say so.
 - **Malformed scripts.** Unparseable JSON, no actions array, no valid
@@ -1301,7 +1301,7 @@ key `play`. Each choice below is veto-able.
   below 0 (ph-1qs5.1): a plan cannot start before its stamp, so a negative
   lag is the strip's misreport. A Kinetic² hub's plan strip names the next
   piece early once a submit lands in the later half of a piece (Nucleus
-  val-0ep): elapsed 0 and an arrival before that piece starts. On valencesim
+  val-0ep): elapsed 0 and an arrival before that piece starts. On neutrino-sim
   0.1.30 (`--live-playback`, 2026-10-08) the lag read -30 to -56 ms with an
   authored end velocity on the staircase (held at 0; applied, it made the
   machine that much late) and 14.6 ms with every knot free. Keep it off on a
@@ -1330,14 +1330,14 @@ The card (ph-smvd.13):
   roles; each new STATE (its age drops) is one `observePlan` sample.
 - **Shown time** is the unrolled clock folded back, so the readout, the
   playhead and the trace stay in media time across laps.
-- **Measured** on valencesim 0.1.7-p4hub (etag d8c8e522322810a2, a private
+- **Measured** on neutrino-sim 0.1.7-p4hub (etag d8c8e522322810a2, a private
   `--state`, spare ports; `--live-playback`, 2026-10-03): with auto latency on,
   the lag median came after 6 s of play and compensation settled at
   14.55 ms (lag 14.44 ms) in one step, the sim's known floor; the lead
   stayed within 125.6 ms (half the 250 ms horizon). A seek to 16 s while
   playing sent one hold, then a 500 ms glide 109 ms later
   whose target sat on the script 500 ms on (error under 0.0001). Home on
-  pause (rerun on the same harness after ph-hanh, valencesim on spare ports,
+  pause (rerun on the same harness after ph-hanh, neutrino-sim on spare ports,
   2026-10-03): the 14.17 s gap went out as its one span with nothing homed;
   a Pause sent the home move 5046 ms later (`homeAfterMs` 5000), 691 ms
   long, and the measured position read 0.5 of the window (54 samples, every
@@ -1363,7 +1363,7 @@ timeline's box. Collapsing restores the card as it was.
 
 - **Controls.** Bound by the catalog, never by channel: the writable
   fields of every group whose first segment is the registry's `Tuning`
-  subgroup (RFC-094; on valencesim: motion behavior, streaming, sample
+  subgroup (RFC-094; on neutrino-sim: motion behavior, streaming, sample
   streams, curve, ceilings, re-planning), the writable fields that
   share a write channel with those (the kinetic ceiling overrides), and
   `limit.input.*` by role. Each row draws the field's derived
@@ -1414,7 +1414,7 @@ Decisions (veto-able):
   the field's own min and max when it declares them, and never clamped: a
   plan outside the window reads below 0 or past 1 (`planShareOf`).
 
-Tests: `--unit` (c2) checks the groups on the recording itself (valencesim
+Tests: `--unit` (c2) checks the groups on the recording itself (neutrino-sim
 0.1.7-p4hub, etag d8c8e522322810a2: `Tuning / ` groups, `trial_mask` and
 settings-trial) and on a model with the `Tuning` prefix stripped
 (limit.input.* only), and lagOf on a synthetic 42 ms and 14 ms
@@ -1426,7 +1426,7 @@ card; a Live write is a durable INTENT on the field's write channel, a
 Preview write the same with `trial`; the notice stands while the hub marks
 the trial; Apply sends settings-trial op 1, Discard op 2, each clearing
 it; rects unchanged across Live, Preview and a pending trial; collapse
-restores the card. `--live`: on valencesim a Preview write raises the
+restores the card. `--live`: on neutrino-sim a Preview write raises the
 notice and Discard clears it and restores the stored value.
 
 ## Kinetic (ph-ge35)
@@ -1520,7 +1520,7 @@ Decisions (veto-able):
 - **K2** The Tuning rows bind `kinetic_tuning` by member name (the 0x3120
   card's fields carry the struct's names; an `_ms` row binds its `_us`
   member): the contract's one binding that is not a role. Every member has
-  a row on valencesim (kinetic-limits 0x1120, kinetic-planner 0x1122);
+  a row on neutrino-sim (kinetic-limits 0x1120, kinetic-planner 0x1122);
   `schedule_horizon` is not bound (the render uses 250 ms). Veto: registry roles for the
   tuning members, an RFC.
 - **K3** The render starts from rest at 0 mm with a preroll, not from the
@@ -1542,7 +1542,7 @@ Decisions (veto-able):
   CONTRACT.md, per module.
 - **Browser, `npm run check:funscript` in `test:browser`:**
   `test/funscript-player.test.mjs`, the shell bundle against a fake hub on
-  the valencesim fixture catalog (CLOCK answered, PUBLISH granted with
+  the neutrino-sim fixture catalog (CLOCK answered, PUBLISH granted with
   latency 1000 us and horizon 250 or 1000 per scenario, STREAM bundles
   decoded) and the fake Stash; media generated at run time (no media file
   committed). Asserts: the claim on the fixture and the decline without a
@@ -1595,7 +1595,7 @@ Decisions (veto-able):
   390 x 844 the bar inside the stage, the time uncut. Screenshots with
   `--shots <dir>`.
 - **Live smoke (bare-minimum floor):** `--live --port P --http P+7`
-  against valencesim on spare ports, started from Bash and stopped after:
+  against neutrino-sim on spare ports, started from Bash and stopped after:
   plays 8 s, asserts bundles, no NACK, striped heat and the over-limit
   words (the test script's 250 ms spans peak at 1400 mm/s, past the twin's
   factory 1200 mm/s), the plan strip moving, the strip's
@@ -1610,7 +1610,7 @@ Decisions (veto-able):
   (a)'s seek checks expect the glide: one hold, a 500 ms segment to the
   script 500 ms on, then one joining span and the knots.
 - **Live playback:** `--live-playback --port P --http P+7 [--shots dir]`
-  against valencesim on spare ports with a private `--state`: a 60 s clip
+  against neutrino-sim on spare ports with a private `--state`: a 60 s clip
   and script (a staircase 20 to 80 and back in steps of 15 with 400 to 499
   ms spans, inside the sim's speed limit so plans keep their durations and
   under `EXPECT_MS` so every same-direction knot is sent free, I8; and a
@@ -1653,7 +1653,7 @@ Decisions (veto-able):
   the hub's input speed limit. Content past it is stretched by the hub's
   planner (`limit.input.speed`, SPEC §9.6): plans start on time but end
   late, so the next segment hands off early and the stroke shrinks. Measured
-  on valencesim at 2 norm/s: 100 ms full-range swings planned 3.55 x their
+  on neutrino-sim at 2 norm/s: 100 ms full-range swings planned 3.55 x their
   commanded duration; 100 ms swings of 0.08 stretched 1.22 x in about half
   the segments (a quintic peaks at 1.875 x its chord). The player sends as
   authored (D11); the meter, the heat and the status slot flag it. A
@@ -1772,12 +1772,12 @@ Decisions (veto-able):
 - **G1 (Valence RFC owed)** A stream source stays owned until the session
   ends: SPEC §11.4 names "an explicit release intent" that the registry
   never defined, and PUBLISH rate 0 does not release it. Measured on
-  valencesim: after playback the jog is refused `SOURCE_CONFLICT` even from
+  neutrino-sim: after playback the jog is refused `SOURCE_CONFLICT` even from
   the owning session. The buttplug and TCode paths share it. Proposal
   direction: dropping a source-mapped publication releases its source.
 - **G2 (Valence RFC plus Nucleus bead owed)** Stream versus generator
   exclusion is arbiter policy (§11.4 leaves cross-type priority to the
-  machine); on valencesim an Advanced start and a segments bundle were each
+  machine); on neutrino-sim an Advanced start and a segments bundle were each
   accepted while the other owned the rail. The player's generator gate is a
   client stopgap.
 - **G3 (closed, ph-t9go)** With an unspecified end velocity and no

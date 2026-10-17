@@ -5,7 +5,7 @@
  * flow, sticky at top 0, so there is no reserve to double-count. The shell
  * adds no row: its window buttons end the top bar (ph-e82.17).
  *
- * Fixed heights (ph-e82.17), against a fake hub on the recorded valencesim
+ * Fixed heights (ph-e82.17), against a fake hub on the recorded neutrino-sim
  * catalog, at 1440x900 and 390x844: the bar and the strip keep their height
  * with a long hub name, with a refusal in the status slot and with a long
  * fault reason; the rail row and the rail below it hold across the swap to
@@ -283,8 +283,8 @@ ok('phone: the e-stop does not move', Math.abs(esAfter.top - esBefore.top) < 0.5
 await ctx.close();
 
 // ---- ph-e82.17: fixed heights against a fake hub ------------------------------
-const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
-const ETAG = readFileSync(new URL('./fixtures/valencesim-catalog.etag', import.meta.url), 'utf8').trim();
+const CAT = new Uint8Array(readFileSync(new URL('./fixtures/neutrino-catalog.bin', import.meta.url)));
+const ETAG = readFileSync(new URL('./fixtures/neutrino-catalog.etag', import.meta.url), 'utf8').trim();
 const ENTRIES = decodeCatalog(CAT);
 const RUN = ENTRIES.find((e) => (e.layout || []).some((f) => f.role === 'pattern.running'));
 const PLAN = ENTRIES.find((e) => (e.layout || []).some((f) => f.role === 'plan.current'));

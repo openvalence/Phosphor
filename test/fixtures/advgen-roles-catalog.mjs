@@ -1,5 +1,5 @@
 /**
- * advgen-roles-catalog.mjs -- the recorded valencesim catalog, which carries
+ * advgen-roles-catalog.mjs -- the recorded neutrino-sim catalog, which carries
  * the RFC-081 advgen.*, RFC-066 mod.* + mod_target, RFC-067 action.store and
  * RFC-070 store_id annotations since 5fc7a2d, with roles taken away on demand
  * so law 7 declines can be exercised. Built in memory; nothing generated is
@@ -33,7 +33,7 @@ function enc(v) {
 
 /** @returns {{bytes: Uint8Array, etag: string}} */
 export function advgenCatalog({ drop = [], noStoreId = false, noOscDrive = false } = {}) {
-  let bytes = new Uint8Array(readFileSync(new URL('./valencesim-catalog.bin', import.meta.url)));
+  let bytes = new Uint8Array(readFileSync(new URL('./neutrino-catalog.bin', import.meta.url)));
   if (drop.length || noStoreId || noOscDrive) {
     let entries = cbDecodeFull(bytes);
     if (noOscDrive) entries = entries.filter((e) => e.get(E.role) !== 'osc.drive');

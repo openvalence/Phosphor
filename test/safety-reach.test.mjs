@@ -9,7 +9,7 @@
  * latch: each safety-intents op is ECHOed and the 0x0003 snapshot it implies
  * is published, so a control's state is always the hub's (law 4).
  *
- * Two catalogs: the recorded valencesim fixture (claims the rail hero), and the
+ * Two catalogs: the recorded neutrino-sim fixture (claims the rail hero), and the
  * same fixture with every window.min / window.max role stripped (claims NO
  * hero, the unannotated-hub case of ph-vdk.1). At 360x800, 844x390, 1280x720
  * and 1920x1080, each with a mouse and with touch, it asserts:
@@ -96,7 +96,7 @@ import { catalogEtag, toHex } from '../../Valence/clients/js/sha256.js';
 import { CORE_CHANNEL, SAFETY_EVENT_KIND, SAFETY_OP, SOURCE_KIND } from '../../Valence/clients/js/generated/registry_vocab.js';
 
 const HTML = readFileSync(DIST_HTML);
-const FIXTURE = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
+const FIXTURE = new Uint8Array(readFileSync(new URL('./fixtures/neutrino-catalog.bin', import.meta.url)));
 
 // ---- the no-hero catalog: strip the rail's window roles, re-encode ---------
 // Wire floats are f32 only and map keys are ints, so this round-trips to a

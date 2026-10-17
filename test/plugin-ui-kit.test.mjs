@@ -1,7 +1,7 @@
 /**
  * plugin-ui-kit.test.mjs -- api.ui, the plugin UI kit (docs/PLUGINS.md, The UI
  * kit; ph-5wsk), on the shell bundle with the stub Tauri runtime and a fake
- * hub on the recorded valencesim catalog. A probe plugin builds one of every
+ * hub on the recorded neutrino-sim catalog. A probe plugin builds one of every
  * factory on a page; the kit-demo example loads beside it. Asserts:
  *   one look   the shared looks have one copy (style.css), no component restates them;
  *              every factory renders the shell's class markup
@@ -58,8 +58,8 @@ console.log('\n--- one look ---');
   ok('App.svelte draws no .foot-status: a page\'s status is the top strip\'s slot (ph-5u0g peeve 19)', !/foot-status/.test(src('src/App.svelte')));
 }
 
-const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
-const ETAG = readFileSync(new URL('./fixtures/valencesim-catalog.etag', import.meta.url), 'utf8').trim();
+const CAT = new Uint8Array(readFileSync(new URL('./fixtures/neutrino-catalog.bin', import.meta.url)));
+const ETAG = readFileSync(new URL('./fixtures/neutrino-catalog.etag', import.meta.url), 'utf8').trim();
 const SHELL = await buildShellPage();
 const srv = createServer((q, s) => { s.writeHead(200, { 'Content-Type': 'text/html' }); s.end(SHELL); });
 await new Promise((r) => srv.listen(0, '127.0.0.1', r));

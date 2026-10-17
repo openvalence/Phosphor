@@ -5,7 +5,7 @@
  * §9 placement invariant, law 9; DESIGN §10.6).
  *
  * The built app on a fake hub (Playwright's WebSocket route; the recorded
- * valencesim catalog pre-seeded in the etag cache). A category page's cards
+ * neutrino-sim catalog pre-seeded in the etag cache). A category page's cards
  * are put into one unplaced nest through the stored layout, with the scroll
  * flag an older build wrote (inert now). Every member must be inside the nest's
  * visible surface with nothing to scroll; a write is made on the last member
@@ -33,8 +33,8 @@ const ok = (name, cond, extra) => {
   if (!cond) fails++;
 };
 
-const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
-const ETAG = readFileSync(new URL('./fixtures/valencesim-catalog.etag', import.meta.url), 'utf8').trim();
+const CAT = new Uint8Array(readFileSync(new URL('./fixtures/neutrino-catalog.bin', import.meta.url)));
+const ETAG = readFileSync(new URL('./fixtures/neutrino-catalog.etag', import.meta.url), 'utf8').trim();
 const ENTRIES = decodeCatalog(CAT);
 
 const HTML = readFileSync(DIST_HTML);

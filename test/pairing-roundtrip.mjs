@@ -2,7 +2,7 @@
  * pairing-roundtrip.mjs — the FIRST end-to-end proof of the pairing flows
  * (SPEC §12.3): every layer was individually implemented and unit-tested
  * (lib M4B-12..26), but the full round trip had never run above the lib
- * level, and valencesim's `validateToken` was a control-for-all stub until
+ * level, and neutrino-sim's `validateToken` was a control-for-all stub until
  * 2026-07-29 — paired tokens were unverifiable in-sim (recon + fix, same
  * date). Covers BOTH modes:
  *
@@ -20,7 +20,7 @@
  * Channel ids 0x0009/0x000A/0x000B are SPEC-CORE (CHANNEL-GRID.md), the same
  * standing as CH_SAFETY — not device knowledge.
  *
- * Run: node test/pairing-roundtrip.mjs [--sim <path to valencesim.exe>] [--port P] [--http P+1]
+ * Run: node test/pairing-roundtrip.mjs [--sim <path to neutrino-sim.exe>] [--port P] [--http P+1]
  *      (starts its own sim on those ports, a random private pair by default,
  *      with a throwaway --state; refuses to run if something already answers
  *      on --port). Rides test:browser as check:pairing.
@@ -47,7 +47,7 @@ const CH_ADMIN = 0x0009, CH_PENDING = 0x000A, CH_PAIR_EVENTS = 0x000B;
 const argv = process.argv.slice(2);
 const argOf = (f, d) => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] : d; };
 const SIM_EXE = argOf('--sim',
-  new URL('../../Nucleus/sim/valencesim/build/valencesim.exe', import.meta.url).pathname.replace(/^\//, ''));
+  new URL('../../Nucleus/sim/neutrino/build/neutrino-sim.exe', import.meta.url).pathname.replace(/^\//, ''));
 const PORT = Number(argOf('--port', 20000 + Math.floor(Math.random() * 20000)));
 const HTTP = Number(argOf('--http', PORT + 1));
 

@@ -1,7 +1,7 @@
 /**
  * graph-editor.test.mjs -- the node editor (ph-e82.13.7) in the real shell
  * bundle (shell-build.mjs, stub Tauri runtime answering bp_devices with one
- * toy) against a fake hub serving the recorded valencesim catalog. Asserts:
+ * toy) against a fake hub serving the recorded neutrino-sim catalog. Asserts:
  *   place     the add menu (right-click) places a source field and a toy
  *             output at the cursor
  *   connect   a drag from the field's output socket to the toy's input
@@ -86,8 +86,8 @@ async function inkUnder(page, sel, ids = ['phosphor', 'ember', 'paper']) {
 }
 const scaleOf = (page) => page.locator('.glayer').evaluate((el) => Number((/scale\(([\d.]+)\)/.exec(el.style.transform) || [])[1]));
 
-const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
-const ETAG = readFileSync(new URL('./fixtures/valencesim-catalog.etag', import.meta.url), 'utf8').trim();
+const CAT = new Uint8Array(readFileSync(new URL('./fixtures/neutrino-catalog.bin', import.meta.url)));
+const ETAG = readFileSync(new URL('./fixtures/neutrino-catalog.etag', import.meta.url), 'utf8').trim();
 const ENTRIES = decodeCatalog(CAT);
 
 // ---- the fake hub: STATE from the catalog, INTENT echoed ----------------------

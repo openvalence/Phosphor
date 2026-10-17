@@ -10,14 +10,14 @@
  *                 saved row opens a sheet (passphrase again, move, remove) and sends nothing on the tap;
  *                 a scan refused INTERLOCK reads "Machine is moving" and is asked again until it lands;
  *                 a scan that never lands times out at 30 s
- *   Network card  the shell bundle against a private valencesim with the scan twin (VALENCESIM=<exe>):
+ *   Network card  the shell bundle against a private neutrino-sim with the scan twin (NEUTRINO_SIM=<exe>):
  *                 the list strongest first with the connected check, locks and Saved marks; no generic
  *                 cards for 0x000F/0x0017..0x001A; a short password refused by the hub in words; Save
  *                 for a secured and an open network; Other network for a hidden SSID; a saved row opens its sheet
  *                 and sends nothing on the tap; Scan; Advanced reveals the slot card; the password nowhere the page keeps
  * Screenshots: test/evidence/wifipicker-<list|password|advanced>-<1428|420>.png.
  *
- * Run: node test/wifipicker.test.mjs   (the Network card part SKIPs without a valencesim that lists networks)
+ * Run: node test/wifipicker.test.mjs   (the Network card part SKIPs without a neutrino-sim that lists networks)
  * Constraints: the sim and the pages run on private ports; the sim is killed on every exit path. The
  * passwords are fixture strings and are asserted absent from everything the page keeps.
  */
@@ -272,11 +272,11 @@ T.ready = pickerReady(api, f);
   srv.close();
 }
 
-// ---- the Network card against valencesim ----
+// ---- the Network card against neutrino-sim ----
 console.log('Network card');
 const sim = await startSim({ extra: ['--pairing-window'] });
 if (!sim) {
-  console.log('SKIP: no valencesim (set VALENCESIM)');
+  console.log('SKIP: no neutrino-sim (set NEUTRINO_SIM)');
 } else {
   const knock = createSession({ host: '127.0.0.1', port: sim.port, clientKind: 'webui', clientName: 'wifipicker test', instanceId: INSTANCE, autoReconnect: false });
   await new Promise((res) => { knock.on('welcome', res); knock.connect(); });
@@ -322,7 +322,7 @@ if (!sim) {
   const { ctx, page, logs } = await open(1428, 900);
   const listed = await page.waitForFunction(() => document.querySelectorAll('.wp-row').length >= 10, null, { timeout: 30000 }).then(() => true, () => false);
   if (!listed && !await page.locator('.wp-row').count()) {
-    console.log('SKIP: this valencesim lists no networks (RFC-118 twin absent)');
+    console.log('SKIP: this neutrino-sim lists no networks (RFC-118 twin absent)');
   } else {
     const NEIGHBORS = ['Neutrino', 'Workshop', 'Workshop-Lab', 'Guest', 'Neighbor', 'Printer-Direct', 'Cafe', 'Upstairs', 'Attic', 'Garage'];
     ok('the list: both halves, strongest first', (await ssids(page)).join() === NEIGHBORS.join(), await ssids(page));

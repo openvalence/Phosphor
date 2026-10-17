@@ -146,7 +146,7 @@ any spec version, so the setting would drive nothing.
   the operator's Resume on the strip. `test/buttplug-bridge.test.mjs` (e)
   covers the local refusal; `test/buttplug-estop-sim.mjs` builds its door
   without it and proves the hub latch alone stops a live stream in
-  valencesim.
+  neutrino-sim.
 - **Hub presence** is the webview's link phase (`live`), polled at 2 Hz.
   Disabling the `buttplug` adapter in the Plugins pane withdraws the
   machine. That toggle is not yet persisted across restarts for this
@@ -272,6 +272,6 @@ loopback. The machine enters the intent path exactly as on desktop.
   through the real plugin host, the command mapping and ladder, echoes,
   stop and sensors, with a fake invoke/listen.
 - `node test/buttplug-estop-sim.mjs`: the e-stop latch over a live stream,
-  against valencesim.
+  against neutrino-sim.
 - Fork: `cargo test -p buttplug_server valence` (payload round trip, the
   yml range equals `POSITION_STEPS`).

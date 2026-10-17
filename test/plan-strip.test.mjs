@@ -1,5 +1,5 @@
 /**
- * plan-strip.test.mjs -- the plan roles on the recorded catalog (test/fixtures/valencesim-catalog.bin) carry a plan
+ * plan-strip.test.mjs -- the plan roles on the recorded catalog (test/fixtures/neutrino-catalog.bin) carry a plan
  * outside the travel window: plan.start, plan.end and plan.current are declared i32 at scale 10000 (Nucleus val-vik,
  * 0.1.39) and valence-js decodes the hub's bytes by that declaration, a share below 0 or past 6.5535 included.
  *
@@ -14,7 +14,7 @@ const ok = (name, cond, extra) => {
   if (!cond) fails++;
 };
 
-const entries = decodeCatalog(new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url))));
+const entries = decodeCatalog(new Uint8Array(readFileSync(new URL('./fixtures/neutrino-catalog.bin', import.meta.url))));
 const plan = entries.find((e) => (e.layout || []).some((f) => f.role === 'plan.current'));
 ok('the fixture has a plan strip', !!plan);
 const roles = ['plan.start', 'plan.end', 'plan.current'];

@@ -92,7 +92,7 @@ export const leadCapMs = (horizonMs) => Math.max(horizonMs / 2, horizonMs - LEAD
  *
  * Constraints:
  * - An exchange's offset error is up to half its RTT's asymmetry; the session
- *   library adopts every exchange. On valencesim the error is one-sided (the
+ *   library adopts every exchange. On neutrino-sim the error is one-sided (the
  *   hub stamps t1 when its tick reads the frame): offset = truth + RTT/2 within
  *   0.5 ms over RTT 1 to 17 ms, so a slow exchange stamps every segment up to
  *   8 ms late. The filter belongs in Valence's clients/js syncClock; this stays
@@ -104,7 +104,7 @@ export const leadCapMs = (horizonMs) => Math.max(horizonMs / 2, horizonMs - LEAD
  *   one host it is 0, so a fast exchange may stay chosen for minutes.
  * - First use and every 'live' fire CLOCK_HUNT exchanges at random gaps up
  *   to CLOCK_HUNT_GAP_MS: back-to-back ones phase-lock to the hub's tick
- *   (20 of 20 at 14 to 18 ms on valencesim). The door's first use is its
+ *   (20 of 20 at 14 to 18 ms on neutrino-sim). The door's first use is its
  *   warm call, before Play.
  * - A close voids every kept exchange (a new WELCOME may be a new boot_id);
  *   until one lands the session's own offset is used.

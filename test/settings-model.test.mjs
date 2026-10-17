@@ -362,7 +362,7 @@ ok('a hero whose required roles are ABSENT declines entirely', patternClaim === 
 {
   // The real hub now carries one (Nucleus val-091.12): the same claim binds.
   const real = buildSettingsModel(decodeCatalog(new Uint8Array(readFileSync(
-    new URL('./fixtures/valencesim-catalog.bin', import.meta.url)))));
+    new URL('./fixtures/neutrino-catalog.bin', import.meta.url)))));
   const claim = claimRoles(real.byRole, {
     require: { running: ROLE.patternRunning, select: ROLE.patternSelect },
     optional: { bgRun: ROLE.sourceBackgroundRun },
@@ -604,7 +604,7 @@ ok('an unknown role is carried, not rejected', weird.fields[0].role === 'some.fu
   // The draft provisioning verb (0x000F, setup category) draws as a generic card too;
   // the wizard drives it, the settings tab is its fallback.
   const real = buildSettingsModel(decodeCatalog(new Uint8Array(readFileSync(
-    new URL('./fixtures/valencesim-catalog.bin', import.meta.url)))));
+    new URL('./fixtures/neutrino-catalog.bin', import.meta.url)))));
   const generic = real.categories.flatMap((c) => c.groups.flatMap((g) => g.fields))
     .filter((f) => f.widget === WIDGET.action);
   const drawn = generic.map((f) => f.role).concat(real.looseActions.map((a) => a.role));
@@ -701,11 +701,11 @@ ok('an unknown role is carried, not rejected', weird.fields[0].role === 'some.fu
 // ---- ph-e82.4: the control contract (DESIGN §10.2) -------------------------
 {
   const real = buildSettingsModel(decodeCatalog(new Uint8Array(readFileSync(
-    new URL('./fixtures/valencesim-catalog.bin', import.meta.url)))));
+    new URL('./fixtures/neutrino-catalog.bin', import.meta.url)))));
   const isBool = (f) => (f.options ? f.options.length === 2 && /^(off|disabled|no|false)$/i.test(f.options[0])
     : f.min === 0 && f.max === 1 && f.type !== PACKED.f32) || (f.type === PACKED.bitfield8 && !f.bits);
   const hasBounds = (f) => f.min != null && f.max != null && f.max > f.min;
-  for (const [name, m] of [['fixture machine', model], ['valencesim', real]]) {
+  for (const [name, m] of [['fixture machine', model], ['neutrino-sim', real]]) {
     const ctls = placeableControls(m);
     const fields = ctls.filter((c) => c.kind === 'field');
     const bad = (pred) => fields.filter((c) => !pred(c)).map((c) => c.key);

@@ -1,6 +1,6 @@
 /**
  * pages.test.mjs -- plugin pages (docs/PLUGINS.md, Pages) on the shell bundle
- * with the stub Tauri runtime and a fake hub on the recorded valencesim
+ * with the stub Tauri runtime and a fake hub on the recorded neutrino-sim
  * catalog. Asserts:
  *   sidebar  the funscript player's page sits indented right under Plugins
  *            with its own icon, collapses to its glyph, selects like a tab
@@ -37,8 +37,8 @@ const args = process.argv.slice(2);
 const SHOTS = args.includes('--shots') ? args[args.indexOf('--shots') + 1] : null;
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 
-const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
-const ETAG = readFileSync(new URL('./fixtures/valencesim-catalog.etag', import.meta.url), 'utf8').trim();
+const CAT = new Uint8Array(readFileSync(new URL('./fixtures/neutrino-catalog.bin', import.meta.url)));
+const ETAG = readFileSync(new URL('./fixtures/neutrino-catalog.etag', import.meta.url), 'utf8').trim();
 const SHELL = await buildShellPage();
 const srv = createServer((q, s) => { s.writeHead(200, { 'Content-Type': 'text/html' }); s.end(SHELL); });
 await new Promise((r) => srv.listen(0, '127.0.0.1', r));

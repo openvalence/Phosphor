@@ -2,7 +2,7 @@
  * analyzer-reads.test.mjs -- the funscript analyzer reads the host only when api.changed moves
  * (plugins/factory/funscript-player/analyzer.js, ph-uve3), and api.onChanged's watchers
  * (src/model/changes.js) ask it for a frame when the machine is parked (ph-vo56). Node only: a minimal element stub
- * stands in for the DOM, a counting fake for the plugin api, the valencesim catalog fixture
+ * stands in for the DOM, a counting fake for the plugin api, the neutrino-sim catalog fixture
  * for the rows.
  *
  * Run: node test/analyzer-reads.test.mjs
@@ -35,7 +35,7 @@ globalThis.document = { createElement: (t) => new El(t), activeElement: null };
 const { mountAnalyzer } = await import('../plugins/factory/funscript-player/analyzer.js');
 
 // ---- the fake api: counts every host read; api.changed is a plain sequence per channel ----
-const bytes = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
+const bytes = new Uint8Array(readFileSync(new URL('./fixtures/neutrino-catalog.bin', import.meta.url)));
 const model = buildSettingsModel(decodeCatalog(bytes));
 const per = {}, vals = {}, gates = {};
 let all = 0;

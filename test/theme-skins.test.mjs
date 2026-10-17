@@ -143,8 +143,8 @@ for (const s of STYLES.filter((x) => !only || x.id === only)) {
 }
 
 // ---- the fake hub and the shell bundle ---------------------------------------------
-const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
-const ETAG = readFileSync(new URL('./fixtures/valencesim-catalog.etag', import.meta.url), 'utf8').trim();
+const CAT = new Uint8Array(readFileSync(new URL('./fixtures/neutrino-catalog.bin', import.meta.url)));
+const ETAG = readFileSync(new URL('./fixtures/neutrino-catalog.etag', import.meta.url), 'utf8').trim();
 const SHELL = await buildShellPage();
 const srv = createServer((q, s) => { s.writeHead(200, { 'Content-Type': 'text/html' }); s.end(SHELL); });
 await new Promise((r) => srv.listen(0, '127.0.0.1', r));

@@ -4,7 +4,7 @@
  * Node sections (`--unit`, in `npm run check`):
  *   (a) contract   every module exports what CONTRACT.md names; the manifest
  *   (b) prefs      defaults, repair of malformed values, the backup mirror
- *   (c) hero       the spec claims on the valencesim fixture and declines
+ *   (c) hero       the spec claims on the neutrino-sim fixture and declines
  *                  without a segments STREAM; the factory entry
  *   (c2) analyzer  the Tuning groups by catalog and role on the tuning
  *                  fixture (the recording with RFC-094 groups and RFC-099
@@ -183,14 +183,14 @@ if (prefs) {
 // ---- (c) the hero spec: claims with a segments STREAM, declines without ------
 console.log('(c) hero spec');
 const index = mods[P + 'index.js'];
-const ENTRIES = decodeCatalog(new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url))));
-const SEG_CH = 0x2101;   // valencesim motion-segment (registry 0x2101), test-side only
-// Tuning fixture, test-side ids: the recording (valencesim 0.1.7-p4hub) carries RFC-094 'Tuning / '
+const ENTRIES = decodeCatalog(new Uint8Array(readFileSync(new URL('./fixtures/neutrino-catalog.bin', import.meta.url))));
+const SEG_CH = 0x2101;   // neutrino-sim motion-segment (registry 0x2101), test-side only
+// Tuning fixture, test-side ids: the recording (neutrino-sim 0.1.7-p4hub) carries RFC-094 'Tuning / '
 // groups, trial_mask (meta.trial_pending) on the kinetic-planner STATE and settings-trial (core 0x16, RFC-099).
 const CH_PLANNER = 0x1122, CH_TRIAL = 0x16;
 function tuningCatalog() {
-  const bytes = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
-  return { bytes, etag: readFileSync(new URL('./fixtures/valencesim-catalog.etag', import.meta.url), 'utf8').trim() };
+  const bytes = new Uint8Array(readFileSync(new URL('./fixtures/neutrino-catalog.bin', import.meta.url)));
+  return { bytes, etag: readFileSync(new URL('./fixtures/neutrino-catalog.etag', import.meta.url), 'utf8').trim() };
 }
 if (index) {
   const h = index.HERO;   // activate itself creates the <video>: the browser half drives it
@@ -202,7 +202,7 @@ if (index) {
   if (h) {
     const claim = (entries) => claimAll(buildSettingsModel(entries).byRole, [{ id: 'p', spec: h.spec, absorb: false }]);
     const w = claim(ENTRIES).widgets[0];
-    ok('claims on the valencesim fixture, dur on the segments STREAM', !!w && w.fields.dur.channelId === SEG_CH);
+    ok('claims on the neutrino-sim fixture, dur on the segments STREAM', !!w && w.fields.dur.channelId === SEG_CH);
     ok('every optional role binds there', !!w && ['pos', 'lo', 'hi', 'vmax', 'patRun', 'advRun', 'planEl', 'planDur'].every((k) => w.fields[k]));
     ok('absorb false claims nothing away', claim(ENTRIES).claimed.size === 0);
     ok('declines without a segments STREAM (D1)', claim(ENTRIES.filter((e) => e.id !== SEG_CH)).widgets.length === 0);
@@ -357,7 +357,7 @@ if (UNIT || fails) {
 
 // =============================================================================
 // Browser half: the shell bundle (shell-build.mjs, stub Tauri runtime) with
-// the factory plugin, against a fake hub on the valencesim fixture catalog
+// the factory plugin, against a fake hub on the neutrino-sim fixture catalog
 // (CLOCK answered, PUBLISH granted at latency 1000 us, STREAM bundles decoded)
 // and the fake Stash; the clip is generated at run time by ffmpeg.
 //   claim      the card renders on the fixture, and nowhere without a
@@ -407,7 +407,7 @@ if (UNIT || fails) {
 // committed): only the stash section, against that real Stash, read-only,
 // under the shell CSP's img-src and media-src: every tile's screenshot
 // loads, and a picked scene's stream plays and drives the fake hub.
-// Live (--live): valencesim on spare ports plays 8 s: bundles, no NACK, the
+// Live (--live): neutrino-sim on spare ports plays 8 s: bundles, no NACK, the
 // plan strip moving, the strip's Pause pauses the video and Resume leaves it
 // paused, a seek plays on from the new time, an Advanced start grays Play,
 // and last the strip's E-stop pauses it with nothing sent after (the spare
@@ -447,11 +447,11 @@ const CSP_MEDIA = STASH_LIVE && JSON.parse(readFileSync(new URL('../src-tauri/ta
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const median = (a) => { const b = [...a].sort((x, y) => x - y); return b.length ? b[b.length >> 1] : NaN; };
 const PAUSE_BIT = 0x08;   // registry: safety word bit3
-const LAT_US = 1000;      // the fake grant's schedule_latency_us (valencesim, measured)
+const LAT_US = 1000;      // the fake grant's schedule_latency_us (neutrino-sim, measured)
 const OSC_LAT_US = 156000;   // the osc-drive grant's: Nucleus kOscDriveLeadUs, the least notice (RFC-110 item 4)
 const HORIZON_MS = 250;
 const KEY = 'test-key-1';
-// Fixture channel ids, test-side only (registry.yaml / valencesim catalog).
+// Fixture channel ids, test-side only (registry.yaml / neutrino-sim catalog).
 // tuning: the Kinetic tuning card, whose keys Nucleus trials; it refuses a trial on the modes card UNSUPPORTED_OP (SPEC 9.3 item 5).
 const CH = { config: 0x1000, motion: 0x1100, tuning: 0x1122, advgen: 0x1210, segments: 0x2101 };
 // The limits and rail the analyzer's Kinetic render needs (the tuning fixture declares no defaults).
@@ -3979,12 +3979,12 @@ if (!LIVE && !args.includes('--stash-live')) {
   await ctx.close();
 }
 
-// ---- (p) live playback (--live-playback): valencesim plays the 60 s script with a 14 s gap ----
+// ---- (p) live playback (--live-playback): neutrino-sim plays the 60 s script with a 14 s gap ----
 // Auto latency on from the start; a seek with the glide; the gap held as one span, then a pause
 // that homes after the delay; an A-B loop; a Preview tuning write the sim marks, then Discard. Prints the numbers as
 // one 'PB-RESULT' JSON line; the stored-value recheck after a sim restart is the caller's.
 if (PB) {
-  console.log('(p) live playback: valencesim on ' + SIM_PORT + ' (http ' + SIM_HTTP + ')');
+  console.log('(p) live playback: neutrino-sim on ' + SIM_PORT + ' (http ' + SIM_HTTP + ')');
   const { createSession, PRIORITY } = await import('../../Valence/clients/js/index.js');
   const { tuningGroups } = mods[P + 'analyzer.js'];
   const { parseFunscript: parseS, posAt: posS } = mods[P + 'funscript.js'];
@@ -3996,7 +3996,7 @@ if (PB) {
   const cat0 = probeSess.catalog || [];
   try { probeSess.close(); } catch (e) { /* gone */ }
   const segEntry = cat0.find((e) => e.dirName === 'c2h' && (e.layout || []).some((f) => f.role === 'input.duration'));
-  if (!segEntry) { console.log('SKIP: no valencesim with a segments STREAM on 127.0.0.1:' + SIM_PORT); process.exit(0); }
+  if (!segEntry) { console.log('SKIP: no neutrino-sim with a segments STREAM on 127.0.0.1:' + SIM_PORT); process.exit(0); }
   const byRole = (r) => { for (const e of cat0) for (const f of e.layout || []) if (f.role === r && e.dirName !== 'c2h') return { e, f }; return null; };
   const posR = byRole('telemetry.position'), loR = byRole('window.min'), hiR = byRole('window.max');
   const slider = tuningGroups(buildSettingsModel(cat0)).flatMap((g) => g.fields).find((f) => f.widget === 'slider' && f.channelId === CH.tuning);
@@ -4287,7 +4287,7 @@ if (PB) {
 }
 
 if (LIVE && !PB) {
-  console.log('(f) live: valencesim on ' + SIM_PORT + ' (http ' + SIM_HTTP + ')');
+  console.log('(f) live: neutrino-sim on ' + SIM_PORT + ' (http ' + SIM_HTTP + ')');
   const { createSession } = await import('../../Valence/clients/js/index.js');
   const sess = createSession({ host: '127.0.0.1', port: SIM_PORT, clientKind: 'webui', clientName: 'fsp probe',
     autoReconnect: false, catalogStore: { load: () => null, save() {}, clear() {} } });
@@ -4298,7 +4298,7 @@ if (LIVE && !PB) {
   const tune = live && mods[P + 'analyzer.js'].tuningGroups(buildSettingsModel(sess.catalog || [])).flatMap((g) => g.fields)
     .find((f) => f.widget === 'slider' && f.channelId === CH.tuning);
   try { sess.close(); } catch (e) { /* gone */ }
-  if (!seg) { console.log('SKIP: no valencesim with a segments STREAM on 127.0.0.1:' + SIM_PORT); process.exit(0); }
+  if (!seg) { console.log('SKIP: no neutrino-sim with a segments STREAM on 127.0.0.1:' + SIM_PORT); process.exit(0); }
 
   const frames = { bundles: 0, nacks: [] };
   const { ctx, page, up, errors } = await open({ onPage: (page) => page.on('websocket', (ws) => {

@@ -11,7 +11,7 @@ The repos sit side by side in one parent directory:
 ```
 Phosphor/     this repo
 Valence/      the JS client Phosphor imports (../../Valence/clients/js)
-Nucleus/      Neutrino's sources (sim/valencesim) and the native exe the suites run
+Nucleus/      Neutrino's sources (sim/neutrino) and the native exe the suites run
 Kinetic/      the planner Neutrino compiles in
 ButtplugIO/   branch `valence`, Cargo path deps of src-tauri
 ```
@@ -21,14 +21,13 @@ ButtplugIO/   branch `valence`, Cargo path deps of src-tauri
 The built-in machine, Neutrino in the UI (`src/model/builtin.js`), is
 the emulator: the Nucleus hub firmware built to wasm, run in process
 in a worker in every build: Windows, macOS, Linux and Android (DESIGN 10.10).
-Its files keep the name `integral.*` until Nucleus renames them (`val-7ai`).
 
-- `src/model/integral/` holds the vendored build: `integral.js` (the
-  emscripten loader, verbatim), `bytes.js` (`integral.wasm` as base64; the
-  page posts the bytes to the worker) and `integral.pin` (the Nucleus sha,
+- `src/model/neutrino/` holds the vendored build: `neutrino.js` (the
+  emscripten loader, verbatim), `bytes.js` (`neutrino.wasm` as base64; the
+  page posts the bytes to the worker) and `neutrino.pin` (the Nucleus sha,
   the boot etag, and the size and SHA-256 of both files). About 660 KB of
   wasm, 881 KB as base64, 207 KB gzipped.
-- `node test/integral-pin.mjs` (in `npm run check`) checks both files against
+- `node test/neutrino-pin.mjs` (in `npm run check`) checks both files against
   the pin and boots the machine to its pinned etag. `--rebuild` also rebuilds
   from the sibling Nucleus when it sits clean at the pinned sha and
   byte-compares.
@@ -37,22 +36,22 @@ Its files keep the name `integral.*` until Nucleus renames them (`val-7ai`).
   `cmake` and `ninja` on PATH):
 
   ```sh
-  node test/integral-pin.mjs --write
-  node test/valence-sim.mjs --integral
+  node test/neutrino-pin.mjs --write
+  node test/neutrino-twin.mjs --wasm
   ```
 
-  `--write` builds `../Nucleus/sim/valencesim/wasm` in a temp dir and rewrites
+  `--write` builds `../Nucleus/sim/neutrino/wasm` in a temp dir and rewrites
   the three files. Commit them together.
-- `node test/valence-sim.mjs --integral` (in `npm run check`) runs the
+- `node test/neutrino-twin.mjs --wasm` (in `npm run check`) runs the
   end-to-end client proof against the vendored wasm through the app's own
-  bridge (`src/model/integral-bridge.js`) and jogs it.
-- The native exe (`Nucleus/sim/valencesim/build/valencesim[.exe]`) is not
+  bridge (`src/model/neutrino-bridge.js`) and jogs it.
+- The native exe (`Nucleus/sim/neutrino/build/neutrino-sim[.exe]`) is not
   bundled in Phosphor (the Neutrino dev tool, below, bundles its own build).
   It stays for the suites that dial a real WebSocket hub
-  (`test/valence-sim.mjs` without `--integral`, the `--live` modes,
+  (`test/neutrino-twin.mjs` without `--wasm`, the `--live` modes,
   `test/pairing-roundtrip.mjs`, `test/buttplug-estop-sim.mjs`), the bench,
-  and recording `test/fixtures/valencesim-catalog.*`. Its build is Nucleus
-  `sim/valencesim/README.md`.
+  and recording `test/fixtures/neutrino-catalog.*`. Its build is Nucleus
+  `sim/neutrino/README.md`.
 
 ## Neutrino, the dev tool
 
@@ -88,7 +87,7 @@ packages).
   later one's clients start at `watch` and pair with its PAIR button.
 - Windows asks about the firewall the first time the machine binds the LAN.
 - macOS and Linux: the same two npm scripts with a C++23 GCC or Clang, CMake,
-  Ninja and git (Nucleus `sim/valencesim/README.md`); ports under 1024 need
+  Ninja and git (Nucleus `sim/neutrino/README.md`); ports under 1024 need
   privileges on Linux, so pass `-- --port 8082 --http 8080` there. Untried on
   both.
 - Not in CI yet. Adding it: a job per OS that checks out Nucleus at

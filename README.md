@@ -45,7 +45,7 @@ npm run neutrino:build       # its portable build, neutrino/src-tauri/target/rel
 ```
 
 Neutrino, the built-in machine (the hub firmware as wasm), is vendored in
-`src/model/integral/`; [docs/BUILD.md](docs/BUILD.md) has its pin and rebuild.
+`src/model/neutrino/`; [docs/BUILD.md](docs/BUILD.md) has its pin and rebuild.
 
 ### Tests
 
@@ -83,8 +83,8 @@ every time.
 |---|---|
 | `node test/valence-live.mjs --ip <host> [--port 82]` | a hub at `<host>:82` |
 | `node test/valence-auth.mjs --ip <host> [--port 82]` | a hub at `<host>:82` |
-| `node test/valence-modes.mjs <host>` | a hub at `<host>:82` -- fails against valencesim today (Nucleus val-091.11, motion writes) |
-| `node test/valence-tuning.mjs <host>` | a hub at `<host>:82` -- fails against valencesim today (val-091.12, pattern engine) |
+| `node test/valence-modes.mjs <host>` | a hub at `<host>:82` -- fails against neutrino-sim today (Nucleus val-091.11, motion writes) |
+| `node test/valence-tuning.mjs <host>` | a hub at `<host>:82` -- fails against neutrino-sim today (val-091.12, pattern engine) |
 | `node test/valence-writeplane.mjs <host> [port]` | a hub at `<host>:82` |
 | `node test/tap-to-move-live.mjs <host>` | a hub at `<host>:82`, commands real moves; with no host, its own sim (`check:taptomove` in `test:browser`) |
 | `node test/model-vs-device.mjs <host>` | a hub at `<host>:82` |
@@ -97,11 +97,11 @@ every time.
 | `node test/flagship-render-smoke.mjs <host>` | a hub serving the deployed bundle, plus a browser; with no host, its own sim (`check:flagship` in `test:browser`) |
 | `node test/jitter-measure.mjs <host> [durationMs]` | a hub serving the page, plus a browser |
 | `node test/og-reference-shots.mjs [baseUrl] [outDir]` | a static server for the OG (main-branch) bundle, plus a browser -- not a Valence hub |
-| `node test/valence-sim.mjs [--host] [--port]` | the simulator (valencesim), `../Nucleus/sim/valencesim/build/valencesim.exe` -- fails today (val-091.11/.12) |
+| `node test/neutrino-twin.mjs [--host] [--port]` | the simulator (neutrino-sim), `../Nucleus/sim/neutrino/build/neutrino-sim.exe` -- fails today (val-091.11/.12) |
 
-`test/fixtures/valencesim-catalog.{bin,etag}` is captured from the simulator
-(valencesim), not hand-copied from Valence: build `../Nucleus/sim/valencesim` (its own
-README has the recipe), run it, then `node test/valence-sim.mjs`. Its last
+`test/fixtures/neutrino-catalog.{bin,etag}` is captured from the simulator
+(neutrino-sim), not hand-copied from Valence: build `../Nucleus/sim/neutrino` (its own
+README has the recipe), run it, then `node test/neutrino-twin.mjs`. Its last
 step writes both files from that session's real BLOB_CHUNK bytes and the etag
 the hub declared. Never hand-edit the `.bin`; re-run the sim to re-capture it.
 
@@ -169,7 +169,7 @@ in [docs/BUILD.md](docs/BUILD.md).
 | repo | what it is | how Phosphor touches it |
 |---|---|---|
 | [`../Valence`](../Valence) | the protocol: SPEC, registry, conformance, the JS client | **imported directly**: every `import` of `../../Valence/clients/js/*` is a live relative path to the sibling checkout. Read-only from here; changes there are RFCs. |
-| `../Nucleus` | the reference hub (the machine's firmware) | nothing at build time. `test/check-device-knowledge.mjs` reads its catalog header *if present*, to harvest the field names Phosphor must not know. Its `sim/valencesim` is what the device tests talk to. |
+| `../Nucleus` | the reference hub (the machine's firmware) | nothing at build time. `test/check-device-knowledge.mjs` reads its catalog header *if present*, to harvest the field names Phosphor must not know. Its `sim/neutrino` is what the device tests talk to. |
 
 Both must sit beside this repo in the same parent directory. Phosphor uses the sibling working trees directly, with no package, pin or
 vendored copy (CI uses Nucleus's `valence.pin`; see docs/BUILD.md).

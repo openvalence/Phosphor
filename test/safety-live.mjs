@@ -1,7 +1,7 @@
 /**
  * safety-live.mjs -- the RFC-085 safety pairs, the rail's override/return and
  * jog, the motion adapters under PAUSE and the RFC-088 flip, against a REAL
- * valencesim (ph-vdk.55). safety-reach.test.mjs proves the same controls on a
+ * neutrino-sim (ph-vdk.55). safety-reach.test.mjs proves the same controls on a
  * modeled hub; this proves the hub agrees. Every press is read back on a
  * second, raw session (C-8).
  *
@@ -31,7 +31,7 @@
  *
  * With no --port it starts its own homed sim (test/live-sim.mjs) and SKIPS
  * (exit 0) without the exe; it rides test:browser as check:safetylive. With
- * --port it COMMANDS MOTION on that sim (valencesim --homed), puts the window
+ * --port it COMMANDS MOTION on that sim (neutrino-sim --homed), puts the window
  * and the flip back, and SKIPS when none answers.
  * Build first (npm run build:only). Run:
  *   node test/safety-live.mjs [--port 8882 --http 8880]
@@ -56,7 +56,7 @@ const argOf = (f, d) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1]
 const HOST = '127.0.0.1';
 const OWN = argOf('--port', null) === null;
 const own = OWN ? await startSim() : null;
-if (OWN && !own) { console.log('SKIP: no valencesim at ' + SIM); process.exit(0); }
+if (OWN && !own) { console.log('SKIP: no neutrino-sim at ' + SIM); process.exit(0); }
 const PORT = OWN ? own.port : Number(argOf('--port'));
 const HTTP = OWN ? own.http : Number(argOf('--http', 8880));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -74,7 +74,7 @@ const answers = await new Promise((resolve) => {
   ws.onopen = () => { clearTimeout(t); ws.close(); resolve(true); };
   ws.onerror = () => { clearTimeout(t); resolve(false); };
 });
-if (!answers) { console.log('SKIP: no valencesim answering on ' + HOST + ':' + PORT); process.exit(0); }
+if (!answers) { console.log('SKIP: no neutrino-sim answering on ' + HOST + ':' + PORT); process.exit(0); }
 
 // ---- sessions: every one mints its own /uitoken -------------------------------
 async function open(name, subs = []) {

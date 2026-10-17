@@ -61,7 +61,7 @@ function emitGzip() {
 
 export default defineConfig({
   plugins: [svelte(), viteSingleFile(), emitGzip()],
-  // The built-in machine's worker is ES (integral.js is an ES module) and inlined (?worker&inline): one file.
+  // The built-in machine's worker is ES (neutrino.js is an ES module) and inlined (?worker&inline): one file.
   worker: { format: 'es' },
   define: {
     __UI_BUILD__: JSON.stringify(uiBuildId()),

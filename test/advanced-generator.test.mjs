@@ -127,7 +127,7 @@ ok('RFC-093: advgen.mode is never bound', !('mode' in (claim(catalog(1, { select
   const noDwell = claim(decodeCatalog(advgenCatalog({ drop: [ROLE.advgenDwellCrest, ROLE.advgenDwellTrough] }).bytes));
   ok('RFC-095: absent dwell roles decline nothing', !!noDwell && !noDwell.dwellCrest && !noDwell.dwellTrough);
   // The hub emits the roles itself since Nucleus val-091.38..42.
-  const real = decodeCatalog(new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url))));
+  const real = decodeCatalog(new Uint8Array(readFileSync(new URL('./fixtures/neutrino-catalog.bin', import.meta.url))));
   ok('the recorded catalog claims (its own advgen/mod roles)', claim(real) !== null);
 }
 

@@ -1,7 +1,7 @@
 /**
  * builder-edit.test.mjs -- ph-e82.20: editing the builder grid with a pointer
  * and a keyboard, on the built app against a fake hub (WELCOME, GRANT, PING;
- * the recorded valencesim catalog pre-seeded in the etag cache). Interaction
+ * the recorded neutrino-sim catalog pre-seeded in the etag cache). Interaction
  * only; the placement math is test/grid-model.test.mjs.
  *
  *   resize   every edge and corner resizes with a live ghost showing the
@@ -81,8 +81,8 @@ const ok = (name, cond, extra) => {
   if (!cond) fails++;
 };
 
-const CAT = readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url));
-const ETAG = readFileSync(new URL('./fixtures/valencesim-catalog.etag', import.meta.url), 'utf8').trim();
+const CAT = readFileSync(new URL('./fixtures/neutrino-catalog.bin', import.meta.url));
+const ETAG = readFileSync(new URL('./fixtures/neutrino-catalog.etag', import.meta.url), 'utf8').trim();
 const CONTROLS = placeableControls(buildSettingsModel(decodeCatalog(new Uint8Array(CAT))));
 const SLIDER = CONTROLS.find((c) => c.kind === 'field' && c.field.widget === WIDGET.slider && !c.field.readOnly).key;
 const [F1, F2, F3] = CONTROLS.filter((c) => c.kind === 'field' && c.key !== SLIDER && c.field.widget !== WIDGET.action).map((c) => c.key);

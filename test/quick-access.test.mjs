@@ -2,7 +2,7 @@
  * quick-access.test.mjs -- the shell context menu, the right dock, field-bound
  * kit controls and the quick-access factory plugin (ph-kyjd, ph-5wsk.6), on
  * the shell bundle with the stub Tauri runtime and a fake hub that echoes,
- * holds or refuses writes on the recorded valencesim catalog. Asserts:
+ * holds or refuses writes on the recorded neutrino-sim catalog. Asserts:
  *   native     a right-click is prevented everywhere (every element of a page
  *              and of Hubs: the webview's menu never shows) and opens the shell menu
  *   text       in text entry: Undo, Cut, Copy, Paste, Select all by the input's
@@ -65,8 +65,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let fails = 0;
 const ok = (n, c, extra) => { console.log('  [' + (c ? 'PASS' : 'FAIL') + '] ' + n + (extra !== undefined && !c ? '  -- ' + JSON.stringify(extra) : '')); if (!c) fails++; };
 
-const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
-const ETAG = readFileSync(new URL('./fixtures/valencesim-catalog.etag', import.meta.url), 'utf8').trim();
+const CAT = new Uint8Array(readFileSync(new URL('./fixtures/neutrino-catalog.bin', import.meta.url)));
+const ETAG = readFileSync(new URL('./fixtures/neutrino-catalog.etag', import.meta.url), 'utf8').trim();
 const ENTRIES = decodeCatalog(CAT);
 const HUB = '127.0.0.1:82';
 // The Motion page's Oscillator card: role-less settings (uid keys) and a role readout.

@@ -114,7 +114,7 @@ scheduler, stash, library, timeline, prefs, scale, analyzer, rows, axes, osc`; `
 // backup carries) and read from there when api.prefs has none. stash holds the API key: never mirrored.
 ```
 
-Wire record on valencesim and Nucleus (0x2101 `motion-segment`, found by
+Wire record on neutrino-sim and Nucleus (0x2101 `motion-segment`, found by
 role, never by id): `target_norm` u16 x10000 (`input.target`), `duration_ms`
 u16 (`input.duration`), `end_vel_norm` i16 (`input.end_velocity`, always its
 `unspecified` sentinel -32768). Bundle: `t_base` u32 hub us is the first
@@ -366,7 +366,7 @@ playing; nothing else submits motion.
 sent once; restart order; skipped counted; offset +40 shifts every atMs by
 exactly 40; rate 1.5 divides durations; stop and preroll shapes; TRANSIENT
 vs fatal; RATE_EXCEEDED thins once. `test/funscript-sync-live.mjs` is the
-sync measurement against valencesim (FUNSCRIPT.md, Tests).
+sync measurement against neutrino-sim (FUNSCRIPT.md, Tests).
 
 ---
 
@@ -966,7 +966,7 @@ together, since test (g) validates every factory manifest).
 `test/funscript-player.test.mjs`: `--unit` (in `npm run check`) checks every
 export named here, the prefs and the hero spec; the default run is the
 fake-hub browser test (`npm run check:funscript`, in `test:browser`); `--live
---port P --http P+7` runs the card against valencesim on spare ports, and
+--port P --http P+7` runs the card against neutrino-sim on spare ports, and
 `--live-playback --port P --http P+7 [--shots dir]` plays a 60 s clip there
 with auto latency, a seek glide, a 14 s gap held as one span, a pause home, an A-B loop and a
 Preview write, printing one `PB-RESULT` JSON line.

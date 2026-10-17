@@ -1,2 +1,2 @@
 # The Nucleus commit the Neutrino dev tool's native machine is built from; bump with node tools/neutrino-sim.mjs --write.
-nucleus 1184e50727d758ce0c3d9b6fe26e513e418d7e25
+nucleus f4b6d81a05f9bf4af8c7a7c694220a359f7525f3

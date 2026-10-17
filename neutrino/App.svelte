@@ -3,7 +3,7 @@
    * App.svelte -- the Neutrino dev tool's one window: the machine's dev tool channel (the native twin's
    * --devtool-port, 127.0.0.1) drawn as a rail, readouts, a scope, its clients, the physical panel, the network
    * panel and the log. Everything shown arrives on that channel; every input leaves on it as one text line
-   * (Nucleus sim/valencesim/README.md, The dev tool channel).
+   * (Nucleus sim/neutrino/README.md, The dev tool channel).
    */
   import { onMount } from 'svelte';
   import Rail from './Rail.svelte';

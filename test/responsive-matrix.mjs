@@ -2,13 +2,13 @@
  * responsive-matrix.mjs -- does every view hold up at every screen size?
  *
  * Renders the FULL app with no hub: Playwright's WebSocket route stands in for
- * the hub on :82, the recorded valencesim catalog is pre-seeded into the
+ * the hub on :82, the recorded neutrino-sim catalog is pre-seeded into the
  * client's etag cache (the warm-reconnect path, zero BLOB frames), and a
  * synthetic STATE stream feeds every subscribed channel from the catalog's own
  * layouts (defaults, else mid-bounds). The values are FIXTURE values, never
  * shown as a real machine: this is a layout instrument only. Uses the
- * FIXTURE, never a running valencesim, so it needs no sim and no hardware;
- * point the built page at `/?hub=127.0.0.1` with valencesim up for real STATE.
+ * FIXTURE, never a running neutrino-sim, so it needs no sim and no hardware;
+ * point the built page at `/?hub=127.0.0.1` with neutrino-sim up for real STATE.
  *
  * Per viewport it visits every nav tab, screenshots it to
  * test/evidence/responsive/<view>-<w>x<h>[@2x][-<tile>].png (scrolled tiles on
@@ -99,8 +99,8 @@ const OUT = argOf('--out', null) || join(EVIDENCE, 'responsive');
 mkdirSync(OUT, { recursive: true });
 
 const HTML = readFileSync(argOf('--html', null) || DIST_HTML);
-const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
-const ETAG = readFileSync(new URL('./fixtures/valencesim-catalog.etag', import.meta.url), 'utf8').trim();
+const CAT = new Uint8Array(readFileSync(new URL('./fixtures/neutrino-catalog.bin', import.meta.url)));
+const ETAG = readFileSync(new URL('./fixtures/neutrino-catalog.etag', import.meta.url), 'utf8').trim();
 const ENTRIES = decodeCatalog(CAT);
 const toHex = (b) => Buffer.from(b).toString('hex');
 

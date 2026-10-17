@@ -2,7 +2,7 @@
  * add-to-dash.test.mjs -- Add to Dash in the shell context menu (ph-hi4i.1,
  * DESIGN §10.1 and §10.13): a submenu over the named layouts (the Dashes),
  * on the built app (dist/index.html) against a fake hub on the recorded
- * valencesim catalog. Asserts:
+ * neutrino-sim catalog. Asserts:
  *   seed       an add to the unbuilt Default keeps every seed card where it was
  *              drawn and appends the field at the first free rect; the page stays
  *   check      a Dash that holds the item is checked (a mark: every row stays a
@@ -46,7 +46,7 @@ let fails = 0;
 const ok = (n, c, extra) => { console.log('  [' + (c ? 'PASS' : 'FAIL') + '] ' + n + (extra !== undefined && !c ? '  -- ' + JSON.stringify(extra) : '')); if (!c) fails++; };
 
 const HTML = readFileSync(DIST_HTML);
-const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
+const CAT = new Uint8Array(readFileSync(new URL('./fixtures/neutrino-catalog.bin', import.meta.url)));
 const ETAG = toHex(catalogEtag(CAT, LIMITS.etag_bytes));
 const ENTRIES = decodeCatalog(CAT);
 const PAPER = THEMES.find((t) => t.id === 'paper');

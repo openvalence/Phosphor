@@ -3,7 +3,7 @@
  *
  * Thresholds, hysteresis in both sweep directions, the pointer rule, and
  * §12's invariant that a class switch never changes reachable content: for
- * every category of the recorded valencesim catalog, every class projects
+ * every category of the recorded neutrino-sim catalog, every class projects
  * the same fields, only inline vs drill-in moves. The live half (active tab,
  * scroll anchor, a pending write surviving the remount) is a browser check in
  * test/responsive-matrix.mjs (`--only class`).
@@ -78,7 +78,7 @@ ok('handheld promotes past ' + DRILL_AFTER, promotes('handheld', DRILL_AFTER + 1
 ok('glance promotes every subgroup', promotes('glance', 1));
 
 // ---- page tree per class: same reachable content ------------------------------
-const entries = decodeCatalog(new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url))));
+const entries = decodeCatalog(new Uint8Array(readFileSync(new URL('./fixtures/neutrino-catalog.bin', import.meta.url))));
 const model = buildSettingsModel(entries);
 const uids = (proj) => proj.flatMap((p) => p.group.fields.map((f) => f.uid)).sort().join(',');
 let same = true;

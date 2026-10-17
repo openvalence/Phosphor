@@ -1,5 +1,5 @@
 /**
- * meteor-live.mjs -- the rail's comet (RailWidget) against a private valencesim running its
+ * meteor-live.mjs -- the rail's comet (RailWidget) against a private neutrino-sim running its
  * pattern at three speeds, at 4K (1920 x 1080 CSS at device scale 2).
  *
  * Per speed: the display lag (the shift that lays the painted head over the arrivals), the
@@ -36,7 +36,7 @@ const DRAW_BUDGET_MS = 0.8;
 mkdirSync(EVIDENCE, { recursive: true });
 
 const own = await startSim();
-if (!own) { console.log('SKIP: no valencesim at ' + SIM); process.exit(0); }
+if (!own) { console.log('SKIP: no neutrino-sim at ' + SIM); process.exit(0); }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let fails = 0;
 const ok = (n, c, extra) => { console.log('  [' + (c ? 'PASS' : 'FAIL') + '] ' + n + (extra !== undefined ? '  -- ' + extra : '')); if (!c) fails++; };

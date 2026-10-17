@@ -1,11 +1,11 @@
 /**
  * lan.svelte.js -- Open to LAN: Neutrino's hub on this PC's network. src-tauri/src/lan.rs owns the
  * WebSocket listener and the SPEC 13.8 UDP port; this file carries their bytes to the Neutrino worker
- * (integral-bridge.js) and back. DESKTOP SHELL ONLY, off by default (prefs openToLan, lanPort).
+ * (neutrino-bridge.js) and back. DESKTOP SHELL ONLY, off by default (prefs openToLan, lanPort).
  *
  * Constraints:
  * - A remote is one more session of Neutrino's hub: tiers, pairing and ownership are the hub's, and
- *   discovery replies and ESTOP datagrams are the hub's too (integral_datagram). Nothing here reads a frame.
+ *   discovery replies and ESTOP datagrams are the hub's too (neutrino_datagram). Nothing here reads a frame.
  * - Up only while the pref is on and Neutrino runs. Going down, lan_stop sends every remote BYE and
  *   closes it first; then, when the hub lives on, each remote's session gets the same BYE, so the hub
  *   runs its full teardown (ownership released) instead of parking the session STALE.
@@ -25,7 +25,7 @@ const BYE = encodeFrame(FRAME.GOODBYE, 0, cbMap([[K.code, cbUint(GOODBYE_CODE.NO
 /** {port, addrs, discovery, remotes, note}: port 0 while closed. */
 export const lan = $state({ port: 0, addrs: [], discovery: false, remotes: 0, note: '' });
 
-let bridge = null;      // Neutrino's running bridgeIntegral, else null
+let bridge = null;      // Neutrino's running bridgeNeutrino, else null
 let chan = null;        // the current start's Channel
 let wanted = { on: false, port: 0 };
 let busy = Promise.resolve();
@@ -126,7 +126,7 @@ prefs.subscribe((p) => {
   sync();
 });
 
-/** Neutrino is up: its bridge (integral-bridge.js), which must expose post(). */
+/** Neutrino is up: its bridge (neutrino-bridge.js), which must expose post(). */
 export function lanAttach(b) {
   bridge = b;
   sync();

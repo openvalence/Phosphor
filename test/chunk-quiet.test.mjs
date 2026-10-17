@@ -1,6 +1,6 @@
 /**
  * chunk-quiet.test.mjs -- NACK CHUNK_UNAVAILABLE in ordinary use (ph-2tjo): the
- * shell bundle against a private native valencesim, every BLOB_REQ and NACK read
+ * shell bundle against a private native neutrino-sim, every BLOB_REQ and NACK read
  * off the wire through a pass-through socket route.
  *
  *   abort     a catalog transfer the hub aborts (SPEC 8.6: one CHUNK_UNAVAILABLE
@@ -16,7 +16,7 @@
  *   grow      a new etag announced on 0x0001 (injected: the sim declares no 0x0001)
  *             asks for the catalog once
  *
- * Needs ../Nucleus/sim/valencesim/build/valencesim.exe; SKIPs without it.
+ * Needs ../Nucleus/sim/neutrino/build/neutrino-sim.exe; SKIPs without it.
  * Run: node test/chunk-quiet.test.mjs
  * Constraints: the sim and the page run on private ports; the sim is killed on every exit path.
  */
@@ -36,7 +36,7 @@ const ok = (name, cond, extra) => {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const sim = await startSim();
-if (!sim) { console.log('SKIP: no valencesim'); process.exit(0); }
+if (!sim) { console.log('SKIP: no neutrino-sim'); process.exit(0); }
 const SHELL = await buildShellPage();
 const srv = createServer((q, s) => {
   if (q.url.startsWith('/uitoken')) {

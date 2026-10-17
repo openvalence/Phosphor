@@ -4,7 +4,7 @@
 //
 // Constraints:
 // - Carries bytes, never Valence: no frame is parsed or built here. Tiers,
-//   pairing, ownership and the discovery reply are the hub's (the integral
+//   pairing, ownership and the discovery reply are the hub's (the neutrino
 //   ABI). The subprotocol, the UDP port and the GOODBYE a remote gets at
 //   shutdown (`farewell`) are the page's, from valence-js, so no wire number
 //   is transcribed here.
