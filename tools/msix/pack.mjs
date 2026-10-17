@@ -18,6 +18,8 @@ const layout = out + 'layout/';
 const msix = out + 'phosphor-x86_64.msix';
 
 const id = JSON.parse(readFileSync(here + 'identity.json', 'utf8'));
+// CI sets MSIX_PUBLISHER to the signing certificate's subject (docs/BUILD.md, Windows signing).
+id.publisher = process.env.MSIX_PUBLISHER || id.publisher;
 const conf = JSON.parse(readFileSync(root + 'src-tauri/tauri.conf.json', 'utf8'));
 const semver = buildVersion();
 // The Store wants a.b.c.0: the fourth field is reserved for it.

@@ -1,0 +1,39 @@
+# Run after approving a v* tag's SignPath signing request; build.yml's job
+# summary holds the command. The signed installer, portable exe and MSIX go
+# into that tag's draft release, replacing the unsigned files of the same
+# name. docs/BUILD.md, Windows signing.
+name: sign-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (v0.1.700)
+        required: true
+      signing-request-id:
+        description: SignPath signing request id, from the build job summary
+        required: true
+
+permissions:
+  contents: write # the draft release
+
+jobs:
+  signed:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Signed files into the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SIGNPATH_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+          REQUEST: https://app.signpath.io/Api/v1/${{ vars.SIGNPATH_ORGANIZATION_ID }}/SigningRequests/${{ inputs.signing-request-id }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          auth="Authorization: Bearer $SIGNPATH_TOKEN"
+          status=$(curl -fsS -H "$auth" "$REQUEST" | jq -r .status)
+          if [ "$status" != Completed ]; then
+            echo "::error::signing request is $status, not Completed"
+            exit 1
+          fi
+          curl -fsSL -H "$auth" -o signed.zip "$REQUEST/SignedArtifact"
+          unzip -q signed.zip -d signed
+          gh release upload "$TAG" signed/bundle/nsis/*-setup.exe signed/portable/*.exe signed/msix/*.msix --clobber -R "$GITHUB_REPOSITORY"

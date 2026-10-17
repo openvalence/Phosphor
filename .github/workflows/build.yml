@@ -1,6 +1,7 @@
 # Phosphor bundles for Windows, macOS and Linux, plus a Flatpak built from
-# the Linux .deb. SignPath signs the Windows installer outside pull requests.
-# docs/BUILD.md is the map.
+# the Linux .deb, and a Windows MSIX. A v* tag sends the Windows installer,
+# MSIX and portable exe to SignPath (sign-release.yml fetches them once
+# approved). docs/BUILD.md is the map.
 # A v* tag also opens a draft release holding every bundle.
 name: build
 
@@ -143,32 +144,68 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload "${{ github.ref_name }}" portable/*.exe --clobber -R "${{ github.repository }}"
 
-      # Skipped, not failed, until the SignPath variables exist (docs/BUILD.md,
-      # Windows signing). The artifact zip holds nsis/<installer>.exe.
-      - name: Sign the installer (SignPath)
-        if: runner.os == 'Windows' && github.event_name != 'pull_request' && vars.SIGNPATH_ORGANIZATION_ID != ''
+      # The sideload MSIX around the same exe. Its Publisher must equal the
+      # signing certificate's subject (vars.MSIX_PUBLISHER); unsigned, it does
+      # not install, so only the signed one goes into a release.
+      - name: MSIX package
+        if: runner.os == 'Windows'
+        shell: bash
+        working-directory: Phosphor
+        env:
+          MSIX_PUBLISHER: ${{ vars.MSIX_PUBLISHER }}
+        run: |
+          rel=src-tauri/target/${{ matrix.triple }}/release
+          node tools/msix/pack.mjs --exe-dir "$rel"
+          v=$(basename "$rel"/portable/*.exe | sed -E 's/^Phosphor_(.+)_x64-portable\.exe$/\1/')
+          mkdir -p "$rel/msix" && cp src-tauri/target/msix/phosphor-x86_64.msix "$rel/msix/Phosphor_${v}_x64.msix"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: runner.os == 'Windows'
+        with:
+          name: phosphor-${{ matrix.triple }}-msix
+          if-no-files-found: error
+          path: Phosphor/src-tauri/target/${{ matrix.triple }}/release/msix/*.msix
+
+      # v* tag pushes only, and skipped until the SignPath variables exist
+      # (docs/BUILD.md, Windows signing). Every request waits for a manual
+      # approval, so the job submits and does not wait; sign-release.yml
+      # fetches the signed files. The zip holds bundle/nsis/, portable/, msix/.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        id: tosign
+        if: runner.os == 'Windows' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && vars.SIGNPATH_ORGANIZATION_ID != ''
+        with:
+          name: phosphor-${{ matrix.triple }}-to-sign
+          if-no-files-found: error
+          path: |
+            Phosphor/src-tauri/target/${{ matrix.triple }}/release/bundle/nsis/*-setup.exe
+            Phosphor/src-tauri/target/${{ matrix.triple }}/release/portable/*.exe
+            Phosphor/src-tauri/target/${{ matrix.triple }}/release/msix/*.msix
+      - name: Signing request (SignPath)
+        id: signpath
+        if: steps.tosign.outcome == 'success'
         uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
           project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
           signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
-          github-artifact-id: ${{ steps.upload.outputs.artifact-id }}
-          wait-for-completion: true
-          output-artifact-directory: signed
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: runner.os == 'Windows' && github.event_name != 'pull_request' && vars.SIGNPATH_ORGANIZATION_ID != ''
-        with:
-          name: phosphor-${{ matrix.triple }}-signed
-          if-no-files-found: error
-          path: signed/nsis/*.exe
-      # Same file name, so the signed installer replaces the unsigned one.
-      - name: Signed installer into the draft release
-        if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/v') && vars.SIGNPATH_ORGANIZATION_ID != ''
+          github-artifact-id: ${{ steps.tosign.outputs.artifact-id }}
+          wait-for-completion: false
+      - name: Signing request in the job summary
+        if: steps.signpath.outcome == 'success'
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ github.ref_name }}" signed/nsis/*.exe --clobber -R "${{ github.repository }}"
+          URL: ${{ steps.signpath.outputs.signing-request-web-url }}
+          ID: ${{ steps.signpath.outputs.signing-request-id }}
+        run: |
+          {
+            echo "Approve the signing request: $URL"
+            echo
+            echo "Then put the signed files into the draft release:"
+            echo
+            echo '```'
+            echo "gh workflow run sign-release.yml -R $GITHUB_REPOSITORY -f tag=$GITHUB_REF_NAME -f signing-request-id=$ID"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   flatpak:
     needs: bundle

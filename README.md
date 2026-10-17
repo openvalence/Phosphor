@@ -160,7 +160,7 @@ Real time or lockstep:
 
 ## Builds
 
-Windows, macOS (aarch64) and Linux bundles, plus a Flatpak, an Android build and the SignPath-signed Windows installer: local recipes, what CI
+Windows, macOS (aarch64) and Linux bundles, plus a Flatpak, an Android build and the SignPath-signed Windows MSIX, installer and portable exe: local recipes, what CI
 (`.github/workflows/build.yml`) produces and what it needs on the remote are
 in [docs/BUILD.md](docs/BUILD.md).
 
@@ -181,6 +181,12 @@ Doctrine lives in `.claude/rules/`; volatile truth lives on the dev board
 
 Design rulings: [`docs/DESIGN.md`](docs/DESIGN.md).
 The builder (home page, controls, nests, layouts; 2026-09-26): [`docs/DESIGN.md` §10](docs/DESIGN.md#10-the-builder-operator-rulings-2026-09-26).
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+
+Release builds of the Windows MSIX, installer and portable exe are signed. Signing requests come only from `v*` tags built by GitHub Actions in this repo, and each one is approved by hand. Roles, what is signed and the privacy statement: [Code signing policy](https://openvalence.org/code-signing/).
 
 ## License
 
