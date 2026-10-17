@@ -92,7 +92,7 @@
             <span class="palette-title">{e.title}</span>
             {#if e.kind === 'safety'}
               <span class="palette-tag" data-tip="A grid copy of a strip control">
-                {target ? 'Strip and top level only' : 'Also in the strip'}</span>
+                {target ? 'Strip and top level only' : 'Strip sub-modules'}</span>
             {/if}
             {#if placed.has(e.id)}
               <button type="button" class="og-btn sm" aria-label={'Remove ' + e.title} onclick={() => onremove(e.id)}>Remove</button>

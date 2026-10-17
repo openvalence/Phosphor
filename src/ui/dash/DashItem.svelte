@@ -268,7 +268,7 @@
           </button>
         {/if}
         {#if onremove}
-          <button type="button" class="ico out" aria-label={'Move ' + item.title + ' out of the nest'} data-tip="Out of the nest"
+          <button type="button" class="ico out" aria-label={'Move ' + item.title + ' out of the nest'} data-tip="Unparent from nest"
                   onclick={onremove}>
             <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M9 2.5h4.5V7M13.5 2.5 7 9M12 10v3.5H2.5V4H6" /></svg>
           </button>
@@ -323,7 +323,7 @@
     {/each}
     <button type="button" class="handle resize"
             aria-label={'Resize ' + item.title + ', ' + w + ' by ' + h + ' cells'}
-            data-tip="Drag or arrow keys to resize"
+            data-tip="Drag or use arrow keys to resize"
             onpointerdown={onResizePointerDown}
             onpointermove={onResizePointerMove}
             onpointerup={onResizePointerUp}

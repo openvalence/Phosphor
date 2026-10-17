@@ -1083,7 +1083,7 @@ FULL
   (m)`, `Unmute (m)`, `Seek`, `Fullscreen (f)`, `Exit fullscreen (f)`,
   `In window / Borderless`; the transport's `Previous`, `Next`, `Rate`, `Graph (g)`,
   `Close`; the timeline's `Settings` (sliders); the caret's `Library`;
-  `Machine later (+) or earlier (-)`; `Search scenes`;
+  `Delay or advance motion; + later, - earlier`; `Search scenes`;
   `No scene loaded`, `No script for this video`, `No script for this
   scene`, `Positioning`, `Buffering`, `Format not playable here`,
   `Script past the input speed limit`, `Extra axes ignored: roll,

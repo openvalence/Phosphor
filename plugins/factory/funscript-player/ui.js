@@ -131,7 +131,7 @@ export const COPY = Object.freeze({
   rail: 'Rail',
   motion: 'Motion',
   offset: 'Offset',
-  offsetTip: 'Machine later (+) or earlier (-)',
+  offsetTip: 'Delay or advance motion; + later, - earlier',
   offsetUnit: 'ms',
   prev: 'Previous',
   next: 'Next',
