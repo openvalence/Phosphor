@@ -176,7 +176,7 @@ function dashItems(t, heroes, nav) {
   const add = (n, s) => { if (addToDash(n, c.key, s)) say('Added to ' + n); };
   return [{ label: 'Add to Dash', items: [
     ...orderedLayoutNames().map((n) => (dashHolds(n, ids, seed)
-      ? { label: n, checked: true, title: 'Show it there', run: () => showOnDash(nav, n, ids) }
+      ? { label: n, checked: true, title: 'Jump to existing control', run: () => showOnDash(nav, n, ids) }
       : { label: n, checked: false, run: () => add(n, seed) })),
     { label: 'New Dash…', ask: { label: 'New Dash name', placeholder: 'Dash name', commit: (name) => {
       const was = layouts.active;

@@ -64,7 +64,7 @@
                 onclick={() => bp.start()}>Start server</button>
       {/if}
       <button type="button" class="og-btn" disabled={!s.ready || !s.running || s.stopAll.phase === 'pending'}
-              data-tip={s.running ? '' : 'Server stopped'} onclick={bp.stopAll}>Stop all toys</button>
+              data-tip={s.running ? '' : 'Start the server first'} onclick={bp.stopAll}>Stop all toys</button>
     </div>
     <p class="pane-status" role="status" data-phase={runPhase} data-tip={runText}>{runText}</p>
     <p class="pane-status" role="status" data-phase={s.stopAll.reason ? s.stopAll.phase : null} data-tip={stopText}>{stopText}</p>
