@@ -7,6 +7,7 @@ mod lan;
 mod linkstats;
 mod material;
 mod plugins;
+mod portable;
 mod report;
 mod wallpaper;
 
@@ -44,6 +45,13 @@ pub fn run() {
   {
     std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
   }
+  #[cfg(windows)]
+  portable::init();
+  let mut context = tauri::generate_context!();
+  // Portable: the window is built in setup, where its WebView2 data folder can be set.
+  if portable::dir().is_some() {
+    context.config_mut().app.windows.iter_mut().for_each(|w| w.create = false);
+  }
   let builder = tauri::Builder::default()
     .plugin(tauri_plugin_http::init())
     .plugin(tauri_plugin_clipboard_manager::init())
@@ -74,6 +82,7 @@ pub fn run() {
       #[cfg(desktop)]
       lan::lan_stop,
       report::save_report,
+      portable::portable_dir,
       #[cfg(desktop)]
       report::open_report_url,
       #[cfg(not(target_os = "ios"))]
@@ -124,11 +133,20 @@ pub fn run() {
       // only field diagnostics an operator has.
       {
         use tauri_plugin_log::{Target, TargetKind};
+        let file = match portable::dir() {
+          Some(d) => TargetKind::Folder { path: d.join("logs"), file_name: None },
+          None => TargetKind::LogDir { file_name: None },
+        };
         let mut b = tauri_plugin_log::Builder::default()
           .level(log::LevelFilter::Info)
-          .targets([Target::new(TargetKind::Stdout), Target::new(TargetKind::LogDir { file_name: None })]);
+          .targets([Target::new(TargetKind::Stdout), Target::new(file)]);
         if cfg!(debug_assertions) { b = b.target(Target::new(TargetKind::Webview)); }
         app.handle().plugin(b.build())?;
+      }
+      if let Some(d) = portable::dir() {
+        for w in app.config().app.windows.clone() {
+          tauri::WebviewWindowBuilder::from_config(app.handle(), &w)?.data_directory(d.to_path_buf()).build()?;
+        }
       }
       #[cfg(not(target_os = "ios"))]
       {
@@ -151,7 +169,7 @@ pub fn run() {
       }
       Ok(())
     })
-    .build(tauri::generate_context!())
+    .build(context)
     .expect("error while running tauri application")
     .run(|_app, _event| {
       #[cfg(desktop)]

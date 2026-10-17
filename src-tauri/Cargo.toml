@@ -25,7 +25,9 @@ log = "0.4"
 tauri = { version = "2.11.3", features = ["devtools"] }
 tauri-plugin-log = "2"
 # Rust-side fetch: /uitoken minting from a native origin (main.js shell branch)
-tauri-plugin-http = "2"
+# No cookie jar: the plugin's lives in the user cache folder, outside a portable
+# build's PhosphorData (src/portable.rs). Hubs and the shipped plugins set none.
+tauri-plugin-http = { version = "2", default-features = false, features = ["rustls-tls", "http2", "charset", "macos-system-configuration"] }
 # Native clipboard for the context menu's Paste and Copy: a webview read asks
 # the user for clipboard permission, a native one does not (capabilities: read
 # and write text only).
@@ -71,7 +73,9 @@ buttplug_server_hwmgr_hid = { path = "../../ButtplugIO/crates/buttplug_server_hw
 libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_NetworkManagement_IpHelper", "Win32_Networking_WinSock", "Win32_System_Registry", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.61", features = ["Win32_NetworkManagement_IpHelper", "Win32_Networking_WinSock", "Win32_System_Registry", "Win32_UI_Controls", "Win32_UI_WindowsAndMessaging"] }
+# Portable mode (src/portable.rs): the known user folders. Already in the tree through tauri.
+dirs = "6"
 
 # Liquid Glass (src/material.rs): NSGlassEffectView is looked up by name at run time,
 # so only the runtime and a rect type are needed. A transparent window on macOS needs

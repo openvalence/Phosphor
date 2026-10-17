@@ -10,6 +10,7 @@
    *   major and the WS subprotocol; those are what is shown.
    */
   import { getVersion } from '@tauri-apps/api/app';
+  import { invoke } from '@tauri-apps/api/core';
   import { machine } from '../model/machine.svelte.js';
   import { hubTitle } from '../model/format.js';
   import { reportedValue } from '../model/settings.js';
@@ -28,6 +29,8 @@
   const etag = $derived(machine.catalog.etag || '--');
   let shellVersion = $state('--');
   getVersion().then((v) => { shellVersion = v; }).catch(() => {});
+  let dataDir = $state(null);
+  invoke('portable_dir').then((d) => { dataDir = d; }).catch(() => {});
   const PHOSPHOR = { name: 'Phosphor', url: 'https://github.com/openvalence/Phosphor/blob/main/LICENSE', license: 'Apache-2.0' };
   // BSD-3-Clause: binaries must carry the copyright, conditions and disclaimer.
   // The embedded ButtplugIO server ships in every build, so its license text ships here.
@@ -53,6 +56,7 @@
       <dt>Shell</dt><dd class:mono={shellVersion !== '--'}>{shellVersion}</dd>
       <dt>UI build</dt><dd class="mono">{uiBuild}</dd>
       <dt>Protocol</dt><dd class="mono">v{PROTO_VER} ({WS_SUBPROTOCOL})</dd>
+      {#if dataDir}<dt>Install</dt><dd>Portable</dd><dt>Data folder</dt><dd class="mono">{dataDir}</dd>{/if}
     </dl>
   </section>
   <SentReports />

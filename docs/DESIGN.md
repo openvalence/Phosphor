@@ -1610,6 +1610,39 @@ Neutrino built into Phosphor stays exactly as it is (10.10).
 - **Faults are a network's.** A frame is never lost: loss is a 200 ms
   retransmit that holds the frames behind it, as TCP under a WebSocket does.
 
+### 10.18 The Windows portable build (operator 2026-10-17, `ph-5fdg`)
+
+MSIX is the preferred Windows route, NSIS the standard one. The portable build
+is contained: it writes only to its own folder, and that folder holds nothing
+else.
+
+- **The zip.** One top-level folder, `Phosphor/`, holding `phosphor.exe` and
+  `phosphor.portable`, so Extract here and Extract all both give the app a
+  folder of its own. The exe inside is the signed release exe.
+- **The marker.** A file named `phosphor.portable` beside the exe turns
+  portable mode on; its contents are not read. Only the marker does it, never
+  the path. Delete it and the exe uses the installed locations.
+- **The data folder.** `PhosphorData` beside the exe holds every write: the
+  WebView2 user data folder (`EBWebView`: localStorage, IndexedDB, cookies,
+  cache, so every page-side store including Neutrino's and the saved hubs),
+  `logs`, `plugins`, `buttplug` (settings, device names), and saved health
+  reports. Each app path goes through `src-tauri/src/portable.rs` `or()`; the
+  main window is built in setup with the data folder as its WebView2 data
+  directory. The Rust-side fetch keeps no cookie jar (its file lives in the
+  user cache folder). No registry writes in either mode.
+- **Not a folder of its own.** Before any write (data folder, log file,
+  webview), a native Windows task dialog stops a launch from the root of a
+  drive, Downloads, Desktop, Documents or the user folder: Move to its own
+  folder (creates `Phosphor`, or `Phosphor (2)` and on, beside the exe, moves
+  the exe, the marker and any `PhosphorData` into it, starts it there and
+  quits; a failed move is put back and reported), Continue here (stored in
+  `PhosphorData\location-accepted` once chosen, for that folder only), Quit.
+  A launch from the temporary folder (an exe opened inside a zip) says to
+  extract first and quits. An unwritable folder gets an error and quits. A
+  launch that ends in Quit leaves no file anywhere. The dialogs are native
+  because the webview writes its data folder the moment it starts.
+- **About.** Settings, About shows Install: Portable and the data folder.
+
 ## Amendments
 
 | Date | Section | Change | Approved by |
@@ -1726,3 +1759,4 @@ Neutrino built into Phosphor stays exactly as it is (10.10).
 | 2026-10-16 | copy, §10.17 | Copy voice (COPY.md rule 12): plain technical terms of motion control and industrial equipment, no jokes, winks, reassurance or the obvious. The Neutrino dev tool's strings say what each control does in network and machine terms; Virtual Valence's standing status reads `Virtual: settings stage for Merge`, its link dot `Virtual: replay of the saved catalog`, and Neutrino's badge tip drops "machine". | operator ("no need for this smarmy voice ... use standardized and recognized verbiage for motion machines, industrial equipment"; "not literally banned": a voice rule, no lint). The wording of each string is the agent's, veto-able |
 | 2026-10-16 | §10.17 | Neutrino's rail and scope play the 1 ms samples back on the display's frames at a render instant behind a jitter buffer, and the rail gains a motion-blur shutter (Off, 180°, 360°). The twin's broadcaster wakes on the hub's publish instead of sleeping (a sleep in the windowless sidecar rounded to 47 ms). | operator ("neutrino also seems to be fps limited or not smooth ... add a blur option, to the rail, so rapid movements make sense"); 30 Hz snapshots kept, the shutter choices, the square-root tone curve and the outline at the render instant are the agent's, veto-able |
 | 2026-10-17 | §10.x top bar, ambient | The animated mark (connecting spinner, launch splash) runs at the display's frame rate, exempt from the 30 fps ambient step: it never runs alongside time-sensitive tasks. | operator |
+| 2026-10-17 | §10.18 | The Windows portable build is contained: a `Phosphor/` folder in the zip, `phosphor.portable` beside the exe turns portable mode on, every write goes to `PhosphorData` beside it (the WebView2 data folder included), a launch from a shared folder root (drive, Downloads, Desktop, Documents, user folder) or the temporary folder is stopped by a native dialog before any write (`ph-5fdg`). | operator ("the portable needs to be genuinely portable, writing only to the folder it is run from, and an alert if it's running straight in the downloads etc"; "phosphor.exe and its storage folders sit in their OWN folder"; "a user doesn't accidentally just run the bare app and have it create its stores in the root of a user library folder"; Move / Continue here / Quit); the marker and folder names, `Phosphor (2)` numbering, dropping the cookie jar and the dialog wording are the agent's, veto-able |

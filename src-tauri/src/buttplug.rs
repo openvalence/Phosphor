@@ -1246,7 +1246,7 @@ impl HardwareInternal for MachineHardware {
 /// Builds the server from the saved settings and starts it when they say
 /// start on launch; the webview reads the result through bp_status.
 pub fn init(app: &AppHandle) -> Buttplug {
-  let dir = app.path().app_config_dir().ok().map(|d| d.join("buttplug"));
+  let dir = crate::portable::or(app.path().app_config_dir()).ok().map(|d| d.join("buttplug"));
   let app = app.clone();
   let bp = Buttplug::new_in(
     Arc::new(move |ev, payload| {

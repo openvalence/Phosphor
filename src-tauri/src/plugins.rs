@@ -101,7 +101,7 @@ fn load_one(dir: &Path) -> PluginFiles {
 }
 
 fn plugins_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?.join("plugins");
+    let dir = crate::portable::or(app.path().app_data_dir()).map_err(|e| e.to_string())?.join("plugins");
     std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {}", dir.display(), e))?;
     Ok(dir)
 }
