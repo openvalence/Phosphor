@@ -100,7 +100,9 @@ export function createTimeline(opts = {}) {
   const stats = { resyncs: 0 };
   const minSeg = () => Math.max(SEG_FLOOR_MS, 1250 / rateHz);
 
-  function emit(durationMs) {
+  function emit(span) {
+    // Microsecond grid: end - sent is a float difference (200 can come out 200.00000000000003).
+    const durationMs = Math.round(span * 1000) / 1000;
     const seg = { atMs: sent + k.leadMs, norm: pending.norm, durationMs };
     if (pending.endVel != null) seg.endVel = pending.endVel;
     plan.push({ t0: sent, t1: sent + durationMs, x0: at == null ? pending.norm : at, x1: pending.norm });
