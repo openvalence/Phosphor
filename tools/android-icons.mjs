@@ -22,4 +22,9 @@ if (!xml.includes('android.permission.WAKE_LOCK')) {
   if (at < 0) { console.error('android-icons: no uses-permission anchor in ' + mf); process.exit(1); }
   writeFileSync(mf, xml.slice(0, at) + '<uses-permission android:name="android.permission.WAKE_LOCK" />\n    ' + xml.slice(at));
 }
+const app = root + 'src-tauri/gen/android/app/';
+cpSync(root + 'src-tauri/android/signing.gradle.kts', app + 'signing.gradle.kts');
+const gradle = app + 'build.gradle.kts';
+const kts = readFileSync(gradle, 'utf8');
+if (!kts.includes('apply(from = "signing.gradle.kts")')) writeFileSync(gradle, kts.trimEnd() + '\n\napply(from = "signing.gradle.kts")\n');
 console.log('android-icons: copied into ' + main);

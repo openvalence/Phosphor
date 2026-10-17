@@ -37,3 +37,7 @@ neutrino/dist/
 neutrino/src-tauri/target/
 neutrino/src-tauri/gen/
 neutrino/src-tauri/binaries/
+
+*.jks
+*.keystore
+keystore.properties

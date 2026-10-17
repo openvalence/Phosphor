@@ -440,10 +440,56 @@ adb install -r src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-u
 - Delete the old APK before a rebuild: the Gradle debug build updates it in
   place without compacting, so the file doubles (448 MB seen 2026-10-08).
 - A debug APK is debug-signed (about 355 MB with the buttplug server,
-  symbols kept). A release needs a
-  keystore and a signing config in `gen/android/app/build.gradle.kts`, and
-  `usesCleartextTraffic` set to true there: the template allows cleartext
-  only in debug, and hubs speak plain `ws://` and `http://`.
+  symbols kept). A release APK is about 38 MB (arm64, R8, symbols stripped).
+
+### Android release (signed APK)
+
+```sh
+npm run build:android -- --apk --target aarch64 --ci
+# src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk
+```
+
+- Signing lives in `src-tauri/android/signing.gradle.kts`, which
+  `tools/android-icons.mjs` copies into `gen/android/app` and applies from its
+  `build.gradle.kts`. It also sets `usesCleartextTraffic` true for release:
+  the template allows cleartext only in debug, and hubs speak plain `ws://`
+  and `http://`.
+- The keystore comes from `ANDROID_KEYSTORE_FILE`, `ANDROID_KEYSTORE_PASSWORD`
+  and `ANDROID_KEY_ALIAS` (default `phosphor`), else from a
+  `keystore.properties` (`storeFile`, `password`, `keyAlias`) at
+  `ANDROID_KEYSTORE_PROPERTIES` or
+  `~/Documents/phosphor-android-signing/keystore.properties`. Store and key
+  share one password (PKCS12).
+- Without a keystore a release build fails with a message.
+  `PHOSPHOR_ANDROID_UNSIGNED=1` builds `app-universal-release-unsigned.apk`
+  on purpose (CI without the secrets).
+- No keystore, password or `keystore.properties` ever enters the repo;
+  `.gitignore` covers `*.jks`, `*.keystore` and `keystore.properties`.
+- arm64-v8a only: every phone sold in years is arm64, and each extra ABI
+  adds about 35 MB of native code. `--target armv7` (or `x86_64`) adds one.
+
+One time, the maintainer creates the release key:
+
+```sh
+node tools/android-keystore.mjs [folder]   # default ~/Documents/phosphor-android-signing
+gh secret set -f <folder>/github-secrets.env -R openvalence/Phosphor
+```
+
+The script refuses a folder inside the repo or one that already holds
+`phosphor-release.jks`, writes the keystore (RSA 4096, 10000 days, a random
+password), `keystore.properties` and `github-secrets.env`
+(`ANDROID_KEYSTORE_B64`, `ANDROID_KEYSTORE_PASSWORD`), and prints only paths,
+the certificate's SHA-256 fingerprint and the `gh` command. Back the folder up
+off the machine: an APK signed with another key cannot update an installed
+Phosphor, and Android's only way out is an uninstall, which deletes the app's
+data.
+
+Release certificate SHA-256 (verify a download with
+`apksigner verify --print-certs Phosphor_<version>_android-arm64.apk`):
+
+```
+NOT YET GENERATED: fill in from tools/android-keystore.mjs output
+```
 
 ## Versioning
 
@@ -479,6 +525,8 @@ Runs on every push to `main`, every pull request, every `v*` tag and by hand.
 | `aarch64-apple-darwin` | macos-latest | `.dmg` holding the ad-hoc signed `.app` (`phosphor-aarch64-apple-darwin`) |
 | `x86_64-unknown-linux-gnu` | ubuntu-22.04 | `.deb` and `.AppImage` (`phosphor-x86_64-unknown-linux-gnu`) |
 | `flatpak` | ubuntu-24.04, GNOME 50 container | `phosphor-x86_64.flatpak` |
+| `android` | ubuntu-24.04 | `Phosphor_<version>_android-arm64.apk` (`phosphor-android-arm64`), signed with the `ANDROID_KEYSTORE_*` secrets, else `..._android-arm64-unsigned.apk` |
+| `android-release` | ubuntu-24.04 | on a `v*` tag, after `bundle`: the signed APK into the draft release; an unsigned APK fails it |
 
 Each bundle job checks out Phosphor, Nucleus (`main`), Valence and Kinetic at
 the shas in Nucleus's `valence.pin` and `kinetic.pin`, and ButtplugIO

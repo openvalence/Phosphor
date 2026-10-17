@@ -1,6 +1,6 @@
 # Phosphor bundles for Windows, macOS and Linux, plus a Flatpak built from
-# the Linux .deb, and a Windows MSIX. A v* tag sends the Windows installer,
-# MSIX and portable exe to SignPath (sign-release.yml fetches them once
+# the Linux .deb, a Windows MSIX and an Android APK. A v* tag sends the
+# Windows installer, MSIX and portable exe to SignPath (sign-release.yml fetches them once
 # approved and publishes the portable exe inside its zip). docs/BUILD.md is the map.
 # A v* tag also opens a draft release holding every bundle.
 name: build
@@ -217,6 +217,121 @@ jobs:
             echo "gh workflow run sign-release.yml -R $GITHUB_REPOSITORY -f tag=$GITHUB_REF_NAME -f signing-request-id=$ID"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # The sideload APK, arm64-v8a only (docs/BUILD.md, Android release). Signed
+  # when the ANDROID_KEYSTORE_* secrets exist; pull requests and forks get an
+  # unsigned APK on purpose.
+  android:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          path: Phosphor
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          repository: openvalence/Nucleus
+          path: Nucleus
+      - name: Valence at Nucleus's valence.pin
+        id: pin
+        run: echo "sha=$(tr -d '[:space:]' < Nucleus/valence.pin)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          repository: openvalence/Valence
+          ref: ${{ steps.pin.outputs.sha }}
+          path: Valence
+      - name: Kinetic at Nucleus's kinetic.pin
+        id: kpin
+        run: echo "sha=$(tr -d '[:space:]' < Nucleus/kinetic.pin)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          repository: openvalence/Kinetic
+          ref: ${{ steps.kpin.outputs.sha }}
+          path: Kinetic
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          repository: openvalence/ButtplugIO
+          ref: valence
+          path: ButtplugIO
+
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          packages: platform-tools platforms;android-36 build-tools;36.0.0 ndk;29.0.14206865
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Phosphor/package-lock.json
+      - run: npm ci
+        working-directory: Phosphor
+      - run: rustup target add aarch64-linux-android
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: Phosphor/src-tauri -> target
+
+      - name: Release keystore from the secrets, or an unsigned build
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          else
+            echo "PHOSPHOR_ANDROID_UNSIGNED=1" >> "$GITHUB_ENV"
+          fi
+      - name: Release APK
+        working-directory: Phosphor
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          export NDK_HOME="$ANDROID_HOME/ndk/29.0.14206865"
+          npx tauri android init --ci
+          npm run build:android -- --apk --target aarch64 --ci
+      - name: Name the APK after the build version; verify the signature
+        working-directory: Phosphor
+        run: |
+          v=$(node tools/version.mjs)
+          out=src-tauri/gen/android/app/build/outputs/apk/universal/release
+          mkdir -p apk
+          if [ -f "$out/app-universal-release.apk" ]; then
+            cp "$out/app-universal-release.apk" "apk/Phosphor_${v}_android-arm64.apk"
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs apk/*.apk
+          else
+            cp "$out/app-universal-release-unsigned.apk" "apk/Phosphor_${v}_android-arm64-unsigned.apk"
+          fi
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: phosphor-android-arm64
+          if-no-files-found: error
+          path: Phosphor/apk/*.apk
+
+  # After bundle: tauri-action opens the draft release there. Unsigned APKs never ship.
+  android-release:
+    needs: [bundle, android]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: phosphor-android-arm64
+          path: apk
+      - name: Signed APK into the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ls apk/*-unsigned.apk >/dev/null 2>&1; then
+            echo "::error::the APK is unsigned: set ANDROID_KEYSTORE_B64 and ANDROID_KEYSTORE_PASSWORD (docs/BUILD.md, Android release)"
+            exit 1
+          fi
+          gh release upload "${{ github.ref_name }}" apk/*.apk --clobber -R "${{ github.repository }}"
 
   flatpak:
     needs: bundle
