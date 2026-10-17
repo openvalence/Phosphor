@@ -110,7 +110,7 @@ npm run build:app -- --bundles nsis
 
 Windows ships three files, signed by SignPath under the SignPath Foundation
 OSS program (operator ruling, 2026-10-17): the MSIX package (recommended),
-the NSIS installer (standard) and the portable exe. The Microsoft Store route
+the NSIS installer (standard) and the portable zip. The Microsoft Store route
 is retired (operator ruling, 2026-10-08): the Store does not let OpenValence
 distribute the MSIX itself. The MSIX is a plain sideload package with no
 update URI.
@@ -171,20 +171,38 @@ cannot open an NSIS installer, so the `phosphor.exe` inside it stays
 unsigned; the portable exe is that same binary, signed. The MSIX signature
 covers the exe inside it.
 
+The portable exe is signed as a bare file but published inside a zip,
+`Phosphor_<version>_x64-portable.zip`, so Extract here and Extract all both
+leave one folder (docs/DESIGN.md 10.18). Layout:
+
+```
+Phosphor/
+  phosphor.exe        the exe (signed on a release), renamed from Phosphor_<version>_x64-portable.exe
+  phosphor.portable   one line: Phosphor portable mode: all data stays in PhosphorData beside phosphor.exe.
+```
+
+The marker file turns portable mode on; the app creates `PhosphorData`
+beside the exe. The bare `Phosphor_<version>_x64-portable.exe` exists only
+inside the signing request zip (`portable/`) and is never a release asset.
+
 ### What CI does
 
 - Every build: the unsigned installer (`phosphor-x86_64-pc-windows-msvc`),
-  portable exe (`...-portable`) and MSIX (`...-msix`) as artifacts. No
-  signing request, and no MSIX in any release while unsigned.
+  portable zip (`...-portable`, the contained layout above, unsigned exe)
+  and MSIX (`...-msix`) as artifacts. No signing request, and no MSIX in any
+  release while unsigned. A `v*` tag puts the unsigned portable zip into the
+  draft release.
 - `v*` tag pushes, once `SIGNPATH_ORGANIZATION_ID` is set: the three files
   go to SignPath as `...-to-sign` and the job ends without waiting for the
-  approval. Its summary holds the request link and the follow-up command.
+  approval (the portable exe goes in as a bare pe-file). Its summary holds
+  the request link and the follow-up command.
   Pushes to `main` and pull requests never submit a request. Without the
   variable the signing steps are skipped, not failed.
 - `sign-release.yml` (manual, `tag` and `signing-request-id`): checks the
-  request is `Completed`, downloads the signed zip and uploads the three
-  files to the tag's draft release, replacing the unsigned files of the
-  same name.
+  request is `Completed`, downloads the signed zip, rebuilds the portable
+  zip around the signed exe (renamed `phosphor.exe`, with `phosphor.portable`)
+  and uploads the installer, MSIX and portable zip to the tag's draft
+  release, replacing the unsigned files of the same name.
 
 ### Release checklist
 
@@ -194,10 +212,12 @@ covers the exe inside it.
 3. `gh workflow run sign-release.yml -R openvalence/Phosphor -f tag=vX.Y.Z -f signing-request-id=<id>`
    (the summary prints it filled in).
 4. When every job is green, open the draft release `Phosphor vX.Y.Z` and
-   check the installer, portable exe and MSIX are signed (Properties >
-   Digital Signatures, or `signtool verify /pa <file>`).
-5. Download the release assets, run `sha256sum * > SHA256SUMS` and attach
-   `SHA256SUMS`.
+   check the installer and MSIX are signed and, after extracting the
+   portable zip, that `Phosphor/phosphor.exe` is (Properties > Digital
+   Signatures, or `signtool verify /pa <file>`); the zip holds exactly the
+   `Phosphor/` folder with `phosphor.exe` and `phosphor.portable`.
+5. Download the release assets (the portable zip included), run
+   `sha256sum * > SHA256SUMS` and attach `SHA256SUMS`.
 6. Publish the release.
 
 ## Windows MSIX (local packages)
@@ -455,7 +475,7 @@ Runs on every push to `main`, every pull request, every `v*` tag and by hand.
 
 | job | runner | produces (artifact) |
 |---|---|---|
-| `x86_64-pc-windows-msvc` | windows-latest | NSIS installer (`phosphor-x86_64-pc-windows-msvc`), portable exe (`...-portable`), MSIX (`...-msix`); on a `v*` tag, the SignPath request (`...-to-sign`) |
+| `x86_64-pc-windows-msvc` | windows-latest | NSIS installer (`phosphor-x86_64-pc-windows-msvc`), portable zip (`...-portable`), MSIX (`...-msix`); on a `v*` tag, the SignPath request (`...-to-sign`) |
 | `aarch64-apple-darwin` | macos-latest | `.dmg` holding the ad-hoc signed `.app` (`phosphor-aarch64-apple-darwin`) |
 | `x86_64-unknown-linux-gnu` | ubuntu-22.04 | `.deb` and `.AppImage` (`phosphor-x86_64-unknown-linux-gnu`) |
 | `flatpak` | ubuntu-24.04, GNOME 50 container | `phosphor-x86_64.flatpak` |

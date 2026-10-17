@@ -1,7 +1,8 @@
 # Run after approving a v* tag's SignPath signing request; build.yml's job
-# summary holds the command. The signed installer, portable exe and MSIX go
-# into that tag's draft release, replacing the unsigned files of the same
-# name. docs/BUILD.md, Windows signing.
+# summary holds the command. The signed installer, MSIX and portable zip (the
+# signed exe renamed phosphor.exe inside a Phosphor/ folder with the
+# phosphor.portable marker) go into that tag's draft release, replacing the
+# unsigned files of the same name. docs/BUILD.md, Windows signing.
 name: sign-release
 
 on:
@@ -36,4 +37,10 @@ jobs:
           fi
           curl -fsSL -H "$auth" -o signed.zip "$REQUEST/SignedArtifact"
           unzip -q signed.zip -d signed
-          gh release upload "$TAG" signed/bundle/nsis/*-setup.exe signed/portable/*.exe signed/msix/*.msix --clobber -R "$GITHUB_REPOSITORY"
+          exe=$(ls signed/portable/Phosphor_*_x64-portable.exe)
+          zipname=$(basename "$exe" .exe).zip
+          mkdir -p stage/Phosphor
+          cp "$exe" stage/Phosphor/phosphor.exe
+          echo "Phosphor portable mode: all data stays in PhosphorData beside phosphor.exe." > stage/Phosphor/phosphor.portable
+          (cd stage && zip -qr "../$zipname" Phosphor)
+          gh release upload "$TAG" signed/bundle/nsis/*-setup.exe signed/msix/*.msix "$zipname" --clobber -R "$GITHUB_REPOSITORY"
