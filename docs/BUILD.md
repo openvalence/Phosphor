@@ -488,7 +488,7 @@ Release certificate SHA-256 (verify a download with
 `apksigner verify --print-certs Phosphor_<version>_android-arm64.apk`):
 
 ```
-NOT YET GENERATED: fill in from tools/android-keystore.mjs output
+1F:D3:62:C0:8B:EE:8A:19:33:26:F1:E5:9E:4C:D6:48:73:98:4E:D6:B8:3F:75:FD:D6:A1:3A:35:00:FF:98:74
 ```
 
 ## Versioning
