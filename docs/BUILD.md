@@ -74,8 +74,9 @@ publishes the web build at https://phosphor.openvalence.org/ and the demo at
   (`src/plugins/factory-demo.js`, swapped in by `vite.config.js`), hides the
   Plugins page, opens on the Advanced Penetration card's page and starts
   Advanced (not under reduced motion). A first load, and Reset demo, seed the
-  window to the middle half of the rail (read from the catalog) and a long
-  stroke in it; Neutrino's own defaults stand. Its localStorage keys carry a `demo:` prefix (`src/web/storage.js`),
+  window to the middle half of the rail (read from the catalog), master 50 and
+  the full depth in it (deep 100, shallow 0: the window, not the depths, makes
+  the stroke smaller); Neutrino's own defaults stand. Its localStorage keys carry a `demo:` prefix (`src/web/storage.js`),
   so it never shares state with the web build on the same origin and Reset
   clears only its own.
 - Both follow the light or dark of the embedding page (`?theme=light|dark`,

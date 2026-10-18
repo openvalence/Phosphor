@@ -101,8 +101,9 @@ function whenLive(fn) {
 
 // The demo opens running: Advanced starts once the catalog is in and the session can write. A first load (no
 // saved machine, and so after Reset demo) gets a stroke worth watching first: the middle half of the rail as
-// the window, and a long, brisk stroke in it. Demo only: Neutrino's own defaults stand. Reduced motion: still.
-const SEED = [['advgen.master', 50], ['advgen.depth_max', 85], ['advgen.depth_min', 15]];
+// the window and the full depth in it (the window, not the depths, makes the stroke smaller). Demo only:
+// Neutrino's own defaults stand. Reduced motion: still.
+const SEED = [['advgen.master', 50], ['advgen.depth_max', 100], ['advgen.depth_min', 0]];
 function autostart(fresh) {
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   whenLive(() => {
