@@ -398,7 +398,7 @@ async function main() {
     // Restore the catalog defaults. The hub republishes on CHANGE only, so a
     // second run against the same sim would otherwise wait on a push that
     // never comes (its write would change nothing).
-    await s1.sendIntent(CH19.PATTERN_ADVANCED_CMD, { 2: 0, 3: 100, 4: 0, 21: 100, 22: 1 });
+    await s1.sendIntent(CH19.PATTERN_ADVANCED_CMD, { 2: 10, 3: 100, 4: 0, 21: 100, 22: 1 });
   }
 
   // ---- preset roster/store/cmd trio (0x1220 / 0x5220 / 0x3220) ------------
