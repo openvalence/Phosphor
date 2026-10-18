@@ -537,4 +537,6 @@ jobs:
             echo
             echo "$changes"
           } > ../notes.md
-          gh release edit "$tag" --title "Phosphor $v (pre-release CI build)" --prerelease --draft=true --notes-file ../notes.md
+          # Pass --tag: v0.1.678's draft published as untagged-<hash> after an edit without it.
+          gh release edit "$tag" --tag "$tag" --title "Phosphor $v (pre-release CI build)" --prerelease --draft=true --notes-file ../notes.md
+          test "$(gh api "repos/$GH_REPO/releases/$id" --jq .tag_name)" = "$tag"
