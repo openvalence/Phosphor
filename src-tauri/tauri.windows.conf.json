@@ -13,5 +13,13 @@
         "transparent": true
       }
     ]
+  },
+  "bundle": {
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": false
+      }
+    }
   }
 }
