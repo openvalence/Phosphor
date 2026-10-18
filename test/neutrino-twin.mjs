@@ -198,10 +198,14 @@ async function main() {
   // ========================================================================
   // INTENT → post-clamp ECHO, encoded from the catalog's own schema.
   // ========================================================================
-  console.log('\nWrite tier (RFC-119 draft: config-set and the other setting writes need configure):');
+  console.log('\nWrite tier (RFC-119 draft: limits need configure; the stroke window and flip are control):');
+  const win = seen1.states.get(CH.MACHINE_CONFIG);
+  const winEcho = await s1.sendConfigSet({ 1: win.window_min, 2: win.window_max }).catch((e) => e);
+  ok('a control session writes the stroke window', !!winEcho && !!winEcho.applied,
+    winEcho && winEcho.name ? winEcho.name + ' ' + winEcho.message : '');
   let refused = null;
-  try { await s1.sendConfigSet({ 1: 0, 2: 500 }); } catch (e) { refused = e; }
-  ok('a control session is refused config-set ACCESS_DENIED', !!refused && refused.name === 'ACCESS_DENIED',
+  try { await s1.sendConfigSet({ 3: 60 }); } catch (e) { refused = e; }
+  ok('a control session is refused a config-set limit ACCESS_DENIED', !!refused && refused.name === 'ACCESS_DENIED',
     refused ? refused.name + ' ' + refused.message : 'no refusal!');
   // The presence window opens on a PAIR press (native: --pairing-window); the first knock on a fresh ledger grants configure.
   const granted = new Promise((res, rej) => {
