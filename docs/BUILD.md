@@ -130,7 +130,7 @@ Cost: the Basic plan, $9.99 a month.
    The certificate subject is your legal name as validated.
 4. A certificate profile of type Public Trust on that validated identity.
    Its page shows the subject, for example
-   `CN=Grayson Heath, O=Grayson Heath, L=<city>, S=<state>, C=US`; copy it
+   `CN=<legal name>, O=<legal name>, L=<city>, S=<state>, C=US`; copy it
    exactly. The certificates are short-lived and renewed by the service; the
    subject stays the same.
 5. A Microsoft Entra app registration (`phosphor-signing`), no client secret.
