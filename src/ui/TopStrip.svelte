@@ -78,7 +78,7 @@
   // the numeral without its label line, the mini, all five strip buttons.
   // page: the page on screen's status {text, tone, title}, or null.
   // onopenlink: App switches nav to the Link page (a heatmap block's click).
-  let { onopenlog = null, onopenlink = null, shell = null, bare = false, compact = false, page = null } = $props();
+  let { onopenlog = null, onopenlink = null, shell = null, note = null, bare = false, compact = false, page = null } = $props();
 
   let woke = $state(false);
   // Latched or paused: the pair never dims (RENDERING §8.4 row 11).
@@ -492,7 +492,7 @@
 <svelte:document onclick={onDocClick} onpointerdown={onPopupAway} />
 
 <div class="topstrip" data-part="top" style:--hb={heroBar.budget ? (heroBar.budget - (railHidden ? 0 : heroBar.railH)) + 'px' : null} class:bare class:woke={woke || held} bind:offsetHeight={stripH}>
-  <LinkBar {shell} onheat={openHeat} />
+  <LinkBar {shell} {note} onheat={openHeat} />
   <div class="strip" data-part="strip" class:stacked class:compact={cmp} class:spread={cmp && spread} class:small-nums={smallNums} role="group" aria-label="Safety controls" bind:this={stripEl}>
     <div class="measure" aria-hidden="true" inert bind:this={measureEl}>
       <!-- The strip-btn part here too: a Theme's face on the buttons is in the budget. -->

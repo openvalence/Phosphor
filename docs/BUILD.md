@@ -53,6 +53,37 @@ in a worker in every build: Windows, macOS, Linux and Android (DESIGN 10.10).
   and recording `test/fixtures/neutrino-catalog.*`. Its build is Nucleus
   `sim/neutrino/README.md`.
 
+## Web builds
+
+Two builds of the same app run in a plain browser and join Neutrino on load
+(`src/web/`): `npm run build:web` (to `dist-web/`) is Phosphor in a browser
+tab, `npm run build:demo` (to `dist-demo/`) the demo the website's home page
+embeds. Both are code-split pages with relative URLs; `.github/workflows/pages.yml`
+publishes the web build at https://phosphor.openvalence.org/ and the demo at
+`/demo/` (the repo's Pages source is GitHub Actions, its custom domain
+`phosphor.openvalence.org`).
+
+- What is gone, by build flag (`import.meta.env.MODE`, dead code in every
+  other build): the shell path (Hubs, Buttplug, BLE, LAN, saved hubs, plugin
+  install, window chrome), the hub address entry (HubPicker), the node graph.
+  Neutrino is the only machine: an https page cannot open `ws://` to a LAN
+  hub (mixed content, and Chrome's Private Network Access), and a browser has
+  no UDP discovery, Buttplug server or file system. The top bar's note
+  (`src/web/WebNote.svelte`) says so.
+- The demo also drops every factory plugin but Advanced Penetration
+  (`src/plugins/factory-demo.js`, swapped in by `vite.config.js`), hides the
+  Plugins page, opens on the Advanced Penetration card's page and starts
+  Advanced (seeding a visible stroke on a first load; not under reduced
+  motion). Its localStorage keys carry a `demo:` prefix (`src/web/storage.js`),
+  so it never shares state with the web build on the same origin and Reset
+  clears only its own.
+- Both follow the light or dark of the embedding page (`?theme=light|dark`,
+  then `postMessage({theme})`), else the system's, while the applied theme is
+  one of the two defaults.
+- Neutrino ships as a `.wasm` file beside the page there (`wasmAsset` in
+  `vite.config.js`), not the base64 string the bundles inline; Theme sheets
+  load when applied.
+
 ## Neutrino, the dev tool
 
 `neutrino/` is a second Tauri app in this repo (DESIGN 10.17): one window

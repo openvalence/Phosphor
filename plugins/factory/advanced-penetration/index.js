@@ -824,7 +824,8 @@ function mountCard(api, el, fields) {
       box.dataset.status = st;
       box.dataset.tip = gate || LADDER[st] || '';
       input.disabled = !!gate;
-      if (document.activeElement !== input) input.value = num(val(f));
+      // No sample yet reads empty, never NaN (the browser warns on every set).
+      if (document.activeElement !== input) input.value = Number.isFinite(Number(val(f))) ? num(val(f)) : '';
     });
     return box;
   }

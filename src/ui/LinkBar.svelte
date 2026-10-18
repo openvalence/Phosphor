@@ -49,7 +49,8 @@
 
   // shell: the shell's window buttons (src/shell/ShellStrip.svelte), or null.
   // onheat(key): a heatmap block was clicked (ChannelHeat's onopen).
-  let { shell: Shell = null, onheat = null } = $props();
+  // note: the web builds' line (web/WebNote.svelte): between the name and the chips, in the second row on two.
+  let { shell: Shell = null, note: Note = null, onheat = null } = $props();
 
   /** The dot's words, one per machine.link.phase. */
   const PHASE_WORD = {
@@ -198,6 +199,8 @@
   </div>
 {/snippet}
 
+{#snippet note()}<div class="note" data-part="bar-note"><Note /></div>{/snippet}
+
 <header class="linkbar" data-part="bar" class:shell={!!Shell} class:cut={besideCut} class:two={two.current} data-tauri-drag-region="deep" bind:this={barEl}>
   <div class="header-left">
     {#if !two.current}{@render menu()}{@render heat()}{/if}
@@ -210,6 +213,7 @@
       <span class="sr">Link: {dotWord}</span>
     </span>
   </div>
+  {#if Note && !two.current}{@render note()}{/if}
 
   <!-- ONE flat row of equal chips (OG). Auth leads it and never sheds: it is the
        safety-relevant read. The rest shed from the tail, before the hub name ellipsizes. -->
@@ -220,7 +224,7 @@
   </div>
   {#if !two.current}{@render opt()}{/if}
   {#if Shell}<Shell />{/if}
-  {#if two.current}<div class="row2" data-part="bar-info">{@render menu()}{@render heat()}{@render opt()}</div>{/if}
+  {#if two.current}<div class="row2" data-part="bar-info">{@render menu()}{@render heat()}{#if Note}{@render note()}{/if}{@render opt()}</div>{/if}
 </header>
 
 <style>
@@ -357,6 +361,8 @@
     gap: var(--sp-2);
   }
   .chips.pinned { flex: none; margin-left: auto; }
+  .note { flex: 0 1 auto; min-width: 0; margin-left: auto; overflow: hidden; }
+  .row2 .note { flex: none; margin-left: 0; }
   /* Whatever does not fit on the one line wraps below a clipped edge, so the
      optional chips shed from their tail at ANY width, first in the bar. */
   .chips.opt {

@@ -12,15 +12,13 @@
  * - Staging takes only what the virtual hub ECHOed (merge.js).
  * - The built-in machine is the Nucleus twin compiled to wasm (neutrino.worker.js), on every platform. It
  *   is a full hub joined by the normal connect over an in-page socket; only its host marks it (onSim). It
- *   stops on any disconnect, never on a hidden page; its state blob persists in localStorage under STATE_KEY.
+ *   stops on any disconnect, never on a hidden page; its state blob persists (model/neutrino-boot.js).
  * - Open to LAN (lan.svelte.js) shares this hub while it runs. Opened to the LAN, it boots with its pairing
  *   window closed: the Pairing window button is the gesture, never a stranger's race to the boot window.
  */
 import { untrack } from 'svelte';
 import { createLocalHub } from '../../../Valence/clients/js/index.js';
-import NeutrinoWorker from '../model/neutrino.worker.js?worker&inline';
-import { WASM } from '../model/neutrino/bytes.js';
-import { bridgeNeutrino } from '../model/neutrino-bridge.js';
+import { bootNeutrino } from '../model/neutrino-boot.js';
 import { BUILTIN_MACHINE_NAME } from '../model/builtin.js';
 import { connect, disconnect, getSession, machine } from '../model/machine.svelte.js';
 import { loadMachine, hubOptions, catalogStoreFor } from '../model/vault.js';
@@ -29,7 +27,6 @@ import { hubs } from './hubs.svelte.js';
 import { lanAttach, lanDetach, lanFromHost, lanWanted } from './lan.svelte.js';
 
 const HOST = 'builtin';
-const STATE_KEY = 'phosphor.builtin.state';
 
 /** The running built-in machine: {version, etag}, else null. */
 export const sim = $state({ info: null });
@@ -56,44 +53,13 @@ $effect.root(() => {
   });
 });
 
-const LEVEL = { T: 0, D: 1, I: 2, W: 3, E: 4, F: 5 };   // registry log_levels
-function logLine(line) {
-  const m = /^\[([TDIWEF])\] ?(.*)$/.exec(line) || [null, 'I', line];
-  const ring = machine.events.log;
-  ring.push({ channel: null, channelName: BUILTIN_MACHINE_NAME, at: Date.now(), body: { level: LEVEL[m[1]], tag: BUILTIN_MACHINE_NAME, message: m[2] } });
-  if (ring.length > 400) ring.splice(0, ring.length - 400);
-}
-
-function loadState() {
-  try {
-    const b = localStorage.getItem(STATE_KEY);
-    return b ? Uint8Array.from(atob(b), (c) => c.charCodeAt(0)) : null;
-  } catch { return null; }
-}
-function saveState(blob) {
-  let s = '';
-  for (const b of blob) s += String.fromCharCode(b);
-  try { localStorage.setItem(STATE_KEY, btoa(s)); } catch { /* no storage: the next boot is a new hub */ }
-}
-
 // Homed with the pairing window open at boot (the twin has no PAIR button): the shell's knock lands as
 // push-to-pair and the pairing persists in the state blob.
 async function openSim() {
   disconnect();
   stopSim();
-  const w = worker = new NeutrinoWorker();
-  let bridge;
-  const up = new Promise((resolve, reject) => {
-    w.onerror = (e) => reject(new Error(e.message || 'worker failed'));
-    bridge = bridgeNeutrino(w, (m) => {
-      if (m.op === 'up') resolve(m);
-      else if (m.op === 'down') reject(new Error(m.error));
-      else if (m.op === 'log') logLine(m.line);
-      else if (m.op === 'state') saveState(m.blob);
-      else lanFromHost(m);
-    });
-  });
-  bridge.boot(Uint8Array.from(atob(WASM), (c) => c.charCodeAt(0)), loadState(), { homed: true, pairing_window: !lanWanted() });
+  const { worker: w, bridge, up } = bootNeutrino({ homed: true, pairing_window: !lanWanted() }, lanFromHost);
+  worker = w;
   let info;
   try { info = await up; } catch (e) {
     if (worker === w) stopSim();
