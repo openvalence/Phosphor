@@ -415,7 +415,7 @@
       {/if}
       {#if haveTiming}
         {#if progressFrac != null}
-          <span class="progress-track"><span class="progress-fill" style="width:{progressFrac * 100}%"></span></span>
+          <span class="progress-track"><span class="progress-fill" style="transform:scaleX({progressFrac})"></span></span>
         {/if}
         <output>{@render vu(fields.elapsed, elapsedVal)} / {@render vu(fields.duration, durVal)}</output>
       {:else if fields.elapsed}
@@ -505,9 +505,11 @@
     overflow: hidden;
     flex: 0 0 auto;
   }
+  /* Scaled, never resized: no layout per frame. */
   .progress-fill {
     display: block;
     height: 100%;
+    transform-origin: left;
     background: var(--reality);
   }
 </style>

@@ -411,13 +411,13 @@ if (LIVE) {
     /Stop pattern/.test(document.querySelector('main.pane .ap .ap-run').textContent), null, { timeout: 5000 }).then(() => true).catch(() => false),
   await runNote());
   await page.waitForTimeout(1500);
-  const p1 = await page.locator('main.pane .ap .ap-play').evaluate((e) => !e.hidden && e.style.left + ',' + e.style.top);
+  const p1 = await page.locator('main.pane .ap .ap-play').evaluate((e) => !e.hidden && e.style.transform);
   // The sim can still sit at the shallow end here; wait for it to leave, not a fixed window.
-  const p2 = await page.waitForFunction((p) => { const e = document.querySelector('main.pane .ap .ap-play'); const q = !e.hidden && e.style.left + ',' + e.style.top; return q && q !== p && q; },
+  const p2 = await page.waitForFunction((p) => { const e = document.querySelector('main.pane .ap .ap-play'); const q = !e.hidden && e.style.transform; return q && q !== p && q; },
     p1, { timeout: 5000, polling: 50 }).then((h) => h.jsonValue()).catch(() => p1);
   ok('live: a playhead rides the curve while Advanced runs', !!p1 && !!p2 && p1 !== p2, [p1, p2]);
   if (SHOT) {
-    await page.waitForFunction(() => { const e = document.querySelector('main.pane .ap .ap-play'); const x = parseFloat(e.style.left); return !e.hidden && x > 25 && x < 75; },
+    await page.waitForFunction(() => { const e = document.querySelector('main.pane .ap .ap-play'); const x = parseFloat((e.style.transform.match(/[-\d.e]+(?=%)/g) || [])[0]); return !e.hidden && x > 25 && x < 75; },
       null, { timeout: 5000, polling: 16 }).catch(() => {});
     await page.locator('main.pane .ap').first().screenshot({ path: SHOT });
     console.log('  screenshot: ' + SHOT);
@@ -438,7 +438,7 @@ if (LIVE) {
     const out = [], t0 = performance.now();
     const tick = () => {
       const e = document.querySelector('main.pane .ap .ap-play'), m = document.querySelector('.topstrip .readback .plan-mode');
-      out.push([performance.now() - t0, m ? m.textContent.trim() : '', e.hidden ? null : parseFloat(e.style.left), e.hidden ? null : parseFloat(e.style.top)]);
+      out.push([performance.now() - t0, m ? m.textContent.trim() : '', e.hidden ? null : parseFloat((e.style.transform.match(/[-\d.e]+(?=%)/g) || [])[0]), e.hidden ? null : parseFloat((e.style.transform.match(/[-\d.e]+(?=%)/g) || [])[1])]);
       if (performance.now() - t0 < 8000) setTimeout(tick, 10); else res(out);
     };
     tick();

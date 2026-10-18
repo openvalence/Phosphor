@@ -31,6 +31,8 @@ const ambient = new Map();
 const started = new Set();
 let ambientTimer = 0;
 function stepAmbient() {
+  // Still, nothing steps (a minimized window kept this timer at 30 Hz): apply() starts it again.
+  if (still.on) { clearInterval(ambientTimer); ambientTimer = 0; return; }
   const now = document.timeline.currentTime;
   for (const el of started) {
     for (const a of el.getAnimations({ subtree: true })) {
@@ -61,6 +63,7 @@ if (typeof window !== 'undefined') {
   apply = () => {
     still.on = minimized || currentTheme().look.motion === 0 || mode === 'reduced' || (mode === 'system' && !!mq?.matches);
     document.documentElement.classList.toggle('still', still.on);
+    if (!still.on && (ambient.size || started.size) && !ambientTimer) ambientTimer = setInterval(stepAmbient, 1000 / AMBIENT_FPS);
   };
   prefs.subscribe((p) => { mode = p.motion; apply(); });
   onTheme(apply);

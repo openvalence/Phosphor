@@ -18,6 +18,9 @@
    */
   import { pluginsUi, setPluginEnabled, isPluginDisabled, host } from './plugins.svelte.js';
   import CreditLine from './CreditLine.svelte';
+
+  // The web build (web/web.js) has no plugins folder.
+  const WEB = import.meta.env.MODE === 'web';
   import '../ui/pane.css';
 
   const PERM_TEXT = {
@@ -51,10 +54,14 @@
   {:else}
     <section class="pane-sec og-screen" aria-labelledby="pl-folder">
       <div class="pane-head"><h2 id="pl-folder">Installed</h2><span class="mono count">{pluginsUi.list.length}</span></div>
-      <dl class="pane-facts">
-        <dt>Plugins folder</dt><dd class="mono">{pluginsUi.dir || '--'}</dd>
-      </dl>
-      <p class="pane-note">Drop a plugin folder here and restart</p>
+      {#if WEB}
+        <p class="pane-note">The factory plugins only: installing one takes the Phosphor app</p>
+      {:else}
+        <dl class="pane-facts">
+          <dt>Plugins folder</dt><dd class="mono">{pluginsUi.dir || '--'}</dd>
+        </dl>
+        <p class="pane-note">Drop a plugin folder here and restart</p>
+      {/if}
     </section>
 
     {#each pluginsUi.list as p (p.key)}

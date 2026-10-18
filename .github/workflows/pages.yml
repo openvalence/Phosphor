@@ -1,0 +1,69 @@
+# Phosphor on the web, on GitHub Pages at phosphor.openvalence.org (docs/BUILD.md, Web builds): the web build at
+# the root, the demo the website's home page embeds at /demo/. The repo's Pages source must be GitHub Actions and
+# its custom domain phosphor.openvalence.org (the CNAME file below rides the artifact).
+name: pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # The sibling layout the page builds against: Valence (the JS client) at Nucleus's valence.pin.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: Phosphor
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: openvalence/Nucleus
+          path: Nucleus
+      - name: Valence at Nucleus's valence.pin
+        id: pin
+        shell: bash
+        run: echo "sha=$(tr -d '[:space:]' < Nucleus/valence.pin)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: openvalence/Valence
+          ref: ${{ steps.pin.outputs.sha }}
+          path: Valence
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Phosphor/package-lock.json
+      - run: npm ci
+        working-directory: Phosphor
+      - run: npm run build:web && npm run build:demo
+        working-directory: Phosphor
+      - name: Assemble site
+        run: |
+          mkdir site
+          cp -r Phosphor/dist-web/. site/
+          cp -r Phosphor/dist-demo site/demo
+          echo phosphor.openvalence.org > site/CNAME
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

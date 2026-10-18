@@ -18,7 +18,7 @@
 <button type="button" class="mini" aria-label="Show rail" data-tip="Show rail" aria-expanded={view.bucket <= 2 ? heroBar.popup : undefined} onclick={onshow}>
   <span class="plate">
     <span class="band" style="left:{l}%; width:{w}%"></span>
-    {#if at != null}<span class="pos" style="left:{at * 100}%"></span>{/if}
+    {#if at != null}<span class="track" style="transform:translateX({at * 100}%)"><span class="pos"></span></span>{/if}
   </span>
 </button>
 
@@ -51,8 +51,15 @@
     border-left: 1px solid var(--intent);
     border-right: 1px solid var(--intent);
   }
+  /* The position moves only by this layer's transform, never left: no layout, paint or raster per frame. */
+  .track {
+    position: absolute;
+    inset: 0;
+    will-change: transform;
+  }
   .pos {
     position: absolute;
+    left: 0;
     top: 0;
     bottom: 0;
     width: 2px;

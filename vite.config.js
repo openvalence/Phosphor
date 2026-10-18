@@ -5,6 +5,7 @@ import { execSync } from 'node:child_process';
 import { readFileSync, writeFileSync, statSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /**
  * Vite builds the single-file HTML bundle (JS/CSS/fonts inlined).
@@ -59,30 +60,68 @@ function emitGzip() {
   };
 }
 
-export default defineConfig({
-  plugins: [svelte(), viteSingleFile(), emitGzip()],
-  // The built-in machine's worker is ES (neutrino.js is an ES module) and inlined (?worker&inline): one file.
-  worker: { format: 'es' },
-  define: {
-    __UI_BUILD__: JSON.stringify(uiBuildId()),
-  },
-  build: {
-    cssCodeSplit: false,
-    minify: 'esbuild',
-    assetsInlineLimit: 100 * 1024, // 100KB — fonts (~21KB max) inline as data URIs
-  },
-  server: {
-    // src-tauri/target is cargo's build dir — watching it EBUSY-crashes vite
-    // on Windows when cargo holds a build-script exe open.
-    watch: { ignored: ['**/src-tauri/**'] },
-    // The Valence JS client lives in the SIBLING checkout, outside this repo.
-    // Rollup follows the relative import fine, but the dev server refuses to
-    // serve anything outside its workspace root (403, not an import error), so
-    // the sibling has to be allowed explicitly or `npm run dev` never boots.
-    fs: { allow: ['..'] },
-  },
-  // TAURI_ENV_* exists only when the Tauri CLI drives the build — main.js's
-  // shell branch keys on it, so the embedded bundle dead-code-eliminates the
-  // entire shell path (delivery accord: divergence is build config, not code).
-  envPrefix: ['VITE_', 'TAURI_ENV_'],
+/**
+ * The demo build's factory (src/plugins/factory-demo.js) in place of the full one, for plugins.svelte.js's
+ * import only: no other plugin's code reaches the demo bundle.
+ */
+function demoFactory() {
+  const demo = fileURLToPath(new URL('./src/plugins/factory-demo.js', import.meta.url));
+  return {
+    name: 'demo-factory',
+    enforce: 'pre',
+    resolveId(source, importer) {
+      if (source === './factory.js' && importer && importer.replace(/\\/g, '/').endsWith('/src/plugins/plugins.svelte.js')) return demo;
+    },
+  };
+}
+
+/**
+ * The web builds fetch Neutrino as a .wasm file beside the page (a third smaller over the wire than the base64
+ * string the bundles inline): src/model/neutrino/bytes.js becomes a WASM promise of its bytes there.
+ */
+function wasmAsset() {
+  const bytes = fileURLToPath(new URL('./src/model/neutrino/bytes.js', import.meta.url)).replace(/\\/g, '/');
+  return {
+    name: 'neutrino-wasm-asset',
+    load(id) {
+      if (id.replace(/\\/g, '/') !== bytes) return null;
+      const b64 = /'([A-Za-z0-9+/=]+)'/.exec(readFileSync(id, 'utf8'))[1];
+      const ref = this.emitFile({ type: 'asset', name: 'neutrino.wasm', source: Buffer.from(b64, 'base64') });
+      return `export const WASM = fetch(import.meta.ROLLUP_FILE_URL_${ref}).then((r) => { if (!r.ok) throw new Error('neutrino.wasm ' + r.status); return r.arrayBuffer(); });`;
+    },
+  };
+}
+
+// The web builds (`--mode web`, `--mode demo`; src/web/web.js): ordinary code-split pages with relative URLs, in
+// dist-web/ and dist-demo/, for any static host under any path. Every other build is the single-file bundle.
+export default defineConfig(({ mode }) => {
+  const web = mode === 'web' || mode === 'demo';
+  return {
+    base: web ? './' : '/',
+    plugins: web ? [svelte(), wasmAsset(), ...(mode === 'demo' ? [demoFactory()] : [])] : [svelte(), viteSingleFile(), emitGzip()],
+    // The built-in machine's worker is ES (neutrino.js is an ES module) and inlined (?worker&inline): one file.
+    worker: { format: 'es' },
+    define: {
+      __UI_BUILD__: JSON.stringify(uiBuildId()),
+    },
+    build: web ? { outDir: 'dist-' + mode, minify: 'esbuild' } : {
+      cssCodeSplit: false,
+      minify: 'esbuild',
+      assetsInlineLimit: 100 * 1024, // 100KB — fonts (~21KB max) inline as data URIs
+    },
+    server: {
+      // src-tauri/target is cargo's build dir — watching it EBUSY-crashes vite
+      // on Windows when cargo holds a build-script exe open.
+      watch: { ignored: ['**/src-tauri/**'] },
+      // The Valence JS client lives in the SIBLING checkout, outside this repo.
+      // Rollup follows the relative import fine, but the dev server refuses to
+      // serve anything outside its workspace root (403, not an import error), so
+      // the sibling has to be allowed explicitly or `npm run dev` never boots.
+      fs: { allow: ['..'] },
+    },
+    // TAURI_ENV_* exists only when the Tauri CLI drives the build — main.js's
+    // shell branch keys on it, so the embedded bundle dead-code-eliminates the
+    // entire shell path (delivery accord: divergence is build config, not code).
+    envPrefix: ['VITE_', 'TAURI_ENV_'],
+  };
 });

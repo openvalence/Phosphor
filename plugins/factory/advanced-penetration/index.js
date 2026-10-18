@@ -535,7 +535,9 @@ const CSS = `
   pointer-events: none; padding: 0 var(--sp-1); border-radius: 4px; }
 .ap-tag.bg { background: color-mix(in srgb, var(--screen) 85%, transparent); }
 .ap-tag:empty { display: none; }
-.ap-play { position: absolute; width: 14px; height: 14px; translate: -50% -50%; border-radius: 50%; background: var(--intent); border: 2px solid var(--screen); box-sizing: border-box; pointer-events: none; z-index: 1; }
+/* The playhead moves only by transform (percent of this full-size box), never left/top: no layout per frame. */
+.ap-play { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+.ap-play > i { position: absolute; left: 0; top: 0; width: 14px; height: 14px; translate: -50% -50%; border-radius: 50%; background: var(--intent); border: 2px solid var(--screen); box-sizing: border-box; }
 .ap h4 { white-space: nowrap; }
 .ap-hint { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ap-mtabs [role=tab]::before { content: ''; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--line-2); }
@@ -824,7 +826,8 @@ function mountCard(api, el, fields) {
       box.dataset.status = st;
       box.dataset.tip = gate || LADDER[st] || '';
       input.disabled = !!gate;
-      if (document.activeElement !== input) input.value = num(val(f));
+      // No sample yet reads empty, never NaN (the browser warns on every set).
+      if (document.activeElement !== input) input.value = Number.isFinite(Number(val(f))) ? num(val(f)) : '';
     });
     return box;
   }
@@ -935,7 +938,7 @@ function mountCard(api, el, fields) {
   const ticks = [0, 25, 50, 75, 100].map((t) => h('span', { class: 'ap-ax', text: String(t),
     style: 'top:' + ((SL.YB - t / 100 * (SL.YB - SL.YT)) / 240 * 100) + '%' }));
   const pIn = s('path', { class: 'curve' }), pOut = s('path', { class: 'curve' });
-  const play = h('div', { class: 'ap-play', hidden: '' });
+  const play = h('div', { class: 'ap-play', hidden: '' }, h('i'));
   const SV = strokeValue;
   const dw = (f) => (f ? Math.max(0, val(f)) : 0);
   const strokeNow = () => strokeGeom({
@@ -1227,8 +1230,7 @@ function mountCard(api, el, fields) {
       lastU = p;
       const pt = atDepth(dir > 0 ? g.inC : g.outC, dir > 0 ? u2 : 1 - u2);
       play.hidden = false;
-      play.style.left = (pt.x / 10) + '%';
-      play.style.top = (pt.y / 240 * 100) + '%';
+      play.style.transform = 'translate(' + (pt.x / 10) + '%,' + (pt.y / 240 * 100) + '%)';
     } else play.hidden = true;
   }
   let raf = 0;

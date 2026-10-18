@@ -10,13 +10,19 @@
  * reason to care which machine it is talking to.
  */
 
+// First: the demo's localStorage stand-in must be in place before any module reads storage (web/storage.js).
+import './web/storage.js';
 import { mount } from 'svelte';
 import App from './App.svelte';
 import './style.css';
 import './themes/fonts.css';
 // Each theme folder's stylesheet loads by being there (docs/THEMES.md, Adding a theme). Only the applied
 // Theme's sheet is in the document: every rule loaded weighs on each style recalc (docs/THEMES.md, Performance).
-const THEME_CSS = import.meta.glob('./themes/*/theme.css', { eager: true, query: '?inline', import: 'default' });
+// The web builds (web/web.js) fetch the applied Theme's sheet when it is applied; the bundles carry them all.
+const LAZY_CSS = import.meta.env.MODE === 'web' || import.meta.env.MODE === 'demo';
+const THEME_CSS = LAZY_CSS
+  ? import.meta.glob('./themes/*/theme.css', { query: '?inline', import: 'default' })
+  : import.meta.glob('./themes/*/theme.css', { eager: true, query: '?inline', import: 'default' });
 // A theme folder's boot.js runs once at startup, whatever is applied: it may subscribe onTheme and load
 // the theme's behavior (docs/THEMES.md, Behavior). Nothing per frame here.
 import.meta.glob('./themes/*/boot.js', { eager: true });
@@ -45,7 +51,9 @@ let sheetStyle = null;
 onTheme((t) => {
   if (t.style === sheetStyle) return;
   sheetStyle = t.style;
-  themeSheet.textContent = THEME_CSS['./themes/' + t.style + '/theme.css'] || '';
+  const css = THEME_CSS['./themes/' + t.style + '/theme.css'];
+  if (typeof css !== 'function') themeSheet.textContent = css || '';
+  else css().then((c) => { if (sheetStyle === t.style) themeSheet.textContent = c; }, () => {});
 });
 // The pointer reveal listens only while a Theme with `reveal` is applied (docs/THEMES.md, Chrome hooks).
 installReveal();
@@ -90,6 +98,8 @@ try {
 // same-origin rules). TAURI_ENV_PLATFORM is set only by the Tauri CLI's
 // build, so the embedded bundle compiles this branch away entirely.
 const SHELL = !!import.meta.env.TAURI_ENV_PLATFORM;
+// The web builds (`vite build --mode web|demo`, web/web.js) join Neutrino and nothing else.
+const WEB = import.meta.env.MODE === 'web' || import.meta.env.MODE === 'demo';
 
 // A boot step's failure lands in the device log ring (the Log tab) so the
 // shell shows it; console.error alone is invisible in the exe.
@@ -100,7 +110,14 @@ function bootFault(step, e) {
   ring.push({ channel: null, channelName: 'plugin', at: Date.now(), body: { level: 4, tag: 'shell', message: msg } });   // 4 = error (registry log_levels)
 }
 
+// The web builds' line in the top bar (web/WebNote.svelte), null elsewhere.
+let note = null;
 async function boot() {
+  if (WEB) {
+    import('./web/web.js').then((m) => { m.followScheme(); return m.startBuiltin(); }).catch((e) => bootFault('Neutrino', e));
+    note = await import('./web/WebNote.svelte').then((m) => m.default).catch((e) => { bootFault('web note', e); return null; });
+    return null;
+  }
   // ?hub=<host> points THIS page at a hub other than its own origin. It is
   // the DEV override and the only one: `vite dev` serves from localhost, so
   // `?hub=<device>` is how a dev session reaches a real machine (/uitoken
@@ -195,5 +212,5 @@ if (SHELL) {
 // window controls, never the strip's e-stop.
 boot()
   .catch((e) => { bootFault('shell chrome', e); return null; })
-  .then((shell) => mount(App, { target: document.getElementById('app'), props: { shell } }))
+  .then((shell) => mount(App, { target: document.getElementById('app'), props: { shell, note } }))
   .finally(closeSplash);

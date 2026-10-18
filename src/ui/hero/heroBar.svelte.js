@@ -21,5 +21,8 @@ export function openQuick(form, open, from) {
 /** Collapsed: the budget (form) or the user's hide (pref) put the rail away. */
 export const isCollapsed = (p) => heroBar.form === 'mini' || (p.railHide && p.railHidden);
 
+/** Away: collapsed and in no pop-up, so the rail is not drawn (HeroStrip hides it, RailWidget skips its canvases). */
+export const railAway = (p) => isCollapsed(p) && !heroBar.popup && !heroBar.quick;
+
 /** The hero bar's share of the window height (DESIGN §10.12). */
 export const budgetOf = (innerHeight, bucket) => innerHeight * (bucket <= 2 ? 0.45 : 0.33);

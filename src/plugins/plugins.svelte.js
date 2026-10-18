@@ -37,6 +37,8 @@ import {
 import { STORE_OP } from '../../../Valence/clients/js/generated/registry_vocab.js';
 
 const SHELL = !!import.meta.env.TAURI_ENV_PLATFORM;
+// The web builds load the factory plugins (the demo build's factory is Advanced Penetration alone, vite.config.js).
+const WEB = import.meta.env.MODE === 'web' || import.meta.env.MODE === 'demo';
 const DISABLED_KEY = 'phosphor.plugins.disabled';
 const LOG_MAX = 400;
 const LEVEL = Object.fromEntries(Object.entries(LOG_LEVEL_NAME).map(([n, name]) => [name, Number(n)]));
@@ -372,10 +374,12 @@ async function loadFromQuery() {
 export async function loadPlugins() {
   const dev = import.meta.env.DEV && typeof location !== 'undefined'
     && new URLSearchParams(location.search).has('plugin');
-  if (!SHELL && !dev) return;
+  if (!SHELL && !dev && !WEB) return;
   pluginsUi.active = true;
-  if (SHELL) { loadFactory(); await loadFromShell(); }
+  if (SHELL || WEB) loadFactory();
+  if (SHELL) await loadFromShell();
   if (dev) await loadFromQuery();
-  await import('./graph.js').then((m) => m.loadGraph(host)).catch((e) => logLine('graph', 'error', 'load: ' + (e && e.message)));
+  // The graph's client edges ride the shell's Buttplug server: no graph on the web.
+  if (!WEB) await import('./graph.js').then((m) => m.loadGraph(host)).catch((e) => logLine('graph', 'error', 'load: ' + (e && e.message)));
   pluginsUi.list = host.list();
 }

@@ -68,10 +68,12 @@
   import { layouts, orderedLayoutNames, switchLayout, addLayout, dashEdit, redHint } from './model/dashboard.svelte.js';
   import './ui/select.css';
 
-  // shell: the Tauri shell's strip row from main.js, null on the served page.
-  let { shell = null } = $props();
+  // shell: the Tauri shell's strip row from main.js, null on the served page. note: the web builds' line (web/WebNote.svelte).
+  let { shell = null, note = null } = $props();
   // main.js's shell signal; the served page never shows the Phosphor group.
   const SHELL = !!import.meta.env.TAURI_ENV_PLATFORM;
+  // The demo build (web/web.js): no Plugins page, and it opens on the Advanced Penetration card's page.
+  const DEMO = import.meta.env.MODE === 'demo';
 
   const model = $derived(machine.catalog.model);
 
@@ -146,7 +148,7 @@
   })));
   const clientTabs = $derived([
     ...(ready && !shellPaneTabs.some((t) => t.pane.id === 'settings') ? [{ id: 'display', label: 'Display' }] : []),
-    ...(ready && pluginsUi.active ? [{ id: 'plugins', label: 'Plugins' }, ...pageTabs] : []),
+    ...(ready && pluginsUi.active && !DEMO ? [{ id: 'plugins', label: 'Plugins' }, ...pageTabs] : []),
     ...shellPaneTabs,
   ]);
   const TIER_LABEL = { [UI_NAV_TIER.machine]: 'Machine', [UI_NAV_TIER.link]: 'Valence', [UI_NAV_TIER.client]: 'Phosphor' };
@@ -160,6 +162,12 @@
   // First run in the shell (no hub dialed at launch) opens on Hubs.
   let active = $state(SHELL && !machine.link.host ? 'shell:hubs' : 'machine');
   const current = $derived(tabs.find((t) => t.id === active) || tabs[0]);
+  let landed = false;
+  $effect(() => {
+    if (!DEMO || landed) return;
+    const t = tabs.find((x) => x.cat?.heroes.some((h) => h.id === 'plugin:advanced-penetration:advanced'));
+    if (t) { landed = true; untrack(() => { active = t.id; }); }
+  });
 
   // Page fullscreen (DESIGN §10.3): plugin pages only; any page switch
   // leaves it. The mode persists (prefs.js), the state never does.
@@ -806,7 +814,7 @@
 {/snippet}
 
 <div class="app">
-  <TopStrip {shell} bare={isFull && full.bare} compact={!!current?.page?.compactHero && view.bucket <= 2} page={statusSlot} onopenlog={() => selectTab('log')} onopenlink={() => selectTab('valence')} />
+  <TopStrip {shell} {note} bare={isFull && full.bare} compact={!!current?.page?.compactHero && view.bucket <= 2} page={statusSlot} onopenlog={() => selectTab('log')} onopenlink={() => selectTab('valence')} />
 
   <!-- Only INSTRUMENT-zone heroes (heroes.js) render here, pinned above every
        view's PANE and never inside one: losing sight of the carriage because

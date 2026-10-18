@@ -21,6 +21,8 @@
   let { mode = 'boot', onpair = null } = $props();
 
   const SHELL = !!import.meta.env.TAURI_ENV_PLATFORM;
+  // The web builds reach Neutrino only (web/web.js): no hub field.
+  const WEB = import.meta.env.MODE === 'web' || import.meta.env.MODE === 'demo';
   const link = $derived(machine.link);
   const hub = $derived(link.host ? hostLabel(link.host, link.port) : '');
   // Same-origin is the only page that can mint a control credential.
@@ -69,7 +71,7 @@
     {/if}
     {#if SHELL}
       <p class="pk-note">Add a hub under Phosphor &gt; Hubs</p>
-    {:else}
+    {:else if !WEB}
       <HostEntry onpick={switchHub} value={link.host ? hub : ''} />
       <p class="pk-note">Enter an address, or add <code>?hub=&lt;address&gt;</code> to the URL</p>
       <p class="pk-note">Pages not served by the hub join at <b>watch</b></p>

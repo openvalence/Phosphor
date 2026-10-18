@@ -9,8 +9,11 @@
  * - The state blob goes to the page: a worker has no localStorage.
  * - One machine per host; stopping it is terminating the worker.
  * - Port messages, page to host: boot {wasm, state, opts}, open/close {id}, send {id, data}, http {rid, method, path},
- *   pair {}, dgram {ip, port, data, wsPort}. Host to page: up {version, etag}, down {error}, open/closed {id[, code]},
- *   msg {id, data}, log {line}, state {blob}, http {rid, code, body}, dgram {ip, port, data} (a reply to send).
+ *   pair {}, dgram {ip, port, data, wsPort}, pause {}, resume {}. Host to page: up {version, etag}, down {error},
+ *   open/closed {id[, code]}, msg {id, data}, log {line}, state {blob}, http {rid, code, body}, dgram {ip, port, data}
+ *   (a reply to send).
+ * - Paused, nothing ticks and no time passes for the machine (its clock leaves the pause out): resume continues
+ *   from the same instant. What arrives meanwhile waits for the next tick.
  * - Any socket id works: open/close/send/msg for an id the page half did not open go to `on` (Open to LAN's
  *   remotes, shell/lan.svelte.js), the same hub sessions as the page's own.
  */
@@ -20,6 +23,8 @@ const BANNER = /: \S+ (\S+), catalog .*, etag ([0-9a-f]+)/;
 
 export function hostNeutrino(port, createNeutrino) {
   let M = null, cell = 0;
+  // The machine's clock: performance.now() less the time spent paused, so a pause is no time to the machine.
+  let timer = 0, held = 0, pausedAt = 0;
   const open = new Set();
   const post = (m, t) => port.postMessage(m, t || []);
   const u32 = (p) => M.HEAPU32[p >> 2];
@@ -27,7 +32,7 @@ export function hostNeutrino(port, createNeutrino) {
   const str = (s, fn) => { const p = M.stringToNewUTF8(s); try { return fn(p); } finally { M._free(p); } };
 
   function pump() {
-    if (M._neutrino_tick(BigInt(Math.floor(performance.now() * 1000))) & 1) {
+    if (M._neutrino_tick(BigInt(Math.floor((performance.now() - held) * 1000))) & 1) {
       M._neutrino_state_get(cell, cell + 4);
       post({ op: 'state', blob: out() });
     }
@@ -56,12 +61,20 @@ export function hostNeutrino(port, createNeutrino) {
     if (s) M._free(s);
     if (okd !== 1) throw new Error('neutrino_create refused');
     post({ op: 'up', version: banner ? banner[1] : '', etag: banner ? banner[2] : '' });
-    setInterval(pump, 1);
+    timer = setInterval(pump, 1);
   }
 
   port.onmessage = ({ data: m }) => {
     if (m.op === 'boot') { boot(m).catch((e) => post({ op: 'down', error: String((e && e.message) || e) })); return; }
     if (!M) return;
+    if (m.op === 'pause') {
+      if (timer) { clearInterval(timer); timer = 0; pausedAt = performance.now(); }
+      return;
+    }
+    if (m.op === 'resume') {
+      if (!timer) { held += performance.now() - pausedAt; timer = setInterval(pump, 1); }
+      return;
+    }
     if (m.op === 'open') {
       if (M._neutrino_connect(m.id) === 1) { open.add(m.id); post({ op: 'open', id: m.id }); }
       else post({ op: 'closed', id: m.id, code: 1013 });
