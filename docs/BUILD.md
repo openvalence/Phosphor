@@ -208,15 +208,22 @@ beside the exe.
 ### Release checklist
 
 1. `git tag vX.Y.Z && git push origin vX.Y.Z`.
-2. When every job is green, open the draft release `Phosphor vX.Y.Z` and
-   check the installer and MSIX are signed and, after extracting the
-   portable zip, that `Phosphor/phosphor.exe` is (Properties > Digital
+2. When every job is green, open the draft release
+   `Phosphor X.Y.Z (pre-release CI build)` and check the installer and
+   MSIX are signed and, after extracting the portable zip, that
+   `Phosphor/phosphor.exe` is (Properties > Digital
    Signatures, or `signtool verify /pa <file>`); the Windows job's log
    prints the same. The zip holds exactly the `Phosphor/` folder with
    `phosphor.exe` and `phosphor.portable`.
-3. Download the release assets (the portable zip included), run
-   `sha256sum * > SHA256SUMS` and attach `SHA256SUMS`.
-4. Publish the release.
+3. The `release` job has already given the draft its public shape: the
+   public file names (`Phosphor-<version>-windows-x64-setup.exe`,
+   `-windows-x64-portable.zip`, `-windows-x64.msix`, `-macos-arm64.dmg`,
+   `-linux-x86_64.AppImage`, `-linux-amd64.deb`, `-linux-x86_64.flatpak`,
+   `-android-arm64.apk`), `SHA256SUMS.txt`, the pre-release flag, the title
+   `Phosphor <version> (pre-release CI build)` and a notes skeleton. Rewrite
+   its TODO lines from the "Changes since" list, then delete that list.
+4. Publish the release. The website's downloads page reads the newest
+   published release from the GitHub API on the next page load.
 
 ## Windows MSIX (local packages)
 
@@ -526,6 +533,7 @@ Runs on every push to `main`, every pull request, every `v*` tag and by hand.
 | `flatpak` | ubuntu-24.04, GNOME 50 container | `phosphor-x86_64.flatpak` |
 | `android` | ubuntu-24.04 | `Phosphor_<version>_android-arm64.apk` (`phosphor-android-arm64`), signed with the `ANDROID_KEYSTORE_*` secrets, else `..._android-arm64-unsigned.apk` |
 | `android-release` | ubuntu-24.04 | on a `v*` tag, after `bundle`: the signed APK into the draft release; an unsigned APK fails it |
+| `release` | ubuntu-24.04 | on a `v*` tag, after `windows-release`, `android-release` and `flatpak`: renames the draft's files to the public names, drops the `.app.tar.gz`, adds the Flatpak and `SHA256SUMS.txt`, sets the pre-release flag, the title and a notes skeleton with the commit subjects since the newest published release (Release checklist) |
 
 Each bundle job checks out Phosphor, Nucleus (`main`), Valence and Kinetic at
 the shas in Nucleus's `valence.pin` and `kinetic.pin`, and ButtplugIO

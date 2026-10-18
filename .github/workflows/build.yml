@@ -415,3 +415,126 @@ jobs:
           manifest-path: flatpak/org.openvalence.Phosphor.yml
           bundle: phosphor-x86_64.flatpak
           artifact-name: phosphor-x86_64.flatpak
+
+  # After every upload: the tag's draft takes its public shape (docs/BUILD.md,
+  # Release checklist). Edits the draft tauri-action opened, so one release per
+  # tag. The notes are a skeleton; edit the TODO lines before Publish.
+  release:
+    needs: [windows-release, android-release, flatpak]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: phosphor-x86_64.flatpak
+          path: flatpak
+      - name: Public names, SHA256SUMS.txt, pre-release, notes skeleton
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          tag=$GITHUB_REF_NAME v=${GITHUB_REF_NAME#v}
+          # Public name of a CI asset; empty drops it (the .app.tar.gz, the old checksums).
+          pub() {
+            case "$1" in
+              *_x64-setup.exe) echo "Phosphor-$v-windows-x64-setup.exe" ;;
+              *_x64-portable.zip) echo "Phosphor-$v-windows-x64-portable.zip" ;;
+              *_x64.msix) echo "Phosphor-$v-windows-x64.msix" ;;
+              *_aarch64.dmg) echo "Phosphor-$v-macos-arm64.dmg" ;;
+              *_amd64.AppImage) echo "Phosphor-$v-linux-x86_64.AppImage" ;;
+              *_amd64.deb) echo "Phosphor-$v-linux-amd64.deb" ;;
+              *_android-arm64.apk) echo "Phosphor-$v-android-arm64.apk" ;;
+              *.app.tar.gz | SHA256SUMS.txt) ;;
+              *) echo "$1" ;;
+            esac
+          }
+          id=$(gh api "repos/$GH_REPO/releases" --jq "[.[] | select(.draft and .tag_name == \"$tag\")][0].id")
+          mkdir rel && cd rel
+          gh release download "$tag"
+          gh api "repos/$GH_REPO/releases/$id/assets" --paginate --jq '.[] | "\(.id) \(.name)"' |
+            while read -r aid name; do
+              new=$(pub "$name")
+              if [ -z "$new" ]; then
+                gh api -X DELETE "repos/$GH_REPO/releases/assets/$aid"; rm -f "$name"
+              elif [ "$new" != "$name" ]; then
+                gh api -X PATCH "repos/$GH_REPO/releases/assets/$aid" -f name="$new" >/dev/null; mv "$name" "$new"
+              fi
+            done
+          cp ../flatpak/phosphor-x86_64.flatpak "Phosphor-$v-linux-x86_64.flatpak"
+          sha256sum Phosphor-* > SHA256SUMS.txt
+          gh release upload "$tag" "Phosphor-$v-linux-x86_64.flatpak" SHA256SUMS.txt --clobber
+
+          prev=$(gh release list --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName')
+          # ponytail: compare lists at most 250 commits; past that the list is cut short.
+          changes=$(gh api "repos/$GH_REPO/compare/$prev...$tag" --jq '.commits[] | select(.parents | length == 1) | "- " + (.commit.message | split("\n")[0])')
+          {
+            cat <<'EOF' | sed -e "s/@V@/$v/g" -e "s/@PREV@/${prev#v}/g" -e "s/@SHA@/${GITHUB_SHA::7}/g"
+          **Pre-release CI build.** These files come straight from the GitHub Actions run for commit `@SHA@` on `main`. Nobody has tested them on every platform. Expect rough edges.
+
+          ## Try it with no machine
+
+          Phosphor has a built-in virtual machine: Neutrino, the firmware emulator. It runs the same firmware code as the real machine, compiled to WebAssembly inside the app. It has patterns, planning and telemetry, but no motor, so nothing moves. Install Phosphor, open the Hubs list, and pick Neutrino, the one with the ν badge.
+
+          ## What's new since @PREV@
+
+          TODO: the user-visible changes, from "Changes since @PREV@" at the end.
+
+          ## Needs firmware that isn't out yet
+
+          TODO: what needs which Nucleus version, and whether it is released.
+
+          ## What's in it
+
+          - The Dash: a grid you arrange from a palette of knobs, sliders, graphs and readouts, saved as named layouts.
+          - A page for every setting a machine declares, built from its catalog at connect time.
+          - E-Stop and Pause in a top strip that can't be hidden.
+          - A funscript player, a node editor, and plugins (five ship with the app).
+          - A Buttplug.io server on 127.0.0.1:12345, off until you start it.
+          - 20 themes, and health lines that name a measured cause and one action.
+
+          ## Which file
+
+          | Your system | File |
+          |---|---|
+          | Windows 10/11, 64-bit | `Phosphor-@V@-windows-x64.msix` (double-click to install) |
+          | Windows 10/11, classic installer | `Phosphor-@V@-windows-x64-setup.exe` |
+          | Windows 10/11, no install | `Phosphor-@V@-windows-x64-portable.zip` (extract it, then run `Phosphor\phosphor.exe`) |
+          | Mac with Apple silicon | `Phosphor-@V@-macos-arm64.dmg` |
+          | Linux, runs anywhere | `Phosphor-@V@-linux-x86_64.AppImage` (`chmod +x`, then run it) |
+          | Linux, Debian or Ubuntu | `Phosphor-@V@-linux-amd64.deb` |
+          | Linux, Flatpak | `Phosphor-@V@-linux-x86_64.flatpak` (`flatpak install --user ./Phosphor-@V@-linux-x86_64.flatpak`, needs the Flathub remote for the GNOME runtime) |
+          | Android 8 and later, arm64 | `Phosphor-@V@-android-arm64.apk` |
+
+          Phosphor draws with the Microsoft Edge WebView2 Runtime, which Windows 10 and 11 include. Older Windows needs it installed first.
+
+          ## Opening it
+
+          - **Windows:** the installer, the MSIX and the portable exe are signed by Grayson Heath. SmartScreen can still show "Windows protected your PC" while a new release builds download reputation. More info on that screen shows the publisher.
+          - **macOS:** the app is ad-hoc signed and not notarized. Open the .dmg, drag Phosphor to Applications, then right-click it and choose Open. If macOS still refuses, go to System Settings > Privacy & Security and choose Open Anyway.
+          - **Android:** allow "Install unknown apps" for your browser or file manager, then open the APK. Updates install over it when they're signed with the same key. Signing certificate SHA-256: `1F:D3:62:C0:8B:EE:8A:19:33:26:F1:E5:9E:4C:D6:48:73:98:4E:D6:B8:3F:75:FD:D6:A1:3A:35:00:FF:98:74` (check with `apksigner verify --print-certs`).
+
+          ## Checksums
+
+          SHA-256, also in `SHA256SUMS.txt`:
+
+          ```
+          EOF
+            cat SHA256SUMS.txt
+            cat <<'EOF'
+          ```
+
+          ## Known limits
+
+          - Intel Macs aren't built. macOS builds aren't notarized.
+          - The plugin API is version 1 and not frozen. A plugin runs with the page's full authority, so install only plugins you trust.
+          - Layouts are stored on the device that made them and don't sync.
+          - Nucleus firmware isn't released. Neutrino is the way in until the board ships.
+          - Bugs and rough edges: [open an issue](https://github.com/openvalence/Phosphor/issues).
+
+          EOF
+            echo "## Changes since ${prev#v}"
+            echo
+            echo "$changes"
+          } > ../notes.md
+          gh release edit "$tag" --title "Phosphor $v (pre-release CI build)" --prerelease --draft=true --notes-file ../notes.md
