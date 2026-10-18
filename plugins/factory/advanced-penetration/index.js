@@ -1251,7 +1251,7 @@ function mountCard(api, el, fields) {
   const presets = F.presetOp ? presetRow(api, F, updaters, tools) : h('div', { class: 'ap-row' }, ...tools);
 
   // ---- the card: two sources (SPEC §11.4), one panel each, each with its own Start
-  const runRow = (f, other) => {
+  const runRow = (f, other, speed) => {
     const run = h('button', { type: 'button', class: 'og-btn ap-run' });
     const note = h('p', { class: 'ap-note', 'aria-live': 'polite' });
     run.addEventListener('click', () => api.write(f, on(api.value(f)) ? 0 : 1));
@@ -1264,8 +1264,9 @@ function mountCard(api, el, fields) {
       run.dataset.shadow = st;
       run.disabled = !!gate;
       const why = api.reason(f);
+      // Speed 0 holds a started generator still (the hub's safe default): say so.
       say(note, gate, st, (st === 'fault' && /SOURCE_CONFLICT/.test(why) ? ownerText(other) : st === 'fault' ? why : LADDER[st])
-        || api.stale(f));
+        || api.stale(f) || (r && speed && !(Number(api.value(speed)) > 0) ? 'Speed is 0: raise it to move' : ''));
     });
     return h('div', {}, row, note);
   };
@@ -1301,10 +1302,10 @@ function mountCard(api, el, fields) {
     ...(plan ? [plan] : []),
     baseNums,
     ...(rhythm ? [rhythm] : []),
-    runRow(F.advRun, F.running));
+    runRow(F.advRun, F.running, F.master));
   const classic = F.select && F.running ? h('div', { class: 'ap' }, choice(F.select, 'Pattern'),
     ...CLASSIC.filter(([k]) => F[k]).map(([k, , l]) => slider(F[k], l)),
-    runRow(F.running, F.advRun)) : null;
+    runRow(F.running, F.advRun, F.pSpeed)) : null;
 
   const root = h('div', { class: 'ap' }, h('style', { text: CSS }));
   // Narrow (a phone, a two-cell placement): the hint drops, the modifier tabs pair up.
