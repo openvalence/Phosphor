@@ -274,7 +274,7 @@ export const CSS = `
 .fsp-dt .real.stale { opacity: .4; }
 .fsp-dt .plan { stroke: var(--intent); stroke-width: 1; opacity: .55; }
 .fsp-dt .rg { stroke: var(--line-2); stroke-dasharray: 4 4; }
-.fsp-rh { position: absolute; left: 0; width: var(--tap); height: var(--tap); margin-top: calc(var(--tap) / -2); outline: none; touch-action: none; cursor: ns-resize; z-index: 1;
+.fsp-rh { position: absolute; left: 0; width: var(--tap); height: var(--tap); margin-top: calc(var(--tap) / -2); outline: none; cursor: ns-resize; z-index: 1;
   top: clamp(calc(var(--tap) / 2), calc(var(--y, 0) * 1cqh), calc(100cqh - var(--tap) / 2)); }
 .fsp-rh[data-key=hi] { left: var(--tap); }
 .fsp-rh::after { width: 20px; height: 9px; border-radius: 4.5px; border: 2px solid var(--intent);
@@ -404,7 +404,7 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
   const pills = ['lo', 'hi'].map((key) => {
     const p = h('div', { class: 'fsp-rh', role: 'slider', tabindex: '0', 'aria-label': COPY[key], 'data-tip': COPY[key],
       'aria-orientation': 'vertical', 'aria-valuemin': '0', 'aria-valuemax': '100', 'data-key': key });
-    let id = null;
+    let grab = null;
     const move = (v) => { preview = { ...(preview || {}), ...clampRange(eff(), key, v) }; onRange(preview, false); draw(); };
     const commit = () => {
       if (!preview) return;
@@ -413,20 +413,13 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
       onRange(done, true);
       draw();
     };
-    p.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      p.setPointerCapture(e.pointerId);
-      p.focus({ preventScroll: true });
-      id = e.pointerId;
+    // The kit's drag: a touch after vertical intent or a hold, then from where the pill was (no jump).
+    ui.drag(p, {
+      axis: 'y',
+      onStart(d, e) { d.preventDefault(); p.focus({ preventScroll: true }); grab = { y: e.clientY, v: eff()[key], h: dt.getBoundingClientRect().height || 1 }; },
+      onMove(e) { if (grab) move(grab.v + (grab.y - e.clientY) / grab.h); },
+      onEnd(_e, ok) { grab = null; if (ok) commit(); else { preview = null; draw(); } },
     });
-    p.addEventListener('pointermove', (e) => {
-      if (e.pointerId !== id) return;
-      const r = dt.getBoundingClientRect();
-      move(1 - (e.clientY - r.top) / r.height);
-    });
-    const up = (e) => { if (e.pointerId === id) { id = null; commit(); } };
-    p.addEventListener('pointerup', up);
-    p.addEventListener('pointercancel', up);
     p.addEventListener('keydown', (e) => {
       const d = e.key === 'ArrowUp' ? 1 : e.key === 'ArrowDown' ? -1 : 0;
       if (!d) return;

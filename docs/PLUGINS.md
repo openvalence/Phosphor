@@ -610,7 +610,8 @@ returns the `<svg>`; an `icon` option takes a name or a stroke path `d`.
 
 - `ui.drag(el, {axis, intent, hold, filter, onStart, onMove, onEnd})`: the
   touch rule above for a handle the plugin draws itself. `axis` `'x'` or
-  `'y'`. With `intent` (default true) a mouse begins at once and a touch or
+  `'y'`, or a function of the press returning one (a pad whose handles run
+  different ways; the element's `touch-action` is then the plugin's to set). With `intent` (default true) a mouse begins at once and a touch or
   pen after 8 px more along the axis than across, or the 400 ms `hold`
   (default true); with `intent` false a mouse begins after 8 px of movement
   (a plain click still clicks) and a touch only by the hold.

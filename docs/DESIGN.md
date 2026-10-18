@@ -1380,6 +1380,30 @@ derives from one unit, and no size is tuned by hand.
   Enter, and ArrowLeft or Escape closes it back to its opener; a tap opens
   it inline under the opener. Seam: `src/plugins/kit.js` `menu` (`items`,
   `checked`, `ask`).
+- Touch (operator 2026-10-17, `ph-7v53`, `ph-5wsk.4`): a control in a
+  scrolling page reacts to a touch or pen only once the gesture's intent is
+  clear, the touch-slop rule of the native platforms (Android
+  `ViewConfiguration.getScaledTouchSlop`, 8 dp; iOS `UIScrollView` delaying
+  its content's touches; Material and the Apple HIG on controls inside scroll
+  views). A press changes nothing. Past 8 CSS px (already device-independent,
+  so no further scaling), movement along the control's axis claims the
+  gesture and the control adjusts from the value it had, never jumping to the
+  finger; movement across it is the page's scroll and the control never
+  changes; a 400 ms hold also claims; a cancel (the browser took the scroll)
+  ends with the value untouched. A tap on a slider's track moves nothing and
+  focuses it. Every draggable declares the `touch-action` the page keeps:
+  `pan-y` on a horizontal control, `pan-x` on a vertical one, `none` only
+  where a control owns both axes outside any scroller along them (the engaged
+  node editor, the arcade canvas, a layout card in edit mode). Under touch a
+  knob turns on a sideways drag (under a mouse, a vertical one); a plugin's
+  2D handle claims on intent along its own way. Buttons and toggles act on a
+  clean tap (the click), never on a press; the stop pair keeps firing on its
+  tap with no added wait. A mouse keeps its behavior: a press on a track
+  jumps and drags at once, Shift fine, Ctrl snap (§10.5). The wheel scrolls
+  the page over a slider or knob unless it holds focus. One helper, the
+  kit's `drag()` (`src/plugins/kit.js`); every native range rides it through
+  `src/ui/touchrange.js`. Tests: `test/drag-slop.test.mjs`,
+  `test/touch-slop.test.mjs`.
 - The right dock (operator 2026-10-09, `ph-kyjd`; amended 2026-10-10,
   `ph-6ydd`): a region plugins register, hidden until a dock exists and
   closed until the user opens it from its toggle at the right end of the
@@ -1760,3 +1784,4 @@ else.
 | 2026-10-16 | §10.17 | Neutrino's rail and scope play the 1 ms samples back on the display's frames at a render instant behind a jitter buffer, and the rail gains a motion-blur shutter (Off, 180°, 360°). The twin's broadcaster wakes on the hub's publish instead of sleeping (a sleep in the windowless sidecar rounded to 47 ms). | operator ("neutrino also seems to be fps limited or not smooth ... add a blur option, to the rail, so rapid movements make sense"); 30 Hz snapshots kept, the shutter choices, the square-root tone curve and the outline at the render instant are the agent's, veto-able |
 | 2026-10-17 | §10.x top bar, ambient | The animated mark (connecting spinner, launch splash) runs at the display's frame rate, exempt from the 30 fps ambient step: it never runs alongside time-sensitive tasks. | operator |
 | 2026-10-17 | §10.18 | The Windows portable build is contained: a `Phosphor/` folder in the zip, `phosphor.portable` beside the exe turns portable mode on, every write goes to `PhosphorData` beside it (the WebView2 data folder included), a launch from a shared folder root (drive, Downloads, Desktop, Documents, user folder) or the temporary folder is stopped by a native dialog before any write (`ph-5fdg`). | operator ("the portable needs to be genuinely portable, writing only to the folder it is run from, and an alert if it's running straight in the downloads etc"; "phosphor.exe and its storage folders sit in their OWN folder"; "a user doesn't accidentally just run the bare app and have it create its stores in the root of a user library folder"; Move / Continue here / Quit); the marker and folder names, `Phosphor (2)` numbering, dropping the cookie jar and the dialog wording are the agent's, veto-able |
+| 2026-10-17 | §10.13 | Touch slop: a touch or pen adjusts a control only past 8 px along its axis or a 400 ms hold, from the value it had; across its axis it scrolls the page; a slider track tap moves nothing; buttons act on a clean tap; each draggable declares its `touch-action`; the wheel scrolls past an unfocused slider or knob. The Android, iOS, Material and HIG touch-slop practice (`ph-7v53`). | operator ("it's still WAY too easy to adjust a control while scrolling ... there must be a best practice standardized for this"); a knob turning sideways under touch, a 2D handle claiming along its own way, a cancel dropping a plugin handle's draft and the per-press axis on `drag()` are the agent's, veto-able |

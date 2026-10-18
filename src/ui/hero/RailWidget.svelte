@@ -85,6 +85,7 @@
   import { ROLE, claimRoles } from '../../model/roles.js';
   import { deferring } from '../defer.js';
   import { modStep, dragGain, snap as modSnap } from '../../model/nudge.js';
+  import { drag as gesture } from '../../plugins/kit.js';
   import PlanStrip from '../widgets/PlanStrip.svelte';
   import { CH_CONTROL_OWNER } from '../../../../Valence/clients/js/index.js';
 
@@ -117,7 +118,7 @@
     if (machine.link.phase !== 'live') return false;
     const e = machine.catalog.entries.find((x) => x.id === f.writeChannel);
     if (!e) return false;
-    return (machine.link.roles | 0) >= (e.access | 0);
+    return !tierGate(e, f.settingKey, undefined, machine.link.roles);
   }
 
   // An Alt-drag of the window holds its edges here (defer.js) until release.
@@ -850,6 +851,17 @@
     if (out.max != null) writeSetting(max, out.max);
   }
 
+  // Every rail drag rides kit.js drag() (DESIGN 10.13, Touch): a mouse at once,
+  // a touch or pen after intent along the rail or a hold, so a swipe across it
+  // scrolls the page. Rebound when the pop-up turns the rail.
+  const slide = (mode) => (node) => gesture(node, {
+    axis: vertical ? 'y' : 'x',
+    filter: () => dragAllowed(mode),
+    onStart: (_d, e) => startDrag(mode, e),
+    onMove: onDragMove,
+    onEnd: endDrag,
+  });
+
   // A held Alt-drag writes on release only; a cancelled pointer writes nothing.
   function endDrag(e) {
     const p = pend, mode = dragMode;
@@ -1014,7 +1026,20 @@
     get lo() { return tapeLo; }, get hi() { return tapeHi; }, get windowed() { return haveWindow && !override; },
   };
 
-  let tapeAnchor = null;
+  let tapeAnchor = null, tapePointer = '';
+  const tape = (node) => gesture(node, {
+    axis: vertical ? 'y' : 'x',
+    filter: (e) => { tapePointer = e.pointerType; return moveEnabled; },
+    onStart: (_d, e) => onTapePointerDown(e),
+    onMove: onTapePointerMove,
+    onEnd: onTapePointerUp,
+  });
+  // A touch tap moves there; a mouse already did at its press.
+  function onTapeTap(e) {
+    if (!moveEnabled || tapePointer === 'mouse' || !e.detail) return;
+    onTapePointerDown(e);
+    onTapePointerUp({ type: 'pointerup' });
+  }
   function onTapePointerDown(e) {
     if (!moveEnabled) return;
     tapeAnchor = null;
@@ -1145,10 +1170,8 @@
              aria-valuemin={tapeLo} aria-valuemax={tapeHi} aria-valuenow={tapeVal ?? tapeLo}
              aria-disabled={!moveEnabled}
              class:live={moveEnabled}
-             onpointerdown={onTapePointerDown}
-             onpointermove={onTapePointerMove}
-             onpointerup={onTapePointerUp}
-             onpointercancel={onTapePointerUp}
+             {@attach tape}
+             onclick={onTapeTap}
              onkeydown={onTapeKey}>
           <div class="rail-tape live" bind:this={tapeBarEl}
                style="left:{tapeStripLoPct * 100}%; width:{Math.max(0, (tapeStripHiPct - tapeStripLoPct) * 100)}%">
@@ -1224,10 +1247,7 @@
            aria-disabled={!bandEnabled}
            data-shadow={pend ? STATUS.pending : worstStatus(statusOf(min), statusOf(max))}
            style="left:{bandL * 100}%; width:{(bandR - bandL) * 100}%"
-           onpointerdown={(e) => startDrag('band', e)}
-           onpointermove={onDragMove}
-           onpointerup={endDrag}
-           onpointercancel={endDrag}
+           {@attach slide('band')}
            onkeydown={onBandKey}>
         <span class="rail-band-label mono">{spanLabel}</span>
       </div>
@@ -1243,10 +1263,7 @@
            aria-disabled={!minEnabled}
            data-shadow={pend && pend.min != null ? STATUS.pending : statusOf(min)}
            style="left:{minPct * 100}%"
-           onpointerdown={(e) => startDrag('min', e)}
-           onpointermove={onDragMove}
-           onpointerup={endDrag}
-           onpointercancel={endDrag}
+           {@attach slide('min')}
            onkeydown={(e) => onHandleKey(e, 'min')}></div>
 
       <div class="rail-band-handle hi"
@@ -1258,10 +1275,7 @@
            aria-disabled={!maxEnabled}
            data-shadow={pend && pend.max != null ? STATUS.pending : statusOf(max)}
            style="left:{maxPct * 100}%"
-           onpointerdown={(e) => startDrag('max', e)}
-           onpointermove={onDragMove}
-           onpointerup={endDrag}
-           onpointercancel={endDrag}
+           {@attach slide('max')}
            onkeydown={(e) => onHandleKey(e, 'max')}></div>
     {:else}
       <p class="rail-waiting">waiting for device&hellip;</p>
@@ -1326,7 +1340,6 @@
     border-bottom: 1px dashed var(--line-1);
     border-left: 1px solid transparent;
     border-right: 1px solid transparent;
-    touch-action: none;
     cursor: not-allowed;
   }
   /* The TRACK is the hit-test surface (bug #3 fix) — the whole dashed-guide
@@ -1430,7 +1443,6 @@
     border: 1px solid var(--line-1);
     border-radius: var(--r-s);
     box-shadow: inset 0 2px 8px rgba(var(--shade-rgb), .6);
-    touch-action: none;
     cursor: crosshair;
   }
   /* Do not clip the host: the window handles straddle its ends and stay whole
@@ -1509,7 +1521,6 @@
     border-right: 1px solid var(--intent);
     box-shadow: 0 0 14px rgba(var(--intent-deep-rgb), .16), inset 0 0 18px rgba(var(--intent-deep-rgb), .07);
     cursor: grab;
-    touch-action: none;
     transition: left var(--t-quick) ease, width var(--t-quick) ease;
   }
   .rail-band:active { cursor: grabbing; }
@@ -1570,7 +1581,6 @@
     width: calc(var(--s) * 12px);
     transform: translateX(-50%);
     cursor: ew-resize;
-    touch-action: none;
     display: flex;
     align-items: center;
     justify-content: center;

@@ -485,12 +485,12 @@ const CSS = `
 .ap-row .ap-tool[aria-pressed=true] { color: var(--highlight); border-color: var(--highlight); }
 .ap-cap { display: flex; justify-content: space-between; align-items: baseline; gap: var(--sp-3); font-family: var(--mono); font-size: .7rem; color: var(--tx-mut); }
 .ap-ed { position: relative; width: 100%; background: var(--screen); box-shadow: inset 0 2px 6px rgba(var(--shade-rgb), .65);
-  border: 1px solid var(--line-1); border-radius: var(--r-s); touch-action: none; user-select: none; }
+  border: 1px solid var(--line-1); border-radius: var(--r-s); touch-action: pan-y; user-select: none; }
 .ap-ed svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .ap-stroke { height: 240px; }
 .ap-stair { height: 180px; }
 .ap-plan { display: flex; gap: var(--sp-3); align-items: stretch; }
-.ap-plan > .ap-ed { flex: 1 1 auto; min-width: 0; height: 120px; touch-action: auto; }
+.ap-plan > .ap-ed { flex: 1 1 auto; min-width: 0; height: 120px; }
 .ap-win { flex: none; width: var(--tap); display: flex; flex-direction: column; align-items: stretch; justify-content: space-between; }
 .ap-win button { flex: none; width: 100%; height: var(--tap); padding: 0; display: grid; place-items: center; color: var(--tx-mut); }
 .ap-win output { text-align: center; font: var(--num-wght) .76rem var(--mono); color: var(--tx-val); }
@@ -516,6 +516,7 @@ const CSS = `
 .ap-ax { position: absolute; left: var(--sp-2); transform: translateY(-50%); font: .66rem var(--mono); color: var(--tx-ghost); pointer-events: none; }
 .ap-seg { position: absolute; bottom: 30px; transform: translateX(-50%); font: .66rem var(--mono); color: var(--tx-mut); pointer-events: none; white-space: nowrap; }
 .ap-h { position: absolute; width: var(--tap); height: var(--tap); margin: calc(var(--tap) / -2) 0 0 calc(var(--tap) / -2); outline: none; }
+.ap-h[aria-orientation=vertical] { touch-action: pan-x; }
 .ap-h::after { content: ''; position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; translate: -50% -50%;
   border-radius: 50%; border: 2px solid var(--hc, var(--reality)); background: var(--screen); box-shadow: inset 0 1px 3px rgba(var(--shade-rgb), .65);
   box-sizing: border-box; }
@@ -642,7 +643,8 @@ function makeEditor(api, o, ed) {
     const r = box.getBoundingClientRect();
     return { x: (e.clientX - r.left) / r.width * o.W, y: (e.clientY - r.top) / r.height * o.H };   // unclamped: half gain must travel past the edge
   };
-  box.addEventListener('pointerdown', (e) => {
+  // The handle nearest the press, within HIT.
+  function nearest(e) {
     const r = box.getBoundingClientRect();
     const g = geom();
     let best = null, bd = HIT;
@@ -652,33 +654,39 @@ function makeEditor(api, o, ed) {
       const d = Math.hypot(r.left + p.x / o.W * r.width - e.clientX, r.top + p.y / o.H * r.height - e.clientY);
       if (d < bd) { bd = d; best = hd; }
     }
-    if (!best) return;
-    e.preventDefault();
-    box.setPointerCapture(e.pointerId);
-    best.el.focus({ preventScroll: true });
-    const h0 = best.at(g), p0 = local(e);
-    drag = { hd: best, g0: g, id: e.pointerId, h0, p0, gain: e.shiftKey ? DRAG_FINE : DRAG_GAIN };
+    return best;
+  }
+  // The kit's drag (DESIGN 10.13, Touch): a mouse at once; a touch or pen after intent along the
+  // handle's way or a hold, so a swipe over the editor scrolls the page. A cancel drops the draft.
+  let pick = null;
+  api.ui.drag(box, {
+    axis: () => (pick && pick.axis === 'y' ? 'y' : 'x'),
+    filter: (e) => !!(pick = nearest(e)),
+    onStart(d, e) {
+      d.preventDefault();   // a mouse press would move the focus off the handle (its blur commits)
+      pick.el.focus({ preventScroll: true });
+      const g = geom();
+      drag = { hd: pick, g0: g, h0: pick.at(g), p0: local(e), gain: e.shiftKey ? DRAG_FINE : DRAG_GAIN };
+    },
+    onMove(e) {
+      if (!drag) return;
+      const p = local(e), f = drag.hd.field;
+      // Relative to the grab, scaled; a gain change (Shift) re-anchors so the handle never jumps.
+      const gain = e.shiftKey ? DRAG_FINE : DRAG_GAIN;
+      const at = () => ({ x: clamp(drag.h0.x + (p.x - drag.p0.x) * drag.gain, 0, o.W), y: clamp(drag.h0.y + (p.y - drag.p0.y) * drag.gain, 0, o.H) });
+      if (gain !== drag.gain) { drag.h0 = at(); drag.p0 = p; drag.gain = gain; }
+      const q = at();
+      let v = drag.hd.value(f, drag.g0, q.x, q.y);
+      if (e.ctrlKey && Number.isFinite(v)) { const d = Math.max(f.step || 1, decadeBelow(f)); v = Math.round(v / d) * d; }
+      if (Number.isFinite(v)) ed.preview(f, v);
+    },
+    onEnd(_e, ok) {
+      if (!drag) return;
+      const f = drag.hd.field;
+      drag = null;
+      if (ok) ed.commit(f); else ed.drop(f);
+    },
   });
-  box.addEventListener('pointermove', (e) => {
-    if (!drag || e.pointerId !== drag.id) return;
-    const p = local(e), f = drag.hd.field;
-    // Relative to the grab, scaled; a gain change (Shift) re-anchors so the handle never jumps.
-    const gain = e.shiftKey ? DRAG_FINE : DRAG_GAIN;
-    const at = () => ({ x: clamp(drag.h0.x + (p.x - drag.p0.x) * drag.gain, 0, o.W), y: clamp(drag.h0.y + (p.y - drag.p0.y) * drag.gain, 0, o.H) });
-    if (gain !== drag.gain) { drag.h0 = at(); drag.p0 = p; drag.gain = gain; }
-    const q = at();
-    let v = drag.hd.value(f, drag.g0, q.x, q.y);
-    if (e.ctrlKey && Number.isFinite(v)) { const d = Math.max(f.step || 1, decadeBelow(f)); v = Math.round(v / d) * d; }
-    if (Number.isFinite(v)) ed.preview(f, v);
-  });
-  const end = (e) => {
-    if (!drag || e.pointerId !== drag.id) return;
-    const f = drag.hd.field;
-    drag = null;
-    ed.commit(f);
-  };
-  box.addEventListener('pointerup', end);
-  box.addEventListener('pointercancel', end);
 
   function render() {
     const g = geom();
@@ -798,7 +806,11 @@ function mountCard(api, el, fields) {
     }
     update();
   }
-  const ed = { val, has: (f) => draft.has(f.uid), preview, commit, loops };
+  function drop(f) {
+    for (const x of [f, partner(f)]) if (x) draft.delete(x.uid);
+    update();
+  }
+  const ed = { val, has: (f) => draft.has(f.uid), preview, commit, drop, loops };
 
   // A field as a number input: the numeric twin of a handle.
   function numCtl(f, label) {

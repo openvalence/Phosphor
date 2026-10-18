@@ -23,6 +23,7 @@
   import { askConfirm } from './confirm.svelte.js';
   import { deferring } from './defer.js';
   import { modStep, dragGain, snap as modSnap } from '../model/nudge.js';
+  import { drag as gesture, INTENT_PX } from '../plugins/kit.js';
   import { PACKED } from '../../../Valence/clients/js/index.js';
   import { tierGate } from '../model/tier.js';
   import {
@@ -236,13 +237,14 @@
     knobDrag = null;
     if (h && e.type === 'pointerup') WRITE[h.side](h.n);
   }
-  // Shift or Ctrl at pointerdown on a native range: the thumb does not jump to
-  // the pointer; the drag moves the value relative to where it started
-  // (nudge.js dragGain, snap), modifiers read at every move.
+  // A mouse with Shift or Ctrl at pointerdown on a native range (a touch rides
+  // touchrange.js): the thumb does not jump to the pointer; the drag moves the
+  // value relative to where it started (nudge.js dragGain, snap), modifiers
+  // read at every move.
   let rel = null;
   function relDown(e, side) {
     dragStart(e);
-    if (!e.shiftKey && !e.ctrlKey) return;
+    if (e.pointerType !== 'mouse' || (!e.shiftKey && !e.ctrlKey)) return;
     const f = side === 'v' ? field : field[side];
     const el = e.currentTarget;
     const raw = side === 'v' ? value : side === 'lo' ? loValue : hiValue;
@@ -327,10 +329,11 @@
   // until release. The click that ends a repeat is swallowed, so a hold never
   // adds one more tick; a plain click or a key press nudges once.
   const HOLD_MS = 450, REPEAT_MS = 110;
-  let hold = null, repeated = false;
-  function holdStart(dir) {
+  let hold = null, repeated = false, holdAt = null;
+  function holdStart(dir, e) {
     holdEnd();
     repeated = false;
+    holdAt = { x: e.clientX, y: e.clientY };
     if (!enabled) return;
     hold = setTimeout(function tick() {
       const n = Number(value);
@@ -340,7 +343,9 @@
       hold = setTimeout(tick, REPEAT_MS);
     }, HOLD_MS);
   }
-  function holdEnd() { clearTimeout(hold); hold = null; }
+  function holdEnd() { clearTimeout(hold); hold = null; holdAt = null; }
+  // A touch that moves past the slop is a scroll, never a hold (DESIGN 10.13, Touch).
+  const holdMove = (e) => { if (holdAt && Math.hypot(e.clientX - holdAt.x, e.clientY - holdAt.y) > INTENT_PX) holdEnd(); };
   function stepClick(dir, e) {
     if (repeated) { repeated = false; return; }
     nudge(dir, e);
@@ -514,18 +519,21 @@
   const snap = (n) => field.min + Math.round((n - field.min) / step) * step;
   // A page is a tenth of the range, never less than ten steps.
   const pageSteps = $derived(Math.max(10, Math.round((field.max - field.min) / 10 / step)));
+  // A mouse turns it at once on a vertical drag; a touch or pen through kit.js
+  // drag(), after sideways intent or a hold (a vertical swipe scrolls the page),
+  // then right or up turns it up.
   let knobDrag = null;
-  function knobDown(e) {
-    if (!enabled) return;
-    e.currentTarget.setPointerCapture(e.pointerId);
+  function knobStart(d, e) {
     const n = Number(value);
-    knobDrag = { y: e.clientY, v: isFinite(n) ? n : field.min, last: n };
-    dragStart(e);
+    knobDrag = { x: e.clientX, y: e.clientY, v: isFinite(n) ? n : field.min, last: n };
+    dragStart(d);
   }
   function knobMove(e) {
     if (!knobDrag) return;
     const span = (field.max - field.min) * dragGain(e, 1);
-    knobDrag.v = Math.max(field.min, Math.min(field.max, knobDrag.v + ((knobDrag.y - e.clientY) / KNOB_DRAG_PX) * span));
+    const along = knobDrag.y - e.clientY + (e.pointerType === 'mouse' ? 0 : e.clientX - knobDrag.x);
+    knobDrag.v = Math.max(field.min, Math.min(field.max, knobDrag.v + (along / KNOB_DRAG_PX) * span));
+    knobDrag.x = e.clientX;
     knobDrag.y = e.clientY;
     const n = modSnap(snap(knobDrag.v), e, field.min, field.max, 0, step);
     if (n !== knobDrag.last) { knobDrag.last = n; dragWrite('v', n); }
@@ -550,7 +558,8 @@
       nudge((d < 0 ? 1 : -1) * (e.shiftKey ? 1 : Math.max(1, Math.round(pageSteps / 10))), e);
     };
     el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
+    const off = gesture(el, { axis: 'x', filter: () => enabled, onStart: knobStart, onMove: knobMove });
+    return () => { off(); el.removeEventListener('wheel', onWheel); };
   });
 
   // ---- graph: reported values only, held as steps, broken where the link was
@@ -825,14 +834,14 @@
          nudges — without them this archetype is just a text box. -->
     <div class="stepper">
       <button type="button" disabled={!enabled} aria-label="decrease {labelFor(field)}"
-              onclick={(e) => stepClick(-1, e)} onpointerdown={() => holdStart(-1)} onpointerup={holdEnd}
+              onclick={(e) => stepClick(-1, e)} onpointerdown={(e) => holdStart(-1, e)} onpointermove={holdMove} onpointerup={holdEnd}
               onpointerleave={holdEnd} onpointercancel={holdEnd} oncontextmenu={(e) => e.preventDefault()}>&minus;</button>
       <input id={domId} type="number" class="og-num"
              min={field.min} max={field.max} step={step}
              value={inputNum(value)} disabled={!enabled}
              onchange={(e) => commitTyped(e.currentTarget)} />
       <button type="button" disabled={!enabled} aria-label="increase {labelFor(field)}"
-              onclick={(e) => stepClick(1, e)} onpointerdown={() => holdStart(1)} onpointerup={holdEnd}
+              onclick={(e) => stepClick(1, e)} onpointerdown={(e) => holdStart(1, e)} onpointermove={holdMove} onpointerup={holdEnd}
               onpointerleave={holdEnd} onpointercancel={holdEnd} oncontextmenu={(e) => e.preventDefault()}>+</button>
     </div>
 
@@ -856,7 +865,6 @@
          aria-labelledby={labelId} aria-valuemin={field.min} aria-valuemax={field.max}
          aria-valuenow={Number(shown)} aria-valuetext={formatWithUnit(field, shown)} aria-disabled={!enabled}
          class:is-disabled={!enabled}
-         onpointerdown={knobDown} onpointermove={knobMove}
          onkeydown={knobKey}>
       <svg viewBox="0 0 100 100" aria-hidden="true">
         <circle class="knob-track" cx="50" cy="50" r="40"
@@ -1438,7 +1446,7 @@
     width: 100%;
     max-width: 160px;
     aspect-ratio: 1;
-    touch-action: none;
+    touch-action: pan-y;
     cursor: ns-resize;
   }
   .knob.is-disabled { opacity: .45; cursor: not-allowed; }

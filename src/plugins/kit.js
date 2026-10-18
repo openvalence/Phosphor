@@ -173,12 +173,14 @@ function setIcon(svg, x) {
  * once (with `intent` false, after INTENT_PX of movement, so a plain click
  * still clicks); a touch or pen after INTENT_PX more along the axis than
  * across (when `intent`) or a HOLD_MS hold (when `hold`); more across first
- * gives the gesture to the page. -> off()
+ * gives the gesture to the page. `axis` may be a function of the press,
+ * read once per press (a pad whose handles run different ways); the element's
+ * touch-action is then the caller's to set. -> off()
  */
 export function drag(el, o) {
   const { axis = 'x', intent = true, hold = true, filter = null, onStart = null, onMove = null, onEnd = null } =
     check('drag', o, ['axis', 'intent', 'hold', 'filter', 'onStart', 'onMove', 'onEnd']);
-  el.style.touchAction = !intent ? 'pan-x pan-y' : axis === 'y' ? 'pan-x' : 'pan-y';
+  if (typeof axis !== 'function') el.style.touchAction = !intent ? 'pan-x pan-y' : axis === 'y' ? 'pan-x' : 'pan-y';
   let s = null;
   const begin = (e) => {
     s.on = true;
@@ -197,7 +199,8 @@ export function drag(el, o) {
   };
   const down = (e) => {
     if (s || (e.pointerType === 'mouse' && e.button !== 0) || (filter && !filter(e))) return;
-    s = { id: e.pointerId, x: e.clientX, y: e.clientY, down: e, on: false, t: 0, mouse: e.pointerType === 'mouse' };
+    s = { id: e.pointerId, x: e.clientX, y: e.clientY, down: e, on: false, t: 0, mouse: e.pointerType === 'mouse',
+      axis: typeof axis === 'function' ? axis(e) : axis };
     if (s.mouse) { if (intent) begin(e); }
     else if (hold) s.t = setTimeout(() => { if (s && !s.on) begin(s.down); }, HOLD_MS);
   };
@@ -205,7 +208,7 @@ export function drag(el, o) {
     if (!s || e.pointerId !== s.id) return;
     const dx = e.clientX - s.x, dy = e.clientY - s.y;
     if (!s.on) {
-      const along = Math.abs(axis === 'y' ? dy : dx), across = Math.abs(axis === 'y' ? dx : dy);
+      const along = Math.abs(s.axis === 'y' ? dy : dx), across = Math.abs(s.axis === 'y' ? dx : dy);
       if (Math.max(along, across) < INTENT_PX) return;
       if (!s.mouse && (!intent || across >= along)) { clearTimeout(s.t); s = null; return; }
       begin(e);

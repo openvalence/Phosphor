@@ -30,6 +30,7 @@ import { loadPlugins } from './plugins/plugins.svelte.js';
 import { bindControls } from './plugins/kit.js';
 import { mountBound } from './ui/BoundControl.svelte';
 import { installTips } from './ui/tip.js';
+import './ui/touchrange.js';
 
 // api.ui.field and api.ui.module draw the shell's own controls (docs/PLUGINS.md, Field-bound controls).
 bindControls(mountBound);
