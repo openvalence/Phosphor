@@ -72,8 +72,8 @@
   let { shell = null, note = null } = $props();
   // main.js's shell signal; the served page never shows the Phosphor group.
   const SHELL = !!import.meta.env.TAURI_ENV_PLATFORM;
-  // The demo build (web/web.js): no Plugins page, and it opens on the Advanced Penetration card's page.
-  const DEMO = import.meta.env.MODE === 'demo';
+  // The mini build (web/web.js): no Plugins page, and it opens on the Advanced Penetration card's page.
+  const DEMO = import.meta.env.MODE === 'mini';
 
   const model = $derived(machine.catalog.model);
 

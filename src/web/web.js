@@ -1,11 +1,11 @@
 /**
  * web.js -- the web builds (docs/BUILD.md, Web builds): `vite build --mode web` is Phosphor in a browser tab,
- * `--mode demo` the stripped demo the website embeds. Both join Neutrino, the built-in machine, on load.
+ * `--mode mini` the stripped, memory-only demo the website embeds (at /mini/). Both join Neutrino, the built-in machine, on load.
  *
  * Constraints:
  * - Neutrino is the only machine a web build reaches: an https page cannot open ws:// to a LAN hub, and a
  *   browser has no UDP discovery, Buttplug server or file system. Nothing here dials a network host.
- * - The demo keeps its browser state under DEMO_PREFIX (storage.js), so Reset clears only the demo's keys.
+ * - The mini build keeps all state in memory (storage.js): a reload, and so Reset, is a first load.
  * - Embedded (?embed, the website's hero), the page never scrolls on its own, so a swipe over it scrolls the
  *   embedding page; it posts {phosphor: 'ready' | 'failed'} to its parent and takes {phosphor: 'pause' |
  *   'resume'} from it (off screen, or its tab hidden).
@@ -18,10 +18,9 @@ import { bootNeutrino, STATE_KEY } from '../model/neutrino-boot.js';
 import { BUILTIN_MACHINE_NAME } from '../model/builtin.js';
 import { writeSetting, displayValue } from '../model/shadow.svelte.js';
 import { applyTheme, currentTheme } from '../model/theme.js';
-import { demoStorage } from './storage.js';
 import { setMinimized } from '../ui/still.svelte.js';
 
-const DEMO = import.meta.env.MODE === 'demo';
+const DEMO = import.meta.env.MODE === 'mini';
 const SCHEME = { dark: 'phosphor', light: 'paper' };
 
 export async function startBuiltin() {
@@ -127,8 +126,7 @@ export function followScheme() {
   addEventListener('message', (e) => { if (e.data && typeof e.data.theme === 'string') set(e.data.theme); });
 }
 
-/** Back to the demo's first load: its keys gone, Neutrino booted fresh. */
+/** Back to the demo's first load: the page's state is memory only, so a reload is one. */
 export function resetDemo() {
-  demoStorage?.clear();
   location.reload();
 }

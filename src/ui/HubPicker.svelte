@@ -22,7 +22,7 @@
 
   const SHELL = !!import.meta.env.TAURI_ENV_PLATFORM;
   // The web builds reach Neutrino only (web/web.js): no hub field.
-  const WEB = import.meta.env.MODE === 'web' || import.meta.env.MODE === 'demo';
+  const WEB = import.meta.env.MODE === 'web' || import.meta.env.MODE === 'mini';
   const link = $derived(machine.link);
   const hub = $derived(link.host ? hostLabel(link.host, link.port) : '');
   // Same-origin is the only page that can mint a control credential.

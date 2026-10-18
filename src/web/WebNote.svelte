@@ -5,7 +5,7 @@
    */
   import { resetDemo } from './web.js';
 
-  const DEMO = import.meta.env.MODE === 'demo';
+  const DEMO = import.meta.env.MODE === 'mini';
   const DOWNLOADS = 'https://openvalence.org/downloads/';
   const WHY = 'Browsers block ws:// from an https page and have no LAN discovery, Buttplug server or file access';
 </script>

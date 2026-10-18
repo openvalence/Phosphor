@@ -61,16 +61,16 @@ function emitGzip() {
 }
 
 /**
- * The demo build's factory (src/plugins/factory-demo.js) in place of the full one, for plugins.svelte.js's
- * import only: no other plugin's code reaches the demo bundle.
+ * The mini build's factory (src/plugins/factory-mini.js) in place of the full one, for plugins.svelte.js's
+ * import only: no other plugin's code reaches the mini bundle.
  */
-function demoFactory() {
-  const demo = fileURLToPath(new URL('./src/plugins/factory-demo.js', import.meta.url));
+function miniFactory() {
+  const mini = fileURLToPath(new URL('./src/plugins/factory-mini.js', import.meta.url));
   return {
-    name: 'demo-factory',
+    name: 'mini-factory',
     enforce: 'pre',
     resolveId(source, importer) {
-      if (source === './factory.js' && importer && importer.replace(/\\/g, '/').endsWith('/src/plugins/plugins.svelte.js')) return demo;
+      if (source === './factory.js' && importer && importer.replace(/\\/g, '/').endsWith('/src/plugins/plugins.svelte.js')) return mini;
     },
   };
 }
@@ -92,13 +92,13 @@ function wasmAsset() {
   };
 }
 
-// The web builds (`--mode web`, `--mode demo`; src/web/web.js): ordinary code-split pages with relative URLs, in
-// dist-web/ and dist-demo/, for any static host under any path. Every other build is the single-file bundle.
+// The web builds (`--mode web`, `--mode mini`; src/web/web.js): ordinary code-split pages with relative URLs, in
+// dist-web/ and dist-mini/, for any static host under any path. Every other build is the single-file bundle.
 export default defineConfig(({ mode }) => {
-  const web = mode === 'web' || mode === 'demo';
+  const web = mode === 'web' || mode === 'mini';
   return {
     base: web ? './' : '/',
-    plugins: web ? [svelte(), wasmAsset(), ...(mode === 'demo' ? [demoFactory()] : [])] : [svelte(), viteSingleFile(), emitGzip()],
+    plugins: web ? [svelte(), wasmAsset(), ...(mode === 'mini' ? [miniFactory()] : [])] : [svelte(), viteSingleFile(), emitGzip()],
     // The built-in machine's worker is ES (neutrino.js is an ES module) and inlined (?worker&inline): one file.
     worker: { format: 'es' },
     define: {

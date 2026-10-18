@@ -57,10 +57,10 @@ in a worker in every build: Windows, macOS, Linux and Android (DESIGN 10.10).
 
 Two builds of the same app run in a plain browser and join Neutrino on load
 (`src/web/`): `npm run build:web` (to `dist-web/`) is Phosphor in a browser
-tab, `npm run build:demo` (to `dist-demo/`) the demo the website's home page
-embeds. Both are code-split pages with relative URLs; `.github/workflows/pages.yml`
-publishes the web build at https://phosphor.openvalence.org/ and the demo at
-`/demo/` (the repo's Pages source is GitHub Actions, its custom domain
+tab, `npm run build:mini` (to `dist-mini/`) the memory-only demo the
+website's home page embeds. Both are code-split pages with relative URLs; `.github/workflows/pages.yml`
+publishes the web build at https://phosphor.openvalence.org/ and the mini
+build at `/mini/` on every push to main (the repo's Pages source is GitHub Actions, its custom domain
 `phosphor.openvalence.org`).
 
 - What is gone, by build flag (`import.meta.env.MODE`, dead code in every
@@ -70,15 +70,19 @@ publishes the web build at https://phosphor.openvalence.org/ and the demo at
   hub (mixed content, and Chrome's Private Network Access), and a browser has
   no UDP discovery, Buttplug server or file system. The top bar's note
   (`src/web/WebNote.svelte`) says so.
-- The demo also drops every factory plugin but Advanced Penetration
-  (`src/plugins/factory-demo.js`, swapped in by `vite.config.js`), hides the
+- The web build persists like the app (localStorage): the visitor opened it.
+- The mini build keeps all state in memory: `src/web/storage.js` puts
+  Map-backed stand-ins in place of localStorage and sessionStorage, and
+  nothing in it uses IndexedDB, cookies, Cache Storage or a service worker,
+  so a reload is a first load and the site embeds it with no consent prompt.
+  `test/mini-storage.test.mjs` checks the built page holds nothing after a run.
+- The mini build also drops every factory plugin but Advanced Penetration
+  (`src/plugins/factory-mini.js`, swapped in by `vite.config.js`), hides the
   Plugins page, opens on the Advanced Penetration card's page and starts
   Advanced (not under reduced motion). A first load, and Reset demo, seed the
   window to the middle half of the rail (read from the catalog), master 50 and
   the full depth in it (deep 100, shallow 0: the window, not the depths, makes
-  the stroke smaller); Neutrino's own defaults stand. Its localStorage keys carry a `demo:` prefix (`src/web/storage.js`),
-  so it never shares state with the web build on the same origin and Reset
-  clears only its own.
+  the stroke smaller); Neutrino's own defaults stand.
 - Both follow the light or dark of the embedding page (`?theme=light|dark`,
   then `postMessage({theme})`), else the system's, while the applied theme is
   one of the two defaults.

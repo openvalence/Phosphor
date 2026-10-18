@@ -10,7 +10,7 @@
  * reason to care which machine it is talking to.
  */
 
-// First: the demo's localStorage stand-in must be in place before any module reads storage (web/storage.js).
+// First: the mini build's memory-only storage must be in place before any module reads storage (web/storage.js).
 import './web/storage.js';
 import { mount } from 'svelte';
 import App from './App.svelte';
@@ -19,7 +19,7 @@ import './themes/fonts.css';
 // Each theme folder's stylesheet loads by being there (docs/THEMES.md, Adding a theme). Only the applied
 // Theme's sheet is in the document: every rule loaded weighs on each style recalc (docs/THEMES.md, Performance).
 // The web builds (web/web.js) fetch the applied Theme's sheet when it is applied; the bundles carry them all.
-const LAZY_CSS = import.meta.env.MODE === 'web' || import.meta.env.MODE === 'demo';
+const LAZY_CSS = import.meta.env.MODE === 'web' || import.meta.env.MODE === 'mini';
 const THEME_CSS = LAZY_CSS
   ? import.meta.glob('./themes/*/theme.css', { query: '?inline', import: 'default' })
   : import.meta.glob('./themes/*/theme.css', { eager: true, query: '?inline', import: 'default' });
@@ -98,8 +98,8 @@ try {
 // same-origin rules). TAURI_ENV_PLATFORM is set only by the Tauri CLI's
 // build, so the embedded bundle compiles this branch away entirely.
 const SHELL = !!import.meta.env.TAURI_ENV_PLATFORM;
-// The web builds (`vite build --mode web|demo`, web/web.js) join Neutrino and nothing else.
-const WEB = import.meta.env.MODE === 'web' || import.meta.env.MODE === 'demo';
+// The web builds (`vite build --mode web|mini`, web/web.js) join Neutrino and nothing else.
+const WEB = import.meta.env.MODE === 'web' || import.meta.env.MODE === 'mini';
 
 // A boot step's failure lands in the device log ring (the Log tab) so the
 // shell shows it; console.error alone is invisible in the exe.

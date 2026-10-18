@@ -1,33 +1,28 @@
 /**
- * storage.js -- the demo build's localStorage: every key under DEMO_PREFIX, so the demo and the web build
- * beside it on one origin never share state, and Reset (web.js) clears the demo's keys alone.
+ * storage.js -- the mini build's browser storage: localStorage and sessionStorage are Map-backed stand-ins, so the
+ * page reads and writes nothing on the visitor's device and a reload starts it fresh (docs/BUILD.md, Web builds).
  *
  * Constraints:
- * - main.js imports this first: every module that reads localStorage at import time must see the stand-in.
- * - Other builds: demoStorage is null and localStorage is untouched.
+ * - main.js imports this first: every module that reads storage at import time must see the stand-in.
+ * - Nothing in the mini build may use IndexedDB, cookies, Cache Storage or a service worker:
+ *   test/mini-storage.test.mjs fails if any of them holds anything after a run.
+ * - Other builds: localStorage and sessionStorage are untouched.
  */
-const DEMO_PREFIX = 'demo:';
-
-function prefixed(real) {
-  const own = () => {
-    const ks = [];
-    for (let i = 0; i < real.length; i++) { const k = real.key(i); if (k.startsWith(DEMO_PREFIX)) ks.push(k); }
-    return ks;
-  };
+function memoryStorage() {
+  const m = new Map();
   return {
-    get length() { return own().length; },
-    key: (i) => own()[i]?.slice(DEMO_PREFIX.length) ?? null,
-    getItem: (k) => real.getItem(DEMO_PREFIX + k),
-    setItem: (k, v) => real.setItem(DEMO_PREFIX + k, v),
-    removeItem: (k) => real.removeItem(DEMO_PREFIX + k),
-    clear: () => { for (const k of own()) real.removeItem(k); },
+    get length() { return m.size; },
+    key: (i) => [...m.keys()][i] ?? null,
+    getItem: (k) => (m.has(String(k)) ? m.get(String(k)) : null),
+    setItem: (k, v) => { m.set(String(k), String(v)); },
+    removeItem: (k) => { m.delete(String(k)); },
+    clear: () => m.clear(),
   };
 }
 
-export let demoStorage = null;
-if (import.meta.env.MODE === 'demo') {
-  try {
-    demoStorage = prefixed(window.localStorage);
-    Object.defineProperty(window, 'localStorage', { configurable: true, get: () => demoStorage });
-  } catch { /* storage blocked: every reader already falls back to memory */ }
+if (import.meta.env.MODE === 'mini') {
+  for (const name of ['localStorage', 'sessionStorage']) {
+    const s = memoryStorage();
+    Object.defineProperty(window, name, { configurable: true, get: () => s });
+  }
 }

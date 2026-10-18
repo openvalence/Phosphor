@@ -20,8 +20,8 @@
   import { confirmUi } from './confirm.svelte.js';
 
   const SHELL = !!import.meta.env.TAURI_ENV_PLATFORM;
-  // The demo build carries one plugin (src/plugins/factory-demo.js) and no node graph.
-  const DEMO = import.meta.env.MODE === 'demo';
+  // The mini build carries one plugin (src/plugins/factory-mini.js) and no node graph.
+  const DEMO = import.meta.env.MODE === 'mini';
   const shown = (k) => (SHELL || !k.src.startsWith('src/shell/'))
     && (!DEMO || ((!k.src.startsWith('plugins/') || k.src.startsWith('plugins/factory/advanced-penetration/')) && !k.src.startsWith('src/ui/graph/')));
   const GROUPS = KEYS.map((g) => ({ ...g, items: g.items.filter(shown) }))

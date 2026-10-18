@@ -37,8 +37,8 @@ import {
 import { STORE_OP } from '../../../Valence/clients/js/generated/registry_vocab.js';
 
 const SHELL = !!import.meta.env.TAURI_ENV_PLATFORM;
-// The web builds load the factory plugins (the demo build's factory is Advanced Penetration alone, vite.config.js).
-const WEB = import.meta.env.MODE === 'web' || import.meta.env.MODE === 'demo';
+// The web builds load the factory plugins (the mini build's factory is Advanced Penetration alone, vite.config.js).
+const WEB = import.meta.env.MODE === 'web' || import.meta.env.MODE === 'mini';
 const DISABLED_KEY = 'phosphor.plugins.disabled';
 const LOG_MAX = 400;
 const LEVEL = Object.fromEntries(Object.entries(LOG_LEVEL_NAME).map(([n, name]) => [name, Number(n)]));
