@@ -77,7 +77,8 @@
   import { askConfirm } from '../confirm.svelte.js';
   import { writeSetting, sendCommand, displayValue, statusOf, shadowOf, STATUS } from '../../model/shadow.svelte.js';
   import { formatValue, unitOf, labelFor } from '../../model/format.js';
-  import { heroBar } from './heroBar.svelte.js';
+  import { heroBar, railAway } from './heroBar.svelte.js';
+  import { prefs } from '../../model/prefs.js';
   import { still, isStill } from '../still.svelte.js';
   import { ACCENT, onTheme } from '../../model/theme.js';
   import { norm, travelBounds } from '../../model/bounds.js';
@@ -484,6 +485,8 @@
   // motion must honor a LIVE change, no reload) must reach the rAF loop
   // below, which reads this on every frame.
   const reducedMotion = $derived(still.on);
+  // Away (collapsed, HeroStrip): the loop still feeds the numerals and the mini rail; the canvases and the tape pip stay undrawn.
+  const away = $derived(railAway($prefs));
 
   // The plan's end (plan.*, RFC-035) in rail units, while a source owns the
   // rail: where the carriage is about to go. The comet draws it as a ghost and
@@ -507,7 +510,7 @@
   const posLive = $derived(!!pos && freshness(pos.channelId)?.stale === false);
   const targetLive = $derived(!!target && freshness(target.channelId)?.stale === false);
   $effect(() => {
-    void lo; void hi; void flipped; void span; void reducedMotion; void posLive; void targetLive; void planEndV;
+    void lo; void hi; void flipped; void span; void reducedMotion; void posLive; void targetLive; void planEndV; void away;
     wake();
   });
 
@@ -698,11 +701,12 @@
         targetDisplay = null; targetFresh = false;
       }
 
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, rectW, rectH);
-
       let tailPx = 0, ghostX = null, headX = null;
-      if (pos && posDisplay != null && fresh && rectW > 0) {
+      if (!away) {
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, rectW, rectH);
+      }
+      if (!away && pos && posDisplay != null && fresh && rectW > 0) {
         if (glowDpr !== dpr) buildGlow();
         const midY = rectH * 0.5;
         headX = xOf(posDisplay);
@@ -1123,6 +1127,15 @@
     const f = clamp((tapeVal - tapeLo) / tapeSpan, 0, 1);
     return flipped ? 1 - f : f;
   });
+  // The pip shows only under a drag and its fade after (t-quick, well inside 1 s); unseen, it holds still: no
+  // style or layout per display frame.
+  let pipLive = $state(false), pipFrac = $state(null);
+  $effect(() => {
+    if (moveDragging) { pipLive = true; return; }
+    const t = setTimeout(() => { pipLive = false; }, 1000);
+    return () => clearTimeout(t);
+  });
+  $effect(() => { if (pipLive || untrack(() => pipFrac) == null) pipFrac = tapeDotFrac; });
 </script>
 
 <div class="hero rail-hero">
@@ -1138,9 +1151,9 @@
     <div class="rail-swap">
     <div class="swap-face" class:off={!planShown}>
       {#if foreign}
-        <PlanStrip shown={planShown} edge0={haveWindow ? minPct : 0} edge1={haveWindow ? maxPct : 1} />
+        <PlanStrip shown={planShown && !away} edge0={haveWindow ? minPct : 0} edge1={haveWindow ? maxPct : 1} />
       {:else}
-        <PlanStrip shown={planShown} segment lane={[bandL, bandR]} edge0={minPct > maxPct ? 1 : 0} edge1={minPct > maxPct ? 0 : 1}
+        <PlanStrip shown={planShown && !away} segment lane={[bandL, bandR]} edge0={minPct > maxPct ? 1 : 0} edge1={minPct > maxPct ? 0 : 1}
                    pos={fresh ? winFrac(posDisplay) : null} target={targetFresh ? winFrac(targetDisplay) : null} />
       {/if}
     </div>
@@ -1184,8 +1197,8 @@
             {:else}
               <span class="rail-tape-micro">tap &middot; scrub</span>
             {/if}
-            {#if tapeDotFrac != null}
-              <div class="rail-tape-pip" class:on={moveDragging} style="left:{tapeDotFrac * 100}%"></div>
+            {#if tapeDotFrac != null && !away}
+              <div class="rail-tape-pip" class:on={moveDragging} style="left:{(pipFrac ?? tapeDotFrac) * 100}%"></div>
             {/if}
           </div>
         </div>

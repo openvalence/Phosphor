@@ -13,7 +13,7 @@
   // instrument hero's row carries the transport controls (OG .hero-row).
   // This strip stays ignorant of what the snippet contains.
   import { prefs } from '../model/prefs.js';
-  import { heroBar, isCollapsed } from './hero/heroBar.svelte.js';
+  import { heroBar, isCollapsed, railAway } from './hero/heroBar.svelte.js';
 
   let { heroes, accessory = null } = $props();
   // The rail stays mounted while hidden: railReadout() keeps feeding the numerals.
@@ -42,7 +42,7 @@
 
 {#if heroes && heroes.length}
   <div class="hero-strip" data-part="hero" class:collapsed bind:offsetHeight={barH} style:height={heldH != null ? heldH + 'px' : null}>
-    <div class="hero-inner" class:popup={heroBar.popup} class:quick={heroBar.quick} inert={collapsed && !heroBar.popup && !heroBar.quick}
+    <div class="hero-inner" class:popup={heroBar.popup} class:quick={heroBar.quick} inert={railAway($prefs)}
          style:--rh={heroBar.slotH + 'px'} style:--qb={heroBar.quickBottom + 'px'} bind:this={inner}>
       {#each heroes as hero, i (hero.id)}
         <div class="hero-slot" data-hero={hero.id}>
