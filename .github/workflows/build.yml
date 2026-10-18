@@ -22,8 +22,10 @@ jobs:
       id-token: write # Azure login (OIDC) for Windows signing
     # Windows signing runs on v* tag pushes once vars.AZURE_ARTIFACT_SIGNING_ACCOUNT is
     # set (docs/BUILD.md, Windows signing); otherwise its steps are skipped.
+    # Do not name it SIGN: linuxdeploy-plugin-appimage gpg-signs the AppImage
+    # when SIGN is set to any value, "false" included, and the Linux bundle fails.
     env:
-      SIGN: ${{ matrix.os == 'windows-latest' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && vars.AZURE_ARTIFACT_SIGNING_ACCOUNT != '' }}
+      WINDOWS_SIGN: ${{ matrix.os == 'windows-latest' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && vars.AZURE_ARTIFACT_SIGNING_ACCOUNT != '' }}
     # The federated credential trusts this environment, which admits v* tags only.
     environment: ${{ matrix.os == 'windows-latest' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && vars.AZURE_ARTIFACT_SIGNING_ACCOUNT != '' && 'windows-signing' || '' }}
     strategy:
@@ -128,13 +130,13 @@ jobs:
         working-directory: Phosphor
         run: npx tauri build --target ${{ matrix.triple }} --no-bundle
       - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
-        if: env.SIGN == 'true'
+        if: env.WINDOWS_SIGN == 'true'
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       - name: ArtifactSigning module for the signCommand
-        if: env.SIGN == 'true'
+        if: env.WINDOWS_SIGN == 'true'
         shell: pwsh
         run: Install-Module -Name ArtifactSigning -RequiredVersion 0.1.8 -Force -Repository PSGallery
       - name: NSIS installer
@@ -147,7 +149,7 @@ jobs:
           AZURE_ARTIFACT_SIGNING_PROFILE: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
         run: |
           $conf = @()
-          if ($env:SIGN -eq 'true') {
+          if ($env:WINDOWS_SIGN -eq 'true') {
             $sign = @{ bundle = @{ windows = @{ signCommand = @{ cmd = 'pwsh'; args = @('-NoProfile', '-File', "$PWD\tools\sign-windows.ps1", '%1') } } } }
             $sign | ConvertTo-Json -Depth 6 | Set-Content "$env:RUNNER_TEMP\sign.json"
             $conf = @('--config', "$env:RUNNER_TEMP\sign.json")
@@ -155,7 +157,7 @@ jobs:
           npx tauri bundle --target ${{ matrix.triple }} --bundles nsis @conf
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Sign phosphor.exe
-        if: env.SIGN == 'true'
+        if: env.WINDOWS_SIGN == 'true'
         uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
         with:
           endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
@@ -215,7 +217,7 @@ jobs:
           v=$(basename "$rel"/bundle/nsis/Phosphor_*_x64-setup.exe | sed -E 's/^Phosphor_(.+)_x64-setup\.exe$/\1/')
           mkdir -p "$rel/msix" && cp src-tauri/target/msix/phosphor-x86_64.msix "$rel/msix/Phosphor_${v}_x64.msix"
       - name: Sign the MSIX
-        if: env.SIGN == 'true' && steps.msix.outcome == 'success'
+        if: env.WINDOWS_SIGN == 'true' && steps.msix.outcome == 'success'
         uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
         with:
           endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
@@ -224,7 +226,7 @@ jobs:
           files-folder: ${{ github.workspace }}\Phosphor\src-tauri\target\${{ matrix.triple }}\release\msix
           files-folder-filter: msix
       - name: Verify the signatures
-        if: env.SIGN == 'true'
+        if: env.WINDOWS_SIGN == 'true'
         shell: pwsh
         working-directory: Phosphor/src-tauri/target/${{ matrix.triple }}/release
         run: |
