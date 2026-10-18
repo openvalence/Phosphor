@@ -47,4 +47,5 @@
      that is not a control's scrolls the embedding page (style.css's overscroll-behavior: none would trap it). */
   :global(html.embed), :global(html.embed body) { overflow: hidden; overscroll-behavior: auto; }
   @media (pointer: coarse) { :global(html.embed .content) { overflow: hidden; } }
+  :global(html.embed[data-paused] body) { display: none; }
 </style>

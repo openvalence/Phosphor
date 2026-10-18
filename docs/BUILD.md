@@ -73,13 +73,20 @@ publishes the web build at https://phosphor.openvalence.org/ and the demo at
 - The demo also drops every factory plugin but Advanced Penetration
   (`src/plugins/factory-demo.js`, swapped in by `vite.config.js`), hides the
   Plugins page, opens on the Advanced Penetration card's page and starts
-  Advanced (seeding a visible stroke on a first load; not under reduced
-  motion). Its localStorage keys carry a `demo:` prefix (`src/web/storage.js`),
+  Advanced (not under reduced motion). A first load, and Reset demo, seed the
+  window to the middle half of the rail (read from the catalog) and a long
+  stroke in it; Neutrino's own defaults stand. Its localStorage keys carry a `demo:` prefix (`src/web/storage.js`),
   so it never shares state with the web build on the same origin and Reset
   clears only its own.
 - Both follow the light or dark of the embedding page (`?theme=light|dark`,
   then `postMessage({theme})`), else the system's, while the applied theme is
   one of the two defaults.
+- Hidden, the page pauses Neutrino (no tick, and no time passes for the
+  machine: `pause`/`resume` in `src/model/neutrino-bridge.js`). Embedded, the
+  site's hero also sends `{phosphor: 'pause' | 'resume'}` when it leaves or
+  comes back on screen; the paused page reads as hidden (one goodbye, one warm
+  reconnect, the pattern started again if it ran), draws nothing and stills
+  its ambient motion.
 - Neutrino ships as a `.wasm` file beside the page there (`wasmAsset` in
   `vite.config.js`), not the base64 string the bundles inline; Theme sheets
   load when applied.
