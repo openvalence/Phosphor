@@ -106,119 +106,117 @@ npm ci
 npm run build:app -- --bundles nsis
 ```
 
-## Windows signing (SignPath)
+## Windows signing (Azure Artifact Signing)
 
-Windows ships three files, signed by SignPath under the SignPath Foundation
-OSS program (operator ruling, 2026-10-17): the MSIX package (recommended),
-the NSIS installer (standard) and the portable zip. The Microsoft Store route
-is retired (operator ruling, 2026-10-08): the Store does not let OpenValence
-distribute the MSIX itself. The MSIX is a plain sideload package with no
-update URI.
+Windows ships three files: the MSIX package (recommended), the NSIS installer
+(standard) and the portable zip. Once the settings below exist, a `v*` tag
+signs all of them with Azure Artifact Signing (formerly Trusted Signing;
+operator ruling, 2026-10-18), certificate in the operator's own name. Until then every Windows file is unsigned and the MSIX
+stays out of releases. The Microsoft Store route is retired (operator
+ruling, 2026-10-08): the Store does not let OpenValence distribute the MSIX
+itself. The MSIX is a plain sideload package with no update URI.
 
-The public policy is https://openvalence.org/code-signing/ (the site repo's
-`code-signing/index.html`); keep it in step with this section.
+Cost: the Basic plan, $9.99 a month.
 
 ### One-time setup (operator)
 
-1. Apply to the SignPath Foundation OSS program (https://signpath.org/apply).
-   It needs the public repo (`openvalence/Phosphor`), its OSS licenses
-   (Apache-2.0, one plugin CERN-OHL-S-2.0) and the code signing policy page.
-2. MFA on every account that can change the source or approve a signature:
-   the `openvalence` GitHub org (Settings > Authentication security >
-   Require two-factor authentication) and each SignPath user.
-3. In SignPath, the project `Phosphor`. The Foundation sets file metadata
-   restrictions on it: product name `Phosphor`. `productName` in
-   `src-tauri/tauri.conf.json` and the MSIX `DisplayName` are `Phosphor`;
-   keep them.
-4. Trusted build systems: link the predefined `GitHub.com` system to the
-   project. Installing the SignPath GitHub App on `openvalence/Phosphor` is
-   optional (it lets SignPath evaluate the audit log).
-5. Artifact configuration (the project default). The CI artifact is a zip
-   holding `bundle/nsis/`, `portable/` and `msix/`:
+1. An Azure subscription (pay-as-you-go), with the resource provider
+   `Microsoft.CodeSigning` registered (Subscriptions > Resource providers).
+2. An Artifact Signing account (Basic) in a supported region, for example
+   East US. Its Overview page shows the Account URI, the endpoint CI needs
+   (East US: `https://eus.codesigning.azure.net/`).
+3. Assign yourself the role `Artifact Signing Identity Verifier` on the
+   account, then Identity validation > New identity > Public > Individual.
+   The certificate subject is your legal name as validated.
+4. A certificate profile of type Public Trust on that validated identity.
+   Its page shows the subject, for example
+   `CN=Grayson Heath, O=Grayson Heath, L=<city>, S=<state>, C=US`; copy it
+   exactly. The certificates are short-lived and renewed by the service; the
+   subject stays the same.
+5. A Microsoft Entra app registration (`phosphor-signing`), no client secret.
+   Certificates & secrets > Federated credentials > Add > GitHub Actions
+   deploying Azure resources: organization `openvalence`, repository
+   `Phosphor`, entity Environment, name `windows-signing`. Entra does not take
+   a wildcard such as `refs/tags/v*` in a subject, so the environment carries
+   the tag rule. If the repository uses GitHub's immutable OIDC subjects, the
+   subject holds the owner and repository ids; a failed login prints the one
+   GitHub sent.
+6. On the Artifact Signing account, Access control (IAM): role
+   `Artifact Signing Certificate Profile Signer` for that app registration.
+7. In `openvalence/Phosphor` > Settings > Environments: `windows-signing`,
+   deployment branches and tags limited to the tag pattern `v*`.
+8. In `openvalence/Phosphor` > Settings > Secrets and variables > Actions >
+   Variables (repository level, none of them is a secret):
 
-   ```xml
-   <artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
-     <zip-file>
-       <pe-file path="bundle/nsis/Phosphor_*-setup.exe">
-         <authenticode-sign />
-       </pe-file>
-       <pe-file path="portable/Phosphor_*-portable.exe">
-         <authenticode-sign />
-       </pe-file>
-       <msix-file path="msix/Phosphor_*.msix">
-         <authenticode-sign />
-       </msix-file>
-     </zip-file>
-   </artifact-configuration>
-   ```
+   | variable | value |
+   |---|---|
+   | `AZURE_CLIENT_ID` | the app registration's Application (client) ID |
+   | `AZURE_TENANT_ID` | Directory (tenant) ID |
+   | `AZURE_SUBSCRIPTION_ID` | the subscription holding the account |
+   | `AZURE_ARTIFACT_SIGNING_ENDPOINT` | the Account URI (step 2) |
+   | `AZURE_ARTIFACT_SIGNING_ACCOUNT` | the Artifact Signing account name; setting it turns signing on |
+   | `AZURE_ARTIFACT_SIGNING_PROFILE` | the certificate profile name |
+   | `MSIX_PUBLISHER` | the certificate subject from step 4, character for character |
 
-6. Signing policy `release-signing`, with manual approval of every request
-   (a Foundation requirement). A `test-signing` policy for trials is
-   optional.
-7. In GitHub, `openvalence/Phosphor` > Settings > Secrets and variables >
-   Actions: secret `SIGNPATH_API_TOKEN` (a SignPath user with submitter
-   permission), variables `SIGNPATH_ORGANIZATION_ID`,
-   `SIGNPATH_PROJECT_SLUG` (`Phosphor`), `SIGNPATH_POLICY_SLUG`
-   (`release-signing`) and `MSIX_PUBLISHER`: the SignPath Foundation
-   certificate subject, copied from SignPath after approval (the full
-   distinguished name, `CN=..., O=..., C=...`). Windows refuses an MSIX
-   whose manifest Publisher differs from its signer's subject;
-   `tools/msix/pack.mjs` takes it from that variable and falls back to
+   Windows refuses an MSIX whose manifest Publisher differs from its
+   signer's subject, and signing one fails; `tools/msix/pack.mjs` takes the
+   Publisher from `MSIX_PUBLISHER` and falls back to
    `tools/msix/identity.json`.
 
-One request signs all three files, so one approval per release. SignPath
-cannot open an NSIS installer, so the `phosphor.exe` inside it stays
-unsigned; the portable exe is that same binary, signed. The MSIX signature
-covers the exe inside it.
+### What CI does
 
-The portable exe is signed as a bare file but published inside a zip,
-`Phosphor_<version>_x64-portable.zip`, so Extract here and Extract all both
-leave one folder (docs/DESIGN.md 10.18). Layout:
+- Every build: the Windows job builds `phosphor.exe` (`tauri build
+  --no-bundle`), then the NSIS installer (`tauri bundle`), the portable zip
+  and the MSIX around the same exe, as artifacts
+  (`phosphor-x86_64-pc-windows-msvc`, `...-portable`, `...-msix`). Pull
+  requests and pushes to `main` never sign.
+- `v*` tag pushes with `AZURE_ARTIFACT_SIGNING_ACCOUNT` set: the job runs in the
+  `windows-signing` environment with `id-token: write`, logs in to Azure
+  with OIDC (`azure/login`, no stored secret) right after the build, and
+  signs in this order:
+  1. While `tauri bundle` packs NSIS: Tauri writes the bundle type into
+     `phosphor.exe`, so its `signCommand` (`tools/sign-windows.ps1`, the
+     `ArtifactSigning` module) signs that patched exe, the uninstaller and
+     the setup exe. Signing the exe before `tauri bundle` would not survive
+     the patch.
+  2. `phosphor.exe` itself (`azure/artifact-signing-action`), restored
+     unpatched by Tauri: the portable zip and the MSIX carry it.
+  3. The MSIX.
+
+  SHA-256 digests, timestamped by `http://timestamp.acs.microsoft.com`.
+  The job then runs `signtool verify /pa` on the exe, the setup exe, the exe
+  unpacked from the setup exe and the MSIX, and prints each signer subject
+  and timestamp; any failure fails the job.
+- Without `AZURE_ARTIFACT_SIGNING_ACCOUNT` the signing steps are skipped, not
+  failed. With it set, a signing or verification failure fails the job.
+- `windows-release` (a `v*` tag, after every bundle job): the installer and
+  portable zip into the draft release, and the MSIX when signing is on.
+
+The portable zip, `Phosphor_<version>_x64-portable.zip`, holds one folder
+so Extract here and Extract all both leave one folder (docs/DESIGN.md
+10.18):
 
 ```
 Phosphor/
-  phosphor.exe        the exe (signed on a release), renamed from Phosphor_<version>_x64-portable.exe
+  phosphor.exe        the exe (signed on a release)
   phosphor.portable   one line: Phosphor portable mode: all data stays in PhosphorData beside phosphor.exe.
 ```
 
 The marker file turns portable mode on; the app creates `PhosphorData`
-beside the exe. The bare `Phosphor_<version>_x64-portable.exe` exists only
-inside the signing request zip (`portable/`) and is never a release asset.
-
-### What CI does
-
-- Every build: the unsigned installer (`phosphor-x86_64-pc-windows-msvc`),
-  portable zip (`...-portable`, the contained layout above, unsigned exe)
-  and MSIX (`...-msix`) as artifacts. No signing request, and no MSIX in any
-  release while unsigned. A `v*` tag puts the unsigned portable zip into the
-  draft release.
-- `v*` tag pushes, once `SIGNPATH_ORGANIZATION_ID` is set: the three files
-  go to SignPath as `...-to-sign` and the job ends without waiting for the
-  approval (the portable exe goes in as a bare pe-file). Its summary holds
-  the request link and the follow-up command.
-  Pushes to `main` and pull requests never submit a request. Without the
-  variable the signing steps are skipped, not failed.
-- `sign-release.yml` (manual, `tag` and `signing-request-id`): checks the
-  request is `Completed`, downloads the signed zip, rebuilds the portable
-  zip around the signed exe (renamed `phosphor.exe`, with `phosphor.portable`)
-  and uploads the installer, MSIX and portable zip to the tag's draft
-  release, replacing the unsigned files of the same name.
+beside the exe.
 
 ### Release checklist
 
 1. `git tag vX.Y.Z && git push origin vX.Y.Z`.
-2. Approve the signing request in SignPath (link in the Windows job's
-   summary).
-3. `gh workflow run sign-release.yml -R openvalence/Phosphor -f tag=vX.Y.Z -f signing-request-id=<id>`
-   (the summary prints it filled in).
-4. When every job is green, open the draft release `Phosphor vX.Y.Z` and
+2. When every job is green, open the draft release `Phosphor vX.Y.Z` and
    check the installer and MSIX are signed and, after extracting the
    portable zip, that `Phosphor/phosphor.exe` is (Properties > Digital
-   Signatures, or `signtool verify /pa <file>`); the zip holds exactly the
-   `Phosphor/` folder with `phosphor.exe` and `phosphor.portable`.
-5. Download the release assets (the portable zip included), run
+   Signatures, or `signtool verify /pa <file>`); the Windows job's log
+   prints the same. The zip holds exactly the `Phosphor/` folder with
+   `phosphor.exe` and `phosphor.portable`.
+3. Download the release assets (the portable zip included), run
    `sha256sum * > SHA256SUMS` and attach `SHA256SUMS`.
-6. Publish the release.
+4. Publish the release.
 
 ## Windows MSIX (local packages)
 
@@ -521,7 +519,8 @@ Runs on every push to `main`, every pull request, every `v*` tag and by hand.
 
 | job | runner | produces (artifact) |
 |---|---|---|
-| `x86_64-pc-windows-msvc` | windows-latest | NSIS installer (`phosphor-x86_64-pc-windows-msvc`), portable zip (`...-portable`), MSIX (`...-msix`); on a `v*` tag, the SignPath request (`...-to-sign`) |
+| `x86_64-pc-windows-msvc` | windows-latest | NSIS installer (`phosphor-x86_64-pc-windows-msvc`), portable zip (`...-portable`), MSIX (`...-msix`); signed on a `v*` tag once Windows signing is configured |
+| `windows-release` | ubuntu-24.04 | on a `v*` tag, after `bundle`: the Windows installer, portable zip and (signed only) MSIX into the draft release |
 | `aarch64-apple-darwin` | macos-latest | `.dmg` holding the ad-hoc signed `.app` (`phosphor-aarch64-apple-darwin`) |
 | `x86_64-unknown-linux-gnu` | ubuntu-22.04 | `.deb` and `.AppImage` (`phosphor-x86_64-unknown-linux-gnu`) |
 | `flatpak` | ubuntu-24.04, GNOME 50 container | `phosphor-x86_64.flatpak` |
@@ -530,11 +529,11 @@ Runs on every push to `main`, every pull request, every `v*` tag and by hand.
 
 Each bundle job checks out Phosphor, Nucleus (`main`), Valence and Kinetic at
 the shas in Nucleus's `valence.pin` and `kinetic.pin`, and ButtplugIO
-(`valence`), then runs tauri-action, whose `beforeBuildCommand` runs
+(`valence`), then runs tauri-action (Windows: `tauri build --no-bundle`, then
+`tauri bundle`), whose `beforeBuildCommand` runs
 `npm run check` first, the built-in machine's pin among it. CI never builds
 the wasm: it is vendored. A `v*` tag also opens one draft release with every bundle; the
-Windows job then submits its installer, portable exe and MSIX for signing
-(Windows signing, above).
+Windows files reach it through `windows-release` (Windows signing, above).
 
 Before the first run can pass, the remote needs what the workflow checks out:
 

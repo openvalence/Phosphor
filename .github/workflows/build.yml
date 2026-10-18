@@ -1,8 +1,7 @@
 # Phosphor bundles for Windows, macOS and Linux, plus a Flatpak built from
-# the Linux .deb, a Windows MSIX and an Android APK. A v* tag sends the
-# Windows installer, MSIX and portable exe to SignPath (sign-release.yml fetches them once
-# approved and publishes the portable exe inside its zip). docs/BUILD.md is the map.
-# A v* tag also opens a draft release holding every bundle.
+# the Linux .deb, a Windows MSIX and an Android APK. A v* tag opens a draft
+# release holding every bundle; once Azure Artifact Signing is configured it
+# signs the Windows exe, installer and MSIX first. docs/BUILD.md is the map.
 name: build
 
 on:
@@ -14,11 +13,19 @@ on:
 
 permissions:
   contents: write # the draft release on a tag
-  actions: read # SignPath reads the job that produced the artifact
 
 jobs:
   bundle:
     name: ${{ matrix.triple }}
+    permissions:
+      contents: write
+      id-token: write # Azure login (OIDC) for Windows signing
+    # Windows signing runs on v* tag pushes once vars.AZURE_ARTIFACT_SIGNING_ACCOUNT is
+    # set (docs/BUILD.md, Windows signing); otherwise its steps are skipped.
+    env:
+      SIGN: ${{ matrix.os == 'windows-latest' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && vars.AZURE_ARTIFACT_SIGNING_ACCOUNT != '' }}
+    # The federated credential trusts this environment, which admits v* tags only.
+    environment: ${{ matrix.os == 'windows-latest' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && vars.AZURE_ARTIFACT_SIGNING_ACCOUNT != '' && 'windows-signing' || '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -98,6 +105,7 @@ jobs:
       # macOS: ad-hoc signed ("-"), no Apple ID. Notarizing needs the APPLE_*
       # secrets (docs/BUILD.md).
       - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
+        if: runner.os != 'Windows'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_SIGNING_IDENTITY: ${{ runner.os == 'macOS' && '-' || '' }}
@@ -107,6 +115,53 @@ jobs:
           tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
           releaseName: Phosphor ${{ github.ref_name }}
           releaseDraft: true
+
+      # Windows builds, then bundles, so signing starts minutes after the
+      # Azure login (its OIDC assertion expires soon after). Tauri patches the
+      # bundle type into phosphor.exe while packing NSIS, so Tauri's
+      # signCommand (tools/sign-windows.ps1) signs the patched exe, the
+      # uninstaller and the installer; the action then signs the restored exe
+      # that the portable zip and MSIX carry. windows-release publishes them.
+      - name: Build phosphor.exe
+        if: runner.os == 'Windows'
+        shell: bash
+        working-directory: Phosphor
+        run: npx tauri build --target ${{ matrix.triple }} --no-bundle
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        if: env.SIGN == 'true'
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: ArtifactSigning module for the signCommand
+        if: env.SIGN == 'true'
+        shell: pwsh
+        run: Install-Module -Name ArtifactSigning -RequiredVersion 0.1.8 -Force -Repository PSGallery
+      - name: NSIS installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        working-directory: Phosphor
+        env:
+          AZURE_ARTIFACT_SIGNING_ENDPOINT: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+          AZURE_ARTIFACT_SIGNING_ACCOUNT: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+          AZURE_ARTIFACT_SIGNING_PROFILE: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
+        run: |
+          $conf = @()
+          if ($env:SIGN -eq 'true') {
+            $sign = @{ bundle = @{ windows = @{ signCommand = @{ cmd = 'pwsh'; args = @('-NoProfile', '-File', "$PWD\tools\sign-windows.ps1", '%1') } } } }
+            $sign | ConvertTo-Json -Depth 6 | Set-Content "$env:RUNNER_TEMP\sign.json"
+            $conf = @('--config', "$env:RUNNER_TEMP\sign.json")
+          }
+          npx tauri bundle --target ${{ matrix.triple }} --bundles nsis @conf
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Sign phosphor.exe
+        if: env.SIGN == 'true'
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
+          files: ${{ github.workspace }}\Phosphor\src-tauri\target\${{ matrix.triple }}\release\phosphor.exe
 
       # The .app ships inside the .dmg: an artifact zip drops its exec bits.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -122,18 +177,15 @@ jobs:
 
       # The plain built exe: the frontend is embedded, no resources or sidecars.
       # It needs the WebView2 runtime. Named after the installer's version.
-      # portable/*.exe only feeds the signing request and the MSIX name; the
-      # published asset is portable-zip/*.zip, a Phosphor/ folder holding
+      # The published asset is portable-zip/*.zip, a Phosphor/ folder holding
       # phosphor.exe and the phosphor.portable marker (docs/DESIGN.md 10.18).
-      # sign-release.yml rebuilds the same zip around the signed exe.
-      - name: Portable exe and zip
+      - name: Portable zip
         if: runner.os == 'Windows'
         shell: bash
         working-directory: Phosphor/src-tauri/target/${{ matrix.triple }}/release
         run: |
           setup=$(ls bundle/nsis/Phosphor_*_x64-setup.exe)
           v=$(basename "$setup" | sed -E 's/^Phosphor_(.+)_x64-setup\.exe$/\1/')
-          mkdir -p portable && cp phosphor.exe "portable/Phosphor_${v}_x64-portable.exe"
           mkdir -p portable-stage/Phosphor portable-zip
           cp phosphor.exe portable-stage/Phosphor/phosphor.exe
           echo "Phosphor portable mode: all data stays in PhosphorData beside phosphor.exe." > portable-stage/Phosphor/phosphor.portable
@@ -144,17 +196,10 @@ jobs:
           name: phosphor-${{ matrix.triple }}-portable
           if-no-files-found: error
           path: Phosphor/src-tauri/target/${{ matrix.triple }}/release/portable-zip/*.zip
-      - name: Portable zip into the draft release
-        if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/v')
-        shell: bash
-        working-directory: Phosphor/src-tauri/target/${{ matrix.triple }}/release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ github.ref_name }}" portable-zip/*.zip --clobber -R "${{ github.repository }}"
 
       # The sideload MSIX around the same exe. Its Publisher must equal the
-      # signing certificate's subject (vars.MSIX_PUBLISHER); unsigned, it does
-      # not install, so only the signed one goes into a release.
+      # signing certificate's subject (vars.MSIX_PUBLISHER) or signing fails;
+      # unsigned, it does not install, so only the signed one goes into a release.
       # Allowed to fail until it has passed on a GitHub runner (makeappx on windows-latest is unproven).
       - name: MSIX package
         id: msix
@@ -167,8 +212,36 @@ jobs:
         run: |
           rel=src-tauri/target/${{ matrix.triple }}/release
           node tools/msix/pack.mjs --exe-dir "$rel"
-          v=$(basename "$rel"/portable/*.exe | sed -E 's/^Phosphor_(.+)_x64-portable\.exe$/\1/')
+          v=$(basename "$rel"/bundle/nsis/Phosphor_*_x64-setup.exe | sed -E 's/^Phosphor_(.+)_x64-setup\.exe$/\1/')
           mkdir -p "$rel/msix" && cp src-tauri/target/msix/phosphor-x86_64.msix "$rel/msix/Phosphor_${v}_x64.msix"
+      - name: Sign the MSIX
+        if: env.SIGN == 'true' && steps.msix.outcome == 'success'
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}\Phosphor\src-tauri\target\${{ matrix.triple }}\release\msix
+          files-folder-filter: msix
+      - name: Verify the signatures
+        if: env.SIGN == 'true'
+        shell: pwsh
+        working-directory: Phosphor/src-tauri/target/${{ matrix.triple }}/release
+        run: |
+          $signtool = (Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName -Descending | Select-Object -First 1).FullName
+          # The installed exe, unpacked from the installer (7-Zip reads NSIS).
+          $setup = Get-Item bundle/nsis/*-setup.exe
+          7z e $setup.FullName phosphor.exe "-o$env:RUNNER_TEMP\installed" -y | Out-Null
+          $files = @(Get-Item phosphor.exe, $setup, "$env:RUNNER_TEMP\installed\phosphor.exe") + @(Get-ChildItem msix/*.msix -ErrorAction SilentlyContinue)
+          $bad = 0
+          foreach ($f in $files) {
+            & $signtool verify /pa /q $f.FullName
+            $ok = $LASTEXITCODE -eq 0
+            $s = Get-AuthenticodeSignature $f.FullName
+            "{0}: {1}; signer {2}; timestamp {3}" -f $f.Name, ($ok ? 'verified' : 'FAILED'), $s.SignerCertificate.Subject, $s.TimeStamperCertificate.Subject
+            if (-not $ok) { $bad++ }
+          }
+          if ($bad) { Write-Error "$bad file(s) failed signtool verify /pa"; exit 1 }
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: runner.os == 'Windows' && steps.msix.outcome == 'success'
         with:
@@ -176,47 +249,30 @@ jobs:
           if-no-files-found: error
           path: Phosphor/src-tauri/target/${{ matrix.triple }}/release/msix/*.msix
 
-      # v* tag pushes only, and skipped until the SignPath variables exist
-      # (docs/BUILD.md, Windows signing). Every request waits for a manual
-      # approval, so the job submits and does not wait; sign-release.yml
-      # fetches the signed files. The zip holds bundle/nsis/, portable/, msix/.
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        id: tosign
-        if: runner.os == 'Windows' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && vars.SIGNPATH_ORGANIZATION_ID != ''
+  # After bundle: tauri-action opens the draft release in the macOS and Linux
+  # jobs. The installer and portable zip always; the MSIX only when signed.
+  windows-release:
+    needs: bundle
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: phosphor-${{ matrix.triple }}-to-sign
-          if-no-files-found: error
-          path: |
-            Phosphor/src-tauri/target/${{ matrix.triple }}/release/bundle/nsis/*-setup.exe
-            Phosphor/src-tauri/target/${{ matrix.triple }}/release/portable/*.exe
-            Phosphor/src-tauri/target/${{ matrix.triple }}/release/msix/*.msix
-      - name: Signing request (SignPath)
-        id: signpath
-        if: steps.tosign.outcome == 'success'
-        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
-        with:
-          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
-          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
-          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
-          github-artifact-id: ${{ steps.tosign.outputs.artifact-id }}
-          wait-for-completion: false
-      - name: Signing request in the job summary
-        if: steps.signpath.outcome == 'success'
-        shell: bash
+          pattern: phosphor-x86_64-pc-windows-msvc*
+          path: win
+      - name: Windows files into the draft release
         env:
-          URL: ${{ steps.signpath.outputs.signing-request-web-url }}
-          ID: ${{ steps.signpath.outputs.signing-request-id }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SIGNED: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT != '' }}
         run: |
-          {
-            echo "Approve the signing request: $URL"
-            echo
-            echo "Then put the signed files into the draft release:"
-            echo
-            echo '```'
-            echo "gh workflow run sign-release.yml -R $GITHUB_REPOSITORY -f tag=$GITHUB_REF_NAME -f signing-request-id=$ID"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          shopt -s nullglob
+          files=(win/phosphor-x86_64-pc-windows-msvc/nsis/*-setup.exe win/phosphor-x86_64-pc-windows-msvc-portable/*.zip)
+          msix=(win/phosphor-x86_64-pc-windows-msvc-msix/*.msix)
+          if [ "$SIGNED" = true ]; then
+            [ ${#msix[@]} -gt 0 ] || echo "::warning::no MSIX: the MSIX package step failed"
+            files+=("${msix[@]}")
+          fi
+          gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber -R "$GITHUB_REPOSITORY"
 
   # The sideload APK, arm64-v8a only (docs/BUILD.md, Android release). Signed
   # when the ANDROID_KEYSTORE_* secrets exist; pull requests and forks get an
