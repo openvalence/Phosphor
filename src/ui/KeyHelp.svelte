@@ -15,6 +15,7 @@
    *   only; the served page has no such control.
    */
   import { tick } from 'svelte';
+  import { rise } from './motion.js';
   import { KEYS } from '../model/keys.js';
   import { view } from '../model/viewport.svelte.js';
   import { confirmUi } from './confirm.svelte.js';
@@ -64,7 +65,7 @@
 
 {#if open}
   <div class="ov-band" style="--ov-top: {top}px">
-    <div class="kh" bind:this={panel} role="dialog" aria-labelledby="kh-title" tabindex="-1">
+    <div class="kh" bind:this={panel} in:rise={{ k: 'quick', y: -6 }} role="dialog" aria-labelledby="kh-title" tabindex="-1">
       <div class="kh-head">
         <h2 id="kh-title">Keys</h2>
         <button type="button" class="og-btn sm kh-close" onclick={hide}>Close</button>
@@ -143,6 +144,4 @@
   kbd { font-family: var(--mono); font-size: .74rem; color: var(--tx-hi); white-space: nowrap; }
   dd { color: var(--ink); }
   .kh-where { display: block; font-size: .7rem; color: var(--ink-dim); }
-  .kh { animation: kh-rise var(--t-quick) ease-out; }
-  @keyframes kh-rise { from { opacity: 0; } to { opacity: 1; } }
 </style>

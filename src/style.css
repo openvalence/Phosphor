@@ -346,6 +346,10 @@ p { max-width: 75ch; }
   --t-move: 200ms;
   --t-slow: 320ms;
   --ease-out: cubic-bezier(.2, .7, .2, 1);
+  /* A critically damped spring: soft start, no overshoot. Drawers, list rows
+     and boxes sliding to a new place (ui/motion.js easeSettle). */
+  --ease-settle: linear(0, .078, .235, .401, .549, .669, .762, .831, .882, .918, .944,
+    .962, .974, .982, .988, .992, .995, .996, .998, .998, 1);
 }
 html.still { --t-quick: 0ms; --t-move: 0ms; --t-slow: 0ms; }
 
@@ -500,7 +504,10 @@ html.still * { transition: none !important; }
 /* A page switch the user made (App.svelte sets .switching, cleared on
    animationend): the new page fades in. Opacity only, and `backwards`, so
    nothing holds a stacking context or a transform once it is over. The one
-   owner of page-switch motion; pages add none. */
+   owner of page-switch motion; pages add none. No travel: a transform on the
+   arriving page throws off a scrollIntoView made in its first frames (F3's
+   jump to a setting). No view transition: in Chromium 151 every form takes
+   the pointer events in its scope for its length (DESIGN §10.13). */
 @keyframes page-in { from { opacity: 0; } }
 :where(html:not(.still)) .pane-main.switching > * { animation: page-in var(--t-move) var(--ease-out) backwards; }
 html.still .field[data-shadow] { animation: none; }
@@ -627,6 +634,7 @@ select:focus { outline: none; border-color: var(--highlight); }
   height: var(--shade-h);
   pointer-events: none;
   opacity: 0;
+  transition: opacity var(--t-move) var(--ease-out);
 }
 /* Ink from the theme surface; zero layout size, so toggling one moves no box.
    A scroller carries no padding of its own (the shade spans its scrollport):

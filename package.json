@@ -46,6 +46,7 @@
     "check:health": "node test/health-browser.test.mjs",
     "check:fps": "node test/fps-chip.test.mjs",
     "check:heat": "node test/channel-heat.test.mjs",
+    "check:motion": "node test/motion-probe.mjs",
     "check:quickaccess": "node test/quick-access.test.mjs",
     "check:dashes": "node test/add-to-dash.test.mjs",
     "check:pairing": "node test/pairing-roundtrip.mjs",

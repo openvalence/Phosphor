@@ -40,6 +40,7 @@
    * Enter on the grip, anchored to this card (`--card`).
    */
   import { untrack } from 'svelte';
+  import { fade } from '../motion.js';
   import { engage } from '../engage.js';
 
   let {
@@ -252,7 +253,7 @@
     <!-- Tools are edit-mode-only: the reading surface stays quiet and a
          card's own controls never compete with layout chrome. -->
     {#if editing}
-      <div class="tools">
+      <div class="tools" in:fade={{ k: 'quick' }}>
         {#if look}
           <button type="button" class="ico look-btn" popovertarget={look.id} aria-label={'Look of ' + item.title} data-tip="Look">
             <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">

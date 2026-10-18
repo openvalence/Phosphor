@@ -437,7 +437,11 @@
     background: rgb(var(--lc));
     box-shadow: 0 0 5px rgba(var(--lc), .45);
     animation: dot-beat var(--beat) infinite;
+    /* Connecting to live morphs the fill: one dot settling, not a swap. A degradation (stale,
+       offline) shows on the frame it happens. */
+    transition: background-color var(--t-slow) var(--ease-out);
   }
+  .linkdot:is(.stale, .offline) .core { transition: none; }
   .linkdot.stale .core { animation: dot-dim 3s ease-in-out infinite; }
   .linkdot.offline .core { background: transparent; box-shadow: inset 0 0 0 1.5px var(--ink-faint); animation: none; }
   /* A row-high band centered on the dot, unbounded left and right: the ripple spreads along the bar
@@ -478,9 +482,6 @@
   /* Slow start, speeds up, slows to rest: the water's spread, not ease-out. A faint ring, peak .22. */
   @keyframes ripple-grow { from { transform: scale(.08); } to { transform: scale(1); } }
   @keyframes ripple-fade { 0% { opacity: 0; } 30% { opacity: .22; } 100% { opacity: 0; } }
-  @media (prefers-reduced-motion: reduce) {
-    .core, .ripple { animation: none; }
-  }
   :global(html.still) .core, :global(html.still) .ripple { animation: none; }
   .sr {
     position: absolute;
