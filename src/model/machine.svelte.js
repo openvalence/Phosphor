@@ -942,6 +942,9 @@ export function switchHub(host, port) {
   connect({ host, port });
 }
 
+/** 'ws' (a hub reached by address), 'ble', or 'local' (Neutrino, a virtual machine): what the flasher can reach (DESIGN §10.19). */
+export const linkKind = () => (!_lastOpts?.WebSocketImpl ? 'ws' : 'bleName' in _lastOpts ? 'ble' : 'local');
+
 // ---- remembered hubs (browser convenience, never machine state) -----------
 
 const RECENT_KEY = 'hub_recent';

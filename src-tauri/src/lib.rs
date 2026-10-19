@@ -6,6 +6,8 @@ mod estop_udp;
 mod lan;
 mod linkstats;
 mod material;
+#[cfg(not(target_os = "ios"))]
+mod ota;
 mod plugins;
 mod portable;
 mod report;
@@ -82,6 +84,8 @@ pub fn run() {
       #[cfg(desktop)]
       lan::lan_stop,
       report::save_report,
+      #[cfg(not(target_os = "ios"))]
+      ota::ota_upload,
       portable::portable_dir,
       #[cfg(desktop)]
       report::open_report_url,

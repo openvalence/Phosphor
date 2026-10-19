@@ -1713,6 +1713,64 @@ else.
   because the webview writes its data folder the moment it starts.
 - **About.** Settings, About shows Install: Portable and the data folder.
 
+### 10.19 Upload firmware (operator rulings 2026-10-18, `ph-z6pz`; PROPOSED)
+
+The flasher puts a Nucleus `.bin` on the connected machine over the hub's own
+HTTP `/ota` (plain HTTP on :80, never over Valence: SPEC 1.2-8). The machine
+is the authority: it takes an update only after a PAIR double press at the
+machine and only while halted with motor power off (Nucleus `val-ktal`,
+`flagship_p4/src/system/ValenceOta.h`). Phosphor checks, labels and reports;
+it never decides.
+
+- Where: one Firmware card at the top of the machine's System page, the
+  registry's home for firmware (`ui_categories.system`: "power, thermals,
+  memory, firmware, logs"). Setup is commissioning (RFC-079), not upkeep. The
+  page exists only while a catalog is adopted, which is the "machine
+  connected" gate. Shell only (Windows, macOS, Linux, Android; not iOS): the
+  web builds are https and cannot reach a hub's plain HTTP, so the card is
+  absent there. Absent for Neutrino; on a Bluetooth link the card says
+  "Needs a Wi-Fi link: connect by address". Any tier sees it: the press is
+  the authority, not the session.
+- Checks before anything is sent, all local: ESP image magic 0xE9, chip id
+  P4 (0x0012 at header offset 12), the `esp_app_desc` magic, project name
+  and build, and the FIRMWARE_VERSION string compiled in (exactly one, the
+  rule `tools/ota.py` uses; the descriptor's version is the git describe,
+  `val-1vdq`). A failed check names the fault with one action and disables
+  Update.
+- Origin: the file's SHA-256 against the `SHA256SUMS` asset of each release
+  on the first page of github.com/openvalence/Nucleus releases. "Official
+  <tag>" on a match, "Unrecognized build" otherwise, "Can't check: no published
+  checksums" or "Can't check: GitHub didn't answer". Every label flashes;
+  the label informs, it does not gate. This is the flasher's only request
+  off the LAN, made when a file is picked, and the privacy page says so.
+- Flow, one status slot: Update arms (`POST /ota/arm`), then "Double-press
+  PAIR on the machine" with the window's countdown (60 s), polling once a
+  second; approved starts the upload at once (the machine holds an approval
+  30 s); progress in percent; "Restarting"; then `/diag` every 2 s for up to
+  150 s. Done: the running slot changed and `img=valid` ("Updated to
+  <version>"). On trial: the new slot with `img=pending` ("Confirming
+  <version>"). Rollback: the machine restarted and the old slot is back
+  ("The new firmware failed to start: back on <version>"). A same-version
+  reflash moves the slot, so the slot, not the version, is the evidence.
+- Refusals, plain words and one action each: motion running ("Motion is
+  running: stop the machine first"), motor power on ("Motor power is on:
+  latch the E-stop first"), the window closed ("The window closed: try
+  again"), not approved (403: "Not approved: press Update, then double-press
+  PAIR"), another request waiting, an image the machine refused, a broken
+  upload ("The machine keeps its firmware: try again"), no answer. A bench
+  image's token path is not offered; a bench machine shows the same press
+  flow and its 403 speaks.
+- Layout: the card's rows (Running, File, Image, Origin, the status slot,
+  the progress bar and the buttons) are drawn in every state, empty when
+  unused, so no step changes the card's height (§10.12, no page shifting).
+  The status slot changes on the frame (§10.13: a refusal or a degradation
+  is never animated).
+- Mechanism: `src/model/flasher.svelte.js` holds the flow outside the card
+  (the link drops during the restart and the page may re-render);
+  `src-tauri/src/ota.rs` streams the image (the HTTP plugin's JS fetch sends
+  a body as a JSON number array and reports no upload progress) and emits
+  `ota-progress`; arm, status, `/diag` and GitHub ride the plugin's fetch.
+
 ## Amendments
 
 | Date | Section | Change | Approved by |
@@ -1832,3 +1890,4 @@ else.
 | 2026-10-17 | §10.18 | The Windows portable build is contained: a `Phosphor/` folder in the zip, `phosphor.portable` beside the exe turns portable mode on, every write goes to `PhosphorData` beside it (the WebView2 data folder included), a launch from a shared folder root (drive, Downloads, Desktop, Documents, user folder) or the temporary folder is stopped by a native dialog before any write (`ph-5fdg`). | operator ("the portable needs to be genuinely portable, writing only to the folder it is run from, and an alert if it's running straight in the downloads etc"; "phosphor.exe and its storage folders sit in their OWN folder"; "a user doesn't accidentally just run the bare app and have it create its stores in the root of a user library folder"; Move / Continue here / Quit); the marker and folder names, `Phosphor (2)` numbering, dropping the cookie jar and the dialog wording are the agent's, veto-able |
 | 2026-10-17 | §10.13 | Touch slop: a touch or pen adjusts a control only past 8 px along its axis or a 400 ms hold, from the value it had; across its axis it scrolls the page; a slider track tap moves nothing; buttons act on a clean tap; each draggable declares its `touch-action`; the wheel scrolls past an unfocused slider or knob. The Android, iOS, Material and HIG touch-slop practice (`ph-7v53`). | operator ("it's still WAY too easy to adjust a control while scrolling ... there must be a best practice standardized for this"); a knob turning sideways under touch, a 2D handle claiming along its own way, a cancel dropping a plugin handle's draft and the per-press axis on `drag()` are the agent's, veto-able |
 | 2026-10-18 | §10.13 | The motion system: duration and easing tokens (`--ease-settle` added), the `src/ui/motion.js` primitives and the rules (purposeful; interruptible; arrivals animate and dismissals are instant; transform and opacity, FLIP for height changes; sticky bars and the arriving page fade and never travel; no view transitions, which take pointer input in their scope (Chromium 151, measured); safety UI never animated; a degradation shows on the frame; readouts never smoothed). On it: the phone drawer, `<details>` and plugin card carets, hub rows, F1, F3 and the setup dialogs, Dash edit chrome, the rail's face cross-fade, the link dot's fill on connect, scroll shades; page switches keep their opacity fade and the theme changes atomically (`ph-kgck`). | PROPOSED at the feedback gate: operator ("transitions etc in phosphor, fluidity is the identity ... make it resume worthy"); every token, curve, rule and the safety list are the agent's, veto-able |
+| 2026-10-18 | §10.19 | Upload firmware: a Firmware card on the machine's System page, shell only; local image checks (magic, chip P4, app descriptor, compiled version); Official or Unrecognized by SHA-256 against the Nucleus releases' SHA256SUMS, can't-check allowed; the PAIR press flow with countdown, progress, restart and the /diag verdict by slot (done, on trial, rollback); refusals mapped to one action each (`ph-z6pz`). | PROPOSED: operator (the flow, checks, labels, refusal words, desktop and Android, System or Setup); the System page over Setup, the slot as evidence, any tier seeing the card, the Bluetooth line, the 150 s wait and the first page of releases are the agent's, veto-able |
