@@ -907,6 +907,15 @@ center Play of PR8 to PR10 as built, and the transport row's chapters:
   *(Supersedes PR9's wave above the scrub inside the hover bar and, with
   the stack on, `ph-9t5l.7`'s "at rest only the stop pair sits over a
   fullscreen video".)*
+- **PP10 The fullscreen transport** (operator 2026-10-18: the bar wrapped
+  to two rows). Previous, Play and next, with the time under them, sit
+  centered over the video, where media players put them; they show and fade
+  with the controls, and the kit's center glyph yields to them (its flash on
+  a click stays). The bar keeps one row: library, mute and volume, Motion,
+  rate, the timeline toggle, Rail, Settings, Exit fullscreen. On touch they
+  are 56 px buttons (Play 72), so a tap that shows the controls leaves them
+  one tap away. A double-click on them is two clicks on their buttons;
+  elsewhere on the video it leaves fullscreen as before (PP3).
 - **PP8 The centered playhead** (`ph-10c4`). The detail's playhead is fixed
   at its center at every class and the script, the trace and the lanes move
   past it; the window is the playhead time less and plus half the zoom. A
