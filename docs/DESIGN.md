@@ -835,7 +835,13 @@ question in §10.8).
   footer's hides while a plugin page shows its own. Either form
   overlays (nothing shrinks), is dismissed by a tap outside or Escape, is held
   open while a scrub or window drag is in progress, and never covers the stop
-  pair. Seams: `src/ui/QuickRail.svelte` (new), `src/ui/hero/RailWidget.svelte`,
+  pair. *(Amended 2026-10-18, PROPOSED, `ph-7ri8`: a media page's fullscreen
+  takes the horizontal form on the phone class too, stacked under the page's
+  motion preview as the bottom half of its band (the page's seek on top), above
+  its bar, the window at half height and a display while it plays, part of
+  that fullscreen: a tap on the video never closes
+  it, and Escape and back leave the fullscreen.)*
+  Seams: `src/ui/QuickRail.svelte` (new), `src/ui/hero/RailWidget.svelte`,
   `src/App.svelte`, `src/plugins/host.js`.
 - Compact hero (operator ruling 2026-10-08, the redesign's open item, the
   agent's pick standing): a page registered `compactHero` draws the hero in
@@ -1726,6 +1732,46 @@ else.
   because the webview writes its data folder the moment it starts.
 - **About.** Settings, About shows Install: Portable and the data folder.
 
+### 10.20 The connecting page (2026-10-18, `ph-u3b2.1`, `ph-u3b2.2`, PROPOSED)
+
+Until a catalog is in, the page area is the connecting page
+(`src/ui/HubPicker.svelte`; in the shell its lists are
+`src/shell/ConnectPane.svelte`, handed over by `src/shell/panes.js`
+`bootPane`). It is never a dead end: every way out is on the page, none
+behind the menu.
+
+- Status: one line names the phase and the hub (Connecting, Handshaking,
+  Receiving catalog, Redialing, Closed, Stopped). Redialing adds a line of its own,
+  `Next try in N s · attempt N`, over a bar that drains to the next try
+  (the backoff the library chose), and the close reason on a third line.
+- Retry now and Stop sit in fixed slots, each disabled where it does not
+  apply. Retry now skips the wait; Stop ends the redial for this session
+  (the launch redial on the next start stays, pref `reconnect`).
+- Address: the dialed address in an editable field; Connect dials what it
+  holds.
+- Machines: the saved hubs, the one being dialed marked, then Neutrino last
+  with its `ν` badge (§10.10), each with Connect.
+- Found: a LAN scan runs once when the page appears (UDP, no permission
+  prompt); Scan repeats it, LAN then Bluetooth, as the Hubs pane does.
+  Found rows append below everything else, so nothing moves.
+- Troubleshooting, at the head's right end, carries the external-link mark
+  and the tip `Open link`; it opens
+  `openvalence.org/phosphor/docs/troubleshooting/#s-find` through the shared
+  leave-app confirm below.
+- Leaving the app (operator 2026-10-18): every link that leaves Phosphor
+  asks first, in the one confirm layer (ConfirmLayer, never over the stop
+  pair): `Open link?`, the destination as host and path, `Open link` and
+  `Cancel`; Escape and Android back cancel. Only `Open link` hands it on:
+  the system browser through tauri-plugin-opener (`open_url`, http and https:
+  a LAN Stash server is http; the confirm is the safeguard) in the shell, a
+  new tab in a browser build. A link
+  never displaces a pending confirm (a hazard write's): it is not asked. One helper
+  (`src/ui/external.js`) and one link (`src/ui/ExtLink.svelte`, the mark
+  and the tip) carry it: this page's link, the credits (About, Plugins),
+  the web build's Downloads, a plugin's `openUrl` and the health reports.
+- The hosted page keeps its address field and recent hubs; the status
+  lines, Retry now and Stop are shared.
+
 ## Amendments
 
 | Date | Section | Change | Approved by |
@@ -1845,3 +1891,5 @@ else.
 | 2026-10-17 | §10.18 | The Windows portable build is contained: a `Phosphor/` folder in the zip, `phosphor.portable` beside the exe turns portable mode on, every write goes to `PhosphorData` beside it (the WebView2 data folder included), a launch from a shared folder root (drive, Downloads, Desktop, Documents, user folder) or the temporary folder is stopped by a native dialog before any write (`ph-5fdg`). | operator ("the portable needs to be genuinely portable, writing only to the folder it is run from, and an alert if it's running straight in the downloads etc"; "phosphor.exe and its storage folders sit in their OWN folder"; "a user doesn't accidentally just run the bare app and have it create its stores in the root of a user library folder"; Move / Continue here / Quit); the marker and folder names, `Phosphor (2)` numbering, dropping the cookie jar and the dialog wording are the agent's, veto-able |
 | 2026-10-17 | §10.13 | Touch slop: a touch or pen adjusts a control only past 8 px along its axis or a 400 ms hold, from the value it had; across its axis it scrolls the page; a slider track tap moves nothing; buttons act on a clean tap; each draggable declares its `touch-action`; the wheel scrolls past an unfocused slider or knob. The Android, iOS, Material and HIG touch-slop practice (`ph-7v53`). | operator ("it's still WAY too easy to adjust a control while scrolling ... there must be a best practice standardized for this"); a knob turning sideways under touch, a 2D handle claiming along its own way, a cancel dropping a plugin handle's draft and the per-press axis on `drag()` are the agent's, veto-able |
 | 2026-10-18 | §10.13 | The motion system: duration and easing tokens (`--ease-settle` added), the `src/ui/motion.js` primitives and the rules (purposeful; interruptible; arrivals animate and dismissals are instant; transform and opacity, FLIP for height changes; sticky bars and the arriving page fade and never travel; no view transitions, which take pointer input in their scope (Chromium 151, measured); safety UI never animated; a degradation shows on the frame; readouts never smoothed). On it: the phone drawer, `<details>` and plugin card carets, hub rows, F1, F3 and the setup dialogs, Dash edit chrome, the rail's face cross-fade, the link dot's fill on connect, scroll shades; page switches keep their opacity fade and the theme changes atomically; the right dock slides in over the page and the content re-fits once at the end (`ph-kgck`). | operator ("transitions etc in phosphor, fluidity is the identity ... make it resume worthy"; ruled 2026-10-18 on the prototype: opening animates and closing is instant, the plain page fade, the rail face cross-fade with the outgoing face inert at once, the dock sliding over then re-fitting once, safety states instant in the status slot with notes and idle free to cross-fade, the HeroStrip collapse first in the next batch); every token, curve, the dock's handheld slide and the safety list are the agent's, veto-able |
+| 2026-10-18 | §10.20 | The connecting page: never a dead end. The phase and hub, a countdown line (`Next try in N s · attempt N`) over a bar draining to the next try and the close reason on its own line; Retry now and Stop in fixed slots; the dialed address editable in place; the saved hubs with Neutrino last; a LAN scan on arrival and Scan; a Troubleshooting link to the find section of the docs; every link that leaves the app asks first in one shared confirm (`Open link?`, the destination, Open link, Cancel) and opens through tauri-plugin-opener, http and https (`ph-u3b2.1`, `ph-u3b2.2`). | PROPOSED: operator (2026-10-18, stuck on a phone redialing a saved address that no longer answers: other hubs, a Virtual button, previous machines, troubleshooting, cancel, edit the address, a clearer countdown); Neutrino named in place of "Virtual" (the 2026-10-15 naming ruling), the LAN scan on arrival, Stop ending this session's redial only, the drain bar are the agent's, veto-able; ruled 2026-10-18: the Neutrino row stays, the link confirms before leaving the app ("open link"), through the opener plugin on every platform, the copy fallback dropped, http allowed beside https (the confirm is the safeguard), the shell's own URL launchers deleted |
+| 2026-10-18 | §10.3, plugins | The funscript player's media fullscreen (docs/plugins/FUNSCRIPT.md PP7 to PP11; PP11 is the state table, the source of truth the tests read): the bar anchored to the bottom edge whenever it shows (one row, 32 px buttons, 40 under touch); the stack (the motion preview, a 48 px wave, over one band: the seek on its top half, the quick rail's 28 px travel window on its bottom half, its handles overhanging to the 40 px touch floor) sits directly above the bar, shifted up by its height, and slides back to the edge when the bar hides (transform only, instant under Reduced motion); on mouse systems the stack is a 40 % ghost taking no input until hovered, full while hovered (the bar holds meanwhile), under touch it is full while paused and a ghost woken by a tap while playing; the cursor shows over the stack, the bar and the transport and hides only over bare video at rest; the transport (previous, Play, next, the time) sits in the true center of the video, clearing the stack and the bar, full with the bar or the full stack and a ghost otherwise; the seek has no hover tip. While the player runs the preview and the window are a display (no input, no handles; the tape row stays in place) and the seek stays a control; paused, all take input, the jog tape with the planned segment included. The timeline toggle shows or hides the stack (pref, on by default). The stop pair is never part of any of it and keeps its 50 % rest (2026-10-03). A media page's fullscreen takes the quick rail's horizontal form on the phone class too; stacked, it is part of that fullscreen: a tap on the video never closes it, Escape and back leave the fullscreen, a library or Settings drawer puts the stack away until it closes. A return to the app rejoins the shell's media fullscreen if the page's stage drifted out of it. The motion preview's playhead is fixed at its center with the script moving past it, a hatch outside the first and last action; telemetry drawn stays while paused and while scrubbing and clears when playback starts (`ph-7ri8`, `ph-10c4`, `ph-f012`). | operator (superfan feedback 2026-10-18; on the builds 2026-10-18 and 2026-10-19, rounds 1 to 7: the preview on top and the rail below, compact, visual only while playing but the scrub, the band half scrub and half window, the jog tape only while paused, handles at 40 px, the transport in the true center, a compact bar, a trimmed band, the pseudo-fullscreen on return, the idle ghost, the bar at the bottom edge with the stack on it, the ghost until hovered on mouse systems only, full under touch while paused, the cursor over controls, no seek hover tip, the state table; the hatch and the copy); the seek on the band's top half, the bar's hold while the stack is hovered and the horizontal rail on phones are the agent's, veto-able; the open questions are listed under PP11 |
