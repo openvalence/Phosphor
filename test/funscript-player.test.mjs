@@ -3739,13 +3739,17 @@ if (!LIVE && !args.includes('--stash-live')) {
     const html = document.documentElement;
     return { h: d ? Math.round(d.getBoundingClientRect().height) : 0, above: !!d && d.getBoundingClientRect().bottom <= s.getBoundingClientRect().top + 1,
       railHere: !!html.dataset.quickRail, form: html.dataset.quickRail || null, railOpen: html.hasAttribute('data-quick-rail-open'),
-      railAbove: !!q && !!d && q.getBoundingClientRect().bottom <= d.getBoundingClientRect().top + 1,
+      railBelow: !!q && !!d && q.getBoundingClientRect().top >= d.getBoundingClientRect().bottom - 1 && q.getBoundingClientRect().bottom <= s.getBoundingClientRect().top + 1,
+      railH: q ? Math.round(q.getBoundingClientRect().height) : 0,
       op: d ? +getComputedStyle(r.querySelector('.fsp-fsw')).opacity : null, pe: d ? getComputedStyle(r.querySelector('.fsp-fsw')).pointerEvents : null,
-      railOp: q ? +getComputedStyle(q).opacity : null };
+      pills: [...r.querySelectorAll('.fsp-fsw .fsp-rh')].filter((p) => getComputedStyle(p).visibility !== 'hidden').length,
+      railOp: q ? +getComputedStyle(q).opacity : null, railPe: q ? getComputedStyle(q).pointerEvents : null,
+      handles: q ? [...q.querySelectorAll('.rail-band-handle')].filter((x) => getComputedStyle(x).visibility !== 'hidden').length : 0 };
   });
   let st = await stack();
-  ok('stack (ph-7ri8): the 72 px wave over the video, right above the scrub; the rail open in its horizontal form above it, where the rail exists',
-    Math.abs(st.h - 72) <= 1 && st.above && (!st.railHere || (st.form === 'horizontal' && st.railOpen && st.railAbove)), st);
+  ok('stack (ph-7ri8): paused, the 48 px wave on top, the compact rail under it, the bar under both; it takes input',
+    Math.abs(st.h - 48) <= 1 && st.above && st.pe !== 'none' && st.pills === 2
+      && (!st.railHere || (st.form === 'horizontal' && st.railOpen && st.railBelow && st.railPe !== 'none')), st);
   await shot('fullscreen-stack-1280x800');
   await page.locator(C + ' .fsp-tltog').click();
   await page.waitForTimeout(200);
@@ -3822,7 +3826,8 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.mouse.move(300, 300);
   await page.waitForTimeout(400);
   st = await stack();
-  ok('stack idle: a pointer move brings it back with the controls', await shown() && st.op === 1 && st.pe !== 'none', st);
+  ok('stack playing: a pointer move brings it back with the controls, a display: no input, no pills, no rail handles', await shown() && st.op === 1
+    && st.pe === 'none' && st.pills === 0 && (!st.railHere || (st.railPe === 'none' && st.handles === 0 && st.railOp === 1)), st);
   await page.locator(C + ' .fsp-tltog').click();
   await overVideo(-10);
   await page.click(C + ' .fsp-hb .fsp-play');

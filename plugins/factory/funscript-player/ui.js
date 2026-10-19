@@ -878,15 +878,20 @@ export const CSS = `
 /* A narrow fullscreen (a phone upright) puts the time on its own line above the buttons. */
 @container (max-width: 34em) { .fsp-hb-row { flex-wrap: wrap; } .fsp-hb-time { order: -1; flex: 0 0 100%; } .fsp-hb-row > .fsp-hb-gap { display: none; } }
 .fsp-hb-seek { margin: 0 var(--sp-2); }
-/* ph-7ri8: the stack (the wave; the host's quick rail sits above it) over a fullscreen video, right above the bar. Idle it
-   stays drawn at 40 % with no plates and takes no input; the range pills, controls, go with the bar. The stop pair is
-   the host's and never part of it. */
-.fsp-fsw { position: absolute; left: 0; right: 0; bottom: var(--fsp-hbh, 96px); z-index: 2; --fsp-detail: 72px;
-  padding: 0 max(var(--sp-2), var(--corner-inset)) var(--sp-2); transition: opacity var(--t-move) var(--ease-out); }
+/* ph-7ri8: the stack over a fullscreen video: the wave on top, the host's quick rail under it (it sits on the anchor, the
+   bar's top, and publishes --quick-rail-lift, its top over the window's bottom), the bar at the bottom. Compact: a 48 px
+   wave on tight padding. Playing it is a display (data-passive): no input, no pills. Idle it stays drawn at 40 % with
+   no plates. The stop pair is the host's and never part of it. */
+.fsp-anchor { position: absolute; left: 0; right: 0; bottom: var(--fsp-hbh, 96px); height: 0; pointer-events: none; display: none; }
+.fsp[data-media][data-fswave] .fsp-anchor:not([hidden]) { display: block; }
+.fsp-fsw { position: absolute; left: 0; right: 0; bottom: var(--fsp-hbh, 96px); z-index: 2; --fsp-detail: 48px;
+  padding: 0 max(var(--sp-2), var(--corner-inset)) var(--sp-1); transition: opacity var(--t-move) var(--ease-out); }
+html[data-quick-rail-open] .fsp-fsw { bottom: max(var(--fsp-hbh, 96px), var(--quick-rail-lift, 0px)); }
 .fsp-fsw:empty, .fsp:not([data-media]) .fsp-fsw { display: none; }
-.ui-stage:not([data-show]) .fsp-fsw { opacity: .4; pointer-events: none; }
+.fsp-fsw[data-passive], .ui-stage:not([data-show]) .fsp-fsw { pointer-events: none; }
+.ui-stage:not([data-show]) .fsp-fsw { opacity: .4; }
 .ui-stage:not([data-show]) .fsp-fsw :is(.fsp-dt, .fsp-lane) { background: transparent; box-shadow: none; border-color: transparent; }
-.ui-stage:not([data-show]) .fsp-fsw .fsp-rh { visibility: hidden; }
+.fsp-fsw[data-passive] .fsp-rh, .ui-stage:not([data-show]) .fsp-fsw .fsp-rh { visibility: hidden; }
 .fsp-hb-row { --ui-btn-h: var(--tap); }
 .fsp-hb-row > .og-btn { flex: none; }
 .fsp-hb-row { display: flex; align-items: center; gap: var(--sp-1); min-width: 0; }
@@ -1395,7 +1400,7 @@ export function createPlayer(api) {
     const META = ['loadedmetadata', 'resize', 'emptied'];
     for (const t of META) vel.addEventListener(t, onMeta);
     applySplit();
-    // PR9, ph-7ri8: the timeline toggle shows the stack over the video, the 72 px wave and the quick rail above it
+    // PR9, ph-7ri8: the timeline toggle shows the stack over the video, the 48 px wave over the compact quick rail
     // (fullscreen only, pref fsStack).
     const tlTog = ui.button({ icon: 'script', title: COPY.timeline, pressed: false, class: 'fsp-tltog',
       onClick: () => { fsWave(tlTog.pressed); writePref(api, 'fsStack', tlTog.pressed); } });
@@ -1434,17 +1439,19 @@ export function createPlayer(api) {
         tlTog.after(railB, setB, fullB);
       } else tr.append(...trKids());
     };
-    // ph-7ri8: the stack over the fullscreen video, right above the bar: the wave, and the host's quick rail above it
-    // (the anchor). It stays while the controls hide, a ghost that takes no input (CSS); a tap on it is never the stage's.
-    const fsw = h('div', { class: 'fsp-fsw', 'data-quick-rail-anchor': '' });
+    // ph-7ri8: the stack over the fullscreen video: the wave on top, the host's quick rail under it on the anchor (the
+    // bar's top), the bar. It stays while the controls hide, a ghost that takes no input (CSS); playing, it is a display
+    // (data-passive here, data-quick-rail-passive on the anchor for the host's rail); a tap on it is never the stage's.
+    const fsw = h('div', { class: 'fsp-fsw' });
+    const anchor = h('i', { class: 'fsp-anchor', 'data-quick-rail-anchor': '', 'aria-hidden': 'true' });
     for (const t of ['click', 'dblclick']) fsw.addEventListener(t, (e) => e.stopPropagation());
-    vbox.append(fsw);
-    // Its bottom is the bar's top while the bar shows; hidden, the bar measures 0 and the stack keeps its place.
-    // The open rail is asked again where the stack moved, so it stays right above it (the host places it on an ask).
+    vbox.append(anchor, fsw);
+    // The bar's top while the bar shows; hidden, the bar measures 0 and the stack keeps its place.
+    // The open rail is asked again where the anchor moved, so it stays on it (the host places it on an ask).
     const hbro = new ResizeObserver(() => {
       const b = hb.getBoundingClientRect(), v = Math.round(vbox.getBoundingClientRect().bottom - b.top) + 'px';
-      if (!b.height || fsw.style.getPropertyValue('--fsp-hbh') === v) return;
-      fsw.style.setProperty('--fsp-hbh', v);
+      if (!b.height || vbox.style.getPropertyValue('--fsp-hbh') === v) return;
+      vbox.style.setProperty('--fsp-hbh', v);
       if (media && root.hasAttribute('data-fswave') && document.documentElement.hasAttribute('data-quick-rail-open')) railAsk(true);
     });
     hbro.observe(hb);
@@ -1464,6 +1471,7 @@ export function createPlayer(api) {
       if (c === covered) return;
       covered = c;
       fsw.hidden = c;
+      anchor.hidden = c;
       if (root.hasAttribute('data-fswave')) railAsk(!c);
     };
     // PR8: one mode, the shell's page fullscreen, always bare (the stage asks it); the video alone until it ends.
@@ -1628,6 +1636,10 @@ export function createPlayer(api) {
       muteB.title = video.muted ? COPY.unmuteKey : COPY.muteKey;
       setB.pressed = !!(opts.settings && opts.settings.open);
       syncStack();
+      // Playing, the stack is a display: no input, no handles (ph-7ri8); paused it takes input again.
+      const passive = media && act();
+      fsw.toggleAttribute('data-passive', passive);
+      anchor.toggleAttribute('data-quick-rail-passive', passive);
       motion.pressed = st.motion;
       inv.pressed = st.T.invert;
       prop(fullB, 'disabled', noVid);

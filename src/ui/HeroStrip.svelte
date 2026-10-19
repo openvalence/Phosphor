@@ -38,11 +38,23 @@
     measure();
     return () => ro.disconnect();
   });
+  // The horizontal pop-up's top over the window's bottom, for a page stacking above it (ph-7ri8, docs/PLUGINS.md Pages).
+  $effect(() => {
+    const root = document.documentElement;
+    if (!inner || !heroBar.quick) { root.style.removeProperty('--quick-rail-lift'); return; }
+    heroBar.quickBottom;
+    heroBar.stacked;
+    const put = () => root.style.setProperty('--quick-rail-lift', Math.round(innerHeight - inner.getBoundingClientRect().top) + 'px');
+    const ro = new ResizeObserver(put);
+    ro.observe(inner);
+    put();
+    return () => { ro.disconnect(); root.style.removeProperty('--quick-rail-lift'); };
+  });
 </script>
 
 {#if heroes && heroes.length}
   <div class="hero-strip" data-part="hero" class:collapsed bind:offsetHeight={barH} style:height={heldH != null ? heldH + 'px' : null}>
-    <div class="hero-inner" class:popup={heroBar.popup} class:quick={heroBar.quick} inert={railAway($prefs)}
+    <div class="hero-inner" class:popup={heroBar.popup} class:quick={heroBar.quick} class:stacked={heroBar.quick && heroBar.stacked} inert={railAway($prefs)}
          style:--rh={heroBar.slotH + 'px'} style:--qb={heroBar.quickBottom + 'px'} bind:this={inner}>
       {#each heroes as hero, i (hero.id)}
         <div class="hero-slot" data-hero={hero.id}>
@@ -106,6 +118,12 @@
   }
   /* Over an idle fullscreen video (ph-7ri8) the quick rail stays drawn as a 40 % ghost with no plate that takes no
      input; a move or a tap on the video brings it back, and hovered or focused it stays. The stop pair is never in it. */
+  /* Stacked under a page's preview (ph-7ri8): compact, the rail's spine alone (no jog tape) on tight padding; while the
+     page marks its anchor passive (a player running) it is a display: no input, no handles. */
+  .hero-inner.quick.stacked { padding: var(--sp-1) var(--sp-2); }
+  .hero-inner.quick.stacked :global(.rail-row) { display: none; }
+  :global(html:has([data-quick-rail-passive])) .hero-inner.quick.stacked { pointer-events: none; }
+  :global(html:has([data-quick-rail-passive])) .hero-inner.quick.stacked :global(.rail-band-handle) { visibility: hidden; }
   :global(html:has(.ui-stage[data-full]:not([data-show]))) .hero-inner.quick:not(:hover, :focus-within) {
     opacity: .4; pointer-events: none; background: transparent; border-color: transparent; box-shadow: none;
   }

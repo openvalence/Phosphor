@@ -173,8 +173,13 @@ Plugins`, its page region the plugin's to fill full width.
     `preventDefault()`. The horizontal pop-up opens above the element that
     asked (the page's bar), never past the stop pair; a shown element marked
     `data-quick-rail-anchor` in the page takes its place, whoever asked
-    (the funscript player's stack, `ph-7ri8`). A `mediaFullscreen` page's
-    fullscreen takes the horizontal form on every class.
+    (the funscript player's stack, `ph-7ri8`), and the rail is then stacked:
+    compact (its spine alone, tight padding), and a display with no input
+    or handles while the anchor carries `data-quick-rail-passive`. While the
+    horizontal form is open, `--quick-rail-lift` on `<html>` is its top over
+    the window's bottom, for a page placing its own box above it. A
+    `mediaFullscreen` page's fullscreen takes the horizontal form on every
+    class.
   - Mark the icon `data-quick-rail-toggle`: the pop-up's outside-tap close
     skips it, so a tap toggles instead of closing and reopening, and the
     footer's own icon hides while the page shows one (one per screen). A
