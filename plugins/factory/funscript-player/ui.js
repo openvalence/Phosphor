@@ -930,11 +930,12 @@ html[data-quick-rail-open] .fsp-well { height: max(0px, calc(var(--quick-rail-li
 @media (pointer: coarse) { .fsp-stack:not([data-passive]) { opacity: 1; } }
 .fsp-stack[data-passive] .fsp-tl { pointer-events: none; }
 .fsp-stack[data-passive] .fsp-rh { visibility: hidden; }
-/* The transport mid-video (a coarse pointer): centered in the room between the stop pair and the stack, so it never
-   meets either; it shows and hides with the controls, in place. */
+/* The transport mid-video (a coarse pointer): on the video's center, moved only as far as it takes to clear the stop
+   pair and the stack (the stop pair wins a screen too short for both); it shows and hides with the controls, in place. */
 .fsp-mid { display: none; }
 .fsp[data-media] .fsp-mid:not(:empty) { position: absolute; left: 50%; z-index: 3; display: flex; align-items: center; gap: var(--sp-4);
-  top: calc((var(--stop-reserve-h, 0px) + 100% - var(--fsp-slot) - var(--sp-2) - var(--fsp-stack-h, 0px)) / 2); translate: -50% -50%;
+  top: clamp(calc(var(--stop-reserve-h, 0px) + 36px + var(--sp-3)), 50%,
+    calc(100% - var(--fsp-slot) - var(--sp-2) - var(--fsp-stack-h, 0px) - 36px - var(--sp-3))); translate: -50% -50%;
   cursor: default; opacity: 0; visibility: hidden; transition: opacity var(--t-move) var(--ease-out), visibility var(--t-move) allow-discrete; }
 .fsp[data-media] .ui-stage[data-show] .fsp-mid { opacity: 1; visibility: visible; }
 .fsp-mid > .og-btn { width: 56px; height: 56px; min-height: 56px; border-radius: 50%; padding: 0;
