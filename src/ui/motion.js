@@ -94,6 +94,15 @@ export function riseIn(el) {
   if (dur) el.animate([{ opacity: 0, translate: '0 -4px' }, { opacity: 1, translate: '0 0' }], { duration: dur, easing: EASE_OUT });
 }
 
+/** A panel opened from the window's 'right' or 'left' edge slides in from it (WAAPI). The Animation, or null under html.still. */
+export function slideIn(el, from = 'right') {
+  const dur = ms('move');
+  if (!dur) return null;
+  const r = el.getBoundingClientRect();
+  const dx = from === 'right' ? innerWidth - r.left : -r.right;
+  return el.animate([{ translate: `${dx}px 0` }, { translate: '0 0' }], { duration: dur, easing: SETTLE });
+}
+
 // <details> everywhere: the boxes after it slide by flipFollowers and the body rises in.
 // The click lands before the toggle, so the boxes are measured where they were.
 if (typeof document !== 'undefined') {

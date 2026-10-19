@@ -1352,7 +1352,7 @@ derives from one unit, and no size is tuned by hand.
   animation keys off one class, `html.still`, which the theme's motion 0
   also sets, and a minimized shell window too (WebView2 keeps drawing a
   minimized page); no component reads the media query itself.
-- The motion system (2026-10-18, `ph-kgck`, at the feedback gate). Tokens in
+- The motion system (ruled 2026-10-18, `ph-kgck`). Tokens in
   `src/style.css`: `--t-quick` 120 ms (hover, press, tooltips, menus),
   `--t-move` 200 ms (pages, drawers, dialogs, list rows, boxes sliding),
   `--t-slow` 320 ms (the link dot's color);
@@ -1398,6 +1398,19 @@ derives from one unit, and no size is tuned by hand.
   - Proof: `test/motion-probe.mjs` (boxes of the bar, strip and stop pair
     every frame, frame pacing at 4x CPU throttle, a press on the e-stop
     mid-transition, no animation under Reduced, idle main-thread time).
+  - The operator's rulings (2026-10-18, on the prototype):
+    1. Things open with motion and close instantly.
+    2. Page switches keep the plain fade.
+    3. The rail's faces cross-fade; the outgoing face drops input at once.
+    4. The desktop right dock slides in over the page, then the content
+       re-fits once, at the end (`Dock.svelte`, `slideIn`). Closing is
+       instant; the handheld drawer slides in from the right edge.
+    5. Fault, refusal, halt, override and unattended always appear in the
+       status slot on the frame; notes and idle text may cross-fade.
+    6. The next batch starts with the HeroStrip collapse (it animates
+       `grid-template-rows`, layout every frame), then the funscript player's
+       panels, the node editor, the sidebar collapse and the segmented
+       controls' indicator: child beads of `ph-kgck`.
 - The context menu (operator 2026-10-09, `ph-kyjd`; 2026-10-10, `ph-hi4i`):
   the shell's own menu replaces the webview's everywhere, text entry
   included; a release build turns WebView2's off at the source and a dev
@@ -1831,4 +1844,4 @@ else.
 | 2026-10-17 | §10.x top bar, ambient | The animated mark (connecting spinner, launch splash) runs at the display's frame rate, exempt from the 30 fps ambient step: it never runs alongside time-sensitive tasks. | operator |
 | 2026-10-17 | §10.18 | The Windows portable build is contained: a `Phosphor/` folder in the zip, `phosphor.portable` beside the exe turns portable mode on, every write goes to `PhosphorData` beside it (the WebView2 data folder included), a launch from a shared folder root (drive, Downloads, Desktop, Documents, user folder) or the temporary folder is stopped by a native dialog before any write (`ph-5fdg`). | operator ("the portable needs to be genuinely portable, writing only to the folder it is run from, and an alert if it's running straight in the downloads etc"; "phosphor.exe and its storage folders sit in their OWN folder"; "a user doesn't accidentally just run the bare app and have it create its stores in the root of a user library folder"; Move / Continue here / Quit); the marker and folder names, `Phosphor (2)` numbering, dropping the cookie jar and the dialog wording are the agent's, veto-able |
 | 2026-10-17 | §10.13 | Touch slop: a touch or pen adjusts a control only past 8 px along its axis or a 400 ms hold, from the value it had; across its axis it scrolls the page; a slider track tap moves nothing; buttons act on a clean tap; each draggable declares its `touch-action`; the wheel scrolls past an unfocused slider or knob. The Android, iOS, Material and HIG touch-slop practice (`ph-7v53`). | operator ("it's still WAY too easy to adjust a control while scrolling ... there must be a best practice standardized for this"); a knob turning sideways under touch, a 2D handle claiming along its own way, a cancel dropping a plugin handle's draft and the per-press axis on `drag()` are the agent's, veto-able |
-| 2026-10-18 | §10.13 | The motion system: duration and easing tokens (`--ease-settle` added), the `src/ui/motion.js` primitives and the rules (purposeful; interruptible; arrivals animate and dismissals are instant; transform and opacity, FLIP for height changes; sticky bars and the arriving page fade and never travel; no view transitions, which take pointer input in their scope (Chromium 151, measured); safety UI never animated; a degradation shows on the frame; readouts never smoothed). On it: the phone drawer, `<details>` and plugin card carets, hub rows, F1, F3 and the setup dialogs, Dash edit chrome, the rail's face cross-fade, the link dot's fill on connect, scroll shades; page switches keep their opacity fade and the theme changes atomically (`ph-kgck`). | PROPOSED at the feedback gate: operator ("transitions etc in phosphor, fluidity is the identity ... make it resume worthy"); every token, curve, rule and the safety list are the agent's, veto-able |
+| 2026-10-18 | §10.13 | The motion system: duration and easing tokens (`--ease-settle` added), the `src/ui/motion.js` primitives and the rules (purposeful; interruptible; arrivals animate and dismissals are instant; transform and opacity, FLIP for height changes; sticky bars and the arriving page fade and never travel; no view transitions, which take pointer input in their scope (Chromium 151, measured); safety UI never animated; a degradation shows on the frame; readouts never smoothed). On it: the phone drawer, `<details>` and plugin card carets, hub rows, F1, F3 and the setup dialogs, Dash edit chrome, the rail's face cross-fade, the link dot's fill on connect, scroll shades; page switches keep their opacity fade and the theme changes atomically; the right dock slides in over the page and the content re-fits once at the end (`ph-kgck`). | operator ("transitions etc in phosphor, fluidity is the identity ... make it resume worthy"; ruled 2026-10-18 on the prototype: opening animates and closing is instant, the plain page fade, the rail face cross-fade with the outgoing face inert at once, the dock sliding over then re-fitting once, safety states instant in the status slot with notes and idle free to cross-fade, the HeroStrip collapse first in the next batch); every token, curve, the dock's handheld slide and the safety list are the agent's, veto-able |

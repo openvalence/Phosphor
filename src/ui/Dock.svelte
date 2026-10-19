@@ -8,9 +8,12 @@
    */
   export const dock = $state({ shown: false, label: '', open: !!saved.open, id: String(saved.id || '') });
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ open: dock.open, id: dock.id })); } catch (e) { /* private mode */ } };
+  // The next panel to show slides in: only the user's open does (closing is instant, DESIGN §10.13).
+  let slideNext = false;
   export function setDockOpen(on) {
     if (dock.open === on) return;
     dock.open = on;
+    slideNext = on;
     save();
   }
   export const toggleDock = () => setDockOpen(!dock.open);
@@ -25,7 +28,8 @@
    * Constraints:
    * - Opening is the user's act. On the desktop the dock is a column beside
    *   the content and narrows it (DESIGN 10.3: no shifting from non-user
-   *   input); closed, it takes no space at all.
+   *   input); closed, it takes no space at all. Opened, it slides in over
+   *   the page and the content re-fits once, at the end (DESIGN §10.13).
    * - Elsewhere it is a drawer from the right edge between the top strip and
    *   the bottom bars, over the page, so it never covers the stop pair or its
    *   own toggle; a tap outside or Escape closes it, and the quick rail's
@@ -40,6 +44,7 @@
   import { pluginsUi, pluginDocks } from '../plugins/plugins.svelte.js';
   import { icon, outside } from '../plugins/kit.js';
   import { scrollshade } from './scrollshade.js';
+  import { slideIn } from './motion.js';
 
   let { drawer = false } = $props();
   const docks = $derived((pluginsUi.gen, pluginsUi.docks, pluginDocks()));
@@ -68,10 +73,22 @@
     return () => { off(); window.removeEventListener('keydown', key); };
   });
   const closeIcon = (n) => { n.replaceChildren(icon('close')); };
+  // While the column slides in it lies over the content (.over); the frame takes its column at the end.
+  let over = $state(false);
+  function slide(node) {
+    if (!slideNext) return;
+    slideNext = false;
+    over = !drawer;
+    const a = slideIn(node, 'right');
+    const done = () => { over = false; };
+    if (!a) { done(); return; }
+    a.finished.then(done, done);
+    return () => a.cancel();
+  }
 </script>
 
 {#if isOpen}
-  <aside class="side-dock" class:drawer aria-label={cur.label} bind:this={box}>
+  <aside class="side-dock" class:drawer class:over aria-label={cur.label} bind:this={box} {@attach slide}>
     <div class="dock-head">
       {#if docks.length > 1}
         <div class="og-seg ui-seg dock-tabs" role="tablist">
@@ -102,6 +119,8 @@
     border: 1px solid var(--line-0);
     border-radius: var(--radius);
   }
+  /* Sliding in over the content: the column's own place, out of the frame's grid (App.svelte .frame). */
+  .side-dock.over { position: absolute; top: var(--gap); right: var(--gap); bottom: var(--gap); z-index: 15; }
   /* The handheld form: from the right edge under the top strip, over the page, above the bottom bars (they clear the corner). */
   .side-dock.drawer {
     position: fixed;
