@@ -3,19 +3,24 @@
    * HubPicker.svelte — where the link stands, and what the operator can do
    * about it. Never a silent spinner.
    *
-   *   mode 'boot'  no catalog yet: status, retry, and (outside the shell) the
-   *                hub field and remembered hubs. file:// and a failed first
-   *                connect land here instead of on a blank page.
+   *   mode 'boot'  no catalog yet, the connecting page (DESIGN §10.20): the
+   *                status, the countdown, Retry now and Stop, Troubleshooting,
+   *                and the ways out (the shell's bootPane; outside the shell
+   *                the hub field and remembered hubs). file:// and a failed
+   *                first connect land here instead of on a blank page.
    *   mode 'tier'  live at watch: why, and the way to control (Pairing).
    *
    * Constraints:
    * - Renders link state only; never machine values, never a write.
-   * - In the shell the hub field lives in Phosphor > Hubs (same HostEntry).
-   *   Showing a second one here would be two doors to one room.
+   * - Never a dead end: every way out is on this page, none behind the menu.
+   * - The status block is fixed lines and the buttons fixed slots, so a phase
+   *   change moves nothing (RENDERING law 5).
    */
   import HostEntry from './HostEntry.svelte';
   import MarkSpinner from './MarkSpinner.svelte';
-  import { machine, retryNow, switchHub, hostLabel } from '../model/machine.svelte.js';
+  import ExtLink from './ExtLink.svelte';
+  import { machine, retryNow, switchHub, hostLabel, disconnect } from '../model/machine.svelte.js';
+  import { bootPane } from '../shell/panes.js';
   import { ACCESS } from '../../../Valence/clients/js/index.js';
 
   let { mode = 'boot', onpair = null } = $props();
@@ -44,6 +49,7 @@
   const receiveS = $derived(link.since ? Math.max(0, Math.floor((now - link.since) / 1000)) : 0);
 
   const down = $derived(link.phase === 'retrying' || link.phase === 'failed');
+  const dialing = $derived(!!hub && link.phase !== 'idle' && link.phase !== 'failed');
   // the link is on its way: dialing, handshaking, or receiving the catalog (this view is pre-catalog)
   const loading = $derived(!!hub && (link.phase === 'connecting' || link.phase === 'handshaking' || link.phase === 'live'));
   const status = $derived.by(() => {
@@ -51,26 +57,43 @@
     switch (link.phase) {
       case 'live': return 'Receiving catalog from ' + hub + (receiveS ? ' (' + receiveS + ' s)' : '') + '…';
       case 'handshaking': return 'Handshaking with ' + hub + '…';
-      case 'retrying':
-        return 'Retrying ' + hub + (waitS != null ? ' in ' + waitS + ' s' : '')
-          + (link.closeReason ? ': ' + link.closeReason : '')
-          + (link.attempts > 1 ? ', attempt ' + link.attempts : '');
-      case 'failed': return 'Link to ' + hub + ' closed' + (link.closeReason ? ': ' + link.closeReason : '');
-      case 'idle': return 'Paused while hidden';
+      case 'retrying': return 'Redialing ' + hub;
+      case 'failed': return 'Link to ' + hub + ' closed';
+      // Hidden, the session also pauses as idle, but nobody sees this page then.
+      case 'idle': return 'Stopped: ' + hub;
       default: return 'Connecting to ' + hub + '…';
     }
   });
+  const countdown = $derived(link.phase !== 'retrying' ? ''
+    : (waitS != null ? 'Next try in ' + waitS + ' s' : 'Next try soon') + (link.attempts > 1 ? ' · attempt ' + link.attempts : ''));
+  const reason = $derived(down && link.closeReason ? link.closeReason : '');
+  // The bar drains over the wait the library chose; keyed on retryAt, so each new wait starts it full.
+  const drainMs = $derived(link.phase === 'retrying' && link.retryAt ? Math.max(0, link.retryAt - Date.now()) : 0);
+
+  const DOCS = 'https://openvalence.org/phosphor/docs/troubleshooting/#s-find';
 </script>
 
 {#if mode === 'boot'}
   <section class="picker og-panel" aria-labelledby="picker-title">
-    <h2 id="picker-title" class="pk-title">Hub</h2>
-    <p class="pk-status" role="status" data-phase={link.phase}>{#if loading}<MarkSpinner />{/if}<span>{status}</span></p>
-    {#if down}
-      <button type="button" class="og-btn primary" onclick={retryNow}>Retry now</button>
+    <div class="pk-head">
+      <h2 id="picker-title" class="pk-title">Hub</h2>
+      {#if !WEB}<ExtLink class="pk-docs" href={DOCS} text="Troubleshooting" />{/if}
+    </div>
+    <div class="pk-block" data-phase={link.phase}>
+      <p class="pk-status" role="status">{#if loading}<MarkSpinner />{/if}<span>{status}</span></p>
+      <p class="pk-count">{countdown}</p>
+      <span class="pk-bar" aria-hidden="true">{#key link.retryAt}{#if drainMs}<i style:animation-duration={drainMs + 'ms'}
+        style:--left={waitS != null ? Math.min(1, (waitS * 1000) / drainMs) : 1}></i>{/if}{/key}</span>
+      <p class="pk-reason" data-tip={reason}>{reason}</p>
+    </div>
+    {#if hub}
+      <div class="pk-acts">
+        <button type="button" class="og-btn primary" disabled={!down} onclick={retryNow}>Retry now</button>
+        <button type="button" class="og-btn" disabled={!dialing} onclick={disconnect}>Stop</button>
+      </div>
     {/if}
     {#if SHELL}
-      <p class="pk-note">Add a hub under Phosphor &gt; Hubs</p>
+      {#if $bootPane}{@const Ways = $bootPane}<Ways />{/if}
     {:else if !WEB}
       <HostEntry onpick={switchHub} value={link.host ? hub : ''} />
       <p class="pk-note">Enter an address, or add <code>?hub=&lt;address&gt;</code> to the URL</p>
@@ -95,16 +118,28 @@
     margin: var(--gap) auto;
     padding: var(--sp-5);
   }
+  .pk-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
   .pk-title {
     font-size: 0.8rem;
     text-transform: uppercase;
     letter-spacing: .1em;
     color: var(--ink-faint);
   }
+  /* A whole tap target (law 12), its ink the link's. */
+  .pk-head > :global(.pk-docs) { min-height: var(--tap); font-size: .8rem; }
+  /* Fixed lines and the bar's row: a phase change swaps text, never height. */
+  .pk-block { display: grid; grid-template-rows: auto 1.4em 3px 1.4em; gap: var(--sp-1); }
+  .pk-block p { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pk-status { display: flex; align-items: center; gap: var(--sp-3); color: var(--ink); }
-  .pk-status[data-phase='retrying'],
-  .pk-status[data-phase='failed'] { color: var(--warn-ink); }
-  .picker > .og-btn { align-self: flex-start; }
+  .pk-block:is([data-phase='retrying'], [data-phase='failed']) .pk-status { color: var(--warn-ink); }
+  .pk-count { font: .85rem var(--mono); color: var(--ink); }
+  .pk-reason { font-size: .8rem; color: var(--ink-dim); }
+  .pk-bar { position: relative; overflow: hidden; border-radius: 1.5px; background: var(--line); }
+  .pk-bar > i { position: absolute; inset: 0; background: var(--warn); transform-origin: left; animation: pk-drain linear forwards; }
+  @keyframes pk-drain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+  /* Reduced motion: the bar steps with the countdown's seconds instead of draining. */
+  :global(html.still) .pk-bar > i { animation: none; transform: scaleX(var(--left, 1)); }
+  .pk-acts { display: flex; flex-wrap: wrap; gap: var(--sp-3); }
   .pk-note { color: var(--ink-dim); font-size: .85rem; }
   .pk-line {
     display: flex;

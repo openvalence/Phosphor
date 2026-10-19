@@ -1,6 +1,7 @@
 /**
  * settings-pane.js -- saved-hub upkeep, the launch redial, and the shell's
- * panes (panes.js): Hubs, Server, Settings, Merge, About.
+ * panes (panes.js): Hubs, Server, Settings, Merge, About, and the connecting
+ * page's ways out (bootPane, DESIGN §10.20).
  * SHELL ONLY: main.js imports it from the shell branch.
  *
  * Constraints:
@@ -14,7 +15,8 @@ import { get, toStore } from 'svelte/store';
 import { connect, machine } from '../model/machine.svelte.js';
 import { endpointLabel } from '../model/format.js';
 import { prefs, savedHubs, rememberHub, launchTarget } from '../model/prefs.js';
-import { registerPane } from './panes.js';
+import { registerPane, bootPane } from './panes.js';
+import ConnectPane from './ConnectPane.svelte';
 import HubsPane from './HubsPane.svelte';
 import SettingsPane from './SettingsPane.svelte';
 import ServerPane from './ServerPane.svelte';
@@ -40,3 +42,4 @@ registerPane({ id: 'server', label: 'Buttplug', component: ServerPane });
 registerPane({ id: 'settings', label: 'Settings', component: SettingsPane });
 registerPane({ id: 'merge', label: 'Merge', component: MergePane });
 registerPane({ id: 'about', label: 'About', component: AboutPane });
+bootPane.set(ConnectPane);

@@ -28,6 +28,8 @@ export const PREFS = deepFreeze({
   queue: [], // queue.js toStored entries (ph-1qs5.9); never the Stash key
   autoplay: false, // the next queued scene plays when one ends (ph-1qs5.9)
   tlOpen: true, // the timeline band below its head (ui.js caret, PR7)
+  fsStack: true, // media fullscreen: the wave over the video (ui.js Preview toggle; the quick rail opens with it on entry)
+  fsWave: 0, // media fullscreen: the wave's height in px (ui.js grip); 0 = the default
   split: 0, // the wave card's height in px; 0 = the composition's default (ui.js layout button)
   interp: SCALE, // scale.js; fit() drops any other stored field
   // Playback (ph-smvd.12): loopCount 0 = forever; home point 0..1 of the script, speed norm/s;
@@ -80,6 +82,7 @@ const REPAIR = {
   view: (v) => (v === 'library' || v === 'queue' ? v : 'player'),
   queue: (q) => q.filter((e) => e && typeof e === 'object' && (e.kind === 'file' || e.kind === 'stash')).slice(0, 500),
   split: (v) => (v >= 64 ? Math.min(Math.round(v), 480) : 0),
+  fsWave: (v) => (v >= 32 ? Math.min(Math.round(v), 2000) : 0),
   zoomMs: (z) => (z > 0 ? z : PREFS.zoomMs),
   interp: cleanScale,
   play: (p) => ({ ...p, loopCount: clamp(Math.round(p.loopCount), 0, 99), homeAfterMs: clamp(Math.round(p.homeAfterMs / 500) * 500, 1000, 60000),

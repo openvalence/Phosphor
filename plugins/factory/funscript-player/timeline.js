@@ -14,6 +14,10 @@
 //   through --reality to --highlight (heatColor), mixed in oklab. Never red: RENDERING
 //   law 13 keeps red for hazards.
 // - The wheel is never captured: zoom is two buttons, and pinch on touch (pinchZoom).
+// - A sideways drag on the detail scrubs (onScrub, the heat's own path; 'start' and 'end' bracket a drag, a null time
+//   seeks nothing): the script follows the pointer through the
+//   window's time scale, the playhead stays centered. A touch begins only on horizontal intent (the kit's drag), never
+//   on a hold, so a vertical swipe scrolls; the range pills keep their own drag.
 // - Range pills preview through onRange(partial, false) and commit once,
 //   onRange(partial, true), on release, key-up or blur.
 // - A pill's hit box stays inside the detail (it clips) and only its drawn
@@ -23,8 +27,9 @@
 //   --warn are 13.6 Delta E apart.
 // - Every box has a fixed height (CSS); a state change swaps no geometry.
 // - zoomMs is the starting window; onZoom(ms) persists it as the prefs key zoomMs.
-// - The playhead is one bar: its grip rides the heat at the bottom and its line runs up
-//   through the detail at the same x, so the detail window holds m at the share m / duration.
+// - The playhead (ph-10c4): its grip rides the heat at the share m / duration; in the detail and the lanes it is
+//   fixed at the center and the script moves past it, so the window is [m - zoom / 2, m + zoom / 2]. A hatch
+//   (.fsp-none) fills the detail before the first action and after the last: no script there.
 // - A trace point's p (plan.current as a window share) draws --intent at reduced weight:
 //   the hub's own command, under the script's.
 
@@ -36,7 +41,7 @@
 //   (zoom out, the span, zoom in) and A-B are returned for the caller's timeline head. The detail and the heat
 //   sit on --screen with the advanced generator's inset shadow.
 // - The heat is placed by the caller (`ovHost`, before `ovBefore`): it is the transport row's timeline.
-//   The playhead bar lives in the detail, at the same share of the script as the heat's grip.
+//   The playhead bar sits at the center of the detail; the heat's grip at the share of the script.
 // - `overlay` elements ride the detail (the caller positions them), pointer-events none.
 // - The A-B points are a selection: --highlight, a band on the heat and two lines in the detail.
 //   One button cycles start, end, clear (onLoop); setLoop draws what the controller holds.
@@ -44,8 +49,9 @@
 //   centered on it, and slid with a CSS transform: playback rebuilds them only when the window leaves that span or
 //   what they draw changes (ph-m1gy), and formats each trace point once per span (ph-jem5).
 //   frame() draws nothing while the playhead, the trace and the render stand still.
-// - Per frame only CSS transforms move, each on its own layer (will-change), snapped to device pixels and written on
-//   change (tx, ph-pewq): the slide, the window box, the grip and the playheads. No per-frame attribute, left or
+// - Per frame only CSS transforms move, each on its own layer (will-change), written on change (tx, ph-pewq): the slide,
+//   the window box, the grip and the playheads. The still ones snap to device pixels; the slide and the hatch never do
+//   (a moving layer snapped steps unevenly: judder). No per-frame attribute, left or
 //   width: those relayout or repaint every frame. Widths come from a ResizeObserver, never a per-frame read.
 // - The trace is measured, so its curve passes through every sample and adds no extreme (traceLines, monotone
 //   cubic); time only runs forward in it (ph-6eh7). The detail's tooltip says it is interpolated. It is formatted as
@@ -265,7 +271,8 @@ export const CSS = `
 .fsp-scrub::after, .fsp-rh::after { content: ''; position: absolute; left: 50%; top: 50%; box-sizing: border-box; background: var(--bg-card); }
 .fsp-scrub::after { width: 9px; height: 20px; translate: -4.5px -10px; border-radius: 4.5px; border: 2px solid var(--highlight); }
 .fsp-dt { position: relative; height: var(--fsp-detail, 96px); flex: none; border: 1px solid var(--line); border-radius: var(--r-s); overflow: hidden;
-  container-type: size; touch-action: pan-x pan-y; }
+  container-type: size; touch-action: pan-y; cursor: grab; }
+.fsp-dt[data-drag] { cursor: grabbing; }
 .fsp-dt polyline, .fsp-dt line, .fsp-dt .real, .fsp-dt .plan { fill: none; vector-effect: non-scaling-stroke; }
 .fsp-dt .dots { fill: none; stroke: var(--intent); stroke-width: 5; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .fsp-dt .int { stroke: var(--intent); stroke-width: 2; }
@@ -274,6 +281,10 @@ export const CSS = `
 .fsp-dt .real.stale { opacity: .4; }
 .fsp-dt .plan { stroke: var(--intent); stroke-width: 1; opacity: .55; }
 .fsp-dt .rg { stroke: var(--line-2); stroke-dasharray: 4 4; }
+.fsp-none { position: absolute; top: 0; bottom: 0; width: 100%; pointer-events: none; will-change: transform;
+  background: repeating-linear-gradient(-45deg, color-mix(in srgb, var(--line-2) 55%, transparent) 0 1px, transparent 1px 7px); }
+.fsp-none.pre { left: -100%; }
+.fsp-none.post { left: 0; }
 .fsp-rh { position: absolute; left: 0; width: var(--tap); height: var(--tap); margin-top: calc(var(--tap) / -2); outline: none; cursor: ns-resize; z-index: 1;
   top: clamp(calc(var(--tap) / 2), calc(var(--y, 0) * 1cqh), calc(100cqh - var(--tap) / 2)); }
 .fsp-rh[data-key=hi] { left: var(--tap); }
@@ -352,7 +363,7 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
     filter: () => !!script,
     onStart(d, e) { scrub.focus({ preventScroll: true }); onScrub('start', at(e)); },
     onMove(e) { onScrub('move', at(e)); },
-    onEnd(e, ok) { if (ok) onScrub('end', at(e)); },
+    onEnd(e, ok) { onScrub('end', ok ? at(e) : null); },
   });
   // A mouse over the heat reads the time under it (the kit scrub's tip look, ph-bw0o); a touch has no hover.
   const ovTip = h('span', { class: 'ui-scrub-tip fsp-ovtip', hidden: '' });
@@ -430,7 +441,8 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
     p.addEventListener('blur', commit);
     return p;
   });
-  const dt = h('div', { class: 'fsp-dt', role: 'group', 'aria-label': COPY.detail, 'data-tip': COPY.detailTip }, dtSvg, scriptSvg, traceCv, inkSvg, ...pills, ...overlay);
+  const nonePre = h('i', { class: 'fsp-none pre', 'aria-hidden': 'true' }), nonePost = h('i', { class: 'fsp-none post', 'aria-hidden': 'true' });
+  const dt = h('div', { class: 'fsp-dt', role: 'group', 'aria-label': COPY.detail, 'data-tip': COPY.detailTip }, dtSvg, scriptSvg, traceCv, nonePre, nonePost, inkSvg, ...pills, ...overlay);
   // Pinch on touch: two fingers on the detail step the zoom once per PINCH_STEP of distance.
   const touch = new Map();
   let pinch0 = 0;
@@ -449,6 +461,20 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
   });
   const unTouch = (e) => { touch.delete(e.pointerId); if (touch.size < 2) pinch0 = 0; };
   for (const t of ['pointerup', 'pointercancel', 'pointerleave']) dt.addEventListener(t, unTouch);
+  // The waveform scrub: the media time under the press stays under the pointer.
+  // A press alone seeks nothing (a seek while playing is a hold): only movement does.
+  let grab0 = null;
+  ui.drag(dt, {
+    hold: false,
+    filter: (e) => !!script && !e.target.closest('.fsp-rh') && touch.size < 2,
+    onStart() { grab0 = { m, w: wOf(dt) || 1, moved: false }; },
+    onMove(e, dx) {
+      if (!grab0) return;
+      if (!grab0.moved) { grab0.moved = true; onScrub('start', null); }
+      onScrub('move', clamp(grab0.m - dx / grab0.w * zoom, 0, dur()));
+    },
+    onEnd() { if (grab0 && grab0.moved) onScrub('end', null); grab0 = null; },
+  });
   const ph = h('i', { class: 'fsp-ph', 'aria-hidden': 'true' });
   dt.append(ph);
   const lanes = OSC_AXES.map((id) => {
@@ -480,7 +506,7 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
 
   function draw() {
     const d = dur(), Te = eff();
-    const from = m - (d ? clamp(m / d, 0, 1) : 0.5) * zoom, to = from + zoom;
+    const from = m - zoom / 2, to = from + zoom;
     const kk = kin && !preview ? kin : null;
     if (!span || from < span.a || to > span.b || span.zoom !== zoom || span.script !== script || span.kin !== kk || span.T !== Te
       || span.axes !== axes) {
@@ -519,8 +545,10 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
       }
     }
     const slide = (span.a - from) / zoom;
-    for (const e of [scriptSvg, traceCv]) tx(e, snap(slide * wOf(dt)));
-    for (const l of lanes) if (axes[l.id]) tx(l.svg, snap(slide * wOf(l.el)));
+    // The slide is never snapped: whole pixels step 2, 2, 3 at a wide box's 2.4 px a frame (1, 1, 1, 1, 2 at 120 Hz),
+    // a visible beat; a continuously moving layer is smoother resampled than snapped.
+    for (const e of [scriptSvg, traceCv]) tx(e, slide * wOf(dt));
+    for (const l of lanes) if (axes[l.id]) tx(l.svg, slide * wOf(l.el));
     for (const [line, v] of [[rgLo, Te.lo], [rgHi, Te.hi]]) {
       sa(line, 'y1', String(100 - v * 100));
       sa(line, 'y2', String(100 - v * 100));
@@ -545,10 +573,14 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
     sa(scrub, 'aria-valuenow', String(mt));
     sa(scrub, 'aria-valuetext', fmtTime(mt));
     prop(scrub, 'hidden', !script);
-    // The bars' left edges (2 px, centered on the share) on device pixels.
-    tx(ph, snap(share * wOf(dt) - 1));
+    // The bars' left edges (2 px wide, centered) on device pixels.
+    tx(ph, snap(wOf(dt) / 2 - 1));
+    // The hatch: before the first action, after the last (clamped to the detail; the box clips the rest).
+    const W = wOf(dt), edge = (t) => clamp((t - from) / zoom, 0, 1) * W;   // moves with the slide: unsnapped like it
+    tx(nonePre, script ? edge(script.at[0]) : 0);
+    tx(nonePost, script ? edge(script.at[script.at.length - 1]) : W);
     prop(ph, 'hidden', !script);
-    tx(lph, snap(share * wOf(laneBox) - 1));
+    tx(lph, snap(wOf(laneBox) / 2 - 1));
     const ax = (t) => String(((t - span.a) / zoom) * 1000);
     sa(abBand, 'x', String(d && ab.b != null ? ab.a / d * HEAT_BINS : 0));
     sa(abBand, 'width', String(d && ab.b != null ? (ab.b - ab.a) / d * HEAT_BINS : 0));
@@ -593,7 +625,7 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
       const d = dur();
       if (!script || !(d > 0)) return null;
       if (ov.contains(node)) { const r = ov.getBoundingClientRect(); return seekAt(x - r.left, r.width, d); }
-      const r = dt.getBoundingClientRect(), from = m - clamp(m / d, 0, 1) * zoom;
+      const r = dt.getBoundingClientRect(), from = m - zoom / 2;
       return r.width > 0 ? clamp(from + (x - r.left) / r.width * zoom, 0, d) : null;
     },
     unmount() { ro.disconnect(); root.remove(); ov.remove(); },

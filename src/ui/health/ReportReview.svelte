@@ -64,9 +64,11 @@
     if (!out || busy) return;
     busy = true;
     try {
+      // Asked first: a Cancel leaves no file in Downloads.
+      const opened = await openUrl(out.url);
+      if (opened === null) return;
       let saved = '';
       if (out.attach) saved = await saveFile(fileName(id), out.full).catch(() => null);
-      const opened = await openUrl(out.url);
       if (!opened) {
         await navigator.clipboard.writeText(out.url).catch(() => {});
         note = 'Link copied: paste it in your browser';

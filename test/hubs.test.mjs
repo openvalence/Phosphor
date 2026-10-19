@@ -95,8 +95,8 @@ function fakeHub(port) {
 
 // `storage` seeds localStorage once; `lan` is what discover_hubs answers.
 // The page reports every Bluetooth scan it starts in window.__bleScans.
-async function boot(storage, lan) {
-  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+async function boot(storage, lan, { hubsTab = true, viewport = { width: 1440, height: 900 } } = {}) {
+  const ctx = await browser.newContext({ viewport });
   await ctx.addInitScript(([seed, etag, catHex]) => {
     try {
       if (!sessionStorage.getItem('booted')) {
@@ -116,6 +116,7 @@ async function boot(storage, lan) {
     window.__bleScans = 0;
     const answers = {
       discover_hubs: () => replies,
+      'plugin:opener|open_url': (a) => { window.__opened = a.url; return null; },
       'plugin:blec|check_permissions': () => true,
       'plugin:blec|stop_scan': () => null,
       'plugin:blec|scan': (args) => {
@@ -132,6 +133,7 @@ async function boot(storage, lan) {
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'domcontentloaded' });
+  if (!hubsTab) return { ctx, page, errors };
   await page.waitForSelector('[data-tab-id="shell:hubs"]', { timeout: 15000 });
   await page.click('[data-tab-id="shell:hubs"]');
   await page.waitForSelector('section[aria-labelledby="hp-find"]', { timeout: 5000 });
@@ -264,6 +266,67 @@ console.log('\n--- Set up a machine: the overlay lists a hub with no WiFi, marke
   await page.waitForSelector('.su', { state: 'detached', timeout: 3000 }).catch(() => {});
   ok('Close removes the overlay', (await page.locator('.su').count()) === 0);
   ok('no page errors', errors.length === 0, errors.join(' | '));
+  await ctx.close();
+}
+
+console.log('\n--- DESIGN 10.20: the connecting page is never a dead end (ph-u3b2.1, ph-u3b2.2) ---');
+for (const viewport of [{ width: 1428, height: 900 }, { width: 1024, height: 768 }, { width: 420, height: 860 }]) {
+  // A saved hub that no longer answers (no route on 8383): the launch redial lands on the connecting page.
+  const before = { ...opens };
+  const { ctx, page, errors } = await boot({
+    'phosphor.hubs': JSON.stringify([{ id: 'stale', host: '127.0.0.1', port: 8383, name: 'stale', nickname: 'Old rig', lastSeen: Date.now() - 86400000 }]),
+    shell_host: '127.0.0.1', shell_port: '8383', shell_mode: 'ws',
+  }, [LAN_A], { hubsTab: false, viewport });
+  const P = '.picker';
+  await page.waitForSelector(P + ' .pk-block[data-phase=retrying]', { timeout: 15000 });
+  await page.waitForFunction(() => document.querySelectorAll('.picker .cp-rows').length === 2, null, { timeout: 5000 });
+  const v = viewport.width + 'x' + viewport.height + ': ';
+  const txt = (await page.textContent(P)).replace(/\s+/g, ' ');
+  ok(v + 'redialing, a countdown line, Retry now and Stop on the page', /Redialing 127\.0\.0\.1:8383/.test(txt) && /Next try in \d+ s/.test(txt)
+    && await page.locator(P + ' button:has-text("Stop")').isEnabled(), txt.slice(0, 160));
+  ok(v + 'the address field holds the dialed address', (await page.inputValue(P + ' .he-host')) === '127.0.0.1:8383');
+  const machines = await page.$$eval(P + ' .cp-rows', (u) => [...u[0].children].map((l) => l.textContent.replace(/\s+/g, ' ').trim()));
+  ok(v + 'machines: the saved hub marked dialing, Neutrino last', machines.length === 2 && /Old rig/.test(machines[0]) && /Dialing/.test(machines[0])
+    && /^Neutrino/.test(machines[1]), machines.join(' | '));
+  const found = await page.$$eval(P + ' .cp-rows', (u) => [...u[1].children].map((l) => l.textContent.replace(/\s+/g, ' ').trim()));
+  ok(v + 'found: the LAN scan on arrival lists the hub it heard', found.length === 1 && /bench/.test(found[0]) && /127\.0\.0\.1:8282/.test(found[0]), found.join(' | '));
+  ok(v + 'troubleshooting links to the find section, marked as leaving the app', (await page.getAttribute(P + ' .pk-docs', 'href')) === 'https://openvalence.org/phosphor/docs/troubleshooting/#s-find'
+    && (await page.getAttribute(P + ' .pk-docs', 'data-tip')) === 'Open link' && await page.locator(P + ' .pk-docs .ext-mark').count() === 1);
+  // The shared confirm before leaving the app: the destination, Open link and Cancel; Escape cancels; never over the stop pair.
+  await page.click(P + ' .pk-docs');
+  const ask = await page.waitForSelector('.overlay[role=alertdialog]', { timeout: 3000 }).then(() => page.evaluate(() => {
+    const o = document.querySelector('.overlay').getBoundingClientRect(), p = document.querySelector('.topstrip .pair')?.getBoundingClientRect();
+    return { text: document.querySelector('.overlay').textContent.replace(/\s+/g, ' ').trim(),
+      clear: !p || o.bottom <= p.top || o.top >= p.bottom || o.right <= p.left || o.left >= p.right };
+  }), () => null);
+  if (viewport.width === 420) { await page.waitForTimeout(400); await page.screenshot({ path: 'test/evidence/connect-confirm-420x860.png' }); }
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(200);
+  const after = await page.evaluate(() => ({ open: !!document.querySelector('.overlay'), opened: window.__opened || null }));
+  ok(v + 'the link asks first: "Open link?" with the destination, Open link and Cancel, clear of the stop pair; Escape cancels and opens nothing',
+    !!ask && /Open link\?/.test(ask.text) && /openvalence\.org\/phosphor\/docs\/troubleshooting/.test(ask.text) && /Cancel/.test(ask.text) && ask.clear
+      && !after.open && !after.opened, { ask, after });
+  await page.click(P + ' .pk-docs');
+  await page.click('.overlay button:has-text("Open link")');
+  await page.waitForTimeout(200);
+  ok(v + 'Open link hands the URL to the opener', (await page.evaluate(() => window.__opened)) === 'https://openvalence.org/phosphor/docs/troubleshooting/#s-find');
+  const fits = await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
+  ok(v + 'no horizontal overflow', fits);
+  await page.screenshot({ path: 'test/evidence/connect-' + viewport.width + 'x' + viewport.height + '.png' });
+  if (viewport.width === 1428) {
+    const acts = () => page.$$eval(P + ' .pk-acts button, ' + P + ' .he-host', (b) => b.map((e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(Math.round).join(','); }).join(' '));
+    const acts0 = await acts();
+    await page.click(P + ' button:has-text("Stop")');
+    await page.waitForFunction(() => /Stopped/.test(document.querySelector('.picker .pk-status')?.textContent || ''), null, { timeout: 3000 });
+    const acts1 = await acts();
+    ok(v + 'Stop: the status reads Stopped and Retry now and Stop stay in place, disabled', !(await page.locator(P + ' button:has-text("Stop")').isEnabled())
+      && !(await page.locator(P + ' button:has-text("Retry now")').isEnabled()) && acts0 === acts1, acts0 + ' | ' + acts1);
+    await page.fill(P + ' .he-host', '127.0.0.1:8282');
+    await page.click(P + ' .he-go');
+    await page.waitForFunction(() => !document.querySelector('.picker'), null, { timeout: 15000 });
+    ok(v + 'the edited address connects in place', opens[8282] > before[8282], JSON.stringify(opens));
+  }
+  ok(v + 'no page errors', errors.length === 0, errors.join(' | '));
   await ctx.close();
 }
 

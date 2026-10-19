@@ -205,6 +205,8 @@
   function onPopupAway(e) {
     if (!(heroBar.popup || heroBar.quick) || (rail && rail.busy)) return;
     if (e.target.closest?.('.hero-inner.popup, .hero-inner.quick, .mini, [data-quick-rail-toggle]')) return;
+    // A tap on a fullscreen video reveals its controls and never closes the rail stacked over it (ph-7ri8).
+    if (heroBar.quick && heroBar.stacked) return;
     heroBar.popup = false;
     heroBar.quick = false;
   }
@@ -426,7 +428,7 @@
   }
   function onWindowKey(e) {
     // Prevented, so page fullscreen stays (App.svelte onFullKey).
-    if (e.key === 'Escape' && (heroBar.popup || heroBar.quick) && !(rail && rail.busy)) {
+    if (e.key === 'Escape' && (heroBar.popup || (heroBar.quick && !heroBar.stacked)) && !(rail && rail.busy)) {
       e.preventDefault();
       if (heroBar.popup) document.querySelector('.topstrip .mini')?.focus();
       heroBar.popup = false;

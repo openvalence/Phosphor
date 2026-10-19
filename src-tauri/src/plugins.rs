@@ -270,18 +270,6 @@ pub fn plugin_tcp_reply(port: u16, conn: u64, text: String) -> Result<(), String
     })
 }
 
-/// api.net.open (docs/PLUGINS.md): an http or https URL in the system browser.
-/// The net.fetch permission and the user's act are checked in JS (host.js).
-#[cfg(desktop)]
-#[tauri::command]
-pub fn plugin_open_url(url: String) -> Result<(), String> {
-    let web = url.starts_with("http://") || url.starts_with("https://");
-    if !web || url.chars().any(|c| c.is_whitespace() || c.is_control() || c == '"') {
-        return Err("not an http or https URL".into());
-    }
-    crate::report::launch(&url)
-}
-
 #[cfg(test)]
 mod tests {
     use super::is_plain_js_name;

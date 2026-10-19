@@ -654,7 +654,9 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['ph
   ok('plugins: bundled plugins are marked factory or built-in', bp && bp.chips.includes('built-in') && p0.some((p) => p.chips.includes('factory')), JSON.stringify(p0.map((p) => p.name + ':' + p.chips.join('/'))));
   ok('plugins: every plugin has its error slot', p0.every((p) => p.slot > 0), p0.map((p) => p.slot).join(','));
   const credit = await page.$eval('.plugins .plugin[aria-label="advanced-penetration"]', (s) => s.textContent.replace(/\s+/g, ' '));
-  ok('plugins: advanced-penetration credits fray-d, OSSM-Lite with its license', /after fray-d, OSSM-Lite · CERN-OHL-S-2\.0 Copy link/.test(credit), credit);
+  const creditLink = await page.$eval('.plugins .plugin[aria-label="advanced-penetration"] a.ext', (a) => ({ tip: a.dataset.tip, mark: !!a.querySelector('.ext-mark'), href: a.href })).catch(() => null);
+  ok('plugins: advanced-penetration credits fray-d, OSSM-Lite with its license, the name a link that leaves the app (Open link)',
+    /after fray-d, OSSM-Lite · CERN-OHL-S-2\.0/.test(credit) && !!creditLink && creditLink.tip === 'Open link' && creditLink.mark && /^https:/.test(creditLink.href), { credit, creditLink });
   await page.click('.plugins .plugin[aria-label="buttplug"] label.og-switch');
   await page.waitForTimeout(200);
   ok('plugins: disabling persists in the disabled set', await page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.plugins.disabled') || '[]').includes('buttplug')));

@@ -21,6 +21,7 @@
  */
 
 import { CONDITIONS, quantile } from './core.js';
+import { openExternal } from '../../ui/external.js';
 
 export const REPO = 'openvalence/Phosphor';
 export const SCHEMA = 'phosphor.health-report/1';
@@ -256,13 +257,8 @@ async function apiFetch(url, init) {
   return SHELL ? (await import('@tauri-apps/plugin-http')).fetch(url, init) : fetch(url, init);
 }
 
-/** Opens url in the system browser. false when nothing could (the caller copies it instead). */
-export async function openUrl(url) {
-  if (SHELL) return invoke('open_report_url', { url }).then(() => true, () => false);
-  const w = window.open(url, '_blank');
-  if (w) try { w.opener = null; } catch (e) { /* cross-origin already */ }
-  return !!w;
-}
+/** Opens url in the system browser after the shared confirm (external.js): true, null on Cancel, false when nothing could (the caller copies it instead). */
+export const openUrl = (url) => openExternal(url);
 
 /** Writes text as `name`: the shell's Downloads folder, the browser's download. The saved path, or '' for a download. */
 export async function saveFile(name, text) {
