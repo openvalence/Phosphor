@@ -174,7 +174,8 @@ Plugins`, its page region the plugin's to fill full width.
     asked (the page's bar), never past the stop pair; a shown element marked
     `data-quick-rail-anchor` in the page takes its place, whoever asked
     (the funscript player's stack, `ph-7ri8`), and the rail is then stacked:
-    compact (its spine alone, tight padding), and a display with no input
+    compact (the travel window alone at half height, square top corners for
+    the page's half of the band above it), and a display with no input
     or handles while the anchor carries `data-quick-rail-passive`. While the
     horizontal form is open, `--quick-rail-lift` on `<html>` is its top over
     the window's bottom, for a page placing its own box above it. A

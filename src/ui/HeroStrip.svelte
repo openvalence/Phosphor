@@ -118,10 +118,17 @@
   }
   /* Over an idle fullscreen video (ph-7ri8) the quick rail stays drawn as a 40 % ghost with no plate that takes no
      input; a move or a tap on the video brings it back, and hovered or focused it stays. The stop pair is never in it. */
-  /* Stacked under a page's preview (ph-7ri8): compact, the rail's spine alone (no jog tape) on tight padding; while the
-     page marks its anchor passive (a player running) it is a display: no input, no handles. */
-  .hero-inner.quick.stacked { padding: var(--sp-1) var(--sp-2); }
-  .hero-inner.quick.stacked :global(.rail-row) { display: none; }
+  /* Stacked under a page's preview (ph-7ri8): the bottom half of the page's band (its seek is the top half, flush, so
+     the top corners are square), the rail's window alone at half height: no jog tape, no axis labels, the window band
+     and the carriage. While the page marks its anchor passive (a player running) it is a display: no input, no
+     handles. */
+  .hero-inner.quick.stacked { padding: var(--sp-1) var(--sp-2); left: max(var(--gap), var(--corner-inset, 0px)); right: max(var(--gap), var(--corner-inset, 0px));
+    border-top-left-radius: 0; border-top-right-radius: 0; box-shadow: none; }
+  .hero-inner.quick.stacked :global(:is(.rail-row, .rail-endcap, .rail-ghost, .rail-win)) { display: none; }
+  .hero-inner.quick.stacked :global(.spine-rail-host) { height: 36px; }
+  .hero-inner.quick.stacked :global(.rail-band) { top: 3px; height: 28px; }
+  .hero-inner.quick.stacked :global(.rail-band-handle) { top: 2px; height: 30px; }
+  .hero-inner.quick.stacked :global(.rail-hz) { top: 50%; }
   :global(html:has([data-quick-rail-passive])) .hero-inner.quick.stacked { pointer-events: none; }
   :global(html:has([data-quick-rail-passive])) .hero-inner.quick.stacked :global(.rail-band-handle) { visibility: hidden; }
   :global(html:has(.ui-stage[data-full]:not([data-show]))) .hero-inner.quick:not(:hover, :focus-within) {
