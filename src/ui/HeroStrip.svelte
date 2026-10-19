@@ -117,14 +117,12 @@
     box-shadow: 0 8px 24px rgba(0, 0, 0, .6);
     transition: opacity var(--t-move) var(--ease-out);
   }
-  /* Stacked under a page's preview (ph-7ri8): the bottom half of the page's band (its seek is the top half, flush, so
-     the top corners are square): the rail's window at half height, no axis labels; its handles reach the 40 px touch
-     floor by overhanging the 28 px window, so the band is no taller. While the page marks its anchor passive
-     (a player running) it is a display: no input, no handles, its tape row in place (the plan strip while the player
-     streams), so play and pause move nothing; paused, the jog tape takes input with the rest. */
+  /* Stacked under a page's preview (ph-7ri8): its own plate in the page's stack, the rail's window at half height, no
+     axis labels; its handles reach the 40 px touch floor by overhanging the 28 px window, so the plate is no taller.
+     While the page marks its anchor passive (a player running) it is a display: no input, no handles, its tape row in
+     place (the plan strip while the player streams), so play and pause move nothing; paused, the jog tape takes input. */
   .hero-inner.quick.stacked { padding: var(--sp-1) var(--sp-2); left: max(var(--gap), var(--corner-inset, 0px)); right: max(var(--gap), var(--corner-inset, 0px));
-    border-top-left-radius: 0; border-top-right-radius: 0; box-shadow: none;
-    transition: opacity var(--t-move) var(--ease-out), translate var(--t-move) var(--ease-settle, var(--ease-out)); }
+    box-shadow: none; transition: opacity var(--t-move) var(--ease-out); }
   .hero-inner.quick.stacked :global(:is(.rail-endcap, .rail-ghost, .rail-win)) { display: none; }
   .hero-inner.quick.stacked :global(.spine-rail-host) { height: 28px; }
   .hero-inner.quick.stacked :global(.rail-band) { top: 2px; height: 24px; }
@@ -133,19 +131,18 @@
   :global(html:has([data-quick-rail-passive])) .hero-inner.quick.stacked { pointer-events: none; }
   :global(html:has([data-quick-rail-passive])) .hero-inner.quick.stacked :global(.rail-band-handle) { visibility: hidden; }
   /* Over an idle fullscreen video an unstacked quick rail stays drawn as a 40 % ghost with no plate that takes no
-     input; a move or a tap on the video brings it back, and hovered or focused it stays. Stacked, it is the page's
-     resting view with the page's stack: it gives the bottom slot to the page's bar while the controls show, and comes
-     back rising when they go (it leaves on the frame; instant under html.still). The stop pair is never in any of it. */
+     input; a move or a tap on the video brings it back, and hovered or focused it stays. The stop pair is never in it. */
   :global(html:has(.ui-stage[data-full]:not([data-show]))) .hero-inner.quick:not(.stacked):not(:hover, :focus-within) {
     opacity: .4; pointer-events: none; background: transparent; border-color: transparent; box-shadow: none;
   }
-  /* Stacked, at rest it is the same see-through ghost as the page's stack (40 %, no plate, no input) unless the page
-     marks its anchor awake (a move or a tap over the stack). */
-  :global(html:has(.ui-stage[data-full]:not([data-show])):not(:has([data-quick-rail-awake]))) .hero-inner.quick.stacked {
-    opacity: .4; pointer-events: none; background: transparent; border-color: transparent; box-shadow: none;
-  }
-  :global(html:has(.ui-stage[data-full][data-show])) .hero-inner.quick.stacked {
-    opacity: 0; visibility: hidden; pointer-events: none; translate: 0 var(--sp-3); transition: none;
+  /* Stacked, it is part of the page's stack and never leaves with the page's controls: a 40 % ghost until the stack
+     ([data-quick-rail-group]) or the rail is hovered or focused, or the page marks its anchor awake (a touch, paused). */
+  .hero-inner.quick.stacked { opacity: .4; }
+  :global(html:has([data-quick-rail-group]:focus-within, [data-quick-rail-awake])) .hero-inner.quick.stacked,
+  .hero-inner.quick.stacked:focus-within { opacity: 1; }
+  /* Hover only where hover is real: a tap leaves :hover stuck on a phone. */
+  @media (hover: hover) {
+    :global(html:has([data-quick-rail-group]:hover)) .hero-inner.quick.stacked, .hero-inner.quick.stacked:hover { opacity: 1; }
   }
   .popup .hero-slot {
     width: var(--pl);
