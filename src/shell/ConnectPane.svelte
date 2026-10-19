@@ -1,7 +1,7 @@
 <script>
   /**
    * ConnectPane.svelte -- the connecting page's ways out in the shell (DESIGN
-   * §10.19): the address, the saved hubs with Neutrino last, and what a scan
+   * §10.20): the address, the saved hubs with Neutrino last, and what a scan
    * finds. SHELL ONLY: settings-pane.js hands it to HubPicker through
    * panes.js `bootPane`. Renders hubs.svelte.js and prefs.js; owns no state.
    *

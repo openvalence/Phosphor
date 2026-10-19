@@ -268,7 +268,7 @@ console.log('\n--- Set up a machine: the overlay lists a hub with no WiFi, marke
   await ctx.close();
 }
 
-console.log('\n--- DESIGN 10.19: the connecting page is never a dead end (ph-u3b2.1, ph-u3b2.2) ---');
+console.log('\n--- DESIGN 10.20: the connecting page is never a dead end (ph-u3b2.1, ph-u3b2.2) ---');
 for (const viewport of [{ width: 1428, height: 900 }, { width: 1024, height: 768 }, { width: 420, height: 860 }]) {
   // A saved hub that no longer answers (no route on 8383): the launch redial lands on the connecting page.
   const before = { ...opens };

@@ -3,7 +3,7 @@
    * HubPicker.svelte — where the link stands, and what the operator can do
    * about it. Never a silent spinner.
    *
-   *   mode 'boot'  no catalog yet, the connecting page (DESIGN §10.19): the
+   *   mode 'boot'  no catalog yet, the connecting page (DESIGN §10.20): the
    *                status, the countdown, Retry now and Stop, Troubleshooting,
    *                and the ways out (the shell's bootPane; outside the shell
    *                the hub field and remembered hubs). file:// and a failed

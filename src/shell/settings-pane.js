@@ -1,7 +1,7 @@
 /**
  * settings-pane.js -- saved-hub upkeep, the launch redial, and the shell's
  * panes (panes.js): Hubs, Server, Settings, Merge, About, and the connecting
- * page's ways out (bootPane, DESIGN §10.19).
+ * page's ways out (bootPane, DESIGN §10.20).
  * SHELL ONLY: main.js imports it from the shell branch.
  *
  * Constraints:

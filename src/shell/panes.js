@@ -26,6 +26,6 @@ export function registerPane({ id, label, component, snippet }) {
 // ph-e82.16 lands.
 export const registerDrawerPane = registerPane;
 
-// The connecting page's ways out (DESIGN §10.19): the shell's component for
+// The connecting page's ways out (DESIGN §10.20): the shell's component for
 // HubPicker's boot mode, mounted with no props; null outside the shell.
 export const bootPane = writable(null);
