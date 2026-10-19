@@ -110,6 +110,8 @@ export const RESTART_MS = 3000;   // previous restarts the video past this, else
 export const SKIP_MS = 10000;     // a touch double-tap on a side third
 const PLAYED_MAX = 50;            // the videos previous can go back through
 export const SPLIT_MIN = 64, MIN_STAGE = 120;
+const WAVE_MIN = 32, WAVE_MAX = 0.35;   // the fullscreen wave's height: px, and a share of the video's height
+const TOUCH_DOUBLE = 300;               // the grip's double-tap window, the kit's touch window
 const STAGE_SLACK = 4;   // the portrait stage cap's margin for rounding
 const AUTO_WAIT_MS = 10000;   // Autoplay waits this long for the next scene's script, then gives up
 // The player column the one-row bar needs (eleven items at their floors). A desktop page narrower than that with the
@@ -131,6 +133,7 @@ export const COPY = Object.freeze({
   settings: 'Settings',
   timeline: 'Timeline',
   preview: 'Motion preview',
+  waveSize: 'Preview height',
   rail: 'Rail',
   motion: 'Motion',
   offset: 'Offset',
@@ -928,8 +931,19 @@ html[data-quick-rail-open] .fsp-well { height: max(0px, calc(var(--quick-rail-li
 .fsp-stack:is(:focus-within, :has([data-drag])), html:has(.hero-inner.quick.stacked:focus-within) .fsp-stack { opacity: 1; }
 @media (hover: hover) { .fsp-stack:hover, html:has(.hero-inner.quick.stacked:hover) .fsp-stack { opacity: 1; } }
 @media (pointer: coarse) { .fsp-stack:not([data-passive]) { opacity: 1; } }
-.fsp-stack[data-passive] .fsp-tl { pointer-events: none; }
+/* Playing, the wave is a display but for its scrub: the range pills go (and take no input). */
 .fsp-stack[data-passive] .fsp-rh { visibility: hidden; }
+/* The wave's height grip on its top edge (pref fsWave): the stack's bottom stays, so it grows up. 16 px under a mouse,
+   the touch floor under a finger; its pill shows with the hovered stack (a mouse), always under a finger. */
+.fsp-grip { position: absolute; left: 50%; top: -8px; width: min(160px, 40%); height: 16px; translate: -50% 0; z-index: 1;
+  cursor: ns-resize; touch-action: none; outline: none; }
+@media (pointer: coarse) { .fsp-grip { top: calc(var(--tap) / -2); height: var(--tap); } }
+.fsp:not([data-fswave]) .fsp-grip { display: none; }
+.fsp-grip::after { content: ''; position: absolute; left: 50%; top: 50%; width: 40px; height: 4px; translate: -50% -50%; border-radius: 2px;
+  background: var(--tx-mut); opacity: 0; transition: opacity var(--t-quick) var(--ease-out); }
+.fsp-grip:is([data-drag], :focus-visible)::after { opacity: 1; background: var(--highlight); }
+@media (hover: hover) { .fsp-stack:hover .fsp-grip::after { opacity: 1; } }
+@media (pointer: coarse) { .fsp-grip::after { opacity: 1; } }
 /* The transport mid-video (a coarse pointer): on the video's center, moved only as far as it takes to clear the stop
    pair and the stack (the stop pair wins a screen too short for both); it shows and hides with the controls, in place. */
 .fsp-mid { display: none; }
@@ -1496,8 +1510,35 @@ export function createPlayer(api) {
     // hovering it keeps the controls, a tap on it is never the stage's (data-stage-surface); data-quick-rail-group lets
     // the rail wake with it.
     const anchor = h('i', { class: 'fsp-anchor', 'data-quick-rail-anchor': '', 'aria-hidden': 'true' });
-    const stack = h('div', { class: 'fsp-stack', 'data-stage-surface': '', 'data-quick-rail-group': '' }, h('div', { class: 'fsp-well' }), anchor);
+    // The wave's height grip (pref fsWave, 0 the default): a drag on the top edge, the arrows, a double-click or a
+    // double-tap for the default. WAVE_MIN up to WAVE_MAX of the video's height.
+    const grip = h('div', { class: 'fsp-grip', role: 'separator', tabindex: '0', 'aria-orientation': 'horizontal', 'aria-label': COPY.waveSize, 'data-tip': COPY.waveSize });
+    const stack = h('div', { class: 'fsp-stack', 'data-stage-surface': '', 'data-quick-rail-group': '' }, grip, h('div', { class: 'fsp-well' }), anchor);
     vbox.append(stack);
+    let wavePx = readPrefs(api).fsWave, grip0 = 0, tapAt = -Infinity;
+    const waveMax = () => Math.max(WAVE_MIN, Math.round(vbox.clientHeight * WAVE_MAX));
+    const applyWave = () => {
+      if (wavePx) stack.style.setProperty('--fsp-detail', clamp(wavePx, WAVE_MIN, waveMax()) + 'px'); else stack.style.removeProperty('--fsp-detail');
+    };
+    const setWavePx = (px, commit) => { wavePx = px && clamp(Math.round(px), WAVE_MIN, waveMax()); applyWave(); if (commit) writePref(api, 'fsWave', wavePx); };
+    const waveNow = () => parseFloat(getComputedStyle(stack).getPropertyValue('--fsp-detail')) || 48;
+    ui.drag(grip, { axis: 'y', hold: false,
+      onStart() { grip0 = waveNow(); },
+      onMove(e, dx, dy) { setWavePx(grip0 - dy, false); },
+      onEnd(e, ok) { if (ok && wavePx) writePref(api, 'fsWave', wavePx); } });
+    // The default: a mouse's dblclick (stopped here: after the reset the grip has moved, and the stage would take the next
+    // one as fullscreen), a touch's two taps inside the touch window.
+    grip.addEventListener('dblclick', (e) => { e.stopPropagation(); setWavePx(0, true); });
+    grip.addEventListener('click', (e) => {
+      if (e.pointerType === 'mouse') return;
+      if (e.timeStamp - tapAt < TOUCH_DOUBLE) { tapAt = -Infinity; setWavePx(0, true); } else tapAt = e.timeStamp;
+    });
+    grip.addEventListener('keydown', (e) => {
+      const d = e.key === 'ArrowUp' ? 8 : e.key === 'ArrowDown' ? -8 : 0;
+      if (!d) return;
+      e.preventDefault();
+      setWavePx(waveNow() + d * (e.shiftKey ? 0.125 : 1), true);
+    });
     // The stack's height, for the coarse transport's place between the stop pair and the stack.
     const sro = new ResizeObserver(() => vbox.style.setProperty('--fsp-stack-h', stack.offsetHeight + 'px'));
     sro.observe(stack);
@@ -1509,7 +1550,10 @@ export function createPlayer(api) {
     };
     const railAsk = (open) => requestAnimationFrame(() => anchor.dispatchEvent(new CustomEvent('phosphor-quick-rail', { bubbles: true, cancelable: true, detail: { open } })));
     // The open rail is asked again when the video's box settles or turns (the host places it on an ask).
-    const vro = new ResizeObserver(() => { if (media && !covered && document.documentElement.hasAttribute('data-quick-rail-open')) railAsk(true); });
+    const vro = new ResizeObserver(() => {
+      applyWave();
+      if (media && !covered && document.documentElement.hasAttribute('data-quick-rail-open')) railAsk(true);
+    });
     vro.observe(vbox);
     // A drawer over the fullscreen (the library, Settings) puts the stack away, and its close brings it back; the rail
     // comes back only if it was open when the drawer covered it.

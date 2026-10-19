@@ -14,6 +14,9 @@
 //   through --reality to --highlight (heatColor), mixed in oklab. Never red: RENDERING
 //   law 13 keeps red for hazards.
 // - The wheel is never captured: zoom is two buttons, and pinch on touch (pinchZoom).
+// - A sideways drag on the detail scrubs (onScrub, the heat's own path): the script follows the pointer through the
+//   window's time scale, the playhead stays centered. A touch begins only on horizontal intent (the kit's drag), never
+//   on a hold, so a vertical swipe scrolls; the range pills keep their own drag.
 // - Range pills preview through onRange(partial, false) and commit once,
 //   onRange(partial, true), on release, key-up or blur.
 // - A pill's hit box stays inside the detail (it clips) and only its drawn
@@ -45,8 +48,9 @@
 //   centered on it, and slid with a CSS transform: playback rebuilds them only when the window leaves that span or
 //   what they draw changes (ph-m1gy), and formats each trace point once per span (ph-jem5).
 //   frame() draws nothing while the playhead, the trace and the render stand still.
-// - Per frame only CSS transforms move, each on its own layer (will-change), snapped to device pixels and written on
-//   change (tx, ph-pewq): the slide, the window box, the grip and the playheads. No per-frame attribute, left or
+// - Per frame only CSS transforms move, each on its own layer (will-change), written on change (tx, ph-pewq): the slide,
+//   the window box, the grip and the playheads. The still ones snap to device pixels; the slide and the hatch never do
+//   (a moving layer snapped steps unevenly: judder). No per-frame attribute, left or
 //   width: those relayout or repaint every frame. Widths come from a ResizeObserver, never a per-frame read.
 // - The trace is measured, so its curve passes through every sample and adds no extreme (traceLines, monotone
 //   cubic); time only runs forward in it (ph-6eh7). The detail's tooltip says it is interpolated. It is formatted as
@@ -266,7 +270,8 @@ export const CSS = `
 .fsp-scrub::after, .fsp-rh::after { content: ''; position: absolute; left: 50%; top: 50%; box-sizing: border-box; background: var(--bg-card); }
 .fsp-scrub::after { width: 9px; height: 20px; translate: -4.5px -10px; border-radius: 4.5px; border: 2px solid var(--highlight); }
 .fsp-dt { position: relative; height: var(--fsp-detail, 96px); flex: none; border: 1px solid var(--line); border-radius: var(--r-s); overflow: hidden;
-  container-type: size; touch-action: pan-x pan-y; }
+  container-type: size; touch-action: pan-y; cursor: grab; }
+.fsp-dt[data-drag] { cursor: grabbing; }
 .fsp-dt polyline, .fsp-dt line, .fsp-dt .real, .fsp-dt .plan { fill: none; vector-effect: non-scaling-stroke; }
 .fsp-dt .dots { fill: none; stroke: var(--intent); stroke-width: 5; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .fsp-dt .int { stroke: var(--intent); stroke-width: 2; }
@@ -455,6 +460,16 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
   });
   const unTouch = (e) => { touch.delete(e.pointerId); if (touch.size < 2) pinch0 = 0; };
   for (const t of ['pointerup', 'pointercancel', 'pointerleave']) dt.addEventListener(t, unTouch);
+  // The waveform scrub: the media time under the press stays under the pointer.
+  // A press alone seeks nothing (a seek while playing is a hold): only movement does.
+  let grab0 = null;
+  ui.drag(dt, {
+    hold: false,
+    filter: (e) => !!script && !e.target.closest('.fsp-rh') && touch.size < 2,
+    onStart() { grab0 = { m, w: wOf(dt) || 1 }; },
+    onMove(e, dx) { if (grab0) onScrub('move', clamp(grab0.m - dx / grab0.w * zoom, 0, dur())); },
+    onEnd() { grab0 = null; },
+  });
   const ph = h('i', { class: 'fsp-ph', 'aria-hidden': 'true' });
   dt.append(ph);
   const lanes = OSC_AXES.map((id) => {
@@ -525,8 +540,10 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
       }
     }
     const slide = (span.a - from) / zoom;
-    for (const e of [scriptSvg, traceCv]) tx(e, snap(slide * wOf(dt)));
-    for (const l of lanes) if (axes[l.id]) tx(l.svg, snap(slide * wOf(l.el)));
+    // The slide is never snapped: whole pixels step 2, 2, 3 at a wide box's 2.4 px a frame (1, 1, 1, 1, 2 at 120 Hz),
+    // a visible beat; a continuously moving layer is smoother resampled than snapped.
+    for (const e of [scriptSvg, traceCv]) tx(e, slide * wOf(dt));
+    for (const l of lanes) if (axes[l.id]) tx(l.svg, slide * wOf(l.el));
     for (const [line, v] of [[rgLo, Te.lo], [rgHi, Te.hi]]) {
       sa(line, 'y1', String(100 - v * 100));
       sa(line, 'y2', String(100 - v * 100));
@@ -554,7 +571,7 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
     // The bars' left edges (2 px wide, centered) on device pixels.
     tx(ph, snap(wOf(dt) / 2 - 1));
     // The hatch: before the first action, after the last (clamped to the detail; the box clips the rest).
-    const W = wOf(dt), edge = (t) => snap(clamp((t - from) / zoom, 0, 1) * W);
+    const W = wOf(dt), edge = (t) => clamp((t - from) / zoom, 0, 1) * W;   // moves with the slide: unsnapped like it
     tx(nonePre, script ? edge(script.at[0]) : 0);
     tx(nonePost, script ? edge(script.at[script.at.length - 1]) : W);
     prop(ph, 'hidden', !script);
