@@ -14,7 +14,8 @@
 //   through --reality to --highlight (heatColor), mixed in oklab. Never red: RENDERING
 //   law 13 keeps red for hazards.
 // - The wheel is never captured: zoom is two buttons, and pinch on touch (pinchZoom).
-// - A sideways drag on the detail scrubs (onScrub, the heat's own path): the script follows the pointer through the
+// - A sideways drag on the detail scrubs (onScrub, the heat's own path; 'start' and 'end' bracket a drag, a null time
+//   seeks nothing): the script follows the pointer through the
 //   window's time scale, the playhead stays centered. A touch begins only on horizontal intent (the kit's drag), never
 //   on a hold, so a vertical swipe scrolls; the range pills keep their own drag.
 // - Range pills preview through onRange(partial, false) and commit once,
@@ -362,7 +363,7 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
     filter: () => !!script,
     onStart(d, e) { scrub.focus({ preventScroll: true }); onScrub('start', at(e)); },
     onMove(e) { onScrub('move', at(e)); },
-    onEnd(e, ok) { if (ok) onScrub('end', at(e)); },
+    onEnd(e, ok) { onScrub('end', ok ? at(e) : null); },
   });
   // A mouse over the heat reads the time under it (the kit scrub's tip look, ph-bw0o); a touch has no hover.
   const ovTip = h('span', { class: 'ui-scrub-tip fsp-ovtip', hidden: '' });
@@ -466,9 +467,13 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
   ui.drag(dt, {
     hold: false,
     filter: (e) => !!script && !e.target.closest('.fsp-rh') && touch.size < 2,
-    onStart() { grab0 = { m, w: wOf(dt) || 1 }; },
-    onMove(e, dx) { if (grab0) onScrub('move', clamp(grab0.m - dx / grab0.w * zoom, 0, dur())); },
-    onEnd() { grab0 = null; },
+    onStart() { grab0 = { m, w: wOf(dt) || 1, moved: false }; },
+    onMove(e, dx) {
+      if (!grab0) return;
+      if (!grab0.moved) { grab0.moved = true; onScrub('start', null); }
+      onScrub('move', clamp(grab0.m - dx / grab0.w * zoom, 0, dur()));
+    },
+    onEnd() { if (grab0 && grab0.moved) onScrub('end', null); grab0 = null; },
   });
   const ph = h('i', { class: 'fsp-ph', 'aria-hidden': 'true' });
   dt.append(ph);

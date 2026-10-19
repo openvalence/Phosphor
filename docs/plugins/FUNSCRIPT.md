@@ -886,8 +886,8 @@ center Play of PR8 to PR10 as built, and the transport row's chapters:
   video, and none of them ever moves another:
   - The bar is the stage's overlay in a fixed slot at the bottom edge: the
     heat seek (the script's speed heat over the video's length, the past
-    dimmed, the playhead a knob, the time under the pointer) over one row
-    of buttons. It fades in place with the controls: a move over the video
+    dimmed, the playhead a knob, no hover tip: the transport reads the
+    time) over one row of buttons. It fades in place with the controls: a move over the video
     shows it, the idle (2.5 s) hides it while playing, and paused it stays
     (PP3). A touch on a wide screen puts the seek in the row's middle, one
     row.
@@ -895,15 +895,19 @@ center Play of PR8 to PR10 as built, and the transport row's chapters:
     quick rail) stands fixed on the bar slot's top edge whether the bar
     shows or not. On mouse systems it is a 40 % ghost until hovered;
     hovered it is full and keeps the controls up. Under touch it is full
-    while paused and the ghost while playing. It is a surface of its own
+    while paused and the ghost while playing; playing, its first touch
+    only wakes it (full, the rail with it) and the next ones act until it
+    idles. It is a surface of its own
     over the video (`data-stage-surface`): the pointer always shows over it
     and a tap on it is never the stage's.
   - The wave's height grip sits on its top edge (pref `fsWave`, 0 the
     default): a drag (32 px up to 35 % of the video's height), the arrows,
     a double-click or a double-tap for the default; the stack's bottom
     stays, so it grows up. A sideways drag on the wave scrubs the video
-    through the same seek path, paused or playing; a press alone seeks
-    nothing, and a touch begins only on horizontal intent.
+    through the same seek path; while playing the drag pauses (the motion
+    with it) and the release plays on from the new time, all through the
+    controller's pause, seek and play. A press alone seeks nothing, and a
+    touch begins only on horizontal intent.
   - The moving layers (the script, the trace, the lanes and the hatch)
     slide on sub-pixel transforms, never rounded to whole pixels, so the
     wave runs without judder; the still ones keep their pixel snapping.
@@ -959,12 +963,12 @@ center Play of PR8 to PR10 as built, and the transport row's chapters:
 |---|---|---|---|---|---|---|---|---|---|---|
 | mouse | paused | fullscreen | shown | 40 %, full hovered | live | in the bar | shown | video: keeps the bar; stack: full, keeps the bar | video: Play (a double-click leaves fullscreen); stack: its controls, a sideways drag on the wave scrubs; bar: its buttons | none: paused keeps the bar |
 | mouse | paused | fullscreen | hidden | n/a | n/a | n/a | n/a | n/a | n/a | n/a: paused keeps the bar |
-| mouse | playing | fullscreen | shown | 40 %, full hovered | display | in the bar | shown | video: keeps the bar; stack: full, keeps the bar | video: Pause; stack: the wave's scrub and the grip; bar: its buttons | the bar fades unless the stack or the bar is hovered |
+| mouse | playing | fullscreen | shown | 40 %, full hovered | display | in the bar | shown | video: keeps the bar; stack: full, keeps the bar | video: Pause; stack: the wave's scrub (paused for the drag) and the grip; bar: its buttons | the bar fades unless the stack or the bar is hovered |
 | mouse | playing | fullscreen | hidden | 40 %, full hovered | display | hidden | hidden | video: shows the bar; stack: full, shows the bar | video: Pause; stack: as shown | none |
 | touch | paused | fullscreen | shown | 100 % | live | mid-video | none | none | video: hides the bar and the transport; stack: its controls; bar: its buttons | none: paused keeps the bar |
 | touch | paused | fullscreen | hidden | 100 % | live | hidden | none | none | video: shows the bar and the transport; stack: its controls | none |
-| touch | playing | fullscreen | shown | 40 % | display | mid-video | none | none | video: hides the bar; stack: its controls, the wave's scrub | the bar and the transport fade |
-| touch | playing | fullscreen | hidden | 40 % | display | hidden | none | none | video: shows the bar; stack: its controls, the wave's scrub | none |
+| touch | playing | fullscreen | shown | 40 %, full woken | display | mid-video | none | none | video: hides the bar; stack: the first touch wakes it, then its controls and the wave's scrub (paused for the drag) | the bar and the transport fade |
+| touch | playing | fullscreen | hidden | 40 %, full woken | display | hidden | none | none | video: shows the bar; stack: as shown | none |
 | any | any | inline | in the card | the wave under the stage, the hero rail above (no stack) | live paused, display playing | the bar's Play | shown | as the page | as the page (PP2, PP3) | the glyph hides while playing |
 <!-- states:end -->
 
@@ -972,25 +976,16 @@ center Play of PR8 to PR10 as built, and the transport row's chapters:
   letterboxed and the stack and the bar sit at the window's bottom, under
   it; on a phone on its side and on the desktop they lie over the video's
   lower part (a short screen takes a 36 px wave).
-  Open questions for the operator (flags, not guessed):
-  - Touch, playing: the stack is the ghost and a tap on it goes straight to
-    its controls (no tap to wake). Is a first tap meant to wake it, as on
-    the round-5 builds?
-  - Mouse, paused, with the pointer at rest over bare video: the bar never
-    fades (PP3 keeps it). With the stack above it, is that still wanted,
-    or should paused fade as playing does?
-  - Touch, paused, bar hidden: the stack stays full with no bar and no
-    transport; a tap on the video brings both back. Should the stack
-    ghost there too?
-  - Mouse, hovered stack while playing: the controls stay up as long as
-    the pointer rests on it, so the bar never fades under a resting
-    pointer. Intended?
-  - The wave's scrub while playing seeks the video under the moving
-    machine (the seek's own transition). Should a scrub while playing be
-    held to a paused state first?
-  - The heat seek shows the time under the pointer again (the alt pass);
-    round 6 had removed that tip, the transport reading the time. Keep
-    the tip?
+  Rulings on the open questions (operator 2026-10-19):
+  - Touch, playing: the ghosted stack's first touch only wakes it; the
+    next ones act until it idles.
+  - Mouse, paused, the pointer at rest over bare video: the bar stays.
+  - Touch, paused, bar hidden: the stack stays full.
+  - Mouse, playing, the pointer resting on the stack: the controls stay up.
+  - The wave's scrub while playing pauses for the drag and plays on from
+    the new time on release, through the controller.
+  - The heat seek has no hover tip (round 6 stands); the transport reads
+    the time.
 
 ### The card before the redesign
 

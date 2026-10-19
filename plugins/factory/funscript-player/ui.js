@@ -910,12 +910,13 @@ export const CSS = `
 .fsp-hb-c > .fsp-hb-time:first-child { text-align: right; }
 /* A narrow bar drops the volume (m and the hardware keys stay). */
 @container fsp-hb (max-width: 34rem) { .fsp-hb-row .fsp-vol { display: none; } }
-/* The seek is the script's heat (where it exists): the past dimmed, the playhead a knob, the time under the pointer. */
+/* The seek is the script's heat (where it exists): the past dimmed, the playhead a knob; no hover tip, the bar reads the time. */
 .fsp-hb-seek { margin: 0; }
 .fsp-hb-seek[data-heat] .ui-scrub-track { height: 6px; border-radius: 3px; }
 .fsp-hb-seek[data-heat]:is(:hover, [data-drag]) .ui-scrub-track { height: 10px; }
 .fsp-hb-seek[data-heat] .ui-scrub-buf { display: none; }
 .fsp-hb-seek[data-heat] .ui-scrub-played { background: color-mix(in srgb, var(--bg) 60%, transparent); }
+.fsp-hb-seek .ui-scrub-tip { display: none !important; }
 .fsp-hb-seek .ui-scrub-played::after { transform: none; background: var(--tx-hi); box-shadow: 0 0 0 2px var(--bg); }
 /* The stack: its bottom edge is the bar slot's top (the anchor the host's rail stands on); the well under the wave is
    the rail's place, so the wave clears it. */
@@ -931,6 +932,7 @@ html[data-quick-rail-open] .fsp-well { height: max(0px, calc(var(--quick-rail-li
 .fsp-stack:is(:focus-within, :has([data-drag])), html:has(.hero-inner.quick.stacked:focus-within) .fsp-stack { opacity: 1; }
 @media (hover: hover) { .fsp-stack:hover, html:has(.hero-inner.quick.stacked:hover) .fsp-stack { opacity: 1; } }
 @media (pointer: coarse) { .fsp-stack:not([data-passive]) { opacity: 1; } }
+.fsp-stack[data-awake] { opacity: 1; }
 /* Playing, the wave is a display but for its scrub: the range pills go (and take no input). */
 .fsp-stack[data-passive] .fsp-rh { visibility: hidden; }
 /* The wave's height grip on its top edge (pref fsWave): the stack's bottom stays, so it grows up. 16 px under a mouse,
@@ -1515,6 +1517,23 @@ export function createPlayer(api) {
     const grip = h('div', { class: 'fsp-grip', role: 'separator', tabindex: '0', 'aria-orientation': 'horizontal', 'aria-label': COPY.waveSize, 'data-tip': COPY.waveSize });
     const stack = h('div', { class: 'fsp-stack', 'data-stage-surface': '', 'data-quick-rail-group': '' }, grip, h('div', { class: 'fsp-well' }), anchor);
     vbox.append(stack);
+    // Touch, playing (PP11): the ghosted stack's first touch only wakes it (full, the rail with it); the next ones act
+    // until it idles.
+    let wakeT = 0, waking = false;
+    const wake = (on) => {
+      clearTimeout(wakeT);
+      stack.toggleAttribute('data-awake', on);
+      anchor.toggleAttribute('data-quick-rail-awake', on || (media && !stack.hasAttribute('data-passive') && coarse.matches));
+      if (on) wakeT = setTimeout(() => wake(false), HOVER_IDLE_MS);
+    };
+    stack.addEventListener('pointerdown', (e) => {
+      waking = false;
+      if (e.pointerType === 'mouse' || !stack.hasAttribute('data-passive')) return;
+      if (!stack.hasAttribute('data-awake')) { waking = true; e.stopPropagation(); }
+      wake(true);
+    }, true);
+    stack.addEventListener('pointerup', () => { if (stack.hasAttribute('data-awake')) wake(true); });
+    stack.addEventListener('click', (e) => { if (waking) e.stopPropagation(); }, true);
     let wavePx = readPrefs(api).fsWave, grip0 = 0, tapAt = -Infinity;
     const waveMax = () => Math.max(WAVE_MIN, Math.round(vbox.clientHeight * WAVE_MAX));
     const applyWave = () => {
@@ -1611,7 +1630,7 @@ export function createPlayer(api) {
     root.addEventListener('input', kick);
     el.append(root);
 
-    let zoomMs = readPrefs(api).zoomMs;
+    let zoomMs = readPrefs(api).zoomMs, scrubPlay = false;
     const tl = mountTimeline(tlbox, {
       ui,
       ovHost: tr,
@@ -1621,7 +1640,12 @@ export function createPlayer(api) {
       onZoom: (z) => { zoomMs = z; writePref(api, 'zoomMs', z); },
       onLoop: () => ctl.markAB(),
       onSeek: (ms) => ctl.seek(ms),
-      onScrub: (phase, ms) => ctl.seek(ms),
+      // A scrub while playing pauses for the drag (the motion with it) and plays on from the new time on release (PP11).
+      onScrub: (phase, ms) => {
+        if (phase === 'start' && act()) { scrubPlay = true; ctl.pause(); }
+        if (ms != null) ctl.seek(ms);
+        if (phase === 'end' && scrubPlay) { scrubPlay = false; ctl.play(); }
+      },
       onRange: (partial, commit) => { if (commit) ctl.setT(partial); },
     });
     tlCaret.after(tl.zoomEl);
@@ -1733,7 +1757,8 @@ export function createPlayer(api) {
       const passive = media && act();
       stack.toggleAttribute('data-passive', passive);
       anchor.toggleAttribute('data-quick-rail-passive', passive);
-      anchor.toggleAttribute('data-quick-rail-awake', media && !passive && coarse.matches);
+      if (!passive && stack.hasAttribute('data-awake')) wake(false);
+      anchor.toggleAttribute('data-quick-rail-awake', media && ((!passive && coarse.matches) || stack.hasAttribute('data-awake')));
       motion.pressed = st.motion;
       inv.pressed = st.T.invert;
       prop(fullB, 'disabled', noVid);
@@ -1864,6 +1889,7 @@ export function createPlayer(api) {
         mro.disconnect();
         vro.disconnect();
         sro.disconnect();
+        clearTimeout(wakeT);
         coarse.removeEventListener('change', onCoarse);
         tl.unmount();
         if (library) library.unmount();

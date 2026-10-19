@@ -1035,6 +1035,20 @@ if (!LIVE && !STASH_LIVE && !OSC_ONLY && (args.includes('--states') || !args.som
           hv.op === 1 && hv.bar && cur.stack !== 'none' && cur.play !== 'none', { hv, cur });
       }
     }
+    if (input === 'touch') {
+      // PP11 ruling: playing, the ghosted stack's first touch only wakes it (it never reaches the wave); the next acts.
+      const dt = await page.locator(C + ' .fsp-stack .fsp-dt').boundingBox();
+      await page.evaluate((c) => { window.__dtDown = 0; document.querySelector(c + ' .fsp-stack .fsp-dt').addEventListener('pointerdown', () => window.__dtDown++); }, C);
+      const tap = async () => { await page.touchscreen.tap(Math.round(dt.x + dt.width * 0.85), Math.round(dt.y + dt.height - 6)); await page.waitForTimeout(350); };
+      await tap();
+      const w1 = { ...(await look()), down: await page.evaluate(() => window.__dtDown), rail: await page.evaluate(() => !!document.querySelector('[data-quick-rail-awake]')) };
+      await tap();
+      const w2 = await page.evaluate(() => window.__dtDown);
+      await page.waitForTimeout(IDLE + 400);
+      const w3 = await look();
+      ok('states: touch, playing: the ghosted stack\'s first touch only wakes it (full, the rail too); the next one acts; it idles back to the ghost',
+        w1.playing && w1.op === 1 && w1.rail && w1.down === 0 && w2 === 1 && Math.abs(w3.op - 0.4) < 0.02, { w1, w2, w3 });
+    }
     ok('states: ' + input + ': no page error', errors.length === 0, errors.slice(0, 3));
     clearInterval(hub.timer);
     await ctx.close();
@@ -4074,6 +4088,18 @@ if (!LIVE && !args.includes('--stash-live')) {
   st = await stack();
   ok('stack playing, hovered: full, still a display, and the controls stay up while the pointer rests on it',
     st.op === 1 && st.passive && st.pills === 0 && st.handles === 0 && st.tape && (await shown()), st);
+  // PP11 ruling: a scrub while playing pauses for the drag and plays on from the new time on release, all through the
+  // controller (its marks precede every video call).
+  const sp0 = await video(page, (v) => v.currentTime);
+  await page.mouse.down();
+  await page.mouse.move(wv.x + wv.width / 2 - 160, wv.y + wv.height / 2, { steps: 8 });
+  await page.waitForTimeout(300);
+  const held = await video(page, (v) => v.paused);
+  await page.mouse.up();
+  await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-stage video').paused, C, { timeout: 4000 }).catch(() => {});
+  const sp1 = await video(page, (v) => v.currentTime);
+  ok('stack playing: a drag on the wave pauses for the drag and plays on from the new time on release, through the controller',
+    held && await video(page, (v) => !v.paused) && Math.abs(sp1 - sp0) > 0.5 && (await direct()).length === 0, { held, sp0, sp1, direct: await direct() });
   await page.mouse.move(300, 300);
   await page.waitForTimeout(400);
   st = await stack();
@@ -4095,7 +4121,7 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.mouse.up();
   await page.waitForTimeout(400);
   const at = await video(page, (v) => v.currentTime);
-  ok('hover seek: the heat seek reads the time under the pointer (PP7; an open question under PP11)', tip.shown, tip);
+  ok('hover seek: no hover tip on the heat seek (PP11 ruling: the transport reads the time)', !tip.shown, tip);
   ok('hover seek: a press at half the bar lands at half the clip', Math.abs(at - CLIP_S / 2) < 0.5 && await vids('seek') >= 1, at);
   ok('hover: the video is never driven around the controller', (await direct()).length === 0, await direct());
   await overVideo();
