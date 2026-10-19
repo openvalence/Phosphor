@@ -83,6 +83,7 @@
     exportLayout, importLayout, density, setDensity, palette, editGrid, flush, redHint,
   } from '../../model/dashboard.svelte.js';
   import { tick, untrack } from 'svelte';
+  import { fade } from '../motion.js';
   import { cellCount, place, placeable, resizeRect, arrangePins, nudgePin, faults, DEFAULT_H, MODULE_MIME,
     RESIZE_FLOOR, cellsFor, floorOf } from '../../model/grid.js';
   import { orientationOf } from '../../model/settings.js';
@@ -784,7 +785,7 @@
   {#if !given && editable && editing}
   <!-- Out of the grid's flow, after it: entering edit mode moves nothing above (ph-wia). The sidebar
        wrench ends editing. -->
-  <div class="dash-toolbar" class:stack>
+  <div class="dash-toolbar" class:stack in:fade={{ k: 'quick' }}>
     <div class="dash-slot">
       {#if selSet.size}
         {@render selbar()}

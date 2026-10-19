@@ -398,6 +398,9 @@ if (run('desk')) {
   const pair0 = await rect(page, '.topstrip .pair');
   await page.click('.footstrip .dock-btn');
   await page.waitForSelector('.side-dock .qa-pin');
+  const sliding = await page.evaluate(() => !!document.querySelector('.side-dock.over'));
+  ok('dock: it slides in over the page, the content keeps its width meanwhile (DESIGN 10.13 ruling 4)', sliding && (await rect(page, '.content')).w === content0.w, sliding);
+  await page.waitForSelector('.side-dock:not(.over)');
   ok('dock: the toggle opens it and reads active', (await toggle(page)).exp === 'true' && await prefOpen(page));
   const dk = await rect(page, '.side-dock');
   ok('dock: opening narrows the content (the user\'s act), sits beside it, never over the stop pair', (await rect(page, '.content')).w < content0.w
@@ -632,6 +635,8 @@ if (run('drawer')) {
   ok('drawer: the toggle sits in the status row beside the scale control, inactive', td.n === 1 && td.foot && td.beside && td.exp === 'false', td);
   await page.click('.footstrip .dock-btn');
   await page.waitForSelector('.side-dock.drawer .qa-pin');
+  // It slides in from the right edge (DESIGN 10.13): measured where it comes to rest.
+  await page.waitForFunction(() => !document.querySelector('.side-dock')?.getAnimations().length);
   const dk = await rect(page, '.side-dock.drawer'), strip = await rect(page, '.topstrip'), foot = await rect(page, '.footstrip');
   ok('drawer: from the right edge between the top strip and the status row; the stop pair clear and unmoved; the page not shifted', dk.r === 420 && dk.t >= strip.b - 1
     && dk.b <= foot.t + 1 && !overlap(dk, pair0) && JSON.stringify(pair0) === JSON.stringify(await rect(page, '.topstrip .pair'))

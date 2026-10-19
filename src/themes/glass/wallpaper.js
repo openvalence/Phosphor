@@ -36,7 +36,7 @@ let glassKey = '';
 const mq = (q) => typeof matchMedia === 'function' && matchMedia(q).matches;
 const wanted = () => !!themeMeta(currentTheme().style)?.wallpaper
   && !root.hasAttribute('data-page-full') && !root.classList.contains('still') && !root.classList.contains('hivis')
-  && !mq('(prefers-reduced-transparency: reduce)') && !mq('(prefers-reduced-motion: reduce)');
+  && !mq('(prefers-reduced-transparency: reduce)');
 
 function off() {
   gen++;
@@ -125,9 +125,8 @@ export async function installWallpaper(tauriInvoke) {
   installLens();
   onTheme(refresh);
   new MutationObserver(refresh).observe(root, { attributes: true, attributeFilter: ['data-page-full', 'data-material', 'class'] });
-  for (const q of ['(prefers-reduced-transparency: reduce)', '(prefers-reduced-motion: reduce)']) {
-    if (typeof matchMedia === 'function') matchMedia(q).addEventListener('change', refresh);
-  }
+  // Reduced motion arrives as html.still (ui/still.svelte.js), which the observer above sees.
+  if (typeof matchMedia === 'function') matchMedia('(prefers-reduced-transparency: reduce)').addEventListener('change', refresh);
   addEventListener('focus', soon);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) soon(); });
   try {
