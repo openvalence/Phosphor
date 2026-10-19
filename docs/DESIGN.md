@@ -1742,7 +1742,8 @@ it never decides.
   <tag>" on a match, "Unrecognized build" otherwise, "Can't check: no published
   checksums" or "Can't check: GitHub didn't answer". Every label flashes;
   the label informs, it does not gate. This is the flasher's only request
-  off the LAN, made when a file is picked, and the privacy page says so.
+  off the LAN, made when a file is picked, and the privacy page says so
+  (openvalence.github.io `privacy.html`).
 - Flow, one status slot: Update arms (`POST /ota/arm`), then "Double-press
   PAIR on the machine" with the window's countdown (60 s), polling once a
   second; approved starts the upload at once (the machine holds an approval
@@ -1757,19 +1758,24 @@ it never decides.
   latch the E-stop first"), the window closed ("The window closed: try
   again"), not approved (403: "Not approved: press Update, then double-press
   PAIR"), another request waiting, an image the machine refused, a broken
-  upload ("The machine keeps its firmware: try again"), no answer. A bench
+  upload ("The upload broke off: the machine keeps its firmware, try
+  again"), no answer, an unreadable file. A bench
   image's token path is not offered; a bench machine shows the same press
   flow and its 403 speaks.
 - Layout: the card's rows (Running, File, Image, Origin, the status slot,
   the progress bar and the buttons) are drawn in every state, empty when
   unused, so no step changes the card's height (§10.12, no page shifting).
   The status slot changes on the frame (§10.13: a refusal or a degradation
-  is never animated).
+  is never animated). Another machine connected clears the card: nothing
+  of the last machine is shown as this one's.
 - Mechanism: `src/model/flasher.svelte.js` holds the flow outside the card
   (the link drops during the restart and the page may re-render);
   `src-tauri/src/ota.rs` streams the image (the HTTP plugin's JS fetch sends
   a body as a JSON number array and reports no upload progress) and emits
-  `ota-progress`; arm, status, `/diag` and GitHub ride the plugin's fetch.
+  `ota-progress`, with one 120 s deadline over the request; Android's IPC
+  has no raw body, so the command also takes the image as a JSON number
+  array. Arm, status, `/diag` and GitHub ride the plugin's fetch. An IPv6
+  hub is bracketed in the URL.
 
 ## Amendments
 

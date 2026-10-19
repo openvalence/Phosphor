@@ -222,7 +222,7 @@ console.log('\n--- phone at 420x860 ---');
   ok('no horizontal overflow', over <= 0, over);
   await shot(page, '420-press');
   await page.click('.fw button:has-text("Cancel")');
-  ok('Cancel ends the wait at once', (await status(page)) === 'Cancelled');
+  ok('Cancel ends the wait at once', (await status(page)) === 'Canceled');
   ok('no page errors', errors.length === 0, errors.join(' | '));
   await ctx.close();
 }

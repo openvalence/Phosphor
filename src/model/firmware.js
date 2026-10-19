@@ -101,6 +101,7 @@ export function refusal(status, text, step) {
 }
 
 export const blank = () => ({
+  host: '',         // the machine the card shows; peek() resets the card when it changes
   running: null,    // diagHead() of the machine, read by peek() and after an update
   phase: 'idle',    // idle | checking | ready | arming | waiting | uploading | restarting | done | failed
   file: null,       // {name, size}
@@ -113,59 +114,75 @@ export const blank = () => ({
   total: 0,
 });
 
+/** The hub's HTTP base; an IPv6 literal is bracketed. */
+export const httpBase = (host) => 'http://' + (host.includes(':') ? '[' + host + ']' : host);
+
+const json = (text) => { try { return JSON.parse(text) || {}; } catch (e) { return {}; } };
+const ODD = 'The machine answered oddly: restart it, try again';
+
 /**
  * The flow over `state` (blank()'s shape). net: {get(url), post(url),
  * upload(host, id, bytes, onSent)}, each resolving {status, text} and
  * throwing when nothing answered; sleep(ms) and now() for tests.
  */
 export function createFlasher(state, net, { sleep = (ms) => new Promise((r) => setTimeout(r, ms)), now = () => Date.now() } = {}) {
-  let run = 0;
+  let run = 0;      // the flow: a pick, an update or a cancel ends the one before
+  let picked = 0;   // the file: only a new pick or a machine change drops its origin lookup
   let bytes = null;
   const set = (o) => Object.assign(state, o);
   const say = (status, tone = '') => set({ status, tone });
   const fail = (status) => set({ phase: 'failed', status, tone: 'fault' });
   const ask = (fn, url) => fn(url).catch(() => ({ status: null, text: '' }));
-  const diag = async (host) => diagHead((await ask(net.get, 'http://' + host + DIAG_HEAD)).text);
+  const diag = async (host) => diagHead((await ask(net.get, httpBase(host) + DIAG_HEAD)).text);
+  const busy = () => ['checking', 'arming', 'waiting', 'uploading', 'restarting'].includes(state.phase);
 
   async function pick(file) {
-    const my = ++run;
+    const my = ++run, mine = ++picked;
     bytes = null;
-    Object.assign(state, blank(), { running: state.running, phase: 'checking', file: { name: file.name, size: file.size } });
-    const b = new Uint8Array(await file.arrayBuffer());
+    set({ ...blank(), host: state.host, running: state.running, phase: 'checking', file: { name: file.name, size: file.size } });
+    let b, hash;
+    try {
+      b = new Uint8Array(await file.arrayBuffer());
+      hash = await sha256(b);
+    } catch (e) {
+      if (my === run) fail("Can't read the file: pick it again");
+      return;
+    }
     const image = readImage(b);
-    const hash = await sha256(b);
     if (my !== run) return;
     bytes = image.error ? null : b;
     set({ phase: image.error ? 'failed' : 'ready', image, hash, tone: image.error ? 'fault' : '', status: image.error || '' });
     if (image.error) return;
     state.origin = { kind: 'checking', label: 'Checking' };
     const origin = await originOf(hash, net);
-    if (my === run) state.origin = origin;
+    if (mine === picked) state.origin = origin;
   }
 
   async function update(host) {
     if (!bytes || !host) return;
     const my = ++run;
     const live = () => my === run;
+    const base = httpBase(host);
     set({ phase: 'arming', sent: 0, total: bytes.length });
     say('Asking the machine', 'pending');
     const before = await diag(host);
     if (!live()) return;
     if (!before) return fail(refusal(null));
     state.running = before;
-    const arm = await ask(net.post, 'http://' + host + '/ota/arm');
+    const arm = await ask(net.post, base + '/ota/arm');
     if (!live()) return;
     if (arm.status !== 202) return fail(refusal(arm.status, arm.text, 'arm'));
-    const { id, window_s: windowS } = JSON.parse(arm.text);
+    const { id, window_s: windowS = 60 } = json(arm.text);
+    if (!/^[0-9a-f]{1,8}$/.test(id || '')) return fail(ODD);
     const end = now() + windowS * 1000;
     set({ phase: 'waiting' });
     for (;;) {
       say('Double-press PAIR on the machine · ' + Math.max(0, Math.ceil((end - now()) / 1000)) + ' s', 'pending');
       await sleep(1000);
       if (!live()) return;
-      const st = await ask(net.get, 'http://' + host + '/ota/arm?id=' + id);
+      const st = await ask(net.get, base + '/ota/arm?id=' + id);
       if (!live()) return;
-      const answer = st.status === 200 ? JSON.parse(st.text).state : null;
+      const answer = st.status === 200 ? json(st.text).state : null;
       if (answer === 'approved') break;
       if (answer === 'expired' || now() > end + 5000) return fail('The window closed: try again');
     }
@@ -184,7 +201,7 @@ export function createFlasher(state, net, { sleep = (ms) => new Promise((r) => s
     const t0 = now();
     let last = null;
     while (now() - t0 < VERDICT_WAIT_MS) {
-      say('Restarting · ' + Math.round((now() - t0) / 1000) + ' s', 'pending');
+      say(last ? 'Confirming ' + last.version : 'Restarting · ' + Math.round((now() - t0) / 1000) + ' s', 'pending');
       await sleep(2000);
       if (!live()) return;
       const head = await diag(host);
@@ -193,25 +210,31 @@ export function createFlasher(state, net, { sleep = (ms) => new Promise((r) => s
       if (v) state.running = head;
       if (v === 'done') return set({ phase: 'done', status: 'Updated to ' + head.version, tone: 'settled' });
       if (v === 'rollback') return fail('The new firmware failed to start: back on ' + head.version);
-      if (v === 'trial') { last = head; say('Confirming ' + head.version, 'pending'); }
+      if (v === 'trial') last = head;
     }
     fail(last ? 'Still confirming ' + last.version + ': it reverts by itself if it fails'
       : 'No answer after restart: check its power and Wi-Fi');
   }
 
-  /** Reads what the machine runs, unless a flow is talking to it. */
+  /**
+   * Reads what `host` runs, unless a flow is talking to a machine. Another
+   * machine than the card shows clears the card first: nothing of the last
+   * machine is shown as this one's.
+   */
   async function peek(host) {
     if (busy()) return;
+    if (host !== state.host) {
+      run++; picked++; bytes = null;
+      set({ ...blank(), host });
+    }
     const head = await diag(host);
-    if (head && !busy()) state.running = head;
+    if (head && !busy() && state.host === host) state.running = head;
   }
-
-  const busy = () => ['checking', 'arming', 'waiting', 'uploading', 'restarting'].includes(state.phase);
 
   /** Ends a wait; the machine drops the request when its window closes. */
   function cancel() {
     run++;
-    set({ phase: bytes ? 'ready' : 'idle', status: 'Cancelled', tone: '', sent: 0 });
+    set({ phase: bytes ? 'ready' : 'idle', status: 'Canceled', tone: '', sent: 0 });
   }
 
   return { pick, update, cancel, peek, busy };

@@ -140,13 +140,60 @@ async function runFlow(opts) {
   const f = createFlasher(st, m.net, { sleep: async () => { t += 1000; if (st.phase === 'waiting' && /PAIR/.test(st.status)) f.cancel(); }, now: () => t });
   await f.pick(file);
   await f.update('10.0.0.5');
-  ok('cancel ends the wait, file kept', st.phase === 'ready' && st.status === 'Cancelled' && !m.log.some((l) => l.startsWith('UPLOAD')), st.phase + ' ' + st.status);
+  ok('cancel ends the wait, file kept', st.phase === 'ready' && st.status === 'Canceled' && !m.log.some((l) => l.startsWith('UPLOAD')), st.phase + ' ' + st.status);
 }
 {
   const st = blank();
   const f = createFlasher(st, fakeMachine().net, clock);
   await f.pick({ name: 's3.bin', size: 4096, arrayBuffer: async () => image({ chip: 9 }).buffer });
   ok('a wrong image fails at pick and asks GitHub nothing', st.phase === 'failed' && st.status === 'Built for ESP32-S3: pick a P4 image' && st.origin === null);
+}
+{
+  const st = blank();
+  const f = createFlasher(st, fakeMachine().net, clock);
+  await f.pick({ name: 'gone.bin', size: 1, arrayBuffer: async () => { throw new Error('revoked'); } });
+  ok('an unreadable file fails, not busy', st.phase === 'failed' && st.status === "Can't read the file: pick it again" && !f.busy());
+}
+{
+  // The origin lookup is still out when Update is pressed: it still lands.
+  let release;
+  const m = fakeMachine();
+  const slowGet = m.net.get;
+  m.net.get = (u) => (u.includes('api.github.com') ? new Promise((r) => { release = () => r({ status: 200, text: '[]' }); }) : slowGet(u));
+  const st = blank();
+  const f = createFlasher(st, m.net, clock);
+  const picking = f.pick(file);
+  await new Promise((r) => setTimeout(r, 20));
+  const flow = f.update('10.0.0.5');
+  release();
+  await picking; await flow;
+  ok('an origin lookup outlives the flow it overlaps', st.origin.label === "Can't check: no published checksums", JSON.stringify(st.origin));
+}
+{
+  // Approved, uploaded, then the new slot answers pending twice before it buys itself.
+  const m = fakeMachine();
+  let n = 0;
+  const get = m.net.get;
+  m.net.get = async (u) => {
+    const r = await get(u);
+    if (u.includes('/diag') && /slot=ota_1/.test(r.text) && ++n <= 2) return { status: 200, text: r.text.replace('img=valid', 'img=pending') };
+    return r;
+  };
+  const st = blank();
+  const said = [];
+  const f = createFlasher(st, m.net, { sleep: async (ms) => { said.push(st.status); t += ms; }, now: () => t });
+  await f.pick(file);
+  await f.update('10.0.0.5');
+  ok('on trial the slot reads Confirming <version>', said.includes('Confirming 0.1.60-p4hub') && st.phase === 'done', said.slice(-4).join(' | '));
+}
+{
+  const st = blank();
+  const f = createFlasher(st, fakeMachine().net, clock);
+  await f.peek('10.0.0.5');
+  await f.pick(file);
+  st.status = 'Updated to 0.1.60-p4hub';
+  await f.peek('10.0.0.9');
+  ok('another machine clears the card before its own reading lands', st.host === '10.0.0.9' && st.file === null && st.status === '' && st.running?.slot === 'ota_0');
 }
 
 // ---- the bench: arm, poll, an unapproved post, /diag; no image is sent ----

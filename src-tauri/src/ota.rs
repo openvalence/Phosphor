@@ -9,6 +9,10 @@
 //!   from it and refuses a short body (Nucleus ValenceOta.cpp).
 //! - Progress lags the machine by the socket buffers, tens of KB of about
 //!   1.5 MB; the 200 is the only evidence the image landed.
+//! - Android has no raw IPC body: the image arrives there as a JSON number
+//!   array. Both forms are taken.
+//! - One deadline over the whole request, so a machine that dies before it
+//!   answers frees the card.
 
 use futures::{stream, StreamExt};
 use tauri::ipc::{InvokeBody, Request};
@@ -16,6 +20,8 @@ use tauri::{AppHandle, Emitter};
 use tauri_plugin_http::reqwest;
 
 const CHUNK: usize = 16 * 1024;
+// About 1.5 MB at the measured 270 kB/s takes 6 s; the margin covers a slow link and the image check.
+const DEADLINE: std::time::Duration = std::time::Duration::from_secs(120);
 
 /// (status, body) of POST `url` with `image`; `on_sent` sees the bytes handed over so far.
 pub async fn post_image(url: &str, image: Vec<u8>, on_sent: impl Fn(usize) + Send + Sync + 'static) -> Result<(u16, String), String> {
@@ -27,7 +33,10 @@ pub async fn post_image(url: &str, image: Vec<u8>, on_sent: impl Fn(usize) + Sen
         sent += c.len();
         Ok::<_, std::io::Error>(c)
     });
-    let res = reqwest::Client::new()
+    let res = reqwest::Client::builder()
+        .timeout(DEADLINE)
+        .build()
+        .map_err(|e| e.to_string())?
         .post(url)
         .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
         .header(reqwest::header::CONTENT_LENGTH, total)
@@ -42,15 +51,18 @@ pub async fn post_image(url: &str, image: Vec<u8>, on_sent: impl Fn(usize) + Sen
 /// The page sends the image as the raw body, `x-ota-host` and `x-ota-id` as headers.
 #[tauri::command]
 pub async fn ota_upload(app: AppHandle, request: Request<'_>) -> Result<(u16, String), String> {
-    let InvokeBody::Raw(image) = request.body() else { return Err("expected the image bytes".into()) };
+    let image: Vec<u8> = match request.body() {
+        InvokeBody::Raw(b) => b.clone(),
+        InvokeBody::Json(v) => serde_json::from_value(v.clone()).map_err(|_| "expected the image bytes")?,
+    };
     let header = |k: &str| request.headers().get(k).and_then(|v| v.to_str().ok()).unwrap_or("").to_owned();
     let (host, id) = (header("x-ota-host"), header("x-ota-id"));
-    let host_ok = !host.is_empty() && host.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-');
+    let host_ok = !host.is_empty() && host.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == ':');
     if !host_ok || id.is_empty() || id.len() > 8 || !id.chars().all(|c| c.is_ascii_hexdigit()) {
         return Err("bad host or id".into());
     }
-    let image = image.clone();
-    post_image(&format!("http://{host}/ota?id={id}"), image, move |n| {
+    let base = if host.contains(':') { format!("[{host}]") } else { host };
+    post_image(&format!("http://{base}/ota?id={id}"), image, move |n| {
         let _ = app.emit("ota-progress", n);
     })
     .await
