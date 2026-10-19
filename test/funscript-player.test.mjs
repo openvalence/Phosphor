@@ -3981,8 +3981,8 @@ if (!LIVE && !args.includes('--stash-live')) {
   ok('media fullscreen: a double-click on the stage enters it (the ask carries bare: one mode) and never toggles Play',
     dbl.media && dbl.bare && (await page.evaluate(() => window.__fsAsk.bare === true)) && (await video(page, (v) => v.paused)) === paused0, { dbl, ask: await page.evaluate(() => window.__fsAsk), paused0, now: await video(page, (v) => v.paused) });
   // Off the centered transport (PP10): a double-click there is two clicks on its buttons.
-  const sb = await page.locator(C + ' .fsp-stage').boundingBox();
-  await page.mouse.dblclick(sb.x + sb.width / 4, sb.y + sb.height / 4);
+  const sv = await page.locator(C + ' .fsp-stage').boundingBox();
+  await page.mouse.dblclick(sv.x + sv.width / 4, sv.y + sv.height / 4);
   await page.waitForTimeout(500);
   ok('media fullscreen: a second double-click on the video leaves it', !(await fsLook()).media);
   ok('foot: the page owns its fullscreen, the foot offers none', await page.locator('main.pane .page-foot button').count() === 0);
