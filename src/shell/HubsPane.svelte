@@ -27,6 +27,7 @@
   import { advFlags } from './ble-adv.js';
   import { needsSetup } from './ble-setup.js';
   import SetupFlow from './SetupFlow.svelte';
+  import { flipMove, rise } from '../ui/motion.js';
   import { hubs, scanHubs, scan, pickBle, connectWs, upgrade, setup, openSetup, startSetup } from './hubs.svelte.js';
   import { foundVia } from './found.js';
   import { machine, disconnect, retryNow } from '../model/machine.svelte.js';
@@ -95,7 +96,7 @@
     {/if}
       <ul class="pane-list rows">
         {#each $savedHubs as h (h.id)}
-          <li use:opensName={(li) => li.querySelector('.nick input')}>
+          <li use:opensName={(li) => li.querySelector('.nick input')} animate:flipMove in:rise>
             <span class="who">
               <label class="nick">
                 <span class="sr-only">Nickname for {hubLabel(h)}</span>
@@ -151,7 +152,7 @@
           {@const adv = f.ble && advFlags(f.ble)}
           {@const live = !!f.lan && dialedWs(f.lan.ip, f.lan.ws_port)}
           {@const setupNeeded = !f.lan && needsSetup(adv)}
-          <li>
+          <li animate:flipMove in:rise>
             <span class="who">
               <span class="name">{f.lan?.hub_name || f.ble?.name || 'hub'}{#each foundVia(f) as v (v)}<span class="mark via">{v}</span>{/each}{#if setupNeeded}<span class="mark setup">needs setup</span>{/if}{#if f.lan?.pairing_window_open || adv?.pairing}<span class="mark">pairing open</span>{/if}</span>
               {#if f.lan}

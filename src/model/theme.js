@@ -134,6 +134,7 @@ export const LOCKED = {
   '--t-move': 'motion token (html.still)',
   '--t-slow': 'motion token (html.still)',
   '--ease-out': 'motion token (html.still)',
+  '--ease-settle': 'motion token (html.still)',
   '--chrome-inset-top': 'safe-area owner',
   '--font': 'bundled font',
   '--mono': 'bundled font',

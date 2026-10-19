@@ -21,6 +21,7 @@
    *   rail's shaded foot block is the rail's alone).
    */
   import { tick } from 'svelte';
+  import { drawer, fade } from './motion.js';
 
   let { children } = $props();
   let box = $state(null);
@@ -37,9 +38,10 @@
 
 <svelte:window onkeydown={onKey} />
 
+<!-- Arrives from the left edge over a fading scrim; a close is instant (DESIGN §10.13 The motion system). -->
 {#if phoneMenu.open}
-  <div class="scrim" aria-hidden="true" onpointerdown={() => (phoneMenu.open = false)}></div>
-  <div class="phone-menu" role="dialog" aria-modal="true" aria-label="Menu" bind:this={box}>
+  <div class="scrim" aria-hidden="true" onpointerdown={() => (phoneMenu.open = false)} in:fade></div>
+  <div class="phone-menu" role="dialog" aria-modal="true" aria-label="Menu" bind:this={box} in:drawer>
     {@render children?.()}
   </div>
 {/if}
