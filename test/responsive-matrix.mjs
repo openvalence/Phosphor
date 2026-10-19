@@ -551,13 +551,18 @@ if (!ONLY || ONLY === 'picker') {
   {
     const { ctx, page } = await seeded({ width: 360, height: 800 }, (ws) => { opens++; ws.close({ code: 1011, reason: 'refused' }); });
     await page.goto('http://127.0.0.1:' + PORT + '/');
-    const st = await page.waitForSelector('.picker .pk-status[data-phase=retrying]', { timeout: 8000 }).catch(() => null);
+    const st = await page.waitForSelector('.picker .pk-block[data-phase=retrying]', { timeout: 8000 }).catch(() => null);
     const txt = st ? await st.textContent() : '';
-    scen('a refused hub shows the picker with its retry state', !!st && /Retrying/.test(txt), txt.trim());
+    scen('a refused hub shows the picker with its redial state and countdown', !!st && /Redialing/.test(txt) && /Next try in \d+ s/.test(txt), txt.trim());
     const before = opens;
     await page.click('.picker button:has-text("Retry now")').catch(() => {});
     await page.waitForTimeout(400);
     scen('Retry now opens a session without waiting out the backoff', opens > before, before + ' -> ' + opens);
+    await page.click('.picker button:has-text("Stop")').catch(() => {});
+    await page.waitForTimeout(1500);
+    const stopped = opens, sTxt = await page.textContent('.picker .pk-status');
+    await page.waitForTimeout(2500);
+    scen('Stop ends the redial: Stopped, no session after', /Stopped/.test(sTxt) && opens === stopped, sTxt + ' ' + stopped + ' -> ' + opens);
     const f = await page.evaluate(measure, { phone: true });
     scen('refused-hub picker passes the phone layout checks', f.length === 0, f.map((x) => x.join(' ')).join('; '));
     await ctx.close();
