@@ -171,7 +171,10 @@ Plugins`, its page region the plugin's to fill full width.
     `detail: {open: true | false | 'toggle'}`). The shell takes it only for
     the page on screen and only while `data-quick-rail` is present, calling
     `preventDefault()`. The horizontal pop-up opens above the element that
-    asked (the page's bar), never past the stop pair.
+    asked (the page's bar), never past the stop pair; a shown element marked
+    `data-quick-rail-anchor` in the page takes its place, whoever asked
+    (the funscript player's stack, `ph-7ri8`). A `mediaFullscreen` page's
+    fullscreen takes the horizontal form on every class.
   - Mark the icon `data-quick-rail-toggle`: the pop-up's outside-tap close
     skips it, so a tap toggles instead of closing and reopening, and the
     footer's own icon hides while the page shows one (one per screen). A
@@ -182,6 +185,10 @@ Plugins`, its page region the plugin's to fill full width.
     change of availability (bucket, fullscreen, page switch) or open state;
     the icon's `aria-expanded` follows `open`.
   - Escape and a tap outside close it; a scrub or window drag holds it open.
+    Stacked above an anchor it is part of the page's fullscreen: a tap
+    outside never closes it and Escape and back leave the fullscreen; while
+    a fullscreen `ui.stage`'s controls hide it rests as a 40 % ghost that
+    takes no input.
   Seams: `src/App.svelte`, `src/ui/hero/heroBar.svelte.js` `openQuick`.
 - **`fill: true`** (experimental, `ph-yuce`). The page is laid out as a column
   filling the desktop content pane's width and height (`main.pane.fill`, the

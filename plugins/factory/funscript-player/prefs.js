@@ -28,6 +28,7 @@ export const PREFS = deepFreeze({
   queue: [], // queue.js toStored entries (ph-1qs5.9); never the Stash key
   autoplay: false, // the next queued scene plays when one ends (ph-1qs5.9)
   tlOpen: true, // the timeline band below its head (ui.js caret, PR7)
+  fsStack: true, // media fullscreen: the wave and the quick rail stacked over the video (ui.js timeline toggle, ph-7ri8)
   split: 0, // the wave card's height in px; 0 = the composition's default (ui.js layout button)
   interp: SCALE, // scale.js; fit() drops any other stored field
   // Playback (ph-smvd.12): loopCount 0 = forever; home point 0..1 of the script, speed norm/s;

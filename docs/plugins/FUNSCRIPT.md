@@ -878,6 +878,34 @@ center Play of PR8 to PR10 as built, and the transport row's chapters:
   fullscreen, Escape, F, a double-click, Android back and the turn to
   upright leave it, restoring the page as it was.
 
+### The connect pass (superfan feedback via the operator 2026-10-18, `ph-u3b2`, PROPOSED)
+
+- **PP7 The stack** (`ph-7ri8`). In media fullscreen the motion preview
+  (the 72 px wave) and the quick rail stack over the video, the rail on
+  top, the wave right above the bar. The timeline toggle shows or hides
+  both (pref `fsStack`, on by default); the bar's Rail button still toggles
+  the rail alone. While the controls hide (2.5 s still while playing) both
+  stay drawn at 40 % with no plates and take no input, so a tap reaches the
+  video; a mouse move or a touch tap brings them back with the controls. A
+  tap on the video never closes the rail; the toggle and the Rail button
+  do, and Escape and back leave the fullscreen as before. The stop pair is the host's and never part of the fade. Phones
+  take the rail's horizontal form there (DESIGN §10.3, amended). Inline the
+  page keeps its layout: the hero rail above, the wave under the stage.
+  *(Supersedes PR9's wave above the scrub inside the hover bar and, with
+  the stack on, `ph-9t5l.7`'s "at rest only the stop pair sits over a
+  fullscreen video".)*
+- **PP8 The centered playhead** (`ph-10c4`). The detail's playhead is fixed
+  at its center at every class and the script, the trace and the lanes move
+  past it; the window is the playhead time less and plus half the zoom. A
+  diagonal hatch in `--line-2` fills the detail before the first action and
+  after the last: no script there. The heat's grip still rides the
+  overview at the share of the script.
+- **PP9 The trace through a pause** (`ph-f012`). Before: paused, the trace
+  stayed, and any seek while paused cleared it at once (and a jump over 8 s
+  ahead or 1 s back trimmed it). Now it stays while paused and while
+  scrubbing, is trimmed only while playing, and clears when Play starts
+  playback (a seek while playing still clears it).
+
 ### The card before the redesign
 
 The rulings below stand except where marked superseded.

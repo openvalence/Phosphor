@@ -455,5 +455,24 @@ const real = (sent) => sent.filter((l) => l.length);
     && tr.every((x, i) => x.at === arrivals[i] && (!i || x.m > tr[i - 1].m)), tr.slice(0, 3).map((x) => [x.at, Math.round(x.m)]));
 }
 
+{
+  // ph-f012: the drawn telemetry stays while paused and while scrubbing, and clears when playback starts again.
+  const r = rig();
+  r.ctl.load({ key: 'stash:f', title: 'F', stream: 'http://x/f' }, long);
+  await flush();
+  r.fields.pos.v = 0;
+  r.playThrough();
+  for (let i = 0; i < 60; i++) { if (i % 3 === 0) { r.st.sampleAt = r.now() + 5; r.fields.pos.v = i; } r.frame(); }
+  const drawn = r.ctl.trace.length;
+  r.ctl.pause();
+  for (let i = 0; i < 20; i++) r.frame();
+  ok('trace (ph-f012): paused, the drawn telemetry stays', drawn > 5 && r.ctl.trace.length === drawn, [drawn, r.ctl.trace.length]);
+  for (const ms of [30000, 200, 900]) { r.ctl.seek(ms); r.video.emit('seeking'); r.video.emit('seeked'); for (let i = 0; i < 5; i++) r.frame(); }
+  ok('trace (ph-f012): scrubbed while paused, far ahead and back, it stays', r.ctl.trace.length === drawn, r.ctl.trace.length);
+  r.playThrough();
+  r.frame();
+  ok('trace (ph-f012): playback starting again clears it', r.ctl.trace.every((p) => p.at > r.now() - 100), r.ctl.trace.length);
+}
+
 console.log(fails ? '\nFAIL -- ' + fails + ' check(s)' : '\nPASS -- funscript card logic');
 process.exit(fails ? 1 : 0);

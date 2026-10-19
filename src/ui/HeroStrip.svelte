@@ -102,6 +102,12 @@
     border: 1px solid var(--line-2);
     border-radius: var(--r-s);
     box-shadow: 0 8px 24px rgba(0, 0, 0, .6);
+    transition: opacity var(--t-move) var(--ease-out);
+  }
+  /* Over an idle fullscreen video (ph-7ri8) the quick rail stays drawn as a 40 % ghost with no plate that takes no
+     input; a move or a tap on the video brings it back, and hovered or focused it stays. The stop pair is never in it. */
+  :global(html:has(.ui-stage[data-full]:not([data-show]))) .hero-inner.quick:not(:hover, :focus-within) {
+    opacity: .4; pointer-events: none; background: transparent; border-color: transparent; box-shadow: none;
   }
   .popup .hero-slot {
     width: var(--pl);

@@ -23,8 +23,9 @@
 //   --warn are 13.6 Delta E apart.
 // - Every box has a fixed height (CSS); a state change swaps no geometry.
 // - zoomMs is the starting window; onZoom(ms) persists it as the prefs key zoomMs.
-// - The playhead is one bar: its grip rides the heat at the bottom and its line runs up
-//   through the detail at the same x, so the detail window holds m at the share m / duration.
+// - The playhead (ph-10c4): its grip rides the heat at the share m / duration; in the detail and the lanes it is
+//   fixed at the center and the script moves past it, so the window is [m - zoom / 2, m + zoom / 2]. A hatch
+//   (.fsp-none) fills the detail before the first action and after the last: no script there.
 // - A trace point's p (plan.current as a window share) draws --intent at reduced weight:
 //   the hub's own command, under the script's.
 
@@ -36,7 +37,7 @@
 //   (zoom out, the span, zoom in) and A-B are returned for the caller's timeline head. The detail and the heat
 //   sit on --screen with the advanced generator's inset shadow.
 // - The heat is placed by the caller (`ovHost`, before `ovBefore`): it is the transport row's timeline.
-//   The playhead bar lives in the detail, at the same share of the script as the heat's grip.
+//   The playhead bar sits at the center of the detail; the heat's grip at the share of the script.
 // - `overlay` elements ride the detail (the caller positions them), pointer-events none.
 // - The A-B points are a selection: --highlight, a band on the heat and two lines in the detail.
 //   One button cycles start, end, clear (onLoop); setLoop draws what the controller holds.
@@ -274,6 +275,10 @@ export const CSS = `
 .fsp-dt .real.stale { opacity: .4; }
 .fsp-dt .plan { stroke: var(--intent); stroke-width: 1; opacity: .55; }
 .fsp-dt .rg { stroke: var(--line-2); stroke-dasharray: 4 4; }
+.fsp-none { position: absolute; top: 0; bottom: 0; width: 100%; pointer-events: none; will-change: transform;
+  background: repeating-linear-gradient(-45deg, color-mix(in srgb, var(--line-2) 55%, transparent) 0 1px, transparent 1px 7px); }
+.fsp-none.pre { left: -100%; }
+.fsp-none.post { left: 0; }
 .fsp-rh { position: absolute; left: 0; width: var(--tap); height: var(--tap); margin-top: calc(var(--tap) / -2); outline: none; cursor: ns-resize; z-index: 1;
   top: clamp(calc(var(--tap) / 2), calc(var(--y, 0) * 1cqh), calc(100cqh - var(--tap) / 2)); }
 .fsp-rh[data-key=hi] { left: var(--tap); }
@@ -430,7 +435,8 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
     p.addEventListener('blur', commit);
     return p;
   });
-  const dt = h('div', { class: 'fsp-dt', role: 'group', 'aria-label': COPY.detail, 'data-tip': COPY.detailTip }, dtSvg, scriptSvg, traceCv, inkSvg, ...pills, ...overlay);
+  const nonePre = h('i', { class: 'fsp-none pre', 'aria-hidden': 'true' }), nonePost = h('i', { class: 'fsp-none post', 'aria-hidden': 'true' });
+  const dt = h('div', { class: 'fsp-dt', role: 'group', 'aria-label': COPY.detail, 'data-tip': COPY.detailTip }, dtSvg, scriptSvg, traceCv, nonePre, nonePost, inkSvg, ...pills, ...overlay);
   // Pinch on touch: two fingers on the detail step the zoom once per PINCH_STEP of distance.
   const touch = new Map();
   let pinch0 = 0;
@@ -480,7 +486,7 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
 
   function draw() {
     const d = dur(), Te = eff();
-    const from = m - (d ? clamp(m / d, 0, 1) : 0.5) * zoom, to = from + zoom;
+    const from = m - zoom / 2, to = from + zoom;
     const kk = kin && !preview ? kin : null;
     if (!span || from < span.a || to > span.b || span.zoom !== zoom || span.script !== script || span.kin !== kk || span.T !== Te
       || span.axes !== axes) {
@@ -545,10 +551,14 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
     sa(scrub, 'aria-valuenow', String(mt));
     sa(scrub, 'aria-valuetext', fmtTime(mt));
     prop(scrub, 'hidden', !script);
-    // The bars' left edges (2 px, centered on the share) on device pixels.
-    tx(ph, snap(share * wOf(dt) - 1));
+    // The bars' left edges (2 px wide, centered) on device pixels.
+    tx(ph, snap(wOf(dt) / 2 - 1));
+    // The hatch: before the first action, after the last (clamped to the detail; the box clips the rest).
+    const W = wOf(dt), edge = (t) => snap(clamp((t - from) / zoom, 0, 1) * W);
+    tx(nonePre, script ? edge(script.at[0]) : 0);
+    tx(nonePost, script ? edge(script.at[script.at.length - 1]) : W);
     prop(ph, 'hidden', !script);
-    tx(lph, snap(share * wOf(laneBox) - 1));
+    tx(lph, snap(wOf(laneBox) / 2 - 1));
     const ax = (t) => String(((t - span.a) / zoom) * 1000);
     sa(abBand, 'x', String(d && ab.b != null ? ab.a / d * HEAT_BINS : 0));
     sa(abBand, 'width', String(d && ab.b != null ? (ab.b - ab.a) / d * HEAT_BINS : 0));
@@ -593,7 +603,7 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
       const d = dur();
       if (!script || !(d > 0)) return null;
       if (ov.contains(node)) { const r = ov.getBoundingClientRect(); return seekAt(x - r.left, r.width, d); }
-      const r = dt.getBoundingClientRect(), from = m - clamp(m / d, 0, 1) * zoom;
+      const r = dt.getBoundingClientRect(), from = m - zoom / 2;
       return r.width > 0 ? clamp(from + (x - r.left) / r.width * zoom, 0, d) : null;
     },
     unmount() { ro.disconnect(); root.remove(); ov.remove(); },

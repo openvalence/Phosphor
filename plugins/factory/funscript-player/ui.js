@@ -73,6 +73,7 @@
 // - The status carries conditions only (ph-5u0g peeve 19): never what the card already shows (empty, motion
 //   only, playing, positioning, buffering). On the page and on a Dash card it is the top strip's slot on every
 //   class, never a row (peeve 19 extended).
+// - The trace stays while paused and while scrubbing; Play clears it, as does a seek while playing (ph-f012).
 // - A loop wrap's seek is not a stop: no hold, no clock reset, no trace reset. Every other
 //   seek resets the loop's lap; one while playing restarts with the seek transition.
 // - With a loop the clock runs in unrolled media time; everything shown is folded back.
@@ -376,6 +377,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
   }
   function play() {
     if (!canPlay()) return;
+    trace.length = 0;   // ph-f012: what was drawn stays through a pause and a scrub, and clears when playback starts
     homeAt = Infinity;
     why = '';
     transient = '';
@@ -426,7 +428,8 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
           stale: !!api.stale(fields.pos), p: planShare() });
       }
     }
-    const cur = mediaNow();
+    // Trimmed while playing only: paused or scrubbing, the drawn trace stays (ph-f012).
+    const cur = state.phase === 'playing' ? mediaNow() : NaN;
     while (trace.length && trace[0].m < cur - TRACE_MS) trace.shift();
     // Never trim by media time alone: a loop wrap folds m back and the previous laps would stay.
     while (trace.length && trace[0].at < trace[trace.length - 1].at - TRACE_MS / clock.rate) trace.shift();
@@ -618,8 +621,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
   on('playing', () => { if (state.phase === 'playing' && !loop.wrapping) { buffering = false; resetClock(); changed(); } });
   on('seeking', () => {
     if (loop.wrapping) return;
-    if (state.phase === 'playing') { hold(); seekT = state.play.seekMs; }
-    trace.length = 0;
+    if (state.phase === 'playing') { hold(); seekT = state.play.seekMs; trace.length = 0; }
     const was = loop.spec;
     scheduler.setLoop(loop.seeked(video.currentTime * 1000));
     if (was && !loop.spec) { state.ab = { a: null, b: null }; changed(); }
@@ -876,9 +878,15 @@ export const CSS = `
 /* A narrow fullscreen (a phone upright) puts the time on its own line above the buttons. */
 @container (max-width: 34em) { .fsp-hb-row { flex-wrap: wrap; } .fsp-hb-time { order: -1; flex: 0 0 100%; } .fsp-hb-row > .fsp-hb-gap { display: none; } }
 .fsp-hb-seek { margin: 0 var(--sp-2); }
-.fsp[data-fswave] .fsp-hb { grid-template-rows: 72px 16px auto; --fsp-detail: 72px; }
-@media (pointer: coarse) { .fsp[data-fswave] .fsp-hb { grid-template-rows: 72px var(--tap) auto; } }
-.fsp-hb > .fsp-tl { margin: 0 var(--sp-2) var(--sp-2); }
+/* ph-7ri8: the stack (the wave; the host's quick rail sits above it) over a fullscreen video, right above the bar. Idle it
+   stays drawn at 40 % with no plates and takes no input; the range pills, controls, go with the bar. The stop pair is
+   the host's and never part of it. */
+.fsp-fsw { position: absolute; left: 0; right: 0; bottom: var(--fsp-hbh, 96px); z-index: 2; --fsp-detail: 72px;
+  padding: 0 max(var(--sp-2), var(--corner-inset)) var(--sp-2); transition: opacity var(--t-move) var(--ease-out); }
+.fsp-fsw:empty, .fsp:not([data-media]) .fsp-fsw { display: none; }
+.ui-stage:not([data-show]) .fsp-fsw { opacity: .4; pointer-events: none; }
+.ui-stage:not([data-show]) .fsp-fsw :is(.fsp-dt, .fsp-lane) { background: transparent; box-shadow: none; border-color: transparent; }
+.ui-stage:not([data-show]) .fsp-fsw .fsp-rh { visibility: hidden; }
 .fsp-hb-row { --ui-btn-h: var(--tap); }
 .fsp-hb-row > .og-btn { flex: none; }
 .fsp-hb-row { display: flex; align-items: center; gap: var(--sp-1); min-width: 0; }
@@ -1387,8 +1395,10 @@ export function createPlayer(api) {
     const META = ['loadedmetadata', 'resize', 'emptied'];
     for (const t of META) vel.addEventListener(t, onMeta);
     applySplit();
-    // PR9: the timeline toggle shows a 72 px wave over the video, above the scrub (fullscreen only).
-    const tlTog = ui.button({ icon: 'script', title: COPY.timeline, pressed: false, class: 'fsp-tltog', onClick: () => fsWave(tlTog.pressed) });
+    // PR9, ph-7ri8: the timeline toggle shows the stack over the video, the 72 px wave and the quick rail above it
+    // (fullscreen only, pref fsStack).
+    const tlTog = ui.button({ icon: 'script', title: COPY.timeline, pressed: false, class: 'fsp-tltog',
+      onClick: () => { fsWave(tlTog.pressed); writePref(api, 'fsStack', tlTog.pressed); } });
     const libCaret = ui.button({ icon: 'caret', title: COPY.library, class: 'fsp-libcaret' });
     let libTouched = false, libAuto = false;
     libCaret.addEventListener('click', () => { const on = root.hasAttribute('data-libshut'); libTouched = true; libAuto = false; setLib(on); writePref(api, 'libOpen', on); });
@@ -1408,6 +1418,7 @@ export function createPlayer(api) {
     const setDrawer = (on) => {
       root.toggleAttribute('data-libdrawer', on);
       libB.pressed = on;
+      syncStack();
       if (on && !drawerOff) drawerOff = ui.outside(lib, () => setDrawer(false), [libB]);
       else if (!on && drawerOff) { drawerOff(); drawerOff = null; }
     };
@@ -1423,11 +1434,37 @@ export function createPlayer(api) {
         tlTog.after(railB, setB, fullB);
       } else tr.append(...trKids());
     };
+    // ph-7ri8: the stack over the fullscreen video, right above the bar: the wave, and the host's quick rail above it
+    // (the anchor). It stays while the controls hide, a ghost that takes no input (CSS); a tap on it is never the stage's.
+    const fsw = h('div', { class: 'fsp-fsw', 'data-quick-rail-anchor': '' });
+    for (const t of ['click', 'dblclick']) fsw.addEventListener(t, (e) => e.stopPropagation());
+    vbox.append(fsw);
+    // Its bottom is the bar's top while the bar shows; hidden, the bar measures 0 and the stack keeps its place.
+    // The open rail is asked again where the stack moved, so it stays right above it (the host places it on an ask).
+    const hbro = new ResizeObserver(() => {
+      const b = hb.getBoundingClientRect(), v = Math.round(vbox.getBoundingClientRect().bottom - b.top) + 'px';
+      if (!b.height || fsw.style.getPropertyValue('--fsp-hbh') === v) return;
+      fsw.style.setProperty('--fsp-hbh', v);
+      if (media && root.hasAttribute('data-fswave') && document.documentElement.hasAttribute('data-quick-rail-open')) railAsk(true);
+    });
+    hbro.observe(hb);
     const fsWave = (on) => {
-      const w = tlbox.querySelector('.fsp-tl') || hb.querySelector('.fsp-tl');
-      if (on) hb.prepend(w); else tlbox.append(w);
+      const w = tlbox.querySelector('.fsp-tl') || fsw.querySelector('.fsp-tl');
+      if (on) fsw.append(w); else tlbox.append(w);
       root.toggleAttribute('data-fswave', on);
       tlTog.pressed = on;
+      railAsk(on && media);
+    };
+    // The rail rides with the wave: asked open above it, or closed (the host ignores it where there is no quick rail).
+    const railAsk = (open) => requestAnimationFrame(() => fsw.dispatchEvent(new CustomEvent('phosphor-quick-rail', { bubbles: true, cancelable: true, detail: { open } })));
+    // A drawer over the fullscreen (the library, Settings) puts the stack away, and its close brings it back.
+    let covered = false;
+    const syncStack = () => {
+      const c = media && (root.hasAttribute('data-libdrawer') || !!(opts.settings && opts.settings.open));
+      if (c === covered) return;
+      covered = c;
+      fsw.hidden = c;
+      if (root.hasAttribute('data-fswave')) railAsk(!c);
     };
     // PR8: one mode, the shell's page fullscreen, always bare (the stage asks it); the video alone until it ends.
     let media = false;
@@ -1438,6 +1475,7 @@ export function createPlayer(api) {
       if (!on) setDrawer(false);
       toBar(on);
       root.toggleAttribute('data-media', on);
+      if (on && readPrefs(api).fsStack) fsWave(true);
       render();
       kick();
     };
@@ -1589,6 +1627,7 @@ export function createPlayer(api) {
       muteB.icon = video.muted ? 'muted' : 'volume';
       muteB.title = video.muted ? COPY.unmuteKey : COPY.muteKey;
       setB.pressed = !!(opts.settings && opts.settings.open);
+      syncStack();
       motion.pressed = st.motion;
       inv.pressed = st.T.invert;
       prop(fullB, 'disabled', noVid);
@@ -1705,6 +1744,7 @@ export function createPlayer(api) {
         for (const t of META) vel.removeEventListener(t, onMeta);
         ro.disconnect();
         mro.disconnect();
+        hbro.disconnect();
         tl.unmount();
         if (library) library.unmount();
         if (analyzer) analyzer.unmount();

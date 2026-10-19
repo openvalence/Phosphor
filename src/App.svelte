@@ -244,16 +244,17 @@
   // The quick rail (DESIGN §10.3; docs/PLUGINS.md, Pages): where a rail is
   // mounted, the vertical pop-up on the phone class, the horizontal one in a
   // bare page fullscreen on the desktop (In window keeps the hero rail on
-  // screen); absent otherwise.
+  // screen); absent otherwise. A media page's fullscreen takes the horizontal
+  // one on every class, stacked over the page's anchor (ph-7ri8, §10.3).
   const rail = $derived(railReadout());
-  const quickForm = $derived(!rail ? null : view.bucket <= 2 ? 'vertical' : isFull && full.bare ? 'horizontal' : null);
+  const quickForm = $derived(!rail ? null : mediaBare ? 'horizontal' : view.bucket <= 2 ? 'vertical' : isFull && full.bare ? 'horizontal' : null);
   const quickOpen = $derived(quickForm === 'vertical' ? heroBar.popup : quickForm === 'horizontal' ? heroBar.quick : false);
-  function askQuick(open, from) {
+  function askQuick(open, from, stacked) {
     if (!quickForm) return false;
-    openQuick(quickForm, open === 'toggle' ? !quickOpen : !!open, from);
+    openQuick(quickForm, open === 'toggle' ? !quickOpen : !!open, from, stacked);
     return true;
   }
-  $effect(() => { if (quickForm !== 'horizontal' && !untrack(() => rail?.busy)) heroBar.quick = false; });
+  $effect(() => { if (quickForm !== 'horizontal' && !untrack(() => rail?.busy)) { heroBar.quick = false; heroBar.stacked = false; } });
   $effect(() => {
     const root = document.documentElement;
     if (quickForm) root.dataset.quickRail = quickForm; else delete root.dataset.quickRail;
@@ -264,7 +265,10 @@
     const ask = (e) => {
       if (!current?.page || !e.target?.closest?.('main.pane .pane-main.plugin')) return;
       const o = e.detail?.open;
-      if ((o === true || o === false || o === 'toggle') && askQuick(o, e.target)) e.preventDefault();
+      // A page's shown [data-quick-rail-anchor] is what the rail sits above, whoever asked (docs/PLUGINS.md, Pages).
+      const a = e.target.closest('main.pane .pane-main.plugin').querySelector('[data-quick-rail-anchor]');
+      const on = !!a?.getClientRects().length;
+      if ((o === true || o === false || o === 'toggle') && askQuick(o, on ? a : e.target, on)) e.preventDefault();
     };
     window.addEventListener('phosphor-quick-rail', ask);
     return () => window.removeEventListener('phosphor-quick-rail', ask);
@@ -358,7 +362,7 @@
   const EXIT_NOTE = 'Press back again to exit';
   let armedAt = 0;
   function onBack() {
-    const overlay = [...document.querySelectorAll(ON_TOP)].some((e) => !e.closest('.phone-menu'));
+    const overlay = [...document.querySelectorAll(ON_TOP)].some((e) => !e.closest('.phone-menu') && !(heroBar.stacked && e.matches('.hero-inner.quick')));
     const act = backAction({ overlay, full: full.on, menuOpen: phoneMenu.open, drill: !!drill,
       history: pageTrail.length, armedAt, now: Date.now() });
     if (act !== 'arm' && act !== 'exit') armedAt = 0;

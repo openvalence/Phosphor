@@ -5,11 +5,14 @@
  * horizontal pop-up (the quick rail, DESIGN §10.3), `quickBottom` its lift
  * off the window's bottom edge. Written by TopStrip, MiniRail and openQuick.
  */
-export const heroBar = $state({ form: 'full', popup: false, quick: false, quickBottom: 0, budget: 0, railH: 0, slotH: 0, userShow: false });
+// `stacked`: the horizontal one sits above a page's anchor, part of its fullscreen (ph-7ri8): Escape, back and a tap
+// outside leave it to the page.
+export const heroBar = $state({ form: 'full', popup: false, quick: false, stacked: false, quickBottom: 0, budget: 0, railH: 0, slotH: 0, userShow: false });
 
 /** The quick rail: one rail instance, opened as the vertical pop-up or the horizontal one above `from` (the page's bar). */
-export function openQuick(form, open, from) {
+export function openQuick(form, open, from, stacked = false) {
   if (form === 'vertical') { heroBar.popup = open; return; }
+  heroBar.stacked = open && stacked;
   // Above `from`, never past the stop pair's bottom edge (--stop-reserve-h, TopStrip).
   if (open && from) {
     const pair = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--stop-reserve-h')) || 0;
