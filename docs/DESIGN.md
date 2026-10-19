@@ -835,7 +835,10 @@ question in §10.8).
   footer's hides while a plugin page shows its own. Either form
   overlays (nothing shrinks), is dismissed by a tap outside or Escape, is held
   open while a scrub or window drag is in progress, and never covers the stop
-  pair. Seams: `src/ui/QuickRail.svelte` (new), `src/ui/hero/RailWidget.svelte`,
+  pair. *(Amended 2026-10-18, PROPOSED, `ph-7ri8`: a media page's fullscreen
+  takes the horizontal form on the phone class too, stacked above the page's
+  motion preview, and a tap on the video never closes it.)*
+  Seams: `src/ui/QuickRail.svelte` (new), `src/ui/hero/RailWidget.svelte`,
   `src/App.svelte`, `src/plugins/host.js`.
 - Compact hero (operator ruling 2026-10-08, the redesign's open item, the
   agent's pick standing): a page registered `compactHero` draws the hero in
@@ -1667,6 +1670,35 @@ else.
   because the webview writes its data folder the moment it starts.
 - **About.** Settings, About shows Install: Portable and the data folder.
 
+### 10.19 The connecting page (2026-10-18, `ph-u3b2.1`, `ph-u3b2.2`, PROPOSED)
+
+Until a catalog is in, the page area is the connecting page
+(`src/ui/HubPicker.svelte`; in the shell its lists are
+`src/shell/ConnectPane.svelte`, handed over by `src/shell/panes.js`
+`bootPane`). It is never a dead end: every way out is on the page, none
+behind the menu.
+
+- Status: one line names the phase and the hub (Connecting, Handshaking,
+  Receiving catalog, Redialing, Stopped). Redialing adds a line of its own,
+  `Next try in N s · attempt N`, over a bar that drains to the next try
+  (the backoff the library chose), and the close reason on a third line.
+- Retry now and Stop sit in fixed slots, each disabled where it does not
+  apply. Retry now skips the wait; Stop ends the redial for this session
+  (the launch redial on the next start stays, pref `reconnect`).
+- Address: the dialed address in an editable field; Connect dials what it
+  holds.
+- Machines: the saved hubs, the one being dialed marked, then Neutrino last
+  with its `ν` badge (§10.10), each with Connect.
+- Found: a LAN scan runs once when the page appears (UDP, no permission
+  prompt); Scan repeats it, LAN then Bluetooth, as the Hubs pane does.
+  Found rows append below everything else, so nothing moves.
+- Troubleshooting, at the head's right end, opens
+  `openvalence.org/phosphor/docs/troubleshooting/#s-find` in the system
+  browser; where the shell has no browser handoff (Android today) it copies
+  the address and says so in the page.
+- The hosted page keeps its address field and recent hubs; the status
+  lines, Retry now and Stop are shared.
+
 ## Amendments
 
 | Date | Section | Change | Approved by |
@@ -1785,3 +1817,5 @@ else.
 | 2026-10-17 | §10.x top bar, ambient | The animated mark (connecting spinner, launch splash) runs at the display's frame rate, exempt from the 30 fps ambient step: it never runs alongside time-sensitive tasks. | operator |
 | 2026-10-17 | §10.18 | The Windows portable build is contained: a `Phosphor/` folder in the zip, `phosphor.portable` beside the exe turns portable mode on, every write goes to `PhosphorData` beside it (the WebView2 data folder included), a launch from a shared folder root (drive, Downloads, Desktop, Documents, user folder) or the temporary folder is stopped by a native dialog before any write (`ph-5fdg`). | operator ("the portable needs to be genuinely portable, writing only to the folder it is run from, and an alert if it's running straight in the downloads etc"; "phosphor.exe and its storage folders sit in their OWN folder"; "a user doesn't accidentally just run the bare app and have it create its stores in the root of a user library folder"; Move / Continue here / Quit); the marker and folder names, `Phosphor (2)` numbering, dropping the cookie jar and the dialog wording are the agent's, veto-able |
 | 2026-10-17 | §10.13 | Touch slop: a touch or pen adjusts a control only past 8 px along its axis or a 400 ms hold, from the value it had; across its axis it scrolls the page; a slider track tap moves nothing; buttons act on a clean tap; each draggable declares its `touch-action`; the wheel scrolls past an unfocused slider or knob. The Android, iOS, Material and HIG touch-slop practice (`ph-7v53`). | operator ("it's still WAY too easy to adjust a control while scrolling ... there must be a best practice standardized for this"); a knob turning sideways under touch, a 2D handle claiming along its own way, a cancel dropping a plugin handle's draft and the per-press axis on `drag()` are the agent's, veto-able |
+| 2026-10-18 | §10.19 | The connecting page: never a dead end. The phase and hub, a countdown line (`Next try in N s · attempt N`) over a bar draining to the next try and the close reason on its own line; Retry now and Stop in fixed slots; the dialed address editable in place; the saved hubs with Neutrino last; a LAN scan on arrival and Scan; a Troubleshooting link to the find section of the docs (`ph-u3b2.1`, `ph-u3b2.2`). | PROPOSED: operator (2026-10-18, stuck on a phone redialing a saved address that no longer answers: other hubs, a Virtual button, previous machines, troubleshooting, cancel, edit the address, a clearer countdown); Neutrino named in place of "Virtual" (the 2026-10-15 naming ruling), the LAN scan on arrival, Stop ending this session's redial only, the drain bar and the copy fallback on Android are the agent's, veto-able |
+| 2026-10-18 | §10.3, plugins | The funscript player's media fullscreen stacks the motion preview and the rail over the video, the rail on top, both shown or hidden by the timeline toggle (pref, on by default); idle, they stay drawn at 40 % with no plates and take no input, and a pointer move or a tap brings them back with the controls; the stop pair is never part of the fade. A media page's fullscreen takes the quick rail's horizontal form on the phone class too, and a tap on the video never closes it. The motion preview's playhead is fixed at its center with the script moving past it, a hatch where there is no script; telemetry drawn stays while paused and while scrubbing and clears when playback starts (docs/plugins/FUNSCRIPT.md PP7 to PP9, `ph-7ri8`, `ph-10c4`, `ph-f012`). | PROPOSED: operator (superfan feedback 2026-10-18); fullscreen only (inline keeps the hero rail and the wave under the stage), the stack order, one toggle for both, the 40 % ghost, the horizontal rail on phones and the hatch outside the first and last action are the agent's, veto-able |
