@@ -739,10 +739,10 @@ export function stage(o = {}) {
   const box = h('div', { class: 'ui-stage-box' }, media, empty, center, ripple, caption, dock, overlay);
   const el = h('div', { class: cls('ui-stage', o), 'data-overlay': o.overlay || 'fullscreen' }, box);
   let aspect = null, full = false, idle = 0, keep = false, kind = 'mouse', last = null, tapT = 0, ripT = 0, shownAt = -Infinity;
-  // The controls stay while kept (paused), hovered (a mouse's: a touch leaves :hover stuck), dragged or holding keyboard
-  // focus; a clicked button's focus does not keep them.
+  // The controls stay while kept (paused), hovered (a mouse's: a touch leaves :hover stuck; a page's own surface over the
+  // video, [data-stage-surface], counts), dragged or holding keyboard focus; a clicked button's focus does not keep them.
   const busy = () => keep || !!box.querySelector('[data-drag], :focus-visible')
-    || (kind === 'mouse' && !!box.querySelector(':is(.ui-stage-overlay, .ui-stage-center):hover'));
+    || (kind === 'mouse' && !!box.querySelector(':is(.ui-stage-overlay, .ui-stage-center, [data-stage-surface]):hover'));
   const hide = () => { if (!busy()) el.removeAttribute('data-show'); };
   const poke = () => { el.setAttribute('data-show', ''); clearTimeout(idle); idle = setTimeout(hide, IDLE_MS); };
   const conceal = () => { clearTimeout(idle); if (!box.querySelector('[data-drag]')) el.removeAttribute('data-show'); };
@@ -755,7 +755,9 @@ export function stage(o = {}) {
     clearTimeout(idle);
     if (!keep) el.removeAttribute('data-show');
   });
-  const own = (e) => box.contains(e.target) && !overlay.contains(e.target) && !e.target.closest('button, input, select, textarea, a, [role=slider], [role=separator]');
+  // A tap on a page's own surface over the video ([data-stage-surface]) is that surface's, never the stage's.
+  const own = (e) => box.contains(e.target) && !overlay.contains(e.target)
+    && !e.target.closest('button, input, select, textarea, a, [role=slider], [role=separator], [data-stage-surface]');
   // The glyph takes a touch; under a mouse it is decoration and the click on the video is onTap (a double-click there
   // is onDouble wherever it lands). data-touch follows the last pointer, a coarse pointer to start with.
   el.toggleAttribute('data-touch', matchMedia('(pointer: coarse)').matches);
@@ -808,7 +810,15 @@ export function stage(o = {}) {
     const ev = new CustomEvent('phosphor-page-fullscreen', { bubbles: true, cancelable: true, detail: { on, bare: true } });
     if (!el.dispatchEvent(ev)) setFull(on);
   };
-  winOn(el, 'phosphor-page-fullscreen-change', (e) => { if (full && !(e.detail && e.detail.on)) setFull(false); });
+  // The shell's media fullscreen is the truth. A page's media stage (rotate) that drifted out of it while the app was
+  // away, or was mounted again inside it, rejoins it on the shell's word (resync, or <html data-page-media> at mount),
+  // so the stage never sits inline under a bare shell. A plain page fullscreen (F11) carries no media flag.
+  winOn(el, 'phosphor-page-fullscreen-change', (e) => {
+    const d = e.detail || {};
+    if (full && !d.on) setFull(false);
+    else if (!full && d.on && d.media && d.resync && o.rotate) setFull(true);
+  });
+  if (o.rotate) queueMicrotask(() => { if (!full && document.documentElement.hasAttribute('data-page-media')) setFull(true); });
   if (o.rotate) {
     // The phone class: a turn to landscape with content enters fullscreen, the turn back leaves; only a turn does.
     const orient = () => (innerWidth > innerHeight ? 'land' : 'port');
@@ -851,6 +861,8 @@ export function stage(o = {}) {
       },
     },
     poke: { value: poke },
+    // conceal(): hide the controls now (a page swapping its own view into their place); a drag in progress keeps them.
+    conceal: { value: conceal },
     caption: { get: () => caption.textContent, set(v) { setText(caption, v || ''); el.toggleAttribute('data-caption', !!v); } },
     // Kept: the controls show and never hide on their own (a paused video); a touch tap still hides them.
     keep: {

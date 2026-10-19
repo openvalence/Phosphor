@@ -878,6 +878,70 @@ center Play of PR8 to PR10 as built, and the transport row's chapters:
   fullscreen, Escape, F, a double-click, Android back and the turn to
   upright leave it, restoring the page as it was.
 
+### The connect pass (superfan feedback via the operator 2026-10-18, `ph-u3b2`, PROPOSED)
+
+- **PP7 The stack** (`ph-7ri8`; operator 2026-10-18 and 2026-10-19 on the
+  builds). In media fullscreen the stack sits at the bottom edge: the motion
+  preview (a 48 px wave) on top, then one band, the seek on its top half and
+  the quick rail on its bottom half (the travel window, 28 px, no axis
+  labels; its window handles reach the 40 px touch floor by overhanging
+  it). The timeline toggle shows or hides the stack (pref `fsStack`, on by
+  default); off, the seek returns to the bar and the Rail button opens the
+  full rail alone.
+  The bar and the stack share the bottom slot, one at a time: the stack is
+  the resting view, a move or a tap over the video calls the bar and the
+  transport (PP10) in its place, and the idle (2.5 s) brings the stack back,
+  paused included. At rest the stack and the transport are a see-through
+  ghost (40 %, no plates, no input). The stack's box and a 16 px margin
+  above it are its zone (operator 2026-10-19, round 6): a pointer entering
+  it, or a tap in it, shows and wakes the stack at once, swapping the bar
+  out if it is up; only movement or a tap above the zone calls the bar.
+  With the stack on, the bar comes up at the top of the slot, so a pointer
+  coming down from the video meets the bar's buttons first and the zone
+  starts under them. Awake, the stack stays full for the idle's length,
+  renewed by activity over it or its rail. The seek has no hover tip; the
+  transport's time readout says where you are. The stack
+  arrives rising and leaves on the frame (transform and opacity, instant
+  under Reduced motion).
+  While the player runs the wave and the window are a display: no input, no
+  range pills, no handles; the rail's tape row stays in place (the plan
+  strip while the player streams), so play and pause move nothing; the seek
+  stays a control. Paused, all of it takes input, the jog tape with the
+  planned segment included: handy with a toy mounted. A tap on the video
+  never closes the rail; the toggle and the Rail button do, and Escape and
+  back leave the fullscreen. A library or Settings drawer puts the stack
+  away until it closes. The stop pair is the host's, never part of the
+  stack or the slot, and keeps its 50 % rest. Phones take the rail's
+  horizontal form there (DESIGN §10.3, amended). Inline the page keeps its
+  layout. "Open in Stash" leaves the app through the shared confirm (DESIGN
+  §10.20), http or https. A return to the app (another app, the browser)
+  rejoins the shell's media fullscreen if the stage drifted out of it.
+  *(Supersedes PR9's wave above the scrub inside the hover bar, the
+  controls staying while paused (PP2, PP3) when the stack is on, and with
+  the stack on `ph-9t5l.7`'s "at rest only the stop pair sits over a
+  fullscreen video".)*
+- **PP8 The centered playhead** (`ph-10c4`). The detail's playhead is fixed
+  at its center at every class and the script, the trace and the lanes move
+  past it; the window is the playhead time less and plus half the zoom. A
+  diagonal hatch in `--line-2` fills the detail before the first action and
+  after the last: no script there. The heat's grip still rides the
+  overview at the share of the script.
+- **PP9 The trace through a pause** (`ph-f012`). The drawn trace stays
+  while paused and while scrubbing, is trimmed only while playing, and
+  clears when Play starts playback; a seek while playing clears it too.
+- **PP10 The fullscreen transport** (operator 2026-10-18: the bar wrapped
+  to two rows; 2026-10-19: the true center). Previous, Play and next, with
+  the time under them, sit in the true center of the video, where media
+  players put them; with the stack on they show with it too, a ghost at rest
+  like it, lifted just enough to clear its top where the screen is short
+  (never under the stop pair); with the bar they show full. The kit's center glyph yields to
+  them (its flash on a click stays). The bar keeps one compact row (32 px
+  buttons, 40 under a coarse pointer): library, mute and volume, Motion,
+  rate, the timeline toggle, Rail, Settings, Exit fullscreen. The transport
+  buttons are 56 px (Play 72) under every pointer. A double-click on them is
+  two clicks on their buttons; elsewhere on the video it leaves fullscreen
+  as before (PP3).
+
 ### The card before the redesign
 
 The rulings below stand except where marked superseded.
@@ -1148,8 +1212,9 @@ ride `api.ui.menu` (docs/PLUGINS.md, Context menus), above the page's
   controller cannot hold clears, as the A-B button does.
 - **Scene row** (the library): Play, Play next (the queue's head; a scene
   already queued moves there), Add to queue, Open in Stash (the scene's
-  page, `<base>/scenes/<id>`, through `api.net.open`; a failure logs
-  `Open in Stash: no browser here`).
+  page, `<base>/scenes/<id>`, through `api.net.open`, which asks the host's
+  leave-app confirm first; a failure logs `Open in Stash: no browser here`,
+  a Cancel nothing).
 - **Queue row**: Remove, Move to top (off on the first).
 
 ## Stash

@@ -214,7 +214,8 @@
     const ask = (e) => {
       if (!current?.page?.fields) return;
       e.preventDefault();
-      full = e.detail?.on ? { on: true, bare: current.page.mediaFullscreen || e.detail.bare !== false } : OFF;
+      // `media`: the page's stage asked (its media fullscreen), never F11's whole-page one.
+      full = e.detail?.on ? { on: true, bare: current.page.mediaFullscreen || e.detail.bare !== false, media: !!current.page.mediaFullscreen } : OFF;
     };
     window.addEventListener('phosphor-page-fullscreen', ask);
     return () => window.removeEventListener('phosphor-page-fullscreen', ask);
@@ -223,6 +224,9 @@
   // A media page's bare fullscreen (ph-9t5l.7): the video edge to edge. It has no caret: its one mode is bare, so showing
   // the bar would be the In window mode its ruling removed (ph-bw0o); the page's Exit fullscreen, Escape and back leave.
   const mediaBare = $derived(isFull && full.bare && !!current?.page?.mediaFullscreen);
+  // The media page's own fullscreen, for a stage mounted again inside it (src/plugins/kit.js stage).
+  const mediaStage = $derived(mediaBare && !!full.media);
+  $effect(() => { document.documentElement.toggleAttribute('data-page-media', mediaStage); });
   // The page status (docs/PLUGINS.md, Pages, `status`): per page, the latest
   // phosphor-page-status of each source in the pane (a plugin page, or a card
   // on the Dash or a category page), newest last. TopStrip's status slot shows
@@ -244,16 +248,20 @@
   // The quick rail (DESIGN §10.3; docs/PLUGINS.md, Pages): where a rail is
   // mounted, the vertical pop-up on the phone class, the horizontal one in a
   // bare page fullscreen on the desktop (In window keeps the hero rail on
-  // screen); absent otherwise.
+  // screen); absent otherwise. A media page's fullscreen takes the horizontal
+  // one on every class, stacked over the page's anchor (ph-7ri8, §10.3).
   const rail = $derived(railReadout());
-  const quickForm = $derived(!rail ? null : view.bucket <= 2 ? 'vertical' : isFull && full.bare ? 'horizontal' : null);
+  const quickForm = $derived(!rail ? null : mediaBare ? 'horizontal' : view.bucket <= 2 ? 'vertical' : isFull && full.bare ? 'horizontal' : null);
   const quickOpen = $derived(quickForm === 'vertical' ? heroBar.popup : quickForm === 'horizontal' ? heroBar.quick : false);
-  function askQuick(open, from) {
+  function askQuick(open, from, stacked) {
     if (!quickForm) return false;
-    openQuick(quickForm, open === 'toggle' ? !quickOpen : !!open, from);
+    openQuick(quickForm, open === 'toggle' ? !quickOpen : !!open, from, stacked);
     return true;
   }
-  $effect(() => { if (quickForm !== 'horizontal' && !untrack(() => rail?.busy)) heroBar.quick = false; });
+  $effect(() => { if (quickForm !== 'horizontal' && !untrack(() => rail?.busy)) { heroBar.quick = false; heroBar.stacked = false; } });
+  // A stacked rail belongs to its media fullscreen: leaving it (Escape or back mid-drag, a page switch in a bare
+  // fullscreen) puts the rail away whatever else holds.
+  $effect(() => { if (!mediaBare && untrack(() => heroBar.stacked)) { heroBar.stacked = false; heroBar.quick = false; } });
   $effect(() => {
     const root = document.documentElement;
     if (quickForm) root.dataset.quickRail = quickForm; else delete root.dataset.quickRail;
@@ -264,7 +272,11 @@
     const ask = (e) => {
       if (!current?.page || !e.target?.closest?.('main.pane .pane-main.plugin')) return;
       const o = e.detail?.open;
-      if ((o === true || o === false || o === 'toggle') && askQuick(o, e.target)) e.preventDefault();
+      // A page's shown [data-quick-rail-anchor] is what the rail sits above, whoever asked (docs/PLUGINS.md, Pages).
+      // The anchor itself may ask (the page's stack); its box is the rail's place even before its own layout settles.
+      const a = e.target.closest('[data-quick-rail-anchor]') || e.target.closest('main.pane .pane-main.plugin').querySelector('[data-quick-rail-anchor]');
+      const on = !!a?.getClientRects().length;
+      if ((o === true || o === false || o === 'toggle') && askQuick(o, on ? a : e.target, on)) e.preventDefault();
     };
     window.addEventListener('phosphor-quick-rail', ask);
     return () => window.removeEventListener('phosphor-quick-rail', ask);
@@ -277,6 +289,14 @@
     return (warn.length ? warn : all).at(-1) || null;
   });
   $effect(() => { window.dispatchEvent(new CustomEvent('phosphor-page-fullscreen-change', { detail: { on: isFull } })); });
+  // Back in the app (another app, the browser after Open link): the page hears the shell's fullscreen again, so a stage
+  // that drifted while away rejoins it (operator 2026-10-19, the pseudo-fullscreen on return).
+  $effect(() => {
+    const again = () => { if (document.visibilityState === 'visible') window.dispatchEvent(new CustomEvent('phosphor-page-fullscreen-change', { detail: { on: isFull, media: mediaStage, resync: true } })); };
+    document.addEventListener('visibilitychange', again);
+    window.addEventListener('pageshow', again);
+    return () => { document.removeEventListener('visibilitychange', again); window.removeEventListener('pageshow', again); };
+  });
   // Scrollbars are a pref, off by default; style.css switches on this one attribute.
   $effect(() => { document.documentElement.toggleAttribute('data-scrollbars', $prefs.scrollbars); });
   // A Theme hook (docs/THEMES.md, Chrome hooks): the desktop rail drawn as its icon column.
@@ -358,7 +378,7 @@
   const EXIT_NOTE = 'Press back again to exit';
   let armedAt = 0;
   function onBack() {
-    const overlay = [...document.querySelectorAll(ON_TOP)].some((e) => !e.closest('.phone-menu'));
+    const overlay = [...document.querySelectorAll(ON_TOP)].some((e) => !e.closest('.phone-menu') && !(heroBar.stacked && e.matches('.hero-inner.quick')));
     const act = backAction({ overlay, full: full.on, menuOpen: phoneMenu.open, drill: !!drill,
       history: pageTrail.length, armedAt, now: Date.now() });
     if (act !== 'arm' && act !== 'exit') armedAt = 0;
