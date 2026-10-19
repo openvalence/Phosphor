@@ -44,7 +44,8 @@
     if (!inner || !heroBar.quick) { root.style.removeProperty('--quick-rail-lift'); return; }
     heroBar.quickBottom;
     heroBar.stacked;
-    const put = () => root.style.setProperty('--quick-rail-lift', Math.round(innerHeight - inner.getBoundingClientRect().top) + 'px');
+    // From the layout (its bottom and height), never its box: a slid-down rail (the bar away) keeps its lift.
+    const put = () => root.style.setProperty('--quick-rail-lift', Math.round(parseFloat(getComputedStyle(inner).bottom) + inner.offsetHeight) + 'px');
     const ro = new ResizeObserver(put);
     ro.observe(inner);
     put();
@@ -116,23 +117,31 @@
     box-shadow: 0 8px 24px rgba(0, 0, 0, .6);
     transition: opacity var(--t-move) var(--ease-out);
   }
-  /* Over an idle fullscreen video (ph-7ri8) the quick rail stays drawn as a 40 % ghost with no plate that takes no
-     input; a move or a tap on the video brings it back, and hovered or focused it stays. The stop pair is never in it. */
   /* Stacked under a page's preview (ph-7ri8): the bottom half of the page's band (its seek is the top half, flush, so
-     the top corners are square), the rail's window alone at half height: no jog tape, no axis labels, the window band
-     and the carriage. While the page marks its anchor passive (a player running) it is a display: no input, no
-     handles. */
+     the top corners are square): the rail's window at half height, no axis labels; its handles reach the 40 px touch
+     floor by straddling the window into the padding, so the band is no taller. While the page marks its anchor passive (a player running) it
+     is a display: no jog tape, no input, no handles; paused, the jog tape (or the plan strip) returns above the window
+     and all of it takes input. */
   .hero-inner.quick.stacked { padding: var(--sp-1) var(--sp-2); left: max(var(--gap), var(--corner-inset, 0px)); right: max(var(--gap), var(--corner-inset, 0px));
-    border-top-left-radius: 0; border-top-right-radius: 0; box-shadow: none; }
-  .hero-inner.quick.stacked :global(:is(.rail-row, .rail-endcap, .rail-ghost, .rail-win)) { display: none; }
+    border-top-left-radius: 0; border-top-right-radius: 0; box-shadow: none;
+    transition: opacity var(--t-move) var(--ease-out), translate var(--t-move) var(--ease-settle, var(--ease-out)); }
+  .hero-inner.quick.stacked :global(:is(.rail-endcap, .rail-ghost, .rail-win)) { display: none; }
   .hero-inner.quick.stacked :global(.spine-rail-host) { height: 36px; }
-  .hero-inner.quick.stacked :global(.rail-band) { top: 3px; height: 28px; }
-  .hero-inner.quick.stacked :global(.rail-band-handle) { top: 2px; height: 30px; }
+  .hero-inner.quick.stacked :global(.rail-band) { top: 3px; height: 30px; }
+  .hero-inner.quick.stacked :global(.rail-band-handle) { top: -2px; height: 40px; }
   .hero-inner.quick.stacked :global(.rail-hz) { top: 50%; }
   :global(html:has([data-quick-rail-passive])) .hero-inner.quick.stacked { pointer-events: none; }
+  :global(html:has([data-quick-rail-passive])) .hero-inner.quick.stacked :global(.rail-row) { display: none; }
   :global(html:has([data-quick-rail-passive])) .hero-inner.quick.stacked :global(.rail-band-handle) { visibility: hidden; }
+  /* Over an idle fullscreen video the quick rail stays drawn as a 40 % ghost with no plate that takes no input; a move
+     or a tap on the video brings it back, and hovered or focused it stays. Stacked, it slides down to the bottom edge
+     with the page's stack while the bar is away (transform only; instant under html.still). The stop pair is never in
+     any of it. */
   :global(html:has(.ui-stage[data-full]:not([data-show]))) .hero-inner.quick:not(:hover, :focus-within) {
     opacity: .4; pointer-events: none; background: transparent; border-color: transparent; box-shadow: none;
+  }
+  :global(html:has(.ui-stage[data-full]:not([data-show]))) .hero-inner.quick.stacked {
+    translate: 0 calc(var(--qb, 0px) + var(--gap) - max(var(--sp-2), var(--corner-inset, 0px), env(safe-area-inset-bottom, 0px)));
   }
   .popup .hero-slot {
     width: var(--pl);

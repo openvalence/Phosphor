@@ -1125,7 +1125,7 @@ if (!LIVE && !STASH_LIVE && !OSC_ONLY && !args.includes('--library')) {
     await page.evaluate(() => {
       const inner = window.__TAURI_INTERNALS__.invoke;
       window.__opened = [];
-      window.__TAURI_INTERNALS__.invoke = (cmd, a, o) => (cmd === 'plugin_open_url' || cmd === 'plugin:opener|open_url' ? (window.__opened.push(a.url), Promise.resolve(null)) : inner(cmd, a, o));
+      window.__TAURI_INTERNALS__.invoke = (cmd, a, o) => (cmd === 'plugin:opener|open_url' ? (window.__opened.push(a.url), Promise.resolve(null)) : inner(cmd, a, o));
     });
     const loose = await page.evaluate(() => {
       const out = [];
@@ -3762,12 +3762,17 @@ if (!LIVE && !args.includes('--stash-live')) {
       op: d ? +getComputedStyle(r.querySelector('.fsp-fsw')).opacity : null, pe: d ? getComputedStyle(r.querySelector('.fsp-fsw')).pointerEvents : null,
       pills: [...r.querySelectorAll('.fsp-fsw .fsp-rh')].filter((p) => getComputedStyle(p).visibility !== 'hidden').length,
       railOp: q ? +getComputedStyle(q).opacity : null, railPe: q ? getComputedStyle(q).pointerEvents : null,
-      handles: q ? [...q.querySelectorAll('.rail-band-handle')].filter((x) => getComputedStyle(x).visibility !== 'hidden').length : 0 };
+      handles: q ? [...q.querySelectorAll('.rail-band-handle')].filter((x) => getComputedStyle(x).visibility !== 'hidden').length : 0,
+      handleH: q && q.querySelector('.rail-band-handle') ? Math.round(q.querySelector('.rail-band-handle').getBoundingClientRect().height) : 0,
+      tape: !!q && !!q.querySelector('.rail-row') && getComputedStyle(q.querySelector('.rail-row')).display !== 'none',
+      railGap: q ? Math.round(innerHeight - q.getBoundingClientRect().bottom) : null,
+      fswGap: Math.round(innerHeight - r.querySelector('.fsp-fsw').getBoundingClientRect().bottom),
+      glued: !!q && Math.abs(r.querySelector('.fsp-fsw').getBoundingClientRect().bottom - q.getBoundingClientRect().top) <= 2 };
   });
   let st = await stack();
   ok('stack (ph-7ri8): paused, the 48 px wave on top, then one band (the seek over the rail\'s window), then the buttons; it takes input',
     Math.abs(st.h - 48) <= 1 && st.above && st.seekIn && st.pe !== 'none' && st.tlPe !== 'none' && st.pills === 2
-      && (!st.railHere || (st.form === 'horizontal' && st.railOpen && st.railBelow && st.railPe !== 'none' && st.band <= 90)), st);
+      && (!st.railHere || (st.form === 'horizontal' && st.railOpen && st.railBelow && st.railPe !== 'none' && st.tape && st.handleH >= 40)), st);
   await shot('fullscreen-stack-1280x800');
   await page.locator(C + ' .fsp-tltog').click();
   await page.waitForTimeout(200);
@@ -3840,13 +3845,15 @@ if (!LIVE && !args.includes('--stash-live')) {
   const pairOp = await page.evaluate(() => getComputedStyle(document.querySelector('.topstrip .pair')).opacity);
   ok('stack idle: the wave stays drawn at 40 % and takes no input; the rail likewise where it exists; the bar is gone',
     !(await shown()) && st.h > 0 && Math.abs(st.op - 0.4) < 0.01 && st.pe === 'none' && (!st.railHere || Math.abs(st.railOp - 0.4) < 0.01), { ...st, pairOp });
+  ok('stack idle: the bar away, the stack slid down to the bottom edge, the rail and the preview still glued, the stop pair at its rest',
+    (st.railHere ? st.railGap <= 24 && st.glued : st.fswGap <= 24) && pairOp === '0.5', { ...st, pairOp });
   await shot('fullscreen-stack-idle-1280x800');
   await page.mouse.move(300, 300);
   await page.waitForTimeout(400);
   st = await stack();
   ok('stack playing: a pointer move brings it back; the wave and the window a display (no input, no pills, no handles), the seek a control',
     await shown() && st.op === 1 && st.tlPe === 'none' && st.seekPe !== 'none' && st.pills === 0
-      && (!st.railHere || (st.railPe === 'none' && st.handles === 0 && st.railOp === 1)), st);
+      && (!st.railHere || (st.railPe === 'none' && st.handles === 0 && st.railOp === 1 && !st.tape)), st);
   await page.locator(C + ' .fsp-tltog').click();
   await overVideo(-10);
   await page.click(C + ' .fsp-mid .fsp-play');

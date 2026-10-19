@@ -900,7 +900,8 @@ export const CSS = `
 .fsp-anchor { position: absolute; left: 0; right: 0; bottom: var(--fsp-hbh, 96px); height: 0; pointer-events: none; display: none; }
 .fsp[data-media][data-fswave] .fsp-anchor:not([hidden]) { display: block; }
 .fsp-fsw { position: absolute; left: 0; right: 0; bottom: var(--fsp-hbh, 96px); z-index: 2; --fsp-detail: 48px;
-  display: grid; gap: var(--sp-1); padding: 0 max(var(--gap), var(--corner-inset)); transition: opacity var(--t-move) var(--ease-out); }
+  display: grid; gap: var(--sp-1); padding: 0 max(var(--gap), var(--corner-inset));
+  transition: opacity var(--t-move) var(--ease-out), translate var(--t-move) var(--ease-settle, var(--ease-out)); }
 html[data-quick-rail-open] .fsp-fsw { bottom: max(var(--fsp-hbh, 96px), var(--quick-rail-lift, 0px)); }
 /* The seek is the band's top half: the rail's plate, open at the bottom where the window continues it. */
 .fsp-fsw > .fsp-hb-seek { margin: 0; padding: 0 var(--sp-2); min-height: 28px; background: var(--bg-raised); border: 1px solid var(--line-2);
@@ -910,7 +911,12 @@ html:not([data-quick-rail-open]) .fsp-fsw > .fsp-hb-seek { border-bottom: 1px so
 .fsp-fsw:empty, .fsp:not([data-media]) .fsp-fsw, .fsp-fsw[hidden] { display: none; }
 .fsp-fsw[data-passive] .fsp-tl, .ui-stage:not([data-show]) .fsp-fsw { pointer-events: none; }
 .ui-stage:not([data-show]) .fsp-fsw > .fsp-hb-seek { background: transparent; border-color: transparent; }
-.ui-stage:not([data-show]) .fsp-fsw { opacity: .4; }
+/* The bar away, the stack slides down to the bottom edge, the host's rail with it (the same shift: the bar's height,
+   plus the rail's gap when it is open), never left floating; transform only, instant under html.still. */
+.ui-stage:not([data-show]) .fsp-fsw { opacity: .4;
+  translate: 0 calc(var(--fsp-hbh, 96px) - max(var(--sp-2), var(--corner-inset), env(safe-area-inset-bottom, 0px))); }
+html[data-quick-rail-open] .ui-stage:not([data-show]) .fsp-fsw {
+  translate: 0 calc(var(--fsp-hbh, 96px) + var(--gap) - max(var(--sp-2), var(--corner-inset), env(safe-area-inset-bottom, 0px))); }
 .ui-stage:not([data-show]) .fsp-fsw :is(.fsp-dt, .fsp-lane) { background: transparent; box-shadow: none; border-color: transparent; }
 .fsp-fsw[data-passive] .fsp-rh, .ui-stage:not([data-show]) .fsp-fsw .fsp-rh { visibility: hidden; }
 .fsp-hb-row { --ui-btn-h: var(--tap); }
