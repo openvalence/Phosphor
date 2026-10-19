@@ -8,6 +8,7 @@
  *   the reports and the credits all route here.
  * - http and https only (capabilities/default.json scopes the opener; the confirm is the safeguard).
  * - The confirm names the destination as host and path, no query or hash.
+ * - Never over another confirm: with one pending, the link is not asked (null).
  */
 // confirm.svelte.js loads on the first open: this file stays plain JS for the node suites that import its callers.
 
@@ -20,7 +21,9 @@ export async function openExternal(url, target = '_blank') {
   try { u = new URL(url); } catch (e) { return false; }
   if (!/^https?:$/.test(u.protocol)) return false;
   const where = u.host + u.pathname.replace(/\/$/, '');
-  const { askConfirm } = await import('./confirm.svelte.js');
+  // A link never displaces a pending confirm (a hazard write's): it waits for that answer, and this ask is dropped.
+  const { askConfirm, confirmUi } = await import('./confirm.svelte.js');
+  if (confirmUi.req) return null;
   if (!(await askConfirm({ title: 'Open link?', body: where, confirmLabel: 'Open link' }))) return null;
   if (SHELL) {
     const { invoke } = await import('@tauri-apps/api/core');

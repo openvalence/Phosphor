@@ -82,7 +82,8 @@
     <div class="pk-block" data-phase={link.phase}>
       <p class="pk-status" role="status">{#if loading}<MarkSpinner />{/if}<span>{status}</span></p>
       <p class="pk-count">{countdown}</p>
-      <span class="pk-bar" aria-hidden="true">{#key link.retryAt}{#if drainMs}<i style:animation-duration={drainMs + 'ms'}></i>{/if}{/key}</span>
+      <span class="pk-bar" aria-hidden="true">{#key link.retryAt}{#if drainMs}<i style:animation-duration={drainMs + 'ms'}
+        style:--left={waitS != null ? Math.min(1, (waitS * 1000) / drainMs) : 1}></i>{/if}{/key}</span>
       <p class="pk-reason" data-tip={reason}>{reason}</p>
     </div>
     {#if hub}
@@ -136,7 +137,8 @@
   .pk-bar { position: relative; overflow: hidden; border-radius: 1.5px; background: var(--line); }
   .pk-bar > i { position: absolute; inset: 0; background: var(--warn); transform-origin: left; animation: pk-drain linear forwards; }
   @keyframes pk-drain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
-  :global(html.still) .pk-bar > i { animation: none; }
+  /* Reduced motion: the bar steps with the countdown's seconds instead of draining. */
+  :global(html.still) .pk-bar > i { animation: none; transform: scaleX(var(--left, 1)); }
   .pk-acts { display: flex; flex-wrap: wrap; gap: var(--sp-3); }
   .pk-note { color: var(--ink-dim); font-size: .85rem; }
   .pk-line {

@@ -314,10 +314,13 @@ for (const viewport of [{ width: 1428, height: 900 }, { width: 1024, height: 768
   ok(v + 'no horizontal overflow', fits);
   await page.screenshot({ path: 'test/evidence/connect-' + viewport.width + 'x' + viewport.height + '.png' });
   if (viewport.width === 1428) {
+    const acts = () => page.$$eval(P + ' .pk-acts button, ' + P + ' .he-host', (b) => b.map((e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(Math.round).join(','); }).join(' '));
+    const acts0 = await acts();
     await page.click(P + ' button:has-text("Stop")');
     await page.waitForFunction(() => /Stopped/.test(document.querySelector('.picker .pk-status')?.textContent || ''), null, { timeout: 3000 });
+    const acts1 = await acts();
     ok(v + 'Stop: the status reads Stopped and Retry now and Stop stay in place, disabled', !(await page.locator(P + ' button:has-text("Stop")').isEnabled())
-      && !(await page.locator(P + ' button:has-text("Retry now")').isEnabled()));
+      && !(await page.locator(P + ' button:has-text("Retry now")').isEnabled()) && acts0 === acts1, acts0 + ' | ' + acts1);
     await page.fill(P + ' .he-host', '127.0.0.1:8282');
     await page.click(P + ' .he-go');
     await page.waitForFunction(() => !document.querySelector('.picker'), null, { timeout: 15000 });

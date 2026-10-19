@@ -249,8 +249,8 @@ export const host = createPluginHost({
   registerTheme,
   listenTcp: SHELL ? listenTcp : null,
   fetch: SHELL ? shellFetch : (import.meta.env.DEV && typeof window !== 'undefined' ? window.fetch.bind(window) : null),
-  // The shared confirm, then the browser (src/ui/external.js); a Cancel reads false to the plugin.
-  openUrl: (url) => openExternal(url).then((ok) => !!ok),
+  // The shared confirm, then the browser (src/ui/external.js): true, false when nothing could open it, null on Cancel.
+  openUrl: (url) => openExternal(url),
   isHub: (u) => isHubUrl(u, machine.link.host, machine.link.port),
   hub: currentHub,
   prefs: typeof localStorage !== 'undefined' ? localStorage : null,

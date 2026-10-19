@@ -74,7 +74,7 @@
             <span class="name">{f.lan?.hub_name || f.ble?.name || 'hub'}{#each foundVia(f) as v (v)}<span class="mark">{v}</span>{/each}</span>
             <span class="meta mono">{f.lan ? f.lan.ip + ':' + f.lan.ws_port : f.ble.address}</span>
           </span>
-          <button type="button" class="og-btn sm" disabled={on}
+          <button type="button" class="og-btn sm" disabled={on} aria-label={'Connect ' + (f.lan?.hub_name || f.ble?.name || 'hub')}
                   onclick={() => (f.lan ? connectWs(f.lan.ip, f.lan.ws_port) : pickBle(f.ble))}>{on ? 'Dialing' : 'Connect'}</button>
         </li>
       {/each}
