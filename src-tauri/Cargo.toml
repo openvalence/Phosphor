@@ -32,6 +32,9 @@ tauri-plugin-http = { version = "2", default-features = false, features = ["rust
 # the user for clipboard permission, a native one does not (capabilities: read
 # and write text only).
 tauri-plugin-clipboard-manager = "2"
+# The system browser for links that leave the app, after the shared confirm (src/ui/external.js);
+# capabilities: open_url on https only. Pinned: its Android side ships with it.
+tauri-plugin-opener = "=2.7.2"
 # BLE central (RFC-043 client side): btleplug on desktop, native Kotlin on Android.
 # Also asks Android's Bluetooth permission before a toy scan (bp_scan_start).
 tauri-plugin-blec = "0.12"

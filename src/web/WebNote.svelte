@@ -4,6 +4,7 @@
    * reach, the Downloads link, and the demo's Reset. Under 700 px only the link and the button stay.
    */
   import { resetDemo } from './web.js';
+  import ExtLink from '../ui/ExtLink.svelte';
 
   const DEMO = import.meta.env.MODE === 'mini';
   const DOWNLOADS = 'https://openvalence.org/downloads/';
@@ -13,11 +14,11 @@
 <span class="web-note">
   {#if DEMO}
     <span class="wide">Phosphor on Neutrino, in your browser.</span>
-    <a href={DOWNLOADS} target="_top">Downloads</a>
+    <ExtLink href={DOWNLOADS} target="_top" text="Downloads" />
     <button type="button" onclick={resetDemo} data-tip="Back to the first load">Reset demo</button>
   {:else}
     <span data-tip={WHY}><span class="wide">Web version:</span> Neutrino only<span class="wide">, no real machines</span>.</span>
-    <a href={DOWNLOADS}>Get the app</a>
+    <ExtLink href={DOWNLOADS} text="Get the app" />
   {/if}
 </span>
 
@@ -31,7 +32,7 @@
     color: var(--ink-dim);
   }
   .web-note > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  .web-note a { color: var(--ink); }
+  .web-note :global(.ext) { color: var(--ink); }
   .web-note button {
     font: inherit;
     color: var(--ink);

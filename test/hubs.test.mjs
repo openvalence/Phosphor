@@ -116,6 +116,7 @@ async function boot(storage, lan, { hubsTab = true, viewport = { width: 1440, he
     window.__bleScans = 0;
     const answers = {
       discover_hubs: () => replies,
+      'plugin:opener|open_url': (a) => { window.__opened = a.url; return null; },
       'plugin:blec|check_permissions': () => true,
       'plugin:blec|stop_scan': () => null,
       'plugin:blec|scan': (args) => {
@@ -289,7 +290,26 @@ for (const viewport of [{ width: 1428, height: 900 }, { width: 1024, height: 768
     && /^Neutrino/.test(machines[1]), machines.join(' | '));
   const found = await page.$$eval(P + ' .cp-rows', (u) => [...u[1].children].map((l) => l.textContent.replace(/\s+/g, ' ').trim()));
   ok(v + 'found: the LAN scan on arrival lists the hub it heard', found.length === 1 && /bench/.test(found[0]) && /127\.0\.0\.1:8282/.test(found[0]), found.join(' | '));
-  ok(v + 'troubleshooting links to the find section', (await page.getAttribute(P + ' .pk-docs', 'href')) === 'https://openvalence.org/phosphor/docs/troubleshooting/#s-find');
+  ok(v + 'troubleshooting links to the find section, marked as leaving the app', (await page.getAttribute(P + ' .pk-docs', 'href')) === 'https://openvalence.org/phosphor/docs/troubleshooting/#s-find'
+    && (await page.getAttribute(P + ' .pk-docs', 'data-tip')) === 'Open link' && await page.locator(P + ' .pk-docs .ext-mark').count() === 1);
+  // The shared confirm before leaving the app: the destination, Open link and Cancel; Escape cancels; never over the stop pair.
+  await page.click(P + ' .pk-docs');
+  const ask = await page.waitForSelector('.overlay[role=alertdialog]', { timeout: 3000 }).then(() => page.evaluate(() => {
+    const o = document.querySelector('.overlay').getBoundingClientRect(), p = document.querySelector('.topstrip .pair')?.getBoundingClientRect();
+    return { text: document.querySelector('.overlay').textContent.replace(/\s+/g, ' ').trim(),
+      clear: !p || o.bottom <= p.top || o.top >= p.bottom || o.right <= p.left || o.left >= p.right };
+  }), () => null);
+  if (viewport.width === 420) { await page.waitForTimeout(400); await page.screenshot({ path: 'test/evidence/connect-confirm-420x860.png' }); }
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(200);
+  const after = await page.evaluate(() => ({ open: !!document.querySelector('.overlay'), opened: window.__opened || null }));
+  ok(v + 'the link asks first: "Open link?" with the destination, Open link and Cancel, clear of the stop pair; Escape cancels and opens nothing',
+    !!ask && /Open link\?/.test(ask.text) && /openvalence\.org\/phosphor\/docs\/troubleshooting/.test(ask.text) && /Cancel/.test(ask.text) && ask.clear
+      && !after.open && !after.opened, { ask, after });
+  await page.click(P + ' .pk-docs');
+  await page.click('.overlay button:has-text("Open link")');
+  await page.waitForTimeout(200);
+  ok(v + 'Open link hands the URL to the opener', (await page.evaluate(() => window.__opened)) === 'https://openvalence.org/phosphor/docs/troubleshooting/#s-find');
   const fits = await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
   ok(v + 'no horizontal overflow', fits);
   await page.screenshot({ path: 'test/evidence/connect-' + viewport.width + 'x' + viewport.height + '.png' });

@@ -35,6 +35,7 @@ import {
   LOG_LEVEL_NAME, CHANNEL_CLASS, CH_CONTROL_OWNER, CH_SETTINGS_TRIAL, FIELD_ROLE, TRIAL_OP, ACTION_TAG, LIMITS,
 } from '../../../Valence/clients/js/index.js';
 import { STORE_OP } from '../../../Valence/clients/js/generated/registry_vocab.js';
+import { openExternal } from '../ui/external.js';
 
 const SHELL = !!import.meta.env.TAURI_ENV_PLATFORM;
 // The web builds load the factory plugins (the mini build's factory is Advanced Penetration alone, vite.config.js).
@@ -248,8 +249,8 @@ export const host = createPluginHost({
   registerTheme,
   listenTcp: SHELL ? listenTcp : null,
   fetch: SHELL ? shellFetch : (import.meta.env.DEV && typeof window !== 'undefined' ? window.fetch.bind(window) : null),
-  openUrl: SHELL ? (url) => import('@tauri-apps/api/core').then(({ invoke }) => invoke('plugin_open_url', { url })).then(() => true, () => false)
-    : (url) => { window.open(url, '_blank', 'noopener'); return Promise.resolve(true); },
+  // The shared confirm, then the browser (src/ui/external.js); a Cancel reads false to the plugin.
+  openUrl: (url) => openExternal(url).then((ok) => !!ok),
   isHub: (u) => isHubUrl(u, machine.link.host, machine.link.port),
   hub: currentHub,
   prefs: typeof localStorage !== 'undefined' ? localStorage : null,

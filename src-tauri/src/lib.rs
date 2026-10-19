@@ -55,6 +55,7 @@ pub fn run() {
   let builder = tauri::Builder::default()
     .plugin(tauri_plugin_http::init())
     .plugin(tauri_plugin_clipboard_manager::init())
+    .plugin(tauri_plugin_opener::init())
     .plugin(tauri_plugin_blec::init())
     .manage(plugins::TcpListeners::default());
   #[cfg(desktop)]

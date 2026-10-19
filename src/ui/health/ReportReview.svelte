@@ -67,6 +67,7 @@
       let saved = '';
       if (out.attach) saved = await saveFile(fileName(id), out.full).catch(() => null);
       const opened = await openUrl(out.url);
+      if (opened === null) return;
       if (!opened) {
         await navigator.clipboard.writeText(out.url).catch(() => {});
         note = 'Link copied: paste it in your browser';

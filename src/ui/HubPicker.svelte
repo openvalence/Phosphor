@@ -18,6 +18,7 @@
    */
   import HostEntry from './HostEntry.svelte';
   import MarkSpinner from './MarkSpinner.svelte';
+  import ExtLink from './ExtLink.svelte';
   import { machine, retryNow, switchHub, hostLabel, disconnect } from '../model/machine.svelte.js';
   import { bootPane } from '../shell/panes.js';
   import { ACCESS } from '../../../Valence/clients/js/index.js';
@@ -70,23 +71,13 @@
   const drainMs = $derived(link.phase === 'retrying' && link.retryAt ? Math.max(0, link.retryAt - Date.now()) : 0);
 
   const DOCS = 'https://openvalence.org/phosphor/docs/troubleshooting/#s-find';
-  let docsNote = $state('');
-  // The shell opens the system browser (desktop); where it cannot (Android today) the address is copied instead.
-  function openDocs(e) {
-    if (!SHELL) return;
-    e.preventDefault();
-    const core = import('@tauri-apps/api/core');
-    core.then(({ invoke }) => invoke('plugin_open_url', { url: DOCS }))
-      .catch(() => core.then(({ invoke }) => invoke('plugin:clipboard-manager|write_text', { text: DOCS }))
-        .then(() => { docsNote = 'Link copied'; }, () => { docsNote = DOCS; }));
-  }
 </script>
 
 {#if mode === 'boot'}
   <section class="picker og-panel" aria-labelledby="picker-title">
     <div class="pk-head">
       <h2 id="picker-title" class="pk-title">Hub</h2>
-      {#if !WEB}<a class="pk-docs" href={DOCS} target="_blank" rel="noopener" onclick={openDocs}>{docsNote || 'Troubleshooting'}</a>{/if}
+      {#if !WEB}<ExtLink class="pk-docs" href={DOCS} text="Troubleshooting" />{/if}
     </div>
     <div class="pk-block" data-phase={link.phase}>
       <p class="pk-status" role="status">{#if loading}<MarkSpinner />{/if}<span>{status}</span></p>
@@ -134,7 +125,7 @@
     color: var(--ink-faint);
   }
   /* A whole tap target (law 12), its ink the link's. */
-  .pk-docs { display: inline-flex; align-items: center; min-height: var(--tap); font-size: .8rem; color: var(--intent); }
+  .pk-head > :global(.pk-docs) { min-height: var(--tap); font-size: .8rem; }
   /* Fixed lines and the bar's row: a phase change swaps text, never height. */
   .pk-block { display: grid; grid-template-rows: auto 1.4em 3px 1.4em; gap: var(--sp-1); }
   .pk-block p { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
