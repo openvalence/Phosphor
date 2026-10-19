@@ -76,7 +76,7 @@ if (splash && !isStill()) {
 }
 function closeSplash() {
   if (!splash) return;
-  splash.animate([{ opacity: getComputedStyle(splash).opacity }, { opacity: 0 }], { duration: 220, easing: 'ease-in', fill: 'forwards' })
+  splash.animate([{ opacity: getComputedStyle(splash).opacity }, { opacity: 0 }], { duration: isStill() ? 0 : 220, easing: 'ease-in', fill: 'forwards' })
     .finished.catch(() => {}).then(() => { splashAnim?.destroy(); splash.remove(); });
 }
 try {

@@ -15,6 +15,7 @@
    *   press, and note, one status line it owns: the join outcome in words.
    */
   import { tick } from 'svelte';
+  import { rise } from './motion.js';
   import Field from './Field.svelte';
   import ActionField from './ActionField.svelte';
   import { WIDGET } from '../model/settings.js';
@@ -56,7 +57,7 @@
 
 <svelte:window onkeydown={(e) => { if (e.key === 'Escape' && !confirmUi.req) onclose(); }} />
 
-<div class="wizard" bind:this={card} role="dialog" tabindex="-1" aria-labelledby="wz-title">
+<div class="wizard" bind:this={card} in:rise role="dialog" tabindex="-1" aria-labelledby="wz-title">
   <header>
     <h2 id="wz-title">{category.label}</h2>
     {#if step}<span class="count mono">Step {idx + 1} of {steps.length}</span>{/if}

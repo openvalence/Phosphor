@@ -25,6 +25,7 @@
   import { mountNetworkPicker, networkPickerReady, NETWORK_PICKER_SPEC } from '../plugins/factory.js';
   import { claimRoles } from '../model/roles.js';
   import '../ui/pane.css';
+  import { rise } from '../ui/motion.js';
 
   const st = $derived(setup.st);
   const cat = $derived(provisionCategory(machine.catalog.model));
@@ -46,7 +47,7 @@
 </script>
 
 {#if inWizard && picker}
-  <div class="su" role="dialog" aria-labelledby="su-title">
+  <div class="su" role="dialog" aria-labelledby="su-title" in:rise>
     <header><h2 id="su-title">Wi-Fi</h2></header>
     <PluginSlot hero={PICKER} fields={picked} />
     <div class="acts"><button type="button" class="og-btn" onclick={closeSetup}>Close</button></div>
@@ -54,7 +55,7 @@
 {:else if inWizard && cat}
   <ProvisionWizard category={cat} onclose={closeSetup} onact={setupAct} {note} />
 {:else}
-  <div class="su" role="dialog" aria-labelledby="su-title">
+  <div class="su" role="dialog" aria-labelledby="su-title" in:rise>
     <header><h2 id="su-title">Set up a machine</h2></header>
 
     {#if listing}

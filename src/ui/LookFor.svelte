@@ -21,6 +21,7 @@
    *   confirm blocks F3.
    */
   import { tick } from 'svelte';
+  import { rise } from './motion.js';
   import { machine, specSafetyAction, estopLabel } from '../model/machine.svelte.js';
   import { layouts, layoutNames, switchLayout } from '../model/dashboard.svelte.js';
   import { searchEntries } from './searchIndex.js';
@@ -212,7 +213,7 @@
 
 {#if open}
   <div class="ov-band" style="--ov-top: {top}px">
-    <div class="lf" role="dialog" aria-label="Look for a control">
+    <div class="lf" in:rise={{ k: 'quick', y: -6 }} role="dialog" aria-label="Look for a control">
       <input bind:this={inputEl} bind:value={q} class="lf-q" type="search" placeholder="Look for a control"
              role="combobox" aria-expanded="true" aria-controls="lf-list" aria-autocomplete="list"
              aria-activedescendant={results.length ? 'lf-' + at : undefined}
@@ -291,6 +292,4 @@
   .lf-path { color: var(--ink-dim); overflow: hidden; text-overflow: ellipsis; }
   .lf-none { color: var(--ink-faint); cursor: default; }
   @media (pointer: coarse) { li { min-height: var(--tap); } }
-  .lf { animation: lf-rise var(--t-quick) ease-out; }
-  @keyframes lf-rise { from { opacity: 0; } to { opacity: 1; } }
 </style>

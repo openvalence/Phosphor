@@ -197,7 +197,8 @@ const canvasSums = (page) => page.$$eval('canvas', (cs) => cs.map((c) => {
   ok('safety: --warn and --bad never move', await css(page, '--warn') === warn0 && await css(page, '--bad') === bad0);
 
   await page.click('.adv summary');
-  await page.waitForTimeout(100);
+  // The body rises in on the move token (DESIGN §10.13 The motion system): measure it settled.
+  await page.waitForTimeout(300);
   if (SHOTS) await paneShot(page, 'display-custom-advanced.png');
   const r0 = await rows(page);
   ok('advanced: every row is one height (ph-l6t)', spread(r0.map((r) => r[1])) < 0.5, r0.map((r) => r[1]).join(','));
