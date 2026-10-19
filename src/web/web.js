@@ -102,7 +102,7 @@ function whenLive(fn) {
 // saved machine, and so after Reset demo) gets a stroke worth watching first: the middle half of the rail as
 // the window and the full depth in it (the window, not the depths, makes the stroke smaller). Demo only:
 // Neutrino's own defaults stand. Reduced motion: still.
-const SEED = [['advgen.master', 50], ['advgen.depth_max', 100], ['advgen.depth_min', 0]];
+const SEED = [['advgen.master', 25], ['advgen.depth_max', 100], ['advgen.depth_min', 0]];
 function autostart(fresh) {
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   whenLive(() => {

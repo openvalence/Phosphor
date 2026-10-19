@@ -80,7 +80,7 @@ build at `/mini/` on every push to main (the repo's Pages source is GitHub Actio
   (`src/plugins/factory-mini.js`, swapped in by `vite.config.js`), hides the
   Plugins page, opens on the Advanced Penetration card's page and starts
   Advanced (not under reduced motion). A first load, and Reset demo, seed the
-  window to the middle half of the rail (read from the catalog), master 50 and
+  window to the middle half of the rail (read from the catalog), master 25 and
   the full depth in it (deep 100, shallow 0: the window, not the depths, makes
   the stroke smaller); Neutrino's own defaults stand.
 - Both follow the light or dark of the embedding page (`?theme=light|dark`,
