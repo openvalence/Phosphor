@@ -2509,18 +2509,14 @@ if (!LIVE && !STASH_LIVE) {
     await page.locator(C + ' .ui-stage-box').evaluate((b) => b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch' })));
     await page.waitForTimeout(150);
     const f3 = await railState(page);
-    // The transport sits in the room above the stack, never on it (a landscape phone included).
-    const room = await page.locator(C).evaluate((r) => {
-      const m = r.querySelector('.fsp-mid').getBoundingClientRect(), f = r.querySelector('.fsp-fsw'), q = document.querySelector('.hero-inner.quick');
-      const tops = [r.querySelector('.fsp-hb').getBoundingClientRect().top, f && f.getClientRects().length ? f.getBoundingClientRect().top : Infinity,
-        q && q.getClientRects().length ? q.getBoundingClientRect().top : Infinity];
-      return { bottom: Math.round(m.bottom), top: Math.round(Math.min(...tops)), shown: m.height > 0 };
-    });
+    // The transport and the stack never show together (one bottom slot; a landscape phone included).
+    const room = await page.locator(C).evaluate((r) => ({ shown: r.querySelector('.fsp-mid').getBoundingClientRect().height > 0,
+      stack: getComputedStyle(r.querySelector('.fsp-fsw')).visibility }));
     await page.keyboard.press('Escape');
     await page.waitForTimeout(400);
     const left = await page.locator(C).evaluate((r) => !r.hasAttribute('data-media'));
-    ok('host ' + at + ': stacked, a press on the video keeps the rail; the transport clears the stack; one Escape leaves the fullscreen',
-      f3.open && (!room.shown || room.bottom <= room.top) && left, { f3, room, left });
+    ok('host ' + at + ': stacked, a press on the video keeps the rail; the transport never shows with the stack; one Escape leaves the fullscreen',
+      f3.open && !(room.shown && room.stack === 'visible') && left, { f3, room, left });
     if (!left) { await page.keyboard.press('Escape'); await page.waitForTimeout(300); }
     // Peeve 19 extended (ph-5u0g.17): the Dash card draws no status row either; its warning is the strip's slot.
     if (w === 1428 || w === 420) {
