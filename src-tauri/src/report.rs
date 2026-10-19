@@ -1,32 +1,7 @@
-//! The two OS acts a health report needs (ph-9t5l.1, docs/DESIGN.md §10.14).
-//! Constraints: open_report_url opens only a URL on the Phosphor repo, handed to
-//! the OS launcher as one argument (never through a shell); save_report writes
-//! only diag-report-<8 base32>.json, into the user's Downloads folder (portable:
-//! the data folder).
-
-const REPO_URL: &str = "https://github.com/openvalence/Phosphor/";
-
-#[cfg(desktop)]
-#[tauri::command]
-pub fn open_report_url(url: String) -> Result<(), String> {
-  if !url.starts_with(REPO_URL) || url.chars().any(|c| c.is_whitespace() || c == '"') {
-    return Err("not a Phosphor issue URL".into());
-  }
-  launch(&url)
-}
-
-/// The OS launcher with `url` as its one argument, never through a shell.
-#[cfg(desktop)]
-pub(crate) fn launch(url: &str) -> Result<(), String> {
-  let (cmd, pre): (&str, &[&str]) = if cfg!(windows) {
-    ("rundll32", &["url.dll,FileProtocolHandler"])
-  } else if cfg!(target_os = "macos") {
-    ("open", &[])
-  } else {
-    ("xdg-open", &[])
-  };
-  std::process::Command::new(cmd).args(pre).arg(url).spawn().map(|_| ()).map_err(|e| e.to_string())
-}
+//! The health report's file act (ph-9t5l.1, docs/DESIGN.md §10.14); its link opens
+//! through the shared confirm and the opener plugin (src/ui/external.js).
+//! Constraints: save_report writes only diag-report-<8 base32>.json, into the
+//! user's Downloads folder (portable: the data folder).
 
 #[tauri::command]
 pub fn save_report(app: tauri::AppHandle, name: String, text: String) -> Result<String, String> {
