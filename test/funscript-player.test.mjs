@@ -1125,7 +1125,7 @@ if (!LIVE && !STASH_LIVE && !OSC_ONLY && !args.includes('--library')) {
     await page.evaluate(() => {
       const inner = window.__TAURI_INTERNALS__.invoke;
       window.__opened = [];
-      window.__TAURI_INTERNALS__.invoke = (cmd, a, o) => (cmd === 'plugin_open_url' ? (window.__opened.push(a.url), Promise.resolve(null)) : inner(cmd, a, o));
+      window.__TAURI_INTERNALS__.invoke = (cmd, a, o) => (cmd === 'plugin_open_url' || cmd === 'plugin:opener|open_url' ? (window.__opened.push(a.url), Promise.resolve(null)) : inner(cmd, a, o));
     });
     const loose = await page.evaluate(() => {
       const out = [];
@@ -1255,7 +1255,11 @@ if (!LIVE && !STASH_LIVE && !OSC_ONLY && !args.includes('--library')) {
     await page.waitForTimeout(200);
     await rc(C + ' .ui-tile:has(.fsp-tile) >> nth=0');
     await pickM('Open in Stash');
+    // Leaving the app asks first (src/ui/external.js): the shared confirm names the destination.
+    const askText = await page.waitForSelector('.overlay[role=alertdialog]', { timeout: 3000 }).then((e) => e.textContent(), () => '');
+    await page.click('.overlay button:has-text("Open link")').catch(() => {});
     await page.waitForTimeout(200);
+    ok('scene: Open in Stash asks first, Open link? with the Stash server', /Open link\?/.test(askText) && askText.includes(new URL(stash.url).host), askText);
     const id0 = await page.evaluate(() => (window.__opened || [])[0] || '');
     ok('scene: Open in Stash opens the scene\'s page on the Stash server in the system browser', /\/scenes\/[^/]+$/.test(id0) && id0.startsWith(stash.url.replace(/\/$/, '')), id0);
     await rc(C + ' .ui-tile:has(.fsp-tile) >> nth=1');
