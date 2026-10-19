@@ -880,33 +880,36 @@ center Play of PR8 to PR10 as built, and the transport row's chapters:
 
 ### The connect pass (superfan feedback via the operator 2026-10-18, `ph-u3b2`, PROPOSED)
 
-- **PP7 The stack** (`ph-7ri8`; operator 2026-10-18 on the builds). In
-  media fullscreen, from the top: the motion preview (a 48 px wave), then
-  one band, the seek on its top half and the quick rail on its bottom half
-  (the travel window at half height, no axis labels; its window handles
-  straddle it into the padding to reach the 40 px touch floor without a
-  taller band), then the bar. The seek sits on top because it is time like
-  the wave above it. The timeline toggle shows or hides the stack (pref
-  `fsStack`, on by default); off, the seek returns to the bar and the Rail
-  button opens the full rail alone. While the player runs the wave and the
-  window are a display: no input, no range pills, no handles; the rail's
-  tape row stays in place (the plan strip while the player streams), so play
-  and pause move nothing; the seek stays a control. Paused, all of it takes
-  input, the jog tape with the planned segment included: handy with a toy
-  mounted. While the controls hide (2.5 s still
-  while playing) the stack stays drawn at 40 % with no plates, takes no
-  input and slides down to the bottom edge, the rail with it, never left
-  floating where the bar was (transform only, instant under Reduced
-  motion); a mouse move or a touch tap brings it back up with the controls.
-  A tap on the video never closes the rail; the toggle and the Rail button
-  do, and Escape and back leave the fullscreen. A library or Settings
-  drawer puts the stack away until it closes. The stop pair is the host's,
-  never part of the stack, the fade or the slide, and keeps its 50 % rest.
-  Phones take the rail's horizontal form there (DESIGN §10.3, amended).
-  Inline the page keeps its layout. "Open in Stash" leaves the app through
-  the shared confirm (DESIGN §10.20), http or https.
-  *(Supersedes PR9's wave above the scrub inside the hover bar and, with
-  the stack on, `ph-9t5l.7`'s "at rest only the stop pair sits over a
+- **PP7 The stack** (`ph-7ri8`; operator 2026-10-18 and 2026-10-19 on the
+  builds). In media fullscreen the stack sits at the bottom edge: the motion
+  preview (a 48 px wave) on top, then one band, the seek on its top half and
+  the quick rail on its bottom half (the travel window, 28 px, no axis
+  labels; its window handles reach the 40 px touch floor by overhanging
+  it). The timeline toggle shows or hides the stack (pref `fsStack`, on by
+  default); off, the seek returns to the bar and the Rail button opens the
+  full rail alone.
+  The bar and the stack share the bottom slot, one at a time: the stack is
+  the resting view, a move or a tap over the video calls the bar and the
+  transport (PP10) in its place, and the idle (2.5 s) brings the stack back,
+  paused included, so the jog tape is reachable while paused. Movement over
+  the stack itself never calls the bar. The stack arrives rising and leaves
+  on the frame (transform and opacity, instant under Reduced motion).
+  While the player runs the wave and the window are a display: no input, no
+  range pills, no handles; the rail's tape row stays in place (the plan
+  strip while the player streams), so play and pause move nothing; the seek
+  stays a control. Paused, all of it takes input, the jog tape with the
+  planned segment included: handy with a toy mounted. A tap on the video
+  never closes the rail; the toggle and the Rail button do, and Escape and
+  back leave the fullscreen. A library or Settings drawer puts the stack
+  away until it closes. The stop pair is the host's, never part of the
+  stack or the slot, and keeps its 50 % rest. Phones take the rail's
+  horizontal form there (DESIGN §10.3, amended). Inline the page keeps its
+  layout. "Open in Stash" leaves the app through the shared confirm (DESIGN
+  §10.20), http or https. A return to the app (another app, the browser)
+  rejoins the shell's media fullscreen if the stage drifted out of it.
+  *(Supersedes PR9's wave above the scrub inside the hover bar, the
+  controls staying while paused (PP2, PP3) when the stack is on, and with
+  the stack on `ph-9t5l.7`'s "at rest only the stop pair sits over a
   fullscreen video".)*
 - **PP8 The centered playhead** (`ph-10c4`). The detail's playhead is fixed
   at its center at every class and the script, the trace and the lanes move
@@ -918,15 +921,16 @@ center Play of PR8 to PR10 as built, and the transport row's chapters:
   while paused and while scrubbing, is trimmed only while playing, and
   clears when Play starts playback; a seek while playing clears it too.
 - **PP10 The fullscreen transport** (operator 2026-10-18: the bar wrapped
-  to two rows). Previous, Play and next, with the time under them, sit
-  centered over the video in the room above the bar and the stack (a
-  landscape phone included), where media players put them; they show and fade
-  with the controls, and the kit's center glyph yields to them (its flash on
-  a click stays). The bar keeps one row: library, mute and volume, Motion,
-  rate, the timeline toggle, Rail, Settings, Exit fullscreen. On touch they
-  are 56 px buttons (Play 72) under every pointer, so a tap that shows the controls leaves them
-  one tap away. A double-click on them is two clicks on their buttons;
-  elsewhere on the video it leaves fullscreen as before (PP3).
+  to two rows; 2026-10-19: the true center). Previous, Play and next, with
+  the time under them, sit in the true center of the video, where media
+  players put them; they show and fade with the controls and the bar, never
+  with the stack, so they never meet it. The kit's center glyph yields to
+  them (its flash on a click stays). The bar keeps one compact row (32 px
+  buttons, 40 under a coarse pointer): library, mute and volume, Motion,
+  rate, the timeline toggle, Rail, Settings, Exit fullscreen. The transport
+  buttons are 56 px (Play 72) under every pointer. A double-click on them is
+  two clicks on their buttons; elsewhere on the video it leaves fullscreen
+  as before (PP3).
 
 ### The card before the redesign
 
