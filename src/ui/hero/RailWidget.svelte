@@ -1149,7 +1149,7 @@
        renders inside the tape, never as a line of its own. -->
   <div class="rail-row">
     <div class="rail-swap">
-    <div class="swap-face" class:off={!planShown}>
+    <div class="swap-face" class:off={!planShown} inert={!planShown}>
       {#if foreign}
         <PlanStrip shown={planShown && !away} edge0={haveWindow ? minPct : 0} edge1={haveWindow ? maxPct : 1} />
       {:else}
@@ -1157,7 +1157,7 @@
                    pos={fresh ? winFrac(posDisplay) : null} target={targetFresh ? winFrac(targetDisplay) : null} />
       {/if}
     </div>
-    <div class="swap-face" class:off={planShown}>
+    <div class="swap-face" class:off={planShown} inert={planShown}>
     {#if move}
       <!-- Input tape — a live command surface. In the original this was
            two layers: a full-width TRACK (dashed guides marking full travel)
@@ -1325,8 +1325,9 @@
     display: grid;
     grid-template: minmax(0, 1fr) / minmax(0, 1fr);
   }
-  .swap-face { grid-area: 1 / 1; min-width: 0; }
-  .swap-face.off { visibility: hidden; }
+  /* The faces cross-fade. The leaving face is inert at once (no jog input, no focus), hidden at the end. */
+  .swap-face { grid-area: 1 / 1; min-width: 0; transition: opacity var(--t-move) var(--ease-out), visibility 0s; }
+  .swap-face.off { visibility: hidden; opacity: 0; transition: opacity var(--t-move) var(--ease-out), visibility 0s linear var(--t-move); }
 
   /* No frame of its own: HeroStrip is the bar's surface (DESIGN §10.3). */
   .rail-panel {

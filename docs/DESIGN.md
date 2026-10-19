@@ -1355,6 +1355,52 @@ derives from one unit, and no size is tuned by hand.
   animation keys off one class, `html.still`, which the theme's motion 0
   also sets, and a minimized shell window too (WebView2 keeps drawing a
   minimized page); no component reads the media query itself.
+- The motion system (2026-10-18, `ph-kgck`, at the feedback gate). Tokens in
+  `src/style.css`: `--t-quick` 120 ms (hover, press, tooltips, menus),
+  `--t-move` 200 ms (pages, drawers, dialogs, list rows, boxes sliding),
+  `--t-slow` 320 ms (the link dot's color);
+  `--ease-out` (cubic-bezier(.2, .7, .2, 1)) for things arriving and
+  `--ease-settle` (a critically damped spring, soft start, no overshoot) for
+  things travelling to a new place. Script motion uses the primitives in
+  `src/ui/motion.js` (`fade`, `rise`, `drawer`, `flipMove`, `flipFollowers`,
+  `riseIn`), never a duration of its own. Rules:
+  - Purposeful: motion says where a thing came from or went (a drawer from
+    its edge, a list row to its new place, the boxes after an opened card),
+    never decoration.
+  - Interruptible: a change the user can reverse runs on a CSS transition or
+    a Svelte `transition:` (both continue from where they are); keyframes
+    only for one-way changes.
+  - Arrivals animate, dismissals are instant: the phone drawer, a dialog,
+    popover, menu, F1, F3 or the Dash edit chrome arrives in motion and is
+    gone on the frame it is closed, out of the DOM and the focus order at
+    once. Things that change place (list rows, boxes after a height change,
+    the rail's faces) animate both ways.
+  - Transform and opacity only. A height change (a card or a `<details>`
+    opening) moves the boxes after it by FLIP: the layout changes at once and
+    they slide from where they were by `translate`. A sticky or fixed bar
+    (the Dash edit toolbar) and an arriving page fade and never travel: a
+    transform on them sends a scroll-into-view made meanwhile to the wrong
+    place (measured: the Dash scrolled 440 px past its grid).
+  - Nothing blocks input. No view transitions: in Chromium 151 every form,
+    document or scoped, takes the pointer events in its scope for its
+    length, and `pointer-events: none` on the pseudo-elements does not pass
+    them (measured 2026-10-18); a document one would hold the stop pair. A
+    page switch keeps the arriving page's own fade, opacity only, so the
+    page answers from its first frame: a travel transform on it threw a
+    scrollIntoView made in its first frames (F3's jump to a setting) 12 px
+    off. A theme change is atomic.
+  - Safety UI is never animated in or out: the top strip, the stop pair, the
+    status slot, the home menu and the confirm prompt change on the frame
+    they change. The rail's faces cross-fade, the leaving face inert at once.
+  - A degradation shows on the frame it happens (the link dot going stale
+    or offline, a fault, a refusal); only a recovery may settle (connecting
+    to live morphs the dot's fill over slow).
+  - Live readouts are never smoothed (the numerals show the newest sample);
+    the Dash grid never animates a card's place.
+  - Under `html.still` every token is 0 ms and no primitive runs.
+  - Proof: `test/motion-probe.mjs` (boxes of the bar, strip and stop pair
+    every frame, frame pacing at 4x CPU throttle, a press on the e-stop
+    mid-transition, no animation under Reduced, idle main-thread time).
 - The context menu (operator 2026-10-09, `ph-kyjd`; 2026-10-10, `ph-hi4i`):
   the shell's own menu replaces the webview's everywhere, text entry
   included; a release build turns WebView2's off at the source and a dev
@@ -1817,5 +1863,6 @@ behind the menu.
 | 2026-10-17 | §10.x top bar, ambient | The animated mark (connecting spinner, launch splash) runs at the display's frame rate, exempt from the 30 fps ambient step: it never runs alongside time-sensitive tasks. | operator |
 | 2026-10-17 | §10.18 | The Windows portable build is contained: a `Phosphor/` folder in the zip, `phosphor.portable` beside the exe turns portable mode on, every write goes to `PhosphorData` beside it (the WebView2 data folder included), a launch from a shared folder root (drive, Downloads, Desktop, Documents, user folder) or the temporary folder is stopped by a native dialog before any write (`ph-5fdg`). | operator ("the portable needs to be genuinely portable, writing only to the folder it is run from, and an alert if it's running straight in the downloads etc"; "phosphor.exe and its storage folders sit in their OWN folder"; "a user doesn't accidentally just run the bare app and have it create its stores in the root of a user library folder"; Move / Continue here / Quit); the marker and folder names, `Phosphor (2)` numbering, dropping the cookie jar and the dialog wording are the agent's, veto-able |
 | 2026-10-17 | §10.13 | Touch slop: a touch or pen adjusts a control only past 8 px along its axis or a 400 ms hold, from the value it had; across its axis it scrolls the page; a slider track tap moves nothing; buttons act on a clean tap; each draggable declares its `touch-action`; the wheel scrolls past an unfocused slider or knob. The Android, iOS, Material and HIG touch-slop practice (`ph-7v53`). | operator ("it's still WAY too easy to adjust a control while scrolling ... there must be a best practice standardized for this"); a knob turning sideways under touch, a 2D handle claiming along its own way, a cancel dropping a plugin handle's draft and the per-press axis on `drag()` are the agent's, veto-able |
+| 2026-10-18 | §10.13 | The motion system: duration and easing tokens (`--ease-settle` added), the `src/ui/motion.js` primitives and the rules (purposeful; interruptible; arrivals animate and dismissals are instant; transform and opacity, FLIP for height changes; sticky bars and the arriving page fade and never travel; no view transitions, which take pointer input in their scope (Chromium 151, measured); safety UI never animated; a degradation shows on the frame; readouts never smoothed). On it: the phone drawer, `<details>` and plugin card carets, hub rows, F1, F3 and the setup dialogs, Dash edit chrome, the rail's face cross-fade, the link dot's fill on connect, scroll shades; page switches keep their opacity fade and the theme changes atomically (`ph-kgck`). | PROPOSED at the feedback gate: operator ("transitions etc in phosphor, fluidity is the identity ... make it resume worthy"); every token, curve, rule and the safety list are the agent's, veto-able |
 | 2026-10-18 | §10.19 | The connecting page: never a dead end. The phase and hub, a countdown line (`Next try in N s · attempt N`) over a bar draining to the next try and the close reason on its own line; Retry now and Stop in fixed slots; the dialed address editable in place; the saved hubs with Neutrino last; a LAN scan on arrival and Scan; a Troubleshooting link to the find section of the docs (`ph-u3b2.1`, `ph-u3b2.2`). | PROPOSED: operator (2026-10-18, stuck on a phone redialing a saved address that no longer answers: other hubs, a Virtual button, previous machines, troubleshooting, cancel, edit the address, a clearer countdown); Neutrino named in place of "Virtual" (the 2026-10-15 naming ruling), the LAN scan on arrival, Stop ending this session's redial only, the drain bar and the copy fallback on Android are the agent's, veto-able |
 | 2026-10-18 | §10.3, plugins | The funscript player's media fullscreen stacks the motion preview and the rail over the video, the rail on top, both shown or hidden by the timeline toggle (pref, on by default); idle, they stay drawn at 40 % with no plates and take no input, and a pointer move or a tap brings them back with the controls; the stop pair is never part of the fade. A media page's fullscreen takes the quick rail's horizontal form on the phone class too, and a tap on the video never closes it. The motion preview's playhead is fixed at its center with the script moving past it, a hatch where there is no script; telemetry drawn stays while paused and while scrubbing and clears when playback starts (docs/plugins/FUNSCRIPT.md PP7 to PP9, `ph-7ri8`, `ph-10c4`, `ph-f012`). | PROPOSED: operator (superfan feedback 2026-10-18); fullscreen only (inline keeps the hero rail and the wave under the stage), the stack order, one toggle for both, the 40 % ghost, the horizontal rail on phones and the hatch outside the first and last action are the agent's, veto-able |

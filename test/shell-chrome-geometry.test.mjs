@@ -480,6 +480,8 @@ for (const [w, h] of [[1440, 900], [390, 844], [420, 860], [860, 420]]) {
 
   wire.send(FRAME.STATE, RUN.id, patternState(true));
   await hp.waitForSelector('.rail-swap .plan-strip', { state: 'visible', timeout: 3000 }).catch(() => {});
+  // The faces cross-fade (DESIGN §10.13 The motion system): the tape is inert at once and hidden at the fade's end.
+  await hp.locator('.rail-swap .rail-tape-track').waitFor({ state: 'hidden', timeout: 1000 }).catch(() => {});
   const plan = await heights(hp);
   ok(tag + ': a running pattern swaps the plan strip into the rail row',
     await hp.locator('.rail-swap .plan-strip').isVisible() && !await hp.locator('.rail-swap .rail-tape-track').isVisible());

@@ -23,6 +23,7 @@
  */
 import { NAV_ICONS } from '../ui/navIcons.js';
 import { scrollshade } from '../ui/scrollshade.js';
+import { flipFollowers, riseIn } from '../ui/motion.js';
 import { modStep, dragGain, snap } from '../model/nudge.js';
 
 export const VERSION = 1;
@@ -640,7 +641,13 @@ export function card(o = {}) {
   const body = h('div', { class: 'ui-card-body' });
   const el = h('section', { class: cls('surface-card ui-card', o), 'data-part': 'panel' }, head, body);
   const setOpen = (v) => { el.toggleAttribute('data-shut', !v); if (caret) caret.setAttribute('aria-expanded', String(!!v)); };
-  if (caret) caret.addEventListener('click', (e) => { const v = el.hasAttribute('data-shut'); setOpen(v); if (o.onToggle) o.onToggle(v, e); });
+  // A caret click slides the boxes after the card to their new place and the body rises in (ui/motion.js).
+  if (caret) caret.addEventListener('click', (e) => {
+    const v = el.hasAttribute('data-shut');
+    flipFollowers(el, () => setOpen(v));
+    if (v) riseIn(body);
+    if (o.onToggle) o.onToggle(v, e);
+  });
   // `title` is the card's heading here, never a tooltip.
   def(el, {
     body: { value: body },
