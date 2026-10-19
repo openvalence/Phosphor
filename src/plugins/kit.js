@@ -724,7 +724,10 @@ export function bar(o = {}) {
  * reaches onTap; a touch double-tap on the left or right third is onSkip.
  */
 export function stage(o = {}) {
-  check('stage', o, ['aspect', 'overlay', 'rotate', 'onTap', 'onDouble', 'onFullscreen', 'onCenter', 'onSkip']);
+  check('stage', o, ['aspect', 'overlay', 'rotate', 'onTap', 'onDouble', 'onFullscreen', 'onCenter', 'onSkip', 'zone']);
+  // o.zone(e): true where the page owns the pointer (its own surface over the video): there the controls are neither
+  // shown nor hidden and no tap plays or toggles them.
+  const zoned = (e) => !!(o.zone && o.zone(e));
   if (o.overlay != null && !['fullscreen', 'always'].includes(o.overlay)) throw new Error('ui.stage: overlay is "fullscreen" or "always"');
   const media = h('div', { class: 'ui-stage-media' });
   const empty = h('div', { class: 'ui-stage-empty' });
@@ -747,7 +750,7 @@ export function stage(o = {}) {
   const poke = () => { el.setAttribute('data-show', ''); clearTimeout(idle); idle = setTimeout(hide, IDLE_MS); };
   const conceal = () => { clearTimeout(idle); if (!box.querySelector('[data-drag]')) el.removeAttribute('data-show'); };
   // A touch moving over shown controls keeps them; one over hidden controls (a scroll) never shows them.
-  el.addEventListener('pointermove', (e) => { if (e.pointerType === 'mouse' || el.hasAttribute('data-show')) poke(); });
+  el.addEventListener('pointermove', (e) => { if (!zoned(e) && (e.pointerType === 'mouse' || el.hasAttribute('data-show'))) poke(); });
   // A hidden overlay is display: none, out of the tab order: Tab in fullscreen shows it first.
   winOn(el, 'keydown', (e) => { if (e.key === 'Tab' && full) poke(); });
   el.addEventListener('pointerleave', (e) => {
@@ -762,7 +765,7 @@ export function stage(o = {}) {
   el.addEventListener('pointerdown', (e) => {
     kind = e.pointerType;
     el.toggleAttribute('data-touch', kind !== 'mouse');
-    if (kind === 'mouse' || !own(e)) poke();
+    if (!zoned(e) && (kind === 'mouse' || !own(e))) poke();
   }, true);
   const third = (x) => { const r = box.getBoundingClientRect(); return x < r.left + r.width / 3 ? -1 : x > r.right - r.width / 3 ? 1 : 0; };
   const skip = (side) => {
@@ -781,7 +784,7 @@ export function stage(o = {}) {
   // (a second tap there is onSkip). It rides the tap's click, hit-tested before the controls show, so a tap never lands on
   // a control it reveals; a long press (the menu's) and a drag (the page's scroll) make no click.
   el.addEventListener('click', (e) => {
-    if (kind === 'mouse' || !own(e)) return;
+    if (kind === 'mouse' || !own(e) || zoned(e)) return;
     const side = o.onSkip ? third(e.clientX) : 0;
     clearTimeout(tapT);
     if (side && last && last.side === side && e.timeStamp - last.t < TOUCH_DOUBLE_MS) { last = null; skip(side); return; }
@@ -790,7 +793,7 @@ export function stage(o = {}) {
     if (side) tapT = setTimeout(toggle, TOUCH_DOUBLE_MS); else toggle();
   });
   gestures(el, {
-    filter: (e) => kind === 'mouse' && own(e),
+    filter: (e) => kind === 'mouse' && own(e) && !zoned(e),
     tap: (e) => { if (o.onTap) o.onTap(e); },
     double: (e) => { if (o.onDouble) o.onDouble(e); else el.fullscreen = !full; },
   });
@@ -859,6 +862,8 @@ export function stage(o = {}) {
       },
     },
     poke: { value: poke },
+    // conceal(): hide the controls now (a page swapping its own view into their place); a drag in progress keeps them.
+    conceal: { value: conceal },
     caption: { get: () => caption.textContent, set(v) { setText(caption, v || ''); el.toggleAttribute('data-caption', !!v); } },
     // Kept: the controls show and never hide on their own (a paused video); a touch tap still hides them.
     keep: {

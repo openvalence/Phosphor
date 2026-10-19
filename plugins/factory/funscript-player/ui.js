@@ -896,10 +896,15 @@ export const CSS = `
 /* With the stack on, the transport shows with it too (operator 2026-10-19): centered, and lifted just enough to clear the
    stack's top where the screen is short (--fsp-stack-h, the stack's top over the video's bottom; --fsp-mid-h its own
    height), never under the stop pair. The same rule with the bar up, so it never moves when the slot swaps. */
-.fsp[data-fswave] .fsp-mid { --fsp-stack-h: calc(max(var(--sp-2), var(--corner-inset), env(safe-area-inset-bottom, 0px)) + var(--fsp-fsw-h, 0px));
-  top: max(calc(var(--stop-reserve-h, 0px) + var(--fsp-mid-h, 0px) / 2 + var(--sp-2)),
+.fsp[data-fswave] .ui-stage-box { --fsp-stack-h: calc(max(var(--sp-2), var(--corner-inset), env(safe-area-inset-bottom, 0px)) + var(--fsp-fsw-h, 0px)); }
+html[data-quick-rail-open] .fsp[data-fswave] .ui-stage-box { --fsp-stack-h: calc(max(var(--sp-2), var(--corner-inset), env(safe-area-inset-bottom, 0px), var(--quick-rail-lift, 0px)) + var(--fsp-fsw-h, 0px)); }
+.fsp[data-fswave] .fsp-mid { top: max(calc(var(--stop-reserve-h, 0px) + var(--fsp-mid-h, 0px) / 2 + var(--sp-2)),
     min(50%, calc(100% - var(--fsp-stack-h) - var(--sp-3) - var(--fsp-mid-h, 0px) / 2))); }
-html[data-quick-rail-open] .fsp[data-fswave] .fsp-mid { --fsp-stack-h: calc(max(var(--sp-2), var(--corner-inset), env(safe-area-inset-bottom, 0px), var(--quick-rail-lift, 0px)) + var(--fsp-fsw-h, 0px)); }
+/* With the stack on, the bar comes up at the top of the shared slot (round 6): a pointer coming down from the video meets
+   the bar first, and below it enters the stack's zone. */
+.fsp[data-media][data-fswave] .ui-stage[data-full] .ui-stage-overlay { bottom: auto; top: calc(100% - var(--fsp-stack-h)); }
+/* The seek's hover tip is gone (operator 2026-10-19): the transport's time readout says where you are. */
+.fsp-hb-seek .ui-scrub-tip { display: none !important; }
 .fsp-mid-row { display: flex; align-items: center; gap: var(--sp-5); }
 .fsp-mid-row > .og-btn { pointer-events: auto; width: 56px; height: 56px; min-height: 56px; border-radius: 50%; padding: 0;
   background: color-mix(in srgb, var(--bg-raised) 72%, transparent); }
@@ -1335,7 +1340,9 @@ export function createPlayer(api) {
       onCenter: () => ctl.toggle(),
       onSkip: (d) => { if (!st.scene) return ''; ctl.seek(Math.max(0, ctl.mediaNow() + d * SKIP_MS)); return COPY.skip; },
       onDouble: () => { if (opts.fullscreen) fullscreen(); },
-      onFullscreen: (on) => setMedia(on) });
+      onFullscreen: (on) => setMedia(on),
+      // The stack and its zone are the page's own (round 6): the stage leaves the controls alone there.
+      zone: (e) => !!fsw && (fsw.contains(e.target) || inZone(e)) });
     const vbox = stage.box;
     vbox.classList.add('fsp-vbox');
     vbox.dataset.part = 'fs-stage';
@@ -1509,12 +1516,20 @@ export function createPlayer(api) {
       clearTimeout(awakeT);
       awakeT = setTimeout(() => { if (fsw.querySelector('[data-drag]')) wake(); else setAwake(false); }, HOVER_IDLE_MS);
     };
-    const overStack = (e) => media && root.hasAttribute('data-fswave') && !covered && !stage.shown && !fsw.contains(e.target)
-      && e.clientY >= fsw.getBoundingClientRect().top;
+    // The zone (round 6): the stack's box and a small margin above it, the shared slot. A pointer entering it, or a tap in
+    // it, shows and wakes the stack at once, swapping the bar out; only movement above it calls the bar. With the bar
+    // up, the zone starts under the bar (which sits at the slot's top), so the bar's own buttons stay reachable.
+    const ZONE_MARGIN = 16;
+    const zoneTop = () => {
+      const top = fsw.getBoundingClientRect().top - ZONE_MARGIN;
+      return stage.shown ? Math.max(top, hb.getBoundingClientRect().bottom) : top;
+    };
+    const inZone = (e) => media && root.hasAttribute('data-fswave') && !covered && !fsw.contains(e.target) && !hb.contains(e.target)
+      && e.clientY >= zoneTop();
     for (const t of ['pointerdown', 'pointerup', 'pointermove', 'click', 'dblclick']) {
       vbox.addEventListener(t, (e) => {
-        if (!overStack(e)) return;
-        if (t !== 'pointermove' || e.pointerType === 'mouse') wake();
+        if (!inZone(e)) return;
+        if (t !== 'pointermove' || e.pointerType === 'mouse') { if (stage.shown) stage.conceal(); wake(); }
         e.stopPropagation();
       }, true);
     }

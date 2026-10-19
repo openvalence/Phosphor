@@ -892,9 +892,15 @@ center Play of PR8 to PR10 as built, and the transport row's chapters:
   the resting view, a move or a tap over the video calls the bar and the
   transport (PP10) in its place, and the idle (2.5 s) brings the stack back,
   paused included. At rest the stack and the transport are a see-through
-  ghost (40 %, no plates, no input); a move or a tap over the stack wakes
-  them to full for the idle's length instead of calling the bar, so the
-  seek and, paused, the jog tape are a move or a tap away. The stack
+  ghost (40 %, no plates, no input). The stack's box and a 16 px margin
+  above it are its zone (operator 2026-10-19, round 6): a pointer entering
+  it, or a tap in it, shows and wakes the stack at once, swapping the bar
+  out if it is up; only movement or a tap above the zone calls the bar.
+  With the stack on, the bar comes up at the top of the slot, so a pointer
+  coming down from the video meets the bar's buttons first and the zone
+  starts under them. Awake, the stack stays full for the idle's length,
+  renewed by activity over it or its rail. The seek has no hover tip; the
+  transport's time readout says where you are. The stack
   arrives rising and leaves on the frame (transform and opacity, instant
   under Reduced motion).
   While the player runs the wave and the window are a display: no input, no

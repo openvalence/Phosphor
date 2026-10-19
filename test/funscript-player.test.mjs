@@ -3882,6 +3882,19 @@ if (!LIVE && !args.includes('--stash-live')) {
   st = await stack();
   ok('stack: a move over the stack wakes it and the transport to full; the bar stays away',
     !st.bar && st.op === 1 && st.midOp === 1 && st.railOp === 1, st);
+  // Round 6: from the top of the video down onto the seek, the zone swaps the bar out at once and the seek takes the click.
+  await page.mouse.move(640, 140);
+  await page.waitForTimeout(300);
+  const barFirst = await shown();
+  const skz = await page.locator(C + ' .fsp-fsw .fsp-hb-seek').boundingBox();
+  const zx = skz.x + skz.width / 4, zy = skz.y + skz.height / 2;
+  await page.mouse.move(zx, zy, { steps: 12 });
+  await page.mouse.click(zx, zy);
+  await page.waitForTimeout(300);
+  const zone = { barFirst, bar: await shown(), at: await video(page, (v) => v.currentTime), dur: await video(page, (v) => v.duration) };
+  ok('zone: a pointer from the top of the video down onto the seek swaps the bar for the stack at once and the seek takes the click',
+    zone.barFirst && !zone.bar && Math.abs(zone.at - zone.dur / 4) < 1.5, zone);
+  st = await stack();
   ok('stack (ph-7ri8): paused, the 48 px wave on top, then one band (the seek over the rail\'s window) at the bottom edge; it takes input',
     Math.abs(st.h - 48) <= 1 && st.above && st.seekIn && st.pe !== 'none' && st.tlPe !== 'none' && st.pills === 2
       && st.railHere && st.form === 'horizontal' && st.railOpen && st.railBelow && st.railPe !== 'none' && st.tape && st.handleH >= 40, st);
@@ -3982,12 +3995,12 @@ if (!LIVE && !args.includes('--stash-live')) {
   const sk = await page.locator(C + ' .fsp-hb-seek').boundingBox();
   await page.mouse.move(sk.x + sk.width / 2, sk.y + sk.height / 2);
   await page.waitForTimeout(100);
-  const tip = await page.locator(C + ' .fsp-hb-seek .ui-scrub-tip').evaluate((e) => ({ hidden: e.hidden, text: e.textContent }));
+  const tip = await page.locator(C + ' .fsp-hb-seek .ui-scrub-tip').evaluate((e) => ({ shown: getComputedStyle(e).display !== 'none' && !e.hidden }));
   await page.mouse.down();
   await page.mouse.up();
   await page.waitForTimeout(400);
   const at = await video(page, (v) => v.currentTime);
-  ok('hover seek: the tooltip reads the time under the pointer', !tip.hidden && /^0:1[45]\.\d$/.test(tip.text), tip);
+  ok('hover seek: no hover tip on the seek (operator 2026-10-19: the transport reads the time)', !tip.shown, tip);
   ok('hover seek: a press at half the bar lands at half the clip', Math.abs(at - CLIP_S / 2) < 0.5 && await vids('seek') >= 1, at);
   ok('hover: the video is never driven around the controller', (await direct()).length === 0, await direct());
   await overVideo();
