@@ -6,7 +6,7 @@
  * Constraints:
  * - Nothing else opens an external URL: ExtLink.svelte, the plugins' openUrl,
  *   the reports and the credits all route here.
- * - https only in the shell (capabilities/default.json scopes the opener).
+ * - http and https only (capabilities/default.json scopes the opener; the confirm is the safeguard).
  * - The confirm names the destination as host and path, no query or hash.
  */
 // confirm.svelte.js loads on the first open: this file stays plain JS for the node suites that import its callers.
