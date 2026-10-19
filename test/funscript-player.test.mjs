@@ -950,6 +950,97 @@ if (!LIVE && !STASH_LIVE && !OSC_ONLY && (args.includes('--resume') || !args.som
   await ctx.close();
   if (args.includes('--resume')) { await browser.close(); process.exit(fails ? 1 : 0); }
 }
+// ---- (st) the state table (docs/plugins/FUNSCRIPT.md PP11): one assertion per fullscreen row, read from the doc, so the
+// table, the code and the tests cannot drift. Mouse rows on a 1280x800 desktop, touch rows on an 860x420 phone on its
+// side. `--states` runs this section alone.
+if (!LIVE && !STASH_LIVE && !OSC_ONLY && (args.includes('--states') || !args.some((a) => a.startsWith('--')))) {
+  console.log('(st) state table');
+  const doc = readFileSync(new URL('../docs/plugins/FUNSCRIPT.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const block = doc.slice(doc.indexOf('<!-- states:begin'), doc.indexOf('<!-- states:end'));
+  const [head, , ...body] = block.split('\n').filter((l) => l.startsWith('|'));
+  const cols = head.split('|').slice(1, -1).map((c) => c.trim());
+  const rows = body.map((l) => Object.fromEntries(l.split('|').slice(1, -1).map((c, i) => [cols[i], c.trim()]))).filter((r) => r.View === 'fullscreen');
+  ok('states: the table has the eight fullscreen rows (mouse and touch, paused and playing, bar shown and hidden)', rows.length === 8, rows.length);
+  const cat = advgenCatalog();
+  cat.entries = decodeCatalog(cat.bytes);
+  const IDLE = mods[P + 'ui.js'].HOVER_IDLE_MS;
+  for (const input of ['mouse', 'touch']) {
+    const [w, hh] = input === 'mouse' ? [1280, 800] : [860, 420];
+    const hub = makeHub(cat);
+    Object.assign(hub.values, { [CH.config + ':window_min']: 0, [CH.config + ':window_max']: 100, [CH.motion + ':pos_10um']: 80 });
+    const { ctx, page, errors } = await open({ cat, hub, width: w, height: hh, coarse: input === 'touch' });
+    await page.setViewportSize({ width: w, height: hh });
+    await toPluginPage(page);
+    await loadClip(page);
+    await page.locator(C + ' .fsp-full').evaluate((e) => e.click());
+    await page.waitForTimeout(800);
+    const shown = () => page.evaluate((c) => document.querySelector(c + ' .fsp-stage').hasAttribute('data-show'), C);
+    // A mouse shows the bar by a move over the video and hides it by the idle there; touch taps a side third of the video
+    // (the kit's toggle, after its double-tap window), clear of the transport and the stack.
+    const bar = async (on) => {
+      if (input === 'mouse') {
+        await page.mouse.move(w / 2, 60);
+        await page.mouse.move(w / 2 + 2, 62);
+        await page.waitForTimeout(on ? 300 : IDLE + 700);
+      } else if (on !== await shown()) {
+        await page.touchscreen.tap(Math.round(w * 0.12), Math.round(hh * 0.3));
+        await page.waitForTimeout(700);
+      }
+    };
+    const look = () => page.evaluate(([c, w]) => {
+      const r = document.querySelector(c), k = r.querySelector('.fsp-stack'), m = r.querySelector('.fsp-mid'), bc = r.querySelector('.fsp-hb-c');
+      const seen = (e) => !!e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden' && +getComputedStyle(e).opacity > 0.5;
+      const play = r.querySelector('.fsp-play');
+      return { bar: !!r.querySelector('.ui-stage-overlay').getClientRects().length, op: +getComputedStyle(k).opacity, display: k.hasAttribute('data-passive'),
+        bottom: Math.round(innerHeight - k.getBoundingClientRect().bottom),
+        transport: m.contains(play) ? (seen(m) ? 'mid-video' : 'hidden') : bc.contains(play) ? (seen(bc) ? 'in the bar' : 'hidden') : 'lost',
+        cursor: getComputedStyle(document.elementFromPoint(w / 2, 60)).cursor, playing: !r.querySelector('.fsp-stage video').paused };
+    }, [C, w]);
+    let at = null;
+    for (const play of ['paused', 'playing']) {
+      if (play === 'playing') {
+        await page.locator(C).focus();
+        await page.keyboard.press('k');
+        await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-stage video').paused, C, { timeout: 4000 }).catch(() => {});
+        await page.waitForTimeout(600);
+      }
+      for (const barState of ['shown', 'hidden']) {
+        const row = rows.find((r) => r.Input === input && r.Play === play && r.Bar === barState);
+        await bar(barState === 'shown');
+        const s = await look();
+        if (row.Stack === 'n/a') {
+          ok('states: ' + input + ', ' + play + ': ' + row['Idle 2.5 s'], s.bar && s.playing === (play === 'playing'), s);
+          continue;
+        }
+        const want = { bar: barState === 'shown', op: row.Stack.startsWith('100') ? 1 : 0.4, display: row['Jog tape'] === 'display',
+          transport: row.Transport, cursor: row['Cursor over video'] };
+        // The layers never move: the stack's bottom is the same in every row.
+        at = at === null ? s.bottom : at;
+        const okRow = s.bar === want.bar && Math.abs(s.op - want.op) < 0.02 && s.display === want.display && s.transport === want.transport
+          && (want.cursor === 'none' || (want.cursor === 'hidden') === (s.cursor === 'none')) && s.bottom === at && s.playing === (play === 'playing');
+        ok('states: ' + [input, play, 'bar ' + barState].join(', ') + ': stack ' + row.Stack + ', jog tape ' + row['Jog tape'] + ', transport ' + row.Transport
+          + ', cursor ' + want.cursor, okRow, { want, s, at });
+      }
+      if (input === 'mouse') {
+        // The ghost until hovered: over the stack it is full, the pointer shows over it and over the bar's controls.
+        const kb = await page.locator(C + ' .fsp-stack .fsp-dt').boundingBox();
+        await page.mouse.move(w / 2, kb.y + kb.height / 2);
+        await page.waitForTimeout(400);
+        const hv = await look();
+        const cur = await page.evaluate(([x, y, c]) => {
+          const p = document.querySelector(c + ' .fsp-hb .fsp-play').getBoundingClientRect();
+          return { stack: getComputedStyle(document.elementFromPoint(x, y)).cursor, play: getComputedStyle(document.elementFromPoint(p.x + p.width / 2, p.y + p.height / 2)).cursor };
+        }, [w / 2, kb.y + kb.height / 2, C]);
+        ok('states: mouse, ' + play + ', hovered stack: full, the bar up, the pointer shown over the stack and the bar\'s Play',
+          hv.op === 1 && hv.bar && cur.stack !== 'none' && cur.play !== 'none', { hv, cur });
+      }
+    }
+    ok('states: ' + input + ': no page error', errors.length === 0, errors.slice(0, 3));
+    clearInterval(hub.timer);
+    await ctx.close();
+  }
+  if (args.includes('--states')) { await browser.close(); process.exit(fails ? 1 : 0); }
+}
 if (args.includes('--stack-shots')) {
   const dir = args[args.indexOf('--stack-shots') + 1];
   const cat = advgenCatalog();
@@ -979,7 +1070,7 @@ if (args.includes('--stack-shots')) {
     await page.waitForTimeout(mods[P + 'ui.js'].HOVER_IDLE_MS + 600);
     await page.mouse.move(Math.round(w / 2), Math.round(hh / 3));
     await page.waitForTimeout(300);
-    await page.locator(C + ' .fsp-mid .fsp-play').evaluate((e) => e.click());
+    await page.locator(C + ' :is(.fsp-mid, .fsp-hb-c) > .fsp-play').evaluate((e) => e.click());
     await page.waitForTimeout(mods[P + 'ui.js'].HOVER_IDLE_MS + 2500);
     await page.screenshot({ path: join(dir, 'player-stack-playing-' + w + 'x' + hh + '.png') });
     console.log('  shots ' + w + 'x' + hh + (ready ? '' : ' (clip not loaded)'));
@@ -2516,7 +2607,7 @@ if (!LIVE && !STASH_LIVE) {
     const f3 = await railState(page);
     // The transport clears the stack when both show (paused at rest), a landscape phone included, and stays under no stop pair.
     const room = await page.locator(C).evaluate((r) => {
-      const m = r.querySelector('.fsp-mid').getBoundingClientRect(), f = r.querySelector('.fsp-fsw').getBoundingClientRect(), q = document.querySelector('.hero-inner.quick');
+      const m = r.querySelector('.fsp-mid').getBoundingClientRect(), f = r.querySelector('.fsp-stack').getBoundingClientRect(), q = document.querySelector('.hero-inner.quick');
       const top = Math.min(f.top, q && q.getClientRects().length ? q.getBoundingClientRect().top : Infinity);
       return { shown: m.height > 0, bottom: Math.round(m.bottom), top: Math.round(top), pair: Math.round(document.querySelector('.topstrip .pair').getBoundingClientRect().bottom), mtop: Math.round(m.top) };
     });
@@ -3820,91 +3911,90 @@ if (!LIVE && !args.includes('--stash-live')) {
   ok('hover: the bar\'s Fullscreen enters media fullscreen', await page.locator(C + '[data-media]').count() === 1);
   await page.mouse.move(2, 400);
   await page.waitForTimeout(IDLE + 400);
-  // With the stack on, the stack is the resting view, paused included (operator 2026-10-19): the idle hands it the slot.
-  ok('hover: paused over the stack, the idle gives the bottom slot back to the stack (the bar leaves)', !(await shown()));
+  ok('hover: paused, the idle keeps the bar (PP3)', await shown());
   await overVideo();
   await page.waitForTimeout(350);
   ok('hover: a pointer move over the video shows the bar', await shown() && (await opacity()) === 1);
   await shot('hover-1280x800');
-  const hbRow = await page.locator(C + ' .fsp-hb-row').evaluate((r) => [...r.children].filter((e) => e.getClientRects().length)
+  const hbRow = await page.locator(C + ' .fsp-hb-row').evaluate((r) => [...r.querySelectorAll('.og-btn, .fsp-hb-time')].filter((e) => e.getClientRects().length)
     .map((e) => e.className.split(' ').find((k) => /^fsp-(prev|play|next|hb-time|motion|rate|tltog|rail|set|full)$/.test(k))).filter(Boolean));
-  ok('hover: its row is the player bar without the transport: Motion, rate, timeline, (rail,) Settings, Exit fullscreen',
-    same(hbRow.filter((k) => k !== 'fsp-rail'), ['fsp-motion', 'fsp-rate', 'fsp-tltog', 'fsp-set', 'fsp-full']), hbRow);
+  ok('hover: its row on a fine pointer: Motion, rate; the transport in the middle (the time, previous, Play, next, the length); Preview, (Rail,) Settings, Exit fullscreen',
+    same(hbRow.filter((k) => k !== 'fsp-rail'), ['fsp-motion', 'fsp-rate', 'fsp-hb-time', 'fsp-prev', 'fsp-play', 'fsp-next', 'fsp-hb-time', 'fsp-tltog', 'fsp-set', 'fsp-full']), hbRow);
   const midT = await page.locator(C).evaluate((r) => {
-    const m = r.querySelector('.fsp-mid'), v = r.querySelector('.fsp-stage').getBoundingClientRect(), b = m.getBoundingClientRect();
-    return { kids: [...m.querySelectorAll('.og-btn, .fsp-hb-time')].map((e) => e.className.split(' ').find((k) => /^fsp-(prev|play|next|hb-time)$/.test(k))),
-      centered: Math.abs((b.left + b.right) / 2 - (v.left + v.right) / 2) < 2 && Math.abs((b.top + b.bottom) / 2 - (v.top + v.bottom) / 2) < 2,
+    const c = r.querySelector('.fsp-hb-c').getBoundingClientRect(), v = r.querySelector('.fsp-stage').getBoundingClientRect();
+    return { mid: r.querySelector('.fsp-mid').childElementCount, centered: Math.abs((c.left + c.right) / 2 - (v.left + v.right) / 2) < 2,
       kitCenter: getComputedStyle(r.querySelector('.ui-stage-center')).display };
   });
-  ok('hover: the transport (previous, Play, next, the time) in the true center of the video; the kit glyph yields to it',
-    same(midT.kids, ['fsp-prev', 'fsp-play', 'fsp-next', 'fsp-hb-time']) && midT.centered && midT.kitCenter === 'none', midT);
-  // ph-7ri8: fullscreen opens with the stack (pref fsStack): the 48 px wave on top, the band (seek over the rail's window), the bar.
+  ok('hover: on a fine pointer the transport is the bar\'s middle, centered on the video, nothing mid-video; the kit glyph yields to it (PP10)',
+    midT.mid === 0 && midT.centered && midT.kitCenter === 'none', midT);
+  // PP7: three layers that never move one another; the stack stands on the bar slot's top edge, a ghost until hovered.
   await page.waitForTimeout(200);
   const stack = () => page.locator(C).evaluate((r) => {
-    const d = r.querySelector('.fsp-fsw .fsp-dt'), s = r.querySelector('.fsp-hb-seek'), q = document.querySelector('.hero-inner.quick');
-    const html = document.documentElement;
-    return { h: d ? Math.round(d.getBoundingClientRect().height) : 0, above: !!d && d.getBoundingClientRect().bottom <= s.getBoundingClientRect().top + 1,
-      railHere: !!html.dataset.quickRail, form: html.dataset.quickRail || null, railOpen: html.hasAttribute('data-quick-rail-open'),
-      railBelow: !!q && !!d && s.getBoundingClientRect().top >= d.getBoundingClientRect().bottom - 1 && Math.abs(q.getBoundingClientRect().top - s.getBoundingClientRect().bottom) <= 1
-        && innerHeight - q.getBoundingClientRect().bottom <= 24,
-      vis: getComputedStyle(r.querySelector('.fsp-fsw')).visibility, railVis: q ? getComputedStyle(q).visibility : null,
-      bar: !!r.querySelector('.ui-stage-overlay').getClientRects().length, mid: !!r.querySelector('.fsp-mid').getClientRects().length,
-      midOp: +getComputedStyle(r.querySelector('.fsp-mid')).opacity,
-      midClear: (() => { const m = r.querySelector('.fsp-mid').getBoundingClientRect(), f = r.querySelector('.fsp-fsw').getBoundingClientRect();
-        return !m.height || m.bottom <= Math.min(f.top, q ? q.getBoundingClientRect().top : Infinity) + 1; })(),
-      band: q ? Math.round(q.getBoundingClientRect().bottom - s.getBoundingClientRect().top) : 0, seekIn: !!s.closest('.fsp-fsw'),
-      tlPe: d ? getComputedStyle(r.querySelector('.fsp-fsw .fsp-tl')).pointerEvents : null, seekPe: getComputedStyle(s).pointerEvents,
-      railH: q ? Math.round(q.getBoundingClientRect().height) : 0,
-      op: d ? +getComputedStyle(r.querySelector('.fsp-fsw')).opacity : null, pe: d ? getComputedStyle(r.querySelector('.fsp-fsw')).pointerEvents : null,
-      pills: [...r.querySelectorAll('.fsp-fsw .fsp-rh')].filter((p) => getComputedStyle(p).visibility !== 'hidden').length,
-      railOp: q ? +getComputedStyle(q).opacity : null, railPe: q ? getComputedStyle(q).pointerEvents : null,
+    const k = r.querySelector('.fsp-stack'), d = k.querySelector('.fsp-dt'), hb = r.querySelector('.fsp-hb'), q = document.querySelector('.hero-inner.quick');
+    const html = document.documentElement, kb = k.getBoundingClientRect();
+    const seen = (e) => !!e && !!e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden';
+    return { h: seen(d) ? Math.round(d.getBoundingClientRect().height) : 0, bottom: Math.round(innerHeight - kb.bottom),
+      bar: !!r.querySelector('.ui-stage-overlay').getClientRects().length,
+      clear: !hb.getClientRects().length || kb.bottom <= hb.getBoundingClientRect().top + 1,
+      form: html.dataset.quickRail || null, railOpen: html.hasAttribute('data-quick-rail-open'),
+      railIn: !!q && q.getBoundingClientRect().top >= k.querySelector('.fsp-well').getBoundingClientRect().top - 1 && q.getBoundingClientRect().bottom <= kb.bottom + 1,
+      op: +getComputedStyle(k).opacity, passive: k.hasAttribute('data-passive'),
+      pills: [...k.querySelectorAll('.fsp-rh')].filter((p) => getComputedStyle(p).visibility !== 'hidden').length,
+      railPe: q ? getComputedStyle(q).pointerEvents : null,
       handles: q ? [...q.querySelectorAll('.rail-band-handle')].filter((x) => getComputedStyle(x).visibility !== 'hidden').length : 0,
       handleH: q && q.querySelector('.rail-band-handle') ? Math.round(q.querySelector('.rail-band-handle').getBoundingClientRect().height) : 0,
-      tape: !!q && !!q.querySelector('.rail-row') && getComputedStyle(q.querySelector('.rail-row')).display !== 'none',
-      railGap: q ? Math.round(innerHeight - q.getBoundingClientRect().bottom) : null,
-      fswGap: Math.round(innerHeight - r.querySelector('.fsp-fsw').getBoundingClientRect().bottom),
-      glued: !!q && Math.abs(r.querySelector('.fsp-fsw').getBoundingClientRect().bottom - q.getBoundingClientRect().top) <= 2 };
+      tape: !!q && !!q.querySelector('.rail-row') && getComputedStyle(q.querySelector('.rail-row')).display !== 'none' };
   });
-  // The controls are up (a move over the video): the bar and the transport hold the slot, the stack and its rail are away.
   let st = await stack();
-  ok('stack: with the controls up, the bar and the transport show and the stack and its rail are away (one at a time)',
-    st.bar && st.mid && st.vis === 'hidden' && st.railVis === 'hidden', st);
-  await page.mouse.move(2, 400);
-  await page.waitForTimeout(IDLE + 600);
-  st = await stack();
-  ok('stack: at rest the stack and its rail hold the slot as a 40 % ghost taking no input, the transport with them, clear of the stack; the bar is away',
-    !st.bar && st.mid && st.midClear && st.vis === 'visible' && Math.abs(st.op - 0.4) < 0.01 && st.pe === 'none' && Math.abs(st.midOp - 0.4) < 0.01
-      && st.railVis === 'visible' && Math.abs(st.railOp - 0.4) < 0.01 && st.railPe === 'none', st);
-  await page.screenshot({ path: 'test/evidence/stack-ghost-1280x800.png' }).catch(() => {});
-  // A move over the stack wakes it (and the transport) to full instead of calling the bar.
-  await page.mouse.move(640, 790);
+  ok('stack (PP7): paused, the stack stands on the bar\'s slot (above the bar, never over it), a 40 % ghost under a pointer elsewhere; the 48 px wave, the rail open horizontal in its well',
+    st.bar && st.clear && Math.abs(st.op - 0.4) < 0.01 && Math.abs(st.h - 48) <= 1 && st.railOpen && st.form === 'horizontal' && st.railIn, st);
+  const stUp = st;
+  const wave = await page.locator(C + ' .fsp-stack .fsp-dt').boundingBox();
+  const wx = wave.x + wave.width / 2, wy = wave.y + wave.height / 2;
+  await page.mouse.move(wx, wy);
   await page.waitForTimeout(400);
   st = await stack();
-  ok('stack: a move over the stack wakes it and the transport to full; the bar stays away',
-    !st.bar && st.op === 1 && st.midOp === 1 && st.railOp === 1, st);
-  // Round 6: from the top of the video down onto the seek, the zone swaps the bar out at once and the seek takes the click.
-  await page.mouse.move(640, 140);
+  const waveCursor = await page.evaluate(([x, y]) => getComputedStyle(document.elementFromPoint(x, y)).cursor, [wx, wy]);
+  ok('stack: paused and hovered, full and taking input (the range pills, the handles, the jog tape); the pointer shows over it',
+    st.op === 1 && !st.passive && st.pills === 2 && st.railPe !== 'none' && st.tape && st.handleH >= 40 && waveCursor !== 'none', { ...st, waveCursor });
+  // The wave's scrub: a press alone seeks nothing, a sideways drag seeks through the controller.
+  const t0 = await video(page, (v) => v.currentTime);
+  await page.mouse.down();
+  await page.mouse.up();
+  await page.waitForTimeout(200);
+  const t1 = await video(page, (v) => v.currentTime);
+  await page.mouse.down();
+  await page.mouse.move(wx - 160, wy, { steps: 8 });
+  await page.mouse.up();
   await page.waitForTimeout(300);
-  const barFirst = await shown();
-  const skz = await page.locator(C + ' .fsp-fsw .fsp-hb-seek').boundingBox();
-  const zx = skz.x + skz.width / 4, zy = skz.y + skz.height / 2;
-  await page.mouse.move(zx, zy, { steps: 12 });
-  await page.mouse.click(zx, zy);
-  await page.waitForTimeout(300);
-  const zone = { barFirst, bar: await shown(), at: await video(page, (v) => v.currentTime), dur: await video(page, (v) => v.duration) };
-  ok('zone: a pointer from the top of the video down onto the seek swaps the bar for the stack at once and the seek takes the click',
-    zone.barFirst && !zone.bar && Math.abs(zone.at - zone.dur / 4) < 1.5, zone);
-  st = await stack();
-  ok('stack (ph-7ri8): paused, the 48 px wave on top, then one band (the seek over the rail\'s window) at the bottom edge; it takes input',
-    Math.abs(st.h - 48) <= 1 && st.above && st.seekIn && st.pe !== 'none' && st.tlPe !== 'none' && st.pills === 2
-      && st.railHere && st.form === 'horizontal' && st.railOpen && st.railBelow && st.railPe !== 'none' && st.tape && st.handleH >= 40, st);
+  const t2 = await video(page, (v) => v.currentTime);
+  ok('stack: a press on the wave seeks nothing; a sideways drag scrubs the video, through the controller',
+    t1 === t0 && Math.abs(t2 - t1) > 0.2 && (await direct()).length === 0, { t0, t1, t2 });
+  // The grip (pref fsWave): a drag up grows the wave and stores it, a double-click is the default again.
+  const gb = await page.locator(C + ' .fsp-grip').boundingBox();
+  await page.mouse.move(gb.x + gb.width / 2, gb.y + gb.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(gb.x + gb.width / 2, gb.y + gb.height / 2 - 40, { steps: 4 });
+  await page.mouse.up();
+  await page.waitForTimeout(150);
+  const grown = await stack(), pref = await page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.funscript.fsWave')));
+  const gb2 = await page.locator(C + ' .fsp-grip').boundingBox();
+  await page.mouse.dblclick(gb2.x + gb2.width / 2, gb2.y + gb2.height / 2);
+  await page.waitForTimeout(150);
+  const reset = await stack(), pref0 = await page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.funscript.fsWave')));
+  ok('stack: the grip grows the wave 40 px upward (its bottom stays) and stores fsWave; a double-click is the default again',
+    Math.abs(grown.h - 88) <= 2 && grown.bottom === stUp.bottom && Math.abs(pref - 88) <= 2 && Math.abs(reset.h - 48) <= 1 && pref0 === 0 && (await shown()),
+    { grown: grown.h, pref, reset: reset.h, pref0 });
   await shot('fullscreen-stack-1280x800');
   await overVideo();
   await page.waitForTimeout(300);
   await page.locator(C + ' .fsp-tltog').click();
   await page.waitForTimeout(200);
   st = await stack();
-  ok('stack: the timeline toggle hides the wave and closes the rail', st.h === 0 && !st.railOpen, st);
+  ok('stack: the timeline toggle (Preview) hides the wave and leaves the rail (its own button)', st.h === 0 && st.railOpen, st);
+  await page.locator(C + ' .fsp-hb .fsp-rail').click();
+  await page.waitForTimeout(300);
+  ok('stack: the bar\'s Rail closes the rail',!(await stack()).railOpen);
   await overVideo();
   ok('hover: no floating chevrons in the card (PR10)', await page.locator(C).evaluate((r) => !r.querySelector('[class*=chevron], [class*=caret]:not(.fsp-libcaret):not(.fsp-tlcaret)')));
   await page.waitForTimeout(IDLE + 400);
@@ -3919,7 +4009,7 @@ if (!LIVE && !args.includes('--stash-live')) {
   // Play and pause through the fullscreen bar: the controller's preroll first, one hold after.
   const n0 = hub.bundles.length;
   await overVideo();
-  await page.click(C + ' .fsp-mid .fsp-play');
+  await page.click(C + ' .fsp-hb-c .fsp-play');
   await page.waitForTimeout(150);
   const pre = hub.bundles[n0];
   ok('hover play: the controller prerolls first (one positioning segment), the video still paused', !!pre && pre.segs.length === 1
@@ -3964,29 +4054,34 @@ if (!LIVE && !args.includes('--stash-live')) {
   const caretOnMove = await page.evaluate(() => !!document.querySelector('.full-caret'));
   ok('fullscreen: a pointer move shows the hover bar and no caret; the bar never shows in a media fullscreen (PP6)', !caretOnMove && await shown()
     && await page.locator('.topstrip.bare').count() === 1);
-  // ph-7ri8: the stack on while playing; idle it rests as a 40 % ghost taking no input, the stop pair untouched.
+  // PP7: the stack on while playing; the bar fades in place and the stack stays where it stood, a 40 % ghost and a display.
   await page.locator(C + ' .fsp-tltog').click();
+  await page.locator(C + ' .fsp-hb .fsp-rail').click();
+  await page.mouse.move(300, 300);
+  await page.waitForTimeout(400);
+  const stPlayUp = await stack();
   await page.mouse.move(2, 400);
   await page.waitForTimeout(IDLE + 600);
   st = await stack();
   const pairOp = await page.evaluate(() => getComputedStyle(document.querySelector('.topstrip .pair')).opacity);
-  ok('stack playing at rest: the stack a ghost at the bottom edge, the bar away; the stop pair at its own rest',
-    !(await shown()) && !st.bar && st.vis === 'visible' && Math.abs(st.op - 0.4) < 0.01 && st.pe === 'none' && st.railHere && st.railGap <= 24 && st.glued
-      && pairOp === '0.5', { ...st, pairOp });
+  ok('stack playing at rest: the bar fades in place, the stack stays where it stood, a 40 % ghost and a display (no pills, no handles); the stop pair at its own rest',
+    !(await shown()) && !st.bar && stPlayUp.bar && st.bottom === stPlayUp.bottom && Math.abs(st.op - 0.4) < 0.01 && st.passive && st.pills === 0
+      && st.handles === 0 && st.railOpen && st.railIn && pairOp === '0.5', { ...st, up: stPlayUp.bottom, pairOp });
   await shot('fullscreen-stack-idle-1280x800');
-  await page.mouse.move(640, 790);
-  await page.waitForTimeout(400);
+  const wv = await page.locator(C + ' .fsp-stack .fsp-dt').boundingBox();
+  await page.mouse.move(wv.x + wv.width / 2, wv.y + wv.height / 2);
+  await page.waitForTimeout(IDLE + 400);
   st = await stack();
-  ok('stack playing, awake: the wave and the window a display (no input, no pills, no handles), the seek a control',
-    !st.bar && st.op === 1 && st.tlPe === 'none' && st.seekPe !== 'none' && st.pills === 0 && st.railPe === 'none' && st.handles === 0 && st.tape, st);
+  ok('stack playing, hovered: full, still a display, and the controls stay up while the pointer rests on it',
+    st.op === 1 && st.passive && st.pills === 0 && st.handles === 0 && st.tape && (await shown()), st);
   await page.mouse.move(300, 300);
   await page.waitForTimeout(400);
   st = await stack();
-  ok('stack playing: a pointer move over the video calls the bar and the transport; the stack and its rail leave the slot',
-    await shown() && st.bar && st.mid && st.vis === 'hidden' && st.railVis === 'hidden', st);
+  ok('stack playing: a pointer move over the video calls the bar; the stack stays and goes back to the ghost',
+    await shown() && st.bar && st.bottom === stPlayUp.bottom && Math.abs(st.op - 0.4) < 0.01, st);
   await page.locator(C + ' .fsp-tltog').click();
   await overVideo(-10);
-  await page.click(C + ' .fsp-mid .fsp-play');
+  await page.click(C + ' .fsp-hb-c .fsp-play');
   await page.waitForTimeout(200);
   ok('hover pause: paused by the controller', await video(page, (v) => v.paused) && await vids('pause') >= 1
     && await playBtn(page).textContent() === 'Play');
@@ -4000,7 +4095,7 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.mouse.up();
   await page.waitForTimeout(400);
   const at = await video(page, (v) => v.currentTime);
-  ok('hover seek: no hover tip on the seek (operator 2026-10-19: the transport reads the time)', !tip.shown, tip);
+  ok('hover seek: the heat seek reads the time under the pointer (PP7; an open question under PP11)', tip.shown, tip);
   ok('hover seek: a press at half the bar lands at half the clip', Math.abs(at - CLIP_S / 2) < 0.5 && await vids('seek') >= 1, at);
   ok('hover: the video is never driven around the controller', (await direct()).length === 0, await direct());
   await overVideo();

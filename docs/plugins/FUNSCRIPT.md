@@ -881,45 +881,50 @@ center Play of PR8 to PR10 as built, and the transport row's chapters:
 ### The connect pass (superfan feedback via the operator 2026-10-18, `ph-u3b2`, PROPOSED)
 
 - **PP7 The stack** (`ph-7ri8`; operator 2026-10-18 and 2026-10-19 on the
-  builds). In media fullscreen the stack sits at the bottom edge: the motion
-  preview (a 48 px wave) on top, then one band, the seek on its top half and
-  the quick rail on its bottom half (the travel window, 28 px, no axis
-  labels; its window handles reach the 40 px touch floor by overhanging
-  it). The timeline toggle shows or hides the stack (pref `fsStack`, on by
-  default); off, the seek returns to the bar and the Rail button opens the
-  full rail alone.
-  The bar and the stack share the bottom slot, one at a time: the stack is
-  the resting view, a move or a tap over the video calls the bar and the
-  transport (PP10) in its place, and the idle (2.5 s) brings the stack back,
-  paused included. At rest the stack and the transport are a see-through
-  ghost (40 %, no plates, no input). The stack's box and a 16 px margin
-  above it are its zone (operator 2026-10-19, round 6): a pointer entering
-  it, or a tap in it, shows and wakes the stack at once, swapping the bar
-  out if it is up; only movement or a tap above the zone calls the bar.
-  With the stack on, the bar comes up at the top of the slot, so a pointer
-  coming down from the video meets the bar's buttons first and the zone
-  starts under them. Awake, the stack stays full for the idle's length,
-  renewed by activity over it or its rail. The seek has no hover tip; the
-  transport's time readout says where you are. The stack
-  arrives rising and leaves on the frame (transform and opacity, instant
-  under Reduced motion).
-  While the player runs the wave and the window are a display: no input, no
-  range pills, no handles; the rail's tape row stays in place (the plan
-  strip while the player streams), so play and pause move nothing; the seek
-  stays a control. Paused, all of it takes input, the jog tape with the
-  planned segment included: handy with a toy mounted. A tap on the video
-  never closes the rail; the toggle and the Rail button do, and Escape and
-  back leave the fullscreen. A library or Settings drawer puts the stack
-  away until it closes. The stop pair is the host's, never part of the
-  stack or the slot, and keeps its 50 % rest. Phones take the rail's
-  horizontal form there (DESIGN §10.3, amended). Inline the page keeps its
-  layout. "Open in Stash" leaves the app through the shared confirm (DESIGN
-  §10.20), http or https. A return to the app (another app, the browser)
-  rejoins the shell's media fullscreen if the stage drifted out of it.
-  *(Supersedes PR9's wave above the scrub inside the hover bar, the
-  controls staying while paused (PP2, PP3) when the stack is on, and with
-  the stack on `ph-9t5l.7`'s "at rest only the stop pair sits over a
-  fullscreen video".)*
+  builds; the layout the operator chose on 2026-10-19 from the what-if
+  pass, lp/player-alt). In media fullscreen three layers lie over the
+  video, and none of them ever moves another:
+  - The bar is the stage's overlay in a fixed slot at the bottom edge: the
+    heat seek (the script's speed heat over the video's length, the past
+    dimmed, the playhead a knob, the time under the pointer) over one row
+    of buttons. It fades in place with the controls: a move over the video
+    shows it, the idle (2.5 s) hides it while playing, and paused it stays
+    (PP3). A touch on a wide screen puts the seek in the row's middle, one
+    row.
+  - The stack (the motion preview, a 48 px wave by default, over the host's
+    quick rail) stands fixed on the bar slot's top edge whether the bar
+    shows or not. On mouse systems it is a 40 % ghost until hovered;
+    hovered it is full and keeps the controls up. Under touch it is full
+    while paused and the ghost while playing. It is a surface of its own
+    over the video (`data-stage-surface`): the pointer always shows over it
+    and a tap on it is never the stage's.
+  - The wave's height grip sits on its top edge (pref `fsWave`, 0 the
+    default): a drag (32 px up to 35 % of the video's height), the arrows,
+    a double-click or a double-tap for the default; the stack's bottom
+    stays, so it grows up. A sideways drag on the wave scrubs the video
+    through the same seek path, paused or playing; a press alone seeks
+    nothing, and a touch begins only on horizontal intent.
+  - The moving layers (the script, the trace, the lanes and the hatch)
+    slide on sub-pixel transforms, never rounded to whole pixels, so the
+    wave runs without judder; the still ones keep their pixel snapping.
+  The timeline toggle (Preview) shows or hides the wave (pref `fsStack`,
+  on by default; it also opens the rail on entry); the bar's Rail button is
+  the rail's own. While the player runs the wave and the window are a
+  display (no input, no range pills, no handles) but for the wave's scrub;
+  paused, all of it takes input, the jog tape with the planned segment
+  included. A tap on the video never closes the rail; the toggle and the
+  Rail button do, and Escape and back leave the fullscreen. A library or
+  Settings drawer puts the stack away until it closes. The stop pair is the
+  host's, never part of any layer, and keeps its 50 % rest. Phones take the
+  rail's horizontal form there (DESIGN §10.3, amended). Inline the page
+  keeps its layout. "Open in Stash" leaves the app through the shared
+  confirm (DESIGN §10.20), http or https. A return to the app rejoins the
+  shell's media fullscreen if the stage drifted out of it. PP11 is the
+  state table.
+  *(Supersedes PR9's wave above the scrub inside the hover bar, and with
+  the wave on `ph-9t5l.7`'s "at rest only the stop pair sits over a
+  fullscreen video". Rounds 4 to 7 (the shared slot, the zone, the stack
+  riding on the bar) are parked on lp/connect-player-r7.)*
 - **PP8 The centered playhead** (`ph-10c4`). The detail's playhead is fixed
   at its center at every class and the script, the trace and the lanes move
   past it; the window is the playhead time less and plus half the zoom. A
@@ -929,18 +934,63 @@ center Play of PR8 to PR10 as built, and the transport row's chapters:
 - **PP9 The trace through a pause** (`ph-f012`). The drawn trace stays
   while paused and while scrubbing, is trimmed only while playing, and
   clears when Play starts playback; a seek while playing clears it too.
-- **PP10 The fullscreen transport** (operator 2026-10-18: the bar wrapped
-  to two rows; 2026-10-19: the true center). Previous, Play and next, with
-  the time under them, sit in the true center of the video, where media
-  players put them; with the stack on they show with it too, a ghost at rest
-  like it, lifted just enough to clear its top where the screen is short
-  (never under the stop pair); with the bar they show full. The kit's center glyph yields to
-  them (its flash on a click stays). The bar keeps one compact row (32 px
-  buttons, 40 under a coarse pointer): library, mute and volume, Motion,
-  rate, the timeline toggle, Rail, Settings, Exit fullscreen. The transport
-  buttons are 56 px (Play 72) under every pointer. A double-click on them is
-  two clicks on their buttons; elsewhere on the video it leaves fullscreen
-  as before (PP3).
+- **PP10 The fullscreen transport** (operator 2026-10-18 and 2026-10-19).
+  Previous, Play and next with the elapsed time and the length: in the
+  bar's middle on a fine pointer, so they come and go with the bar; on a
+  coarse pointer (thumbs, where phone players put them) on the video's
+  center, moved only as far as it takes to clear the stop pair and the
+  stack (the stop pair wins a screen too short for both), shown and hidden
+  in place with the controls. The kit's center glyph yields to them (its
+  flash on a click stays). The bar's row: left the library, Motion and
+  rate; right mute and volume (a narrow bar drops the volume), Preview,
+  Rail, Settings, Exit fullscreen. A double-click on the transport is two
+  clicks on its buttons; elsewhere on the video it leaves fullscreen
+  (PP3).
+
+- **PP11 The state table** (operator 2026-10-19: the source of truth for
+  every later fix; the tests read the fullscreen rows, see Tests). The
+  layers never move, so positions are the same in every row: the bar in
+  its bottom slot, the stack on that slot's top edge. "Hovered" means the
+  pointer over the stack or its rail. Every row: the stop pair is
+  untouched, at its 50 % rest.
+
+<!-- states:begin (test/funscript-player.test.mjs reads the fullscreen rows: keep the words of Input, Play, View, Bar, Stack, Transport and Cursor over video) -->
+| Input | Play | View | Bar | Stack | Jog tape | Transport | Cursor over video | Move | Tap or click | Idle 2.5 s |
+|---|---|---|---|---|---|---|---|---|---|---|
+| mouse | paused | fullscreen | shown | 40 %, full hovered | live | in the bar | shown | video: keeps the bar; stack: full, keeps the bar | video: Play (a double-click leaves fullscreen); stack: its controls, a sideways drag on the wave scrubs; bar: its buttons | none: paused keeps the bar |
+| mouse | paused | fullscreen | hidden | n/a | n/a | n/a | n/a | n/a | n/a | n/a: paused keeps the bar |
+| mouse | playing | fullscreen | shown | 40 %, full hovered | display | in the bar | shown | video: keeps the bar; stack: full, keeps the bar | video: Pause; stack: the wave's scrub and the grip; bar: its buttons | the bar fades unless the stack or the bar is hovered |
+| mouse | playing | fullscreen | hidden | 40 %, full hovered | display | hidden | hidden | video: shows the bar; stack: full, shows the bar | video: Pause; stack: as shown | none |
+| touch | paused | fullscreen | shown | 100 % | live | mid-video | none | none | video: hides the bar and the transport; stack: its controls; bar: its buttons | none: paused keeps the bar |
+| touch | paused | fullscreen | hidden | 100 % | live | hidden | none | none | video: shows the bar and the transport; stack: its controls | none |
+| touch | playing | fullscreen | shown | 40 % | display | mid-video | none | none | video: hides the bar; stack: its controls, the wave's scrub | the bar and the transport fade |
+| touch | playing | fullscreen | hidden | 40 % | display | hidden | none | none | video: shows the bar; stack: its controls, the wave's scrub | none |
+| any | any | inline | in the card | the wave under the stage, the hero rail above (no stack) | live paused, display playing | the bar's Play | shown | as the page | as the page (PP2, PP3) | the glyph hides while playing |
+<!-- states:end -->
+
+  Positions by class: on a phone upright the fullscreen video is
+  letterboxed and the stack and the bar sit at the window's bottom, under
+  it; on a phone on its side and on the desktop they lie over the video's
+  lower part (a short screen takes a 36 px wave).
+  Open questions for the operator (flags, not guessed):
+  - Touch, playing: the stack is the ghost and a tap on it goes straight to
+    its controls (no tap to wake). Is a first tap meant to wake it, as on
+    the round-5 builds?
+  - Mouse, paused, with the pointer at rest over bare video: the bar never
+    fades (PP3 keeps it). With the stack above it, is that still wanted,
+    or should paused fade as playing does?
+  - Touch, paused, bar hidden: the stack stays full with no bar and no
+    transport; a tap on the video brings both back. Should the stack
+    ghost there too?
+  - Mouse, hovered stack while playing: the controls stay up as long as
+    the pointer rests on it, so the bar never fades under a resting
+    pointer. Intended?
+  - The wave's scrub while playing seeks the video under the moving
+    machine (the seek's own transition). Should a scrub while playing be
+    held to a paused state first?
+  - The heat seek shows the time under the pointer again (the alt pass);
+    round 6 had removed that tip, the transport reading the time. Keep
+    the tip?
 
 ### The card before the redesign
 
@@ -1657,8 +1707,11 @@ Decisions (veto-able):
   Fullscreen sets the shell's pref both ways; the library caret closes the
   column (the stage takes the card width) and is remembered; the analyzer column at
   `clamp(320px, 40%, 560px)` at 1280 and 1920 with no row label cut; at
-  390 x 844 the bar inside the stage, the time uncut. Screenshots with
-  `--shots <dir>`.
+  390 x 844 the bar inside the stage, the time uncut; in fullscreen (PP7)
+  the stack on the bar slot's edge, its ghost and hover, the wave's scrub
+  and grip. Screenshots with `--shots <dir>`. Section (st), alone with
+  `--states`: one assertion per fullscreen row of the PP11 table, read
+  from this file (mouse at 1280 x 800, touch at 860 x 420).
 - **Live smoke (bare-minimum floor):** `--live --port P --http P+7`
   against neutrino-sim on spare ports, started from Bash and stopped after:
   plays 8 s, asserts bundles, no NACK, striped heat and the over-limit
