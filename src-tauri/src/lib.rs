@@ -55,6 +55,7 @@ pub fn run() {
   let builder = tauri::Builder::default()
     .plugin(tauri_plugin_http::init())
     .plugin(tauri_plugin_clipboard_manager::init())
+    .plugin(tauri_plugin_opener::init())
     .plugin(tauri_plugin_blec::init())
     .manage(plugins::TcpListeners::default());
   #[cfg(desktop)]
@@ -74,8 +75,6 @@ pub fn run() {
       plugins::plugin_tcp_close,
       plugins::plugin_tcp_reply,
       #[cfg(desktop)]
-      plugins::plugin_open_url,
-      #[cfg(desktop)]
       lan::lan_start,
       #[cfg(desktop)]
       lan::lan_send,
@@ -83,8 +82,6 @@ pub fn run() {
       lan::lan_stop,
       report::save_report,
       portable::portable_dir,
-      #[cfg(desktop)]
-      report::open_report_url,
       #[cfg(not(target_os = "ios"))]
       buttplug::bp_status,
       #[cfg(not(target_os = "ios"))]

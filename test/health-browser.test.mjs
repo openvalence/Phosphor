@@ -104,13 +104,13 @@ async function routeLink(ctx, port) {
   });
 }
 
-// The two OS acts a report needs, captured: open_report_url resolves, save_report answers a path.
+// The two OS acts a report needs, captured: the opener resolves (after the shared confirm), save_report answers a path.
 function REPORT_STUB() {
   const base = window.__TAURI_INTERNALS__.invoke;
   window.__opened = [];
   window.__saved = [];
   window.__TAURI_INTERNALS__.invoke = (cmd, a) => {
-    if (cmd === 'open_report_url') { window.__opened.push(a.url); return Promise.resolve(); }
+    if (cmd === 'plugin:opener|open_url') { window.__opened.push(a.url); return Promise.resolve(); }
     if (cmd === 'save_report') { window.__saved.push(a); return Promise.resolve('C:/Downloads/' + a.name); }
     return base(cmd, a);
   };
@@ -259,7 +259,11 @@ await send.focus();
 await page.keyboard.down('Enter');
 await page.waitForTimeout(1700);
 await page.keyboard.up('Enter');
+// Leaving the app asks first (src/ui/external.js): Open link hands the issue URL to the opener.
+const reportAsk = await page.waitForSelector('.overlay[role=alertdialog]', { timeout: 3000 }).then((e) => e.textContent(), () => '');
+await page.click('.overlay button:has-text("Open link")').catch(() => {});
 await page.waitForTimeout(500);
+ok('Hold to send: the link asks first, Open link? github.com/openvalence/Phosphor/issues/new', /Open link\?/.test(reportAsk) && reportAsk.includes('github.com/openvalence/Phosphor/issues/new'), reportAsk);
 const opened = await page.evaluate(() => window.__opened);
 const u = opened[0] ? new URL(opened[0]) : null;
 const id = await page.textContent('.review .top .mono');

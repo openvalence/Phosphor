@@ -1095,7 +1095,7 @@ if (!LIVE && !STASH_LIVE && !OSC_ONLY && !args.includes('--library')) {
     await page.evaluate(() => {
       const inner = window.__TAURI_INTERNALS__.invoke;
       window.__opened = [];
-      window.__TAURI_INTERNALS__.invoke = (cmd, a, o) => (cmd === 'plugin_open_url' ? (window.__opened.push(a.url), Promise.resolve(null)) : inner(cmd, a, o));
+      window.__TAURI_INTERNALS__.invoke = (cmd, a, o) => (cmd === 'plugin:opener|open_url' ? (window.__opened.push(a.url), Promise.resolve(null)) : inner(cmd, a, o));
     });
     const loose = await page.evaluate(() => {
       const out = [];
