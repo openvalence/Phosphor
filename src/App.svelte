@@ -255,6 +255,9 @@
     return true;
   }
   $effect(() => { if (quickForm !== 'horizontal' && !untrack(() => rail?.busy)) { heroBar.quick = false; heroBar.stacked = false; } });
+  // A stacked rail belongs to its media fullscreen: leaving it (Escape or back mid-drag, a page switch in a bare
+  // fullscreen) puts the rail away whatever else holds.
+  $effect(() => { if (!mediaBare && untrack(() => heroBar.stacked)) { heroBar.stacked = false; heroBar.quick = false; } });
   $effect(() => {
     const root = document.documentElement;
     if (quickForm) root.dataset.quickRail = quickForm; else delete root.dataset.quickRail;

@@ -1,7 +1,7 @@
 /**
  * heroBar.svelte.js: the hero bar's shared form. `form` is 'full' (the rail in
  * the bar) or 'mini' (the 64 px mini stands in for it); `popup` is the
- * handheld vertical rail's open state; `quick` the desktop fullscreen's
+ * handheld vertical rail's open state; `quick` a page fullscreen's
  * horizontal pop-up (the quick rail, DESIGN §10.3), `quickBottom` its lift
  * off the window's bottom edge. Written by TopStrip, MiniRail and openQuick.
  */

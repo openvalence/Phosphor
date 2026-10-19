@@ -877,10 +877,14 @@ export const CSS = `
 @media (pointer: coarse) { .fsp-hb { grid-template-rows: var(--tap) auto; } }
 /* The fullscreen transport (previous, Play, next, the time) centered over the video, shown and faded with the controls; the
    kit's center glyph yields to it there (its flash stays). The gaps take no input, so a tap there is the video's. */
-.fsp-mid { position: absolute; left: 50%; top: 50%; translate: -50% -50%; z-index: 3; display: none; flex-direction: column;
+/* Centered in the room above the bar and the stack (--fsp-stack-top: the stack's top over the video's bottom), so in a
+   landscape phone it never lands on the wave or the seek. */
+.fsp-mid { position: absolute; left: 50%; top: calc((100% - var(--fsp-stack-top, 0px)) / 2); translate: -50% -50%; z-index: 3; display: none; flex-direction: column;
   align-items: center; gap: var(--sp-2); pointer-events: none; opacity: 0;
   transition: opacity var(--t-move) var(--ease-out), display var(--t-move) var(--ease-out) allow-discrete; }
 .fsp[data-media] .ui-stage[data-show] .fsp-mid { display: flex; opacity: 1; }
+.fsp-mid { --fsp-stack-top: calc(var(--fsp-hbh, 96px) + var(--fsp-fsw-h, 0px)); }
+html[data-quick-rail-open] .fsp-mid { --fsp-stack-top: calc(max(var(--fsp-hbh, 96px), var(--quick-rail-lift, 0px)) + var(--fsp-fsw-h, 0px)); }
 @starting-style { .fsp[data-media] .ui-stage[data-show] .fsp-mid { opacity: 0; } }
 .fsp-mid-row { display: flex; align-items: center; gap: var(--sp-5); }
 .fsp-mid-row > .og-btn { pointer-events: auto; width: 56px; height: 56px; min-height: 56px; border-radius: 50%; padding: 0;
@@ -1177,7 +1181,8 @@ export function createPlayer(api) {
   const openStash = (s) => {
     const u = stashPage(s);
     if (!u) return null;
-    return () => Promise.resolve().then(() => api.net.open(u)).catch(() => false).then((ok) => { if (!ok) api.log(COPY.noOpen, 'warn'); });
+    // net.open: true, false when nothing could open it, null when the user cancelled the host's confirm (no warning).
+    return () => Promise.resolve().then(() => api.net.open(u)).catch(() => false).then((ok) => { if (ok === false) api.log(COPY.noOpen, 'warn'); });
   };
   const Q = {
     list: () => queue,
@@ -1489,25 +1494,30 @@ export function createPlayer(api) {
       if (media && root.hasAttribute('data-fswave') && document.documentElement.hasAttribute('data-quick-rail-open')) railAsk(true);
     });
     hbro.observe(hb);
+    // The stack's own height, for the transport's room above it (.fsp-mid).
+    const fswro = new ResizeObserver(() => vbox.style.setProperty('--fsp-fsw-h', fsw.offsetHeight + 'px'));
+    fswro.observe(fsw);
     const fsWave = (on) => {
       const w = tlbox.querySelector('.fsp-tl') || fsw.querySelector('.fsp-tl');
       // The seek rides with the stack: the band's top half, the rail's window under it; back in the bar without it.
       if (on) fsw.append(w, seek); else { tlbox.append(w); hb.prepend(seek); }
       root.toggleAttribute('data-fswave', on);
       tlTog.pressed = on;
-      railAsk(on && media);
+      railAsk(on && media && !covered);
     };
     // The rail rides with the wave: asked open above it, or closed (the host ignores it where there is no quick rail).
     const railAsk = (open) => requestAnimationFrame(() => fsw.dispatchEvent(new CustomEvent('phosphor-quick-rail', { bubbles: true, cancelable: true, detail: { open } })));
     // A drawer over the fullscreen (the library, Settings) puts the stack away, and its close brings it back.
-    let covered = false;
+    // The rail comes back only if it was open when the drawer covered it (the Rail button may have closed it).
+    let covered = false, railWasOpen = false;
     const syncStack = () => {
       const c = media && (root.hasAttribute('data-libdrawer') || !!(opts.settings && opts.settings.open));
       if (c === covered) return;
       covered = c;
+      if (c) railWasOpen = document.documentElement.hasAttribute('data-quick-rail-open');
       fsw.hidden = c;
       anchor.hidden = c;
-      if (root.hasAttribute('data-fswave')) railAsk(!c);
+      if (root.hasAttribute('data-fswave') && (c || railWasOpen)) railAsk(!c);
     };
     // PR8: one mode, the shell's page fullscreen, always bare (the stage asks it); the video alone until it ends.
     let media = false;
@@ -1792,6 +1802,7 @@ export function createPlayer(api) {
         ro.disconnect();
         mro.disconnect();
         hbro.disconnect();
+        fswro.disconnect();
         tl.unmount();
         if (library) library.unmount();
         if (analyzer) analyzer.unmount();

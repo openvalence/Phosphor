@@ -101,7 +101,7 @@
     border-radius: var(--r-s);
     box-shadow: 0 8px 24px rgba(0, 0, 0, .6);
   }
-  /* Desktop page fullscreen (the quick rail): the rail in its horizontal form
+  /* Page fullscreen (the quick rail; a media page's on every class): the rail in its horizontal form
      along the bottom edge, above the page's bar; the stop pair is top right. */
   .hero-inner.quick, .collapsed .hero-inner.quick {
     position: fixed;
@@ -119,9 +119,9 @@
   }
   /* Stacked under a page's preview (ph-7ri8): the bottom half of the page's band (its seek is the top half, flush, so
      the top corners are square): the rail's window at half height, no axis labels; its handles reach the 40 px touch
-     floor by straddling the window into the padding, so the band is no taller. While the page marks its anchor passive (a player running) it
-     is a display: no jog tape, no input, no handles; paused, the jog tape (or the plan strip) returns above the window
-     and all of it takes input. */
+     floor by straddling the window into the padding, so the band is no taller. While the page marks its anchor passive
+     (a player running) it is a display: no input, no handles, its tape row in place (the plan strip while the player
+     streams), so play and pause move nothing; paused, the jog tape takes input with the rest. */
   .hero-inner.quick.stacked { padding: var(--sp-1) var(--sp-2); left: max(var(--gap), var(--corner-inset, 0px)); right: max(var(--gap), var(--corner-inset, 0px));
     border-top-left-radius: 0; border-top-right-radius: 0; box-shadow: none;
     transition: opacity var(--t-move) var(--ease-out), translate var(--t-move) var(--ease-settle, var(--ease-out)); }
@@ -131,7 +131,6 @@
   .hero-inner.quick.stacked :global(.rail-band-handle) { top: -2px; height: 40px; }
   .hero-inner.quick.stacked :global(.rail-hz) { top: 50%; }
   :global(html:has([data-quick-rail-passive])) .hero-inner.quick.stacked { pointer-events: none; }
-  :global(html:has([data-quick-rail-passive])) .hero-inner.quick.stacked :global(.rail-row) { display: none; }
   :global(html:has([data-quick-rail-passive])) .hero-inner.quick.stacked :global(.rail-band-handle) { visibility: hidden; }
   /* Over an idle fullscreen video the quick rail stays drawn as a 40 % ghost with no plate that takes no input; a move
      or a tap on the video brings it back, and hovered or focused it stays. Stacked, it slides down to the bottom edge

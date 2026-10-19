@@ -889,10 +889,11 @@ center Play of PR8 to PR10 as built, and the transport row's chapters:
   the wave above it. The timeline toggle shows or hides the stack (pref
   `fsStack`, on by default); off, the seek returns to the bar and the Rail
   button opens the full rail alone. While the player runs the wave and the
-  window are a display: no input, no range pills, no handles, no jog tape;
-  the seek stays a control. Paused, all of it takes input and the rail's jog
-  tape (or the plan strip with the planned segment) returns above the
-  window: handy with a toy mounted. While the controls hide (2.5 s still
+  window are a display: no input, no range pills, no handles; the rail's
+  tape row stays in place (the plan strip while the player streams), so play
+  and pause move nothing; the seek stays a control. Paused, all of it takes
+  input, the jog tape with the planned segment included: handy with a toy
+  mounted. While the controls hide (2.5 s still
   while playing) the stack stays drawn at 40 % with no plates, takes no
   input and slides down to the bottom edge, the rail with it, never left
   floating where the bar was (transform only, instant under Reduced
@@ -907,26 +908,25 @@ center Play of PR8 to PR10 as built, and the transport row's chapters:
   *(Supersedes PR9's wave above the scrub inside the hover bar and, with
   the stack on, `ph-9t5l.7`'s "at rest only the stop pair sits over a
   fullscreen video".)*
-- **PP10 The fullscreen transport** (operator 2026-10-18: the bar wrapped
-  to two rows). Previous, Play and next, with the time under them, sit
-  centered over the video, where media players put them; they show and fade
-  with the controls, and the kit's center glyph yields to them (its flash on
-  a click stays). The bar keeps one row: library, mute and volume, Motion,
-  rate, the timeline toggle, Rail, Settings, Exit fullscreen. On touch they
-  are 56 px buttons (Play 72), so a tap that shows the controls leaves them
-  one tap away. A double-click on them is two clicks on their buttons;
-  elsewhere on the video it leaves fullscreen as before (PP3).
 - **PP8 The centered playhead** (`ph-10c4`). The detail's playhead is fixed
   at its center at every class and the script, the trace and the lanes move
   past it; the window is the playhead time less and plus half the zoom. A
   diagonal hatch in `--line-2` fills the detail before the first action and
   after the last: no script there. The heat's grip still rides the
   overview at the share of the script.
-- **PP9 The trace through a pause** (`ph-f012`). Before: paused, the trace
-  stayed, and any seek while paused cleared it at once (and a jump over 8 s
-  ahead or 1 s back trimmed it). Now it stays while paused and while
-  scrubbing, is trimmed only while playing, and clears when Play starts
-  playback (a seek while playing still clears it).
+- **PP9 The trace through a pause** (`ph-f012`). The drawn trace stays
+  while paused and while scrubbing, is trimmed only while playing, and
+  clears when Play starts playback; a seek while playing clears it too.
+- **PP10 The fullscreen transport** (operator 2026-10-18: the bar wrapped
+  to two rows). Previous, Play and next, with the time under them, sit
+  centered over the video in the room above the bar and the stack (a
+  landscape phone included), where media players put them; they show and fade
+  with the controls, and the kit's center glyph yields to them (its flash on
+  a click stays). The bar keeps one row: library, mute and volume, Motion,
+  rate, the timeline toggle, Rail, Settings, Exit fullscreen. On touch they
+  are 56 px buttons (Play 72) under every pointer, so a tap that shows the controls leaves them
+  one tap away. A double-click on them is two clicks on their buttons;
+  elsewhere on the video it leaves fullscreen as before (PP3).
 
 ### The card before the redesign
 
@@ -1198,8 +1198,9 @@ ride `api.ui.menu` (docs/PLUGINS.md, Context menus), above the page's
   controller cannot hold clears, as the A-B button does.
 - **Scene row** (the library): Play, Play next (the queue's head; a scene
   already queued moves there), Add to queue, Open in Stash (the scene's
-  page, `<base>/scenes/<id>`, through `api.net.open`; a failure logs
-  `Open in Stash: no browser here`).
+  page, `<base>/scenes/<id>`, through `api.net.open`, which asks the host's
+  leave-app confirm first; a failure logs `Open in Stash: no browser here`,
+  a Cancel nothing).
 - **Queue row**: Remove, Move to top (off on the first).
 
 ## Stash
