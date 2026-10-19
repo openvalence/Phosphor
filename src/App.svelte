@@ -914,6 +914,7 @@
      that scrolls. min-height:0 is required for a flex child to shrink below
      its content's natural height instead of forcing the column to overflow. */
   .frame {
+    position: relative;
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     gap: var(--gap);
@@ -928,8 +929,8 @@
     overflow: hidden;
   }
   :global(:root[data-scrollbars]) .frame { --track: 4px; }
-  /* The right dock, opened by the user: a third column that narrows the content (Dock.svelte). */
-  .frame:has(> :global(.side-dock)) { grid-template-columns: auto minmax(0, 1fr) auto; }
+  /* The right dock, opened by the user: a third column that narrows the content once it has slid in (Dock.svelte). */
+  .frame:has(> :global(.side-dock:not(.over))) { grid-template-columns: auto minmax(0, 1fr) auto; }
   /* position: a pane's absolutely positioned descendants (sr-only labels)
      must scroll with it, never overflow the non-scrolling column. */
   .content {
