@@ -38,7 +38,8 @@
 //   returns to the library. Rate scales the stroke speed shown and checked against the input limit.
 // - The stage's input (ph-bw0o, the kit's): a mouse click toggles Play and a double-click asks fullscreen; a touch
 //   tap shows or hides the controls and never plays; a touch double-tap on a side third skips SKIP_MS. The center
-//   glyph is a button, Play or Pause, shown with the controls; the controls stay while paused (stage.keep).
+//   glyph is a button, Play or Pause, shown with the controls; the controls stay while paused (stage.keep), except over
+//   the fullscreen stack, which is the resting view (ph-7ri8).
 // - Fullscreen is one mode (PR8): the shell's page fullscreen, the ask always bare; the bar's button, f and a
 //   double-click on the stage ask it. On the phone class a turn to landscape with a video enters it and the turn
 //   back leaves it (PR17).
@@ -872,19 +873,18 @@ export const CSS = `
 .fsp[data-an][data-comp=handheld] .fsp-tabs { display: none; }
 .fsp[data-an][data-comp=handheld] :is(.fsp-stage, .fsp-tlh, .fsp-tlbox, .fsp-tr) { visibility: visible; }
 .fsp[data-an] .fsp-empty { font-size: .7rem; }
-/* The hover bar is the stage's overlay (the kit's: it shows on movement, hides when idle); this lays out its rows. */
+/* The hover bar is the stage's overlay (the kit's: it shows on movement, hides when idle); this lays out its rows.
+   Compact (operator 2026-10-19): a short lead above it, 32 px buttons, 40 under a coarse pointer (law 12). */
 .fsp-hb { display: grid; grid-template-rows: 16px auto; }
 @media (pointer: coarse) { .fsp-hb { grid-template-rows: var(--tap) auto; } }
-/* The fullscreen transport (previous, Play, next, the time) centered over the video, shown and faded with the controls; the
-   kit's center glyph yields to it there (its flash stays). The gaps take no input, so a tap there is the video's. */
-/* Centered in the room above the bar and the stack (--fsp-stack-top: the stack's top over the video's bottom), so in a
-   landscape phone it never lands on the wave or the seek. */
-.fsp-mid { position: absolute; left: 50%; top: calc((100% - var(--fsp-stack-top, 0px)) / 2); translate: -50% -50%; z-index: 3; display: none; flex-direction: column;
+.fsp[data-media] .ui-stage-overlay { padding-top: var(--sp-3); }
+/* The fullscreen transport (previous, Play, next, the time) in the true center of the video, shown and faded with the
+   controls; the kit's center glyph yields to it there (its flash stays). The gaps take no input, so a tap there is the
+   video's. It shows only with the bar, never with the stack, so the two never meet. */
+.fsp-mid { position: absolute; left: 50%; top: 50%; translate: -50% -50%; z-index: 3; display: none; flex-direction: column;
   align-items: center; gap: var(--sp-2); pointer-events: none; opacity: 0;
   transition: opacity var(--t-move) var(--ease-out), display var(--t-move) var(--ease-out) allow-discrete; }
 .fsp[data-media] .ui-stage[data-show] .fsp-mid { display: flex; opacity: 1; }
-.fsp-mid { --fsp-stack-top: calc(var(--fsp-hbh, 96px) + var(--fsp-fsw-h, 0px)); }
-html[data-quick-rail-open] .fsp-mid { --fsp-stack-top: calc(max(var(--fsp-hbh, 96px), var(--quick-rail-lift, 0px)) + var(--fsp-fsw-h, 0px)); }
 @starting-style { .fsp[data-media] .ui-stage[data-show] .fsp-mid { opacity: 0; } }
 .fsp-mid-row { display: flex; align-items: center; gap: var(--sp-5); }
 .fsp-mid-row > .og-btn { pointer-events: auto; width: 56px; height: 56px; min-height: 56px; border-radius: 50%; padding: 0;
@@ -895,35 +895,32 @@ html[data-quick-rail-open] .fsp-mid { --fsp-stack-top: calc(max(var(--fsp-hbh, 9
 .fsp-mid .fsp-hb-time { padding: var(--sp-1) var(--sp-3); border-radius: var(--r-s); background: color-mix(in srgb, var(--bg-raised) 72%, transparent); }
 .fsp[data-media] .ui-stage-center:not([data-flash]) { display: none; }
 .fsp-hb-seek { margin: 0 var(--sp-2); }
-/* ph-7ri8: the stack over a fullscreen video: the wave on top, then one band, the seek over the host's quick rail (its
-   window; it sits on the anchor, the bar's top, and publishes --quick-rail-lift, its top over the window's bottom), then
-   the bar's buttons. Compact: a 48 px wave, the seek leaves the bar for the band. Playing, the wave and the window are a
-   display (data-passive): no input, no pills; the seek stays a control. Idle all of it stays drawn at 40 % with no
-   plates and takes no input. The stop pair is the host's and never part of it. */
+/* ph-7ri8: the stack over a fullscreen video, at the bottom edge: the wave on top, then one band, the seek over the
+   host's quick rail (its window; it sits on the anchor, the bottom edge, and publishes --quick-rail-lift, its top over
+   the window's bottom). The bar and the stack share the bottom slot, one at a time (operator 2026-10-19): the stack is
+   the resting view; a move or a tap over the video calls the bar and the transport in its place, and the idle brings
+   the stack back. It arrives rising and leaves on the frame (transform and opacity; instant under html.still). Playing,
+   the wave and the window are a display (data-passive): no input, no pills; the seek stays a control. The stop pair is
+   the host's and never part of it. */
 .fsp[data-fswave] .fsp-hb { grid-template-rows: auto; }
-.fsp-anchor { position: absolute; left: 0; right: 0; bottom: var(--fsp-hbh, 96px); height: 0; pointer-events: none; display: none; }
-.fsp[data-media][data-fswave] .fsp-anchor:not([hidden]) { display: block; }
-.fsp-fsw { position: absolute; left: 0; right: 0; bottom: var(--fsp-hbh, 96px); z-index: 2; --fsp-detail: 48px;
-  display: grid; gap: var(--sp-1); padding: 0 max(var(--gap), var(--corner-inset));
-  transition: opacity var(--t-move) var(--ease-out), translate var(--t-move) var(--ease-settle, var(--ease-out)); }
-html[data-quick-rail-open] .fsp-fsw { bottom: max(var(--fsp-hbh, 96px), var(--quick-rail-lift, 0px)); }
+.fsp-anchor { position: absolute; left: 0; right: 0; bottom: max(var(--sp-2), var(--corner-inset), env(safe-area-inset-bottom, 0px));
+  height: 0; pointer-events: none; }
+.fsp:not([data-media]) .fsp-anchor, .fsp:not([data-fswave]) .fsp-anchor, .fsp-anchor[hidden] { display: none; }
+.fsp-fsw { position: absolute; left: 0; right: 0; bottom: max(var(--sp-2), var(--corner-inset), env(safe-area-inset-bottom, 0px));
+  z-index: 2; --fsp-detail: 48px; display: grid; gap: var(--sp-1); padding: 0 max(var(--gap), var(--corner-inset)); }
+html[data-quick-rail-open] .fsp-fsw { bottom: max(var(--sp-2), var(--corner-inset), env(safe-area-inset-bottom, 0px), var(--quick-rail-lift, 0px)); }
+.ui-stage[data-show] .fsp-fsw { opacity: 0; visibility: hidden; pointer-events: none; translate: 0 var(--sp-3); }
+.ui-stage:not([data-show]) .fsp-fsw { transition: opacity var(--t-move) var(--ease-out), translate var(--t-move) var(--ease-settle, var(--ease-out)); }
 /* The seek is the band's top half: the rail's plate, open at the bottom where the window continues it. */
 .fsp-fsw > .fsp-hb-seek { margin: 0; padding: 0 var(--sp-2); min-height: 28px; background: var(--bg-raised); border: 1px solid var(--line-2);
   border-bottom: 0; border-radius: var(--r-s) var(--r-s) 0 0; }
 html:not([data-quick-rail-open]) .fsp-fsw > .fsp-hb-seek { border-bottom: 1px solid var(--line-2); border-radius: var(--r-s); }
-@media (pointer: coarse) { .fsp-fsw > .fsp-hb-seek { min-height: var(--tap); } }
+@media (pointer: coarse) { .fsp-fsw > .fsp-hb-seek { min-height: 40px; } }
 .fsp-fsw:empty, .fsp:not([data-media]) .fsp-fsw, .fsp-fsw[hidden] { display: none; }
-.fsp-fsw[data-passive] .fsp-tl, .ui-stage:not([data-show]) .fsp-fsw { pointer-events: none; }
-.ui-stage:not([data-show]) .fsp-fsw > .fsp-hb-seek { background: transparent; border-color: transparent; }
-/* The bar away, the stack slides down to the bottom edge, the host's rail with it (the same shift: the bar's height,
-   plus the rail's gap when it is open), never left floating; transform only, instant under html.still. */
-.ui-stage:not([data-show]) .fsp-fsw { opacity: .4;
-  translate: 0 calc(var(--fsp-hbh, 96px) - max(var(--sp-2), var(--corner-inset), env(safe-area-inset-bottom, 0px))); }
-html[data-quick-rail-open] .ui-stage:not([data-show]) .fsp-fsw {
-  translate: 0 calc(var(--fsp-hbh, 96px) + var(--gap) - max(var(--sp-2), var(--corner-inset), env(safe-area-inset-bottom, 0px))); }
-.ui-stage:not([data-show]) .fsp-fsw :is(.fsp-dt, .fsp-lane) { background: transparent; box-shadow: none; border-color: transparent; }
-.fsp-fsw[data-passive] .fsp-rh, .ui-stage:not([data-show]) .fsp-fsw .fsp-rh { visibility: hidden; }
-.fsp-hb-row { --ui-btn-h: var(--tap); }
+.fsp-fsw[data-passive] .fsp-tl { pointer-events: none; }
+.fsp-fsw[data-passive] .fsp-rh { visibility: hidden; }
+.fsp-hb-row { --ui-btn-h: 32px; }
+@media (pointer: coarse) { .fsp-hb-row { --ui-btn-h: 40px; } }
 .fsp-hb-row > .og-btn { flex: none; }
 .fsp-hb-row { display: flex; align-items: center; gap: var(--sp-1); min-width: 0; }
 .fsp-hb-time { flex: 0 1 auto; min-width: 0; padding: 0 var(--sp-2) 0 var(--sp-3); font: .78rem var(--mono); color: var(--tx); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1485,28 +1482,26 @@ export function createPlayer(api) {
     const anchor = h('i', { class: 'fsp-anchor', 'data-quick-rail-anchor': '', 'aria-hidden': 'true' });
     for (const t of ['click', 'dblclick']) fsw.addEventListener(t, (e) => e.stopPropagation());
     vbox.append(anchor, fsw);
-    // The bar's top while the bar shows; hidden, the bar measures 0 and the stack keeps its place.
-    // The open rail is asked again where the anchor moved, so it stays on it (the host places it on an ask).
-    const hbro = new ResizeObserver(() => {
-      const b = hb.getBoundingClientRect(), v = Math.round(vbox.getBoundingClientRect().bottom - b.top) + 'px';
-      if (!b.height || vbox.style.getPropertyValue('--fsp-hbh') === v) return;
-      vbox.style.setProperty('--fsp-hbh', v);
+    // Over the stack a pointer's movement never calls the bar: the stack is a surface of its own (the bar and the
+    // stack share the bottom slot, one at a time).
+    fsw.addEventListener('pointermove', (e) => e.stopPropagation());
+    // The open rail is asked again when the video's box settles or turns (fullscreen's layout, a rotation): the host
+    // places it on an ask, at the anchor's place then.
+    const vro = new ResizeObserver(() => {
       if (media && root.hasAttribute('data-fswave') && document.documentElement.hasAttribute('data-quick-rail-open')) railAsk(true);
     });
-    hbro.observe(hb);
-    // The stack's own height, for the transport's room above it (.fsp-mid).
-    const fswro = new ResizeObserver(() => vbox.style.setProperty('--fsp-fsw-h', fsw.offsetHeight + 'px'));
-    fswro.observe(fsw);
+    vro.observe(vbox);
     const fsWave = (on) => {
       const w = tlbox.querySelector('.fsp-tl') || fsw.querySelector('.fsp-tl');
       // The seek rides with the stack: the band's top half, the rail's window under it; back in the bar without it.
       if (on) fsw.append(w, seek); else { tlbox.append(w); hb.prepend(seek); }
       root.toggleAttribute('data-fswave', on);
       tlTog.pressed = on;
+      if (media) render();
       railAsk(on && media && !covered);
     };
     // The rail rides with the wave: asked open above it, or closed (the host ignores it where there is no quick rail).
-    const railAsk = (open) => requestAnimationFrame(() => fsw.dispatchEvent(new CustomEvent('phosphor-quick-rail', { bubbles: true, cancelable: true, detail: { open } })));
+    const railAsk = (open) => requestAnimationFrame(() => anchor.dispatchEvent(new CustomEvent('phosphor-quick-rail', { bubbles: true, cancelable: true, detail: { open } })));
     // A drawer over the fullscreen (the library, Settings) puts the stack away, and its close brings it back.
     // The rail comes back only if it was open when the drawer covered it (the Rail button may have closed it).
     let covered = false, railWasOpen = false;
@@ -1672,7 +1667,9 @@ export function createPlayer(api) {
       root.toggleAttribute('data-paused', !!st.scene && !on);
       // The center glyph over a video only: in motion only the meter is the stage and the bar's Play is right there (ph-1qs5.11).
       stage.center(st.scene && st.scene.stream && !root.hasAttribute('data-an') && comp !== 'glance' ? (on ? 'pause' : 'play') : null, on ? COPY.pause : COPY.play);
-      stage.keep = !on;
+      // Paused, the controls stay (PP3), except over a stacked fullscreen: there the stack is the resting view and the
+      // controls come on demand, so the jog tape is reachable while paused (operator 2026-10-19).
+      stage.keep = !on && !(media && root.hasAttribute('data-fswave'));
       // The video's title top left with the controls (operator 2026-10-11): the scene's, else the file name without its extension.
       stage.caption = st.scene && st.scene.stream && comp !== 'glance' ? st.scene.title : '';
       rate.label = (video.playbackRate || 1) + 'x';
@@ -1801,8 +1798,7 @@ export function createPlayer(api) {
         for (const t of META) vel.removeEventListener(t, onMeta);
         ro.disconnect();
         mro.disconnect();
-        hbro.disconnect();
-        fswro.disconnect();
+        vro.disconnect();
         tl.unmount();
         if (library) library.unmount();
         if (analyzer) analyzer.unmount();

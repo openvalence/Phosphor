@@ -808,7 +808,15 @@ export function stage(o = {}) {
     const ev = new CustomEvent('phosphor-page-fullscreen', { bubbles: true, cancelable: true, detail: { on, bare: true } });
     if (!el.dispatchEvent(ev)) setFull(on);
   };
-  winOn(el, 'phosphor-page-fullscreen-change', (e) => { if (full && !(e.detail && e.detail.on)) setFull(false); });
+  // The shell's media fullscreen is the truth. A page's media stage (rotate) that drifted out of it while the app was
+  // away, or was mounted again inside it, rejoins it on the shell's word (resync, or <html data-page-media> at mount),
+  // so the stage never sits inline under a bare shell. A plain page fullscreen (F11) carries no media flag.
+  winOn(el, 'phosphor-page-fullscreen-change', (e) => {
+    const d = e.detail || {};
+    if (full && !d.on) setFull(false);
+    else if (!full && d.on && d.media && d.resync && o.rotate) setFull(true);
+  });
+  if (o.rotate) queueMicrotask(() => { if (!full && document.documentElement.hasAttribute('data-page-media')) setFull(true); });
   if (o.rotate) {
     // The phone class: a turn to landscape with content enters fullscreen, the turn back leaves; only a turn does.
     const orient = () => (innerWidth > innerHeight ? 'land' : 'port');

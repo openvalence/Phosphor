@@ -14,9 +14,12 @@ export function openQuick(form, open, from, stacked = false) {
   if (form === 'vertical') { heroBar.popup = open; return; }
   heroBar.stacked = open && stacked;
   // Above `from`, never past the stop pair's bottom edge (--stop-reserve-h, TopStrip).
+  // Stacked, it is the compact band at the bottom edge, far below the pair: the hero's own rail height (railH, a phone's
+  // full rail) would lift it off the edge.
   if (open && from) {
     const pair = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--stop-reserve-h')) || 0;
-    heroBar.quickBottom = Math.round(Math.max(0, Math.min(innerHeight - from.getBoundingClientRect().top, innerHeight - pair - heroBar.railH - 24)));
+    const lift = innerHeight - from.getBoundingClientRect().top;
+    heroBar.quickBottom = Math.round(Math.max(0, stacked ? lift : Math.min(lift, innerHeight - pair - heroBar.railH - 24)));
   }
   heroBar.quick = open;
 }
