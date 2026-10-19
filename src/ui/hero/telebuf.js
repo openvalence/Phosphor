@@ -19,8 +19,9 @@
  * ~30 Hz that reads as the display lagging live position by ~8-9 SECONDS,
  * constantly, which is exactly the "incredibly laggy" field report this
  * comment exists to prevent a repeat of. Callers driven by rAF must convert
- * with `performance.timeOrigin + rafTimestamp` before calling `sampleAt()` —
- * see RailWidget.svelte's `draw()`.
+ * with `epochMs(rafTimestamp)` below before calling `sampleAt()`, never with
+ * `performance.timeOrigin + rafTimestamp` (ph-owiz) — see RailWidget.svelte's
+ * `draw()`.
  *
  * What is kept, because it is still true at ~20-30 Hz STATE cadence rendered
  * at 60 fps rAF: samples arrive slower than frames are drawn, so a caller
@@ -86,6 +87,26 @@
  */
 
 import { pchipSlope, hermite } from '../../model/interp.js';
+
+/**
+ * The Date.now() ms (the sampleTs domain) of a performance.now()-domain instant,
+ * such as a rAF timestamp.
+ *
+ * Constraints:
+ * - Never `performance.timeOrigin + t`: Android's monotonic clock stops while
+ *   the device sleeps and Date.now() does not, so the two part by every sleep
+ *   since the page loaded (ph-owiz: 162 s after 11 minutes on a Pixel 10). The
+ *   comet then renders that far in the past, at the oldest sample in the ring.
+ * - The base re-anchors on Date.now() whenever the two clocks part by more than
+ *   EPOCH_SLIP_MS. Date.now() truncates to whole ms, so a steady clock reads
+ *   under 1 ms apart and never re-anchors.
+ */
+const EPOCH_SLIP_MS = 2;
+let epochBase = typeof performance !== 'undefined' && performance.timeOrigin ? performance.timeOrigin : NaN;
+export function epochMs(perfMs) {
+  if (!(Math.abs(epochBase + performance.now() - Date.now()) <= EPOCH_SLIP_MS)) epochBase = Date.now() - performance.now();
+  return epochBase + perfMs;
+}
 
 // Client display latency on a steady stream is the render delay plus however
 // far the push() schedule leads arrival. The knobs for both are here.

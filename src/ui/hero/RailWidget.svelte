@@ -82,7 +82,7 @@
   import { still, isStill } from '../still.svelte.js';
   import { ACCENT, onTheme } from '../../model/theme.js';
   import { norm, travelBounds } from '../../model/bounds.js';
-  import { createTelebuf, createRenderClock, sampleTail } from './telebuf.js';
+  import { createTelebuf, createRenderClock, sampleTail, epochMs } from './telebuf.js';
   import { ROLE, claimRoles } from '../../model/roles.js';
   import { deferring } from '../defer.js';
   import { modStep, dragGain, snap as modSnap } from '../../model/nudge.js';
@@ -631,16 +631,11 @@
       lastFrameTs = nowMs;
       if (resumed) { censusStart = 0; censusFrames = 0; censusHeld = 0; resumed = false; }
 
-      // rAF hands us a DOMHighResTimeStamp — ms since performance.timeOrigin,
-      // NOT since the Unix epoch. machine.sampleTs (and therefore every
-      // timestamp the telebufs were pushed with) is Date.now() epoch ms, off
-      // session.js's `emit('state', ..., Date.now())`. performance.timeOrigin
-      // IS the epoch time of navigation start, so adding it converts the rAF
-      // clock into the same domain the samples are stamped in — see
-      // telebuf.js's header for what silently comparing the two raw produces
-      // (spoiler: sampleAt() never sees "now" as newer than any real sample,
-      // and always returns the OLDEST entry still in the ring).
-      const nowEpochMs = performance.timeOrigin + nowMs;
+      // rAF hands us a DOMHighResTimeStamp, monotonic ms; machine.sampleTs (and
+      // every timestamp the telebufs were pushed with) is Date.now() epoch ms.
+      // epochMs() converts, and survives a device sleep: telebuf.js's header and
+      // epochMs() say what comparing the two raw, or through timeOrigin, produces.
+      const nowEpochMs = epochMs(nowMs);
 
       // Render a measured delay behind now (telebuf.js's header, the render
       // delay). update() must run every frame, even with no fresh pos field.
