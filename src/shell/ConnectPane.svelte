@@ -11,8 +11,10 @@
    * - Found rows come last, so a scan appending one moves nothing above it.
    * - One LAN scan on arrival (UDP, no permission prompt); Bluetooth only on
    *   Scan, which asks for the permission.
-   * - The rows are HubsPane's look without its upkeep (rename, Sim, Forget,
-   *   setup): that pane stays the place to manage hubs.
+   * - The rows are HubsPane's look and motion (DESIGN §10.13: a row rises in,
+   *   rows that stay slide) without its upkeep (rename, Sim, Forget, setup):
+   *   that pane stays the place to manage hubs. The status lines change on
+   *   the frame (a degradation is never animated).
    */
   import { onMount, untrack } from 'svelte';
   import HostEntry from '../ui/HostEntry.svelte';
@@ -23,6 +25,7 @@
   import { endpointLabel } from '../model/format.js';
   import { BUILTIN_MACHINE_NAME, BUILTIN_MACHINE_BADGE, BUILTIN_MACHINE_BADGE_TIP } from '../model/builtin.js';
   import { openVirtual, onSim } from './virtual.svelte.js';
+  import { flipMove, rise } from '../ui/motion.js';
   import '../ui/pane.css';
 
   const link = $derived(machine.link);
@@ -41,7 +44,7 @@
   <ul class="pane-list cp-rows">
     {#each $savedHubs as h (h.id)}
       {@const on = dialedWs(h.host, h.port)}
-      <li>
+      <li animate:flipMove in:rise>
         <span class="who"><span class="name">{hubLabel(h)}</span><span class="meta mono">{h.host}:{h.port}</span></span>
         <button type="button" class="og-btn sm" disabled={on} aria-label={'Connect ' + hubLabel(h)}
                 onclick={() => connectWs(h.host, h.port)}>{on ? 'Dialing' : 'Connect'}</button>
@@ -66,7 +69,7 @@
     <ul class="pane-list cp-rows">
       {#each hubs.found as f (f.key)}
         {@const on = !!f.lan && dialedWs(f.lan.ip, f.lan.ws_port)}
-        <li>
+        <li animate:flipMove in:rise>
           <span class="who">
             <span class="name">{f.lan?.hub_name || f.ble?.name || 'hub'}{#each foundVia(f) as v (v)}<span class="mark">{v}</span>{/each}</span>
             <span class="meta mono">{f.lan ? f.lan.ip + ':' + f.lan.ws_port : f.ble.address}</span>
