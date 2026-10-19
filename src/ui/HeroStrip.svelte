@@ -139,6 +139,11 @@
   :global(html:has(.ui-stage[data-full]:not([data-show]))) .hero-inner.quick:not(.stacked):not(:hover, :focus-within) {
     opacity: .4; pointer-events: none; background: transparent; border-color: transparent; box-shadow: none;
   }
+  /* Stacked, at rest it is the same see-through ghost as the page's stack (40 %, no plate, no input) unless the page
+     marks its anchor awake (a move or a tap over the stack). */
+  :global(html:has(.ui-stage[data-full]:not([data-show])):not(:has([data-quick-rail-awake]))) .hero-inner.quick.stacked {
+    opacity: .4; pointer-events: none; background: transparent; border-color: transparent; box-shadow: none;
+  }
   :global(html:has(.ui-stage[data-full][data-show])) .hero-inner.quick.stacked {
     opacity: 0; visibility: hidden; pointer-events: none; translate: 0 var(--sp-3); transition: none;
   }

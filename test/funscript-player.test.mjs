@@ -972,6 +972,11 @@ if (args.includes('--stack-shots')) {
     await page.mouse.move(Math.round(w / 2) + 3, Math.round(hh / 3));
     await page.waitForTimeout(mods[P + 'ui.js'].HOVER_IDLE_MS + 800);
     await page.screenshot({ path: join(dir, 'player-stack-' + w + 'x' + hh + '.png') });
+    // A move over the stack wakes it to full (paused: the jog tape and the transport take input).
+    await page.mouse.move(Math.round(w / 2), hh - 30);
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: join(dir, 'player-stack-awake-' + w + 'x' + hh + '.png') });
+    await page.waitForTimeout(mods[P + 'ui.js'].HOVER_IDLE_MS + 600);
     await page.mouse.move(Math.round(w / 2), Math.round(hh / 3));
     await page.waitForTimeout(300);
     await page.locator(C + ' .fsp-mid .fsp-play').evaluate((e) => e.click());
@@ -2509,14 +2514,17 @@ if (!LIVE && !STASH_LIVE) {
     await page.locator(C + ' .ui-stage-box').evaluate((b) => b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch' })));
     await page.waitForTimeout(150);
     const f3 = await railState(page);
-    // The transport and the stack never show together (one bottom slot; a landscape phone included).
-    const room = await page.locator(C).evaluate((r) => ({ shown: r.querySelector('.fsp-mid').getBoundingClientRect().height > 0,
-      stack: getComputedStyle(r.querySelector('.fsp-fsw')).visibility }));
+    // The transport clears the stack when both show (paused at rest), a landscape phone included, and stays under no stop pair.
+    const room = await page.locator(C).evaluate((r) => {
+      const m = r.querySelector('.fsp-mid').getBoundingClientRect(), f = r.querySelector('.fsp-fsw').getBoundingClientRect(), q = document.querySelector('.hero-inner.quick');
+      const top = Math.min(f.top, q && q.getClientRects().length ? q.getBoundingClientRect().top : Infinity);
+      return { shown: m.height > 0, bottom: Math.round(m.bottom), top: Math.round(top), pair: Math.round(document.querySelector('.topstrip .pair').getBoundingClientRect().bottom), mtop: Math.round(m.top) };
+    });
     await page.keyboard.press('Escape');
     await page.waitForTimeout(400);
     const left = await page.locator(C).evaluate((r) => !r.hasAttribute('data-media'));
-    ok('host ' + at + ': stacked, a press on the video keeps the rail; the transport never shows with the stack; one Escape leaves the fullscreen',
-      f3.open && !(room.shown && room.stack === 'visible') && left, { f3, room, left });
+    ok('host ' + at + ': stacked, a press on the video keeps the rail; the transport clears the stack and the stop pair; one Escape leaves the fullscreen',
+      f3.open && (!room.shown || (room.bottom <= room.top + 1 && room.mtop >= room.pair)) && left, { f3, room, left });
     if (!left) { await page.keyboard.press('Escape'); await page.waitForTimeout(300); }
     // Peeve 19 extended (ph-5u0g.17): the Dash card draws no status row either; its warning is the strip's slot.
     if (w === 1428 || w === 420) {
@@ -3841,6 +3849,9 @@ if (!LIVE && !args.includes('--stash-live')) {
         && innerHeight - q.getBoundingClientRect().bottom <= 24,
       vis: getComputedStyle(r.querySelector('.fsp-fsw')).visibility, railVis: q ? getComputedStyle(q).visibility : null,
       bar: !!r.querySelector('.ui-stage-overlay').getClientRects().length, mid: !!r.querySelector('.fsp-mid').getClientRects().length,
+      midOp: +getComputedStyle(r.querySelector('.fsp-mid')).opacity,
+      midClear: (() => { const m = r.querySelector('.fsp-mid').getBoundingClientRect(), f = r.querySelector('.fsp-fsw').getBoundingClientRect();
+        return !m.height || m.bottom <= Math.min(f.top, q ? q.getBoundingClientRect().top : Infinity) + 1; })(),
       band: q ? Math.round(q.getBoundingClientRect().bottom - s.getBoundingClientRect().top) : 0, seekIn: !!s.closest('.fsp-fsw'),
       tlPe: d ? getComputedStyle(r.querySelector('.fsp-fsw .fsp-tl')).pointerEvents : null, seekPe: getComputedStyle(s).pointerEvents,
       railH: q ? Math.round(q.getBoundingClientRect().height) : 0,
@@ -3861,8 +3872,16 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.mouse.move(2, 400);
   await page.waitForTimeout(IDLE + 600);
   st = await stack();
-  ok('stack: at rest the stack and its rail hold the slot, the bar and the transport are away',
-    !st.bar && !st.mid && st.vis === 'visible' && st.op === 1 && st.railVis === 'visible', st);
+  ok('stack: at rest the stack and its rail hold the slot as a 40 % ghost taking no input, the transport with them, clear of the stack; the bar is away',
+    !st.bar && st.mid && st.midClear && st.vis === 'visible' && Math.abs(st.op - 0.4) < 0.01 && st.pe === 'none' && Math.abs(st.midOp - 0.4) < 0.01
+      && st.railVis === 'visible' && Math.abs(st.railOp - 0.4) < 0.01 && st.railPe === 'none', st);
+  await page.screenshot({ path: 'test/evidence/stack-ghost-1280x800.png' }).catch(() => {});
+  // A move over the stack wakes it (and the transport) to full instead of calling the bar.
+  await page.mouse.move(640, 790);
+  await page.waitForTimeout(400);
+  st = await stack();
+  ok('stack: a move over the stack wakes it and the transport to full; the bar stays away',
+    !st.bar && st.op === 1 && st.midOp === 1 && st.railOp === 1, st);
   ok('stack (ph-7ri8): paused, the 48 px wave on top, then one band (the seek over the rail\'s window) at the bottom edge; it takes input',
     Math.abs(st.h - 48) <= 1 && st.above && st.seekIn && st.pe !== 'none' && st.tlPe !== 'none' && st.pills === 2
       && st.railHere && st.form === 'horizontal' && st.railOpen && st.railBelow && st.railPe !== 'none' && st.tape && st.handleH >= 40, st);
@@ -3938,10 +3957,15 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.waitForTimeout(IDLE + 600);
   st = await stack();
   const pairOp = await page.evaluate(() => getComputedStyle(document.querySelector('.topstrip .pair')).opacity);
-  ok('stack playing at rest: the stack at the bottom edge, the bar away; the wave and the window a display, the seek a control; the stop pair at its rest',
-    !(await shown()) && !st.bar && st.vis === 'visible' && st.op === 1 && st.tlPe === 'none' && st.seekPe !== 'none' && st.pills === 0
-      && st.railHere && st.railPe === 'none' && st.handles === 0 && st.tape && st.railGap <= 24 && st.glued && pairOp === '0.5', { ...st, pairOp });
+  ok('stack playing at rest: the stack a ghost at the bottom edge, the bar away; the stop pair at its own rest',
+    !(await shown()) && !st.bar && st.vis === 'visible' && Math.abs(st.op - 0.4) < 0.01 && st.pe === 'none' && st.railHere && st.railGap <= 24 && st.glued
+      && pairOp === '0.5', { ...st, pairOp });
   await shot('fullscreen-stack-idle-1280x800');
+  await page.mouse.move(640, 790);
+  await page.waitForTimeout(400);
+  st = await stack();
+  ok('stack playing, awake: the wave and the window a display (no input, no pills, no handles), the seek a control',
+    !st.bar && st.op === 1 && st.tlPe === 'none' && st.seekPe !== 'none' && st.pills === 0 && st.railPe === 'none' && st.handles === 0 && st.tape, st);
   await page.mouse.move(300, 300);
   await page.waitForTimeout(400);
   st = await stack();

@@ -891,9 +891,12 @@ center Play of PR8 to PR10 as built, and the transport row's chapters:
   The bar and the stack share the bottom slot, one at a time: the stack is
   the resting view, a move or a tap over the video calls the bar and the
   transport (PP10) in its place, and the idle (2.5 s) brings the stack back,
-  paused included, so the jog tape is reachable while paused. Movement over
-  the stack itself never calls the bar. The stack arrives rising and leaves
-  on the frame (transform and opacity, instant under Reduced motion).
+  paused included. At rest the stack and the transport are a see-through
+  ghost (40 %, no plates, no input); a move or a tap over the stack wakes
+  them to full for the idle's length instead of calling the bar, so the
+  seek and, paused, the jog tape are a move or a tap away. The stack
+  arrives rising and leaves on the frame (transform and opacity, instant
+  under Reduced motion).
   While the player runs the wave and the window are a display: no input, no
   range pills, no handles; the rail's tape row stays in place (the plan
   strip while the player streams), so play and pause move nothing; the seek
@@ -923,8 +926,9 @@ center Play of PR8 to PR10 as built, and the transport row's chapters:
 - **PP10 The fullscreen transport** (operator 2026-10-18: the bar wrapped
   to two rows; 2026-10-19: the true center). Previous, Play and next, with
   the time under them, sit in the true center of the video, where media
-  players put them; they show and fade with the controls and the bar, never
-  with the stack, so they never meet it. The kit's center glyph yields to
+  players put them; with the stack on they show with it too, a ghost at rest
+  like it, lifted just enough to clear its top where the screen is short
+  (never under the stop pair); with the bar they show full. The kit's center glyph yields to
   them (its flash on a click stays). The bar keeps one compact row (32 px
   buttons, 40 under a coarse pointer): library, mute and volume, Motion,
   rate, the timeline toggle, Rail, Settings, Exit fullscreen. The transport

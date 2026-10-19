@@ -880,12 +880,26 @@ export const CSS = `
 .fsp[data-media] .ui-stage-overlay { padding-top: var(--sp-3); }
 /* The fullscreen transport (previous, Play, next, the time) in the true center of the video, shown and faded with the
    controls; the kit's center glyph yields to it there (its flash stays). The gaps take no input, so a tap there is the
-   video's. It shows only with the bar, never with the stack, so the two never meet. */
+   video's. It shows with the controls and, paused, with the stack at rest too; playing, it fades with the controls. */
 .fsp-mid { position: absolute; left: 50%; top: 50%; translate: -50% -50%; z-index: 3; display: none; flex-direction: column;
   align-items: center; gap: var(--sp-2); pointer-events: none; opacity: 0;
   transition: opacity var(--t-move) var(--ease-out), display var(--t-move) var(--ease-out) allow-discrete; }
-.fsp[data-media] .ui-stage[data-show] .fsp-mid { display: flex; opacity: 1; }
-@starting-style { .fsp[data-media] .ui-stage[data-show] .fsp-mid { opacity: 0; } }
+.fsp[data-media] .ui-stage[data-show] .fsp-mid, .fsp[data-media][data-fswave] .fsp-mid { display: flex; opacity: 1; }
+@starting-style { .fsp[data-media] .ui-stage[data-show] .fsp-mid, .fsp[data-media][data-fswave] .fsp-mid { opacity: 0; } }
+/* At rest, with the stack on, the transport and the stack are a see-through ghost over the video (operator 2026-10-19):
+   40 %, no plates, no input. A move or a tap over the stack wakes them both to full (data-awake) for the idle's length;
+   a move or a tap elsewhere calls the bar (the slot rule). The stop pair is the host's and never part of it. */
+.fsp[data-fswave]:not([data-awake]) .ui-stage:not([data-show]) :is(.fsp-fsw, .fsp-mid) { opacity: .4; pointer-events: none; }
+.fsp[data-fswave]:not([data-awake]) .ui-stage:not([data-show]) .fsp-mid-row > .og-btn { pointer-events: none; }
+.fsp[data-fswave]:not([data-awake]) .ui-stage:not([data-show]) .fsp-fsw :is(.fsp-dt, .fsp-lane, .fsp-hb-seek) { background: transparent; box-shadow: none; border-color: transparent; }
+.fsp[data-fswave]:not([data-awake]) .ui-stage:not([data-show]) .fsp-fsw .fsp-rh { visibility: hidden; }
+/* With the stack on, the transport shows with it too (operator 2026-10-19): centered, and lifted just enough to clear the
+   stack's top where the screen is short (--fsp-stack-h, the stack's top over the video's bottom; --fsp-mid-h its own
+   height), never under the stop pair. The same rule with the bar up, so it never moves when the slot swaps. */
+.fsp[data-fswave] .fsp-mid { --fsp-stack-h: calc(max(var(--sp-2), var(--corner-inset), env(safe-area-inset-bottom, 0px)) + var(--fsp-fsw-h, 0px));
+  top: max(calc(var(--stop-reserve-h, 0px) + var(--fsp-mid-h, 0px) / 2 + var(--sp-2)),
+    min(50%, calc(100% - var(--fsp-stack-h) - var(--sp-3) - var(--fsp-mid-h, 0px) / 2))); }
+html[data-quick-rail-open] .fsp[data-fswave] .fsp-mid { --fsp-stack-h: calc(max(var(--sp-2), var(--corner-inset), env(safe-area-inset-bottom, 0px), var(--quick-rail-lift, 0px)) + var(--fsp-fsw-h, 0px)); }
 .fsp-mid-row { display: flex; align-items: center; gap: var(--sp-5); }
 .fsp-mid-row > .og-btn { pointer-events: auto; width: 56px; height: 56px; min-height: 56px; border-radius: 50%; padding: 0;
   background: color-mix(in srgb, var(--bg-raised) 72%, transparent); }
@@ -1485,12 +1499,43 @@ export function createPlayer(api) {
     // Over the stack a pointer's movement never calls the bar: the stack is a surface of its own (the bar and the
     // stack share the bottom slot, one at a time).
     fsw.addEventListener('pointermove', (e) => e.stopPropagation());
+    // The ghost (operator 2026-10-19): at rest the stack is see-through and takes no input, so a move or a tap over its
+    // place reaches the video; here, in the capture phase, it wakes the stack (and the transport) instead of the bar,
+    // for the idle's length, renewed by activity over it. Elsewhere the kit's stage calls the bar as before.
+    let awakeT = 0;
+    const setAwake = (on) => { root.toggleAttribute('data-awake', on); anchor.toggleAttribute('data-quick-rail-awake', on); };
+    const wake = () => {
+      setAwake(true);
+      clearTimeout(awakeT);
+      awakeT = setTimeout(() => { if (fsw.querySelector('[data-drag]')) wake(); else setAwake(false); }, HOVER_IDLE_MS);
+    };
+    const overStack = (e) => media && root.hasAttribute('data-fswave') && !covered && !stage.shown && !fsw.contains(e.target)
+      && e.clientY >= fsw.getBoundingClientRect().top;
+    for (const t of ['pointerdown', 'pointerup', 'pointermove', 'click', 'dblclick']) {
+      vbox.addEventListener(t, (e) => {
+        if (!overStack(e)) return;
+        if (t !== 'pointermove' || e.pointerType === 'mouse') wake();
+        e.stopPropagation();
+      }, true);
+    }
+    for (const t of ['pointerdown', 'pointermove']) fsw.addEventListener(t, () => { if (root.hasAttribute('data-awake')) wake(); });
+    // Activity over the host's rail (outside the stage) keeps the stack awake too: by place, not by its elements.
+    const railActive = (e) => { if (root.hasAttribute('data-awake') && e.clientY >= fsw.getBoundingClientRect().top) wake(); };
+    window.addEventListener('pointermove', railActive, true);
+    window.addEventListener('pointerdown', railActive, true);
     // The open rail is asked again when the video's box settles or turns (fullscreen's layout, a rotation): the host
     // places it on an ask, at the anchor's place then.
     const vro = new ResizeObserver(() => {
       if (media && root.hasAttribute('data-fswave') && document.documentElement.hasAttribute('data-quick-rail-open')) railAsk(true);
     });
     vro.observe(vbox);
+    // The stack's and the transport's heights, for the transport's clearance (.fsp-mid). A hidden stack keeps its box.
+    const hro = new ResizeObserver(() => {
+      if (fsw.offsetHeight) vbox.style.setProperty('--fsp-fsw-h', fsw.offsetHeight + 'px');
+      if (mid.offsetHeight) vbox.style.setProperty('--fsp-mid-h', mid.offsetHeight + 'px');
+    });
+    hro.observe(fsw);
+    hro.observe(mid);
     const fsWave = (on) => {
       const w = tlbox.querySelector('.fsp-tl') || fsw.querySelector('.fsp-tl');
       // The seek rides with the stack: the band's top half, the rail's window under it; back in the bar without it.
@@ -1682,6 +1727,8 @@ export function createPlayer(api) {
       const passive = media && act();
       fsw.toggleAttribute('data-passive', passive);
       anchor.toggleAttribute('data-quick-rail-passive', passive);
+      // The controls up, the stack is away (the slot rule) and no longer awake.
+      if (stage.shown && root.hasAttribute('data-awake')) setAwake(false);
       motion.pressed = st.motion;
       inv.pressed = st.T.invert;
       prop(fullB, 'disabled', noVid);
@@ -1799,6 +1846,10 @@ export function createPlayer(api) {
         ro.disconnect();
         mro.disconnect();
         vro.disconnect();
+        hro.disconnect();
+        clearTimeout(awakeT);
+        window.removeEventListener('pointermove', railActive, true);
+        window.removeEventListener('pointerdown', railActive, true);
         tl.unmount();
         if (library) library.unmount();
         if (analyzer) analyzer.unmount();
