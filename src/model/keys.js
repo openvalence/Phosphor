@@ -1,10 +1,10 @@
 /**
- * keys.js -- every key and pointer binding in the client, as data. The F1
+ * keys.js -- every key and pointer binding in the client, as data. The ?
  * overlay (ui/KeyHelp.svelte) renders it; test/keys.test.mjs proves each
  * binding exists in the file `src` names.
  *
  * Constraints:
- * - Documents, never dispatches: a binding lives in its component. F1 and F3
+ * - Documents, never dispatches: a binding lives in its component. ? and F3
  *   are the only keys bound off this table (KeyHelp, LookFor); the Log page
  *   takes F3 first while its search is not focused.
  * - A binding added or changed in a component changes here in the same commit.
@@ -12,7 +12,8 @@
  */
 export const KEYS = [
   { group: 'Global', items: [
-    { keys: 'F1', does: 'Key help', where: 'Anywhere', src: 'src/ui/KeyHelp.svelte' },
+    { keys: 'F1 twice', does: 'Docs for this page', where: 'Anywhere', src: 'src/ui/docs.js' },
+    { keys: '?', does: 'Key help', where: 'Outside text fields', src: 'src/ui/KeyHelp.svelte' },
     { keys: 'F3, Ctrl+F', does: 'Look for a control', where: 'Anywhere', src: 'src/ui/LookFor.svelte' },
     { keys: 'Ctrl+Z', does: 'Undo last setting write', where: 'Outside text fields and editors', src: 'src/model/history.svelte.js' },
     { keys: 'Ctrl+Shift+Z', does: 'Redo', where: 'Outside text fields and editors', src: 'src/model/history.svelte.js' },

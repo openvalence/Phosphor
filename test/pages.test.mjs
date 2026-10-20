@@ -16,7 +16,7 @@
  *   full     page fullscreen (ph-wb4j): the page takes the window below the
  *            top strip; the caret hides the bar and strip, leaving only the
  *            stop pair top right, uncovered, half opacity at rest and full on
- *            pointer movement (RENDERING §8.4 row 11); F11 enters, F1's Escape
+ *            pointer movement (RENDERING §8.4 row 11); F11 enters, Key help's Escape
  *            stays, Escape leaves; Borderless persists and sets the window's
  *            fullscreen on enter and clears it on leave (stub IPC only)
  *
@@ -302,14 +302,14 @@ console.log('\n--- desktop 1280x800 ---');
   await page.keyboard.press('F11');
   await page.waitForTimeout(150);
   ok('full: F11 enters', await page.locator('main.pane.full.bare').count() === 1);
-  await page.keyboard.press('F1');
+  await page.keyboard.press('Shift+Slash');
   await page.waitForTimeout(150);
   await page.keyboard.press('Escape');
   await page.waitForTimeout(150);
-  ok('full: Escape closing F1 help stays', await page.locator('main.pane.full').count() === 1);
+  ok('full: Escape closing Key help stays', await page.locator('main.pane.full').count() === 1);
   await page.keyboard.press('Escape');
   await page.waitForTimeout(150);
-  ok('full: Escape leaves after F1 closed', await page.locator('main.pane.full').count() === 0);
+  ok('full: Escape leaves after Key help closed', await page.locator('main.pane.full').count() === 0);
   // The page's own ask with bare: false is still bare for a media page.
   const asked = await page.evaluate(() => { const e = new CustomEvent('phosphor-page-fullscreen', { bubbles: true, cancelable: true, detail: { on: true, bare: false } });
     document.querySelector('main.pane .fsp').dispatchEvent(e); return e.defaultPrevented; });

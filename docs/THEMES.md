@@ -299,7 +299,7 @@ Temple's own (`src/themes/temple/`): `boot.js` (the unlock and the escape hatch)
 sprite canvas, the title bar readout `--temple-wm`, the oracle on F7 and its square-wave beeps, off
 until its toggle), `glyphs.js` and `fonts/` (the 8 x 8 system face, public domain, built by
 `fonts/build.py`). Its keys live only while it is applied and are documented in its own marquee,
-not in `src/model/keys.js`, so F1 does not give the secret away. `test/theme-temple.test.mjs` checks
+not in `src/model/keys.js`, so Key help (?) does not give the secret away. `test/theme-temple.test.mjs` checks
 the unlock, the escape, the stop pair under 50 sprite placements, no frames while hidden or still,
 and the oracle.
 

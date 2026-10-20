@@ -1,15 +1,16 @@
 <script>
   /**
-   * KeyHelp.svelte -- F1: the key table (model/keys.js) in one fixed panel.
+   * KeyHelp.svelte -- ?: the key table (model/keys.js) in one fixed panel.
    *
    * Constraints:
-   * - F1 is bound here, on the window, with preventDefault so the browser's
-   *   own help never opens. F1 or Escape closes; focus returns to the opener.
+   * - ? (Shift+/) is bound here, on the window, never in a text field (it
+   *   types there). ? or Escape closes; focus returns to the opener. F1 is
+   *   the docs (docs.js).
    * - An overlay in ConfirmLayer's band (RENDERING §9): no scrim, no inert,
    *   below the top strip, so the stop stays reachable. Fixed size whatever
    *   the class; only the panel's list scrolls.
    * - One overlay at a time: opening announces 'phosphor-overlay', which
-   *   closes this one; a pending confirm blocks F1 (it must stay visible).
+   *   closes this one; a pending confirm blocks ? (it must stay visible).
    * - Two columns on `full`, one otherwise.
    * - A shell-only binding (its `src` under src/shell) is listed in the shell
    *   only; the served page has no such control.
@@ -27,6 +28,9 @@
     && (!DEMO || ((!k.src.startsWith('plugins/') || k.src.startsWith('plugins/factory/advanced-penetration/')) && !k.src.startsWith('src/ui/graph/')));
   const GROUPS = KEYS.map((g) => ({ ...g, items: g.items.filter(shown) }))
     .filter((g) => g.items.length);
+
+  // Where ? is a character: the field takes it.
+  const TYPING = 'input:not([type=range],[type=checkbox],[type=radio],[type=button]), textarea, select, [contenteditable]:not([contenteditable=false])';
 
   let open = $state(false);
   let panel = $state(null);
@@ -50,7 +54,7 @@
   const yield_ = (e) => { if (open && e.detail !== 'help') hide(); };
 
   function onkeydown(e) {
-    if (e.key === 'F1') {
+    if (e.key === '?' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.target?.closest?.(TYPING)) {
       e.preventDefault();
       if (open) hide(); else show();
     } else if (open && e.key === 'Escape') {

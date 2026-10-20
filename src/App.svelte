@@ -66,6 +66,8 @@
   import { registerSearch } from './ui/searchIndex.js';
   import { backAction, EXIT_ARM_MS } from './model/back.js';
   import { say, history as edits } from './model/history.svelte.js';
+  import { docsKey, docsUrl } from './ui/docs.js';
+  import { openExternal } from './ui/external.js';
   import { layouts, orderedLayoutNames, switchLayout, addLayout, dashEdit, redHint } from './model/dashboard.svelte.js';
   import './ui/select.css';
 
@@ -303,8 +305,9 @@
   // A Theme hook (docs/THEMES.md, Chrome hooks): the desktop rail drawn as its icon column.
   $effect(() => { document.documentElement.toggleAttribute('data-rail-collapsed', isDesktop && railMini); });
   function onFullKey(e) {
+    docsKey(e, current?.id);
     if (e.key === 'F11' && current?.page?.fields) { e.preventDefault(); full = toggle(full, current.page.mediaFullscreen); }
-    // After every listener: an overlay's own Escape (F1, F3) prevents it.
+    // After every listener: an overlay's own Escape (?, F3, the F1 note) prevents it.
     else if (e.key === 'Escape' && full.on) setTimeout(() => { if (!e.defaultPrevented) full = OFF; });
   }
 
@@ -877,7 +880,14 @@
   {:else}
     {#if ready}<HeroStrip heroes={instrumentHeroes} />{/if}
     {#if menuMode}
-      <PhoneMenu><nav class="rail drawer-nav" aria-label="Sections">{@render sideTabs(false, catPage)}</nav></PhoneMenu>
+      <PhoneMenu><nav class="rail drawer-nav" aria-label="Sections">{@render sideTabs(false, catPage)}
+        <!-- No F1 on touch: the docs for this page, through the leave-app confirm. -->
+        <div class="rail-sec" data-part="rail-sec"><button type="button" class="rail-tab menu-docs" data-part="rail-tab"
+                onclick={() => { const u = docsUrl(current?.id); phoneMenu.open = false; openExternal(u); }}>
+          <span class="rail-glyph" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M8 4C6.5 3 4.5 2.5 2.5 2.5v10c2 0 4 .5 5.5 1.5 1.5-1 3.5-1.5 5.5-1.5v-10C11.5 2.5 9.5 3 8 4zM8 4v10" /></svg></span>
+          <span class="rail-name">Docs</span>
+        </button></div>
+      </nav></PhoneMenu>
     {:else}
     <nav class="tabs" aria-label="Sections">
       <div role="tablist" tabindex="-1" onkeydown={(e) => onTablistKeydown(e, false)}>
@@ -986,6 +996,8 @@
   .rail.mini { width: 56px; }
   /* The phone menu's drawer holds the rail's content at the drawer's width. */
   .rail.drawer-nav { width: auto; flex: 1 0 auto; border: 0; border-radius: 0; background: none; overflow: visible; padding-top: var(--sp-3); }
+  /* The drawer's Docs row: the tablist's inset, outside the tablist (a link out, not a page). */
+  .rail.drawer-nav > .rail-sec { padding: 0 var(--sp-2) var(--sp-2); }
   /* No padding on the rail itself: the recess shades (style.css [data-shade])
      span its whole scrollport, so the inset lives on its children. */
   .rail-collapse {

@@ -69,6 +69,7 @@
   import { heroBar, budgetOf, isCollapsed } from './hero/heroBar.svelte.js';
   import { view } from '../model/viewport.svelte.js';
   import { history } from '../model/history.svelte.js';
+  import { DOCS_NOTE } from './docs.js';
   import { prefs, setPref } from '../model/prefs.js';
 
   // onopenlog: called after the strip points LogPane at its Safety feed; App
@@ -233,6 +234,8 @@
   const slot = $derived.by(() => {
     const link = machine.link;
     const latch = machine.safety;
+    // The F1 note answers a key just pressed: 3 s over a link fault, or the second F1 is blind on Hubs.
+    if (history.msg === DOCS_NOTE) return { kind: 'notice', text: history.msg };
     if (link.error) return { kind: 'fault', text: 'Link error: ' + link.error };
     if (link.phase !== 'live') {
       return { kind: 'fault', text: (PHASE_WORD[link.phase] || link.phase) + ': no hub link'

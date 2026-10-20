@@ -107,7 +107,7 @@ const SCENARIOS = [
   { name: 'page', desc: 'page switch Dash to a category page (the page fade), reversed mid-way', go: async (p) => goTab(p, 'cat2'), back: async (p) => goTab(p, 'machine'), input: true },
   { name: 'drawer', phone: true, desc: 'phone menu drawer opens, closed mid-way', go: async (p) => p.click('.menu-btn'), back: async (p) => p.keyboard.press('Escape') },
   { name: 'details', desc: 'Settings > Advanced opens (FLIP), closed mid-way', setup: adv, go: async (p) => p.click('details.adv > summary'), back: async (p) => p.click('details.adv > summary') },
-  { name: 'keyhelp', desc: 'F1 key help rises in, dismissed mid-way', go: async (p) => p.keyboard.press('F1'), back: async (p) => p.keyboard.press('Escape') },
+  { name: 'keyhelp', desc: '? key help rises in, dismissed mid-way', go: async (p) => p.keyboard.press('Shift+Slash'), back: async (p) => p.keyboard.press('Escape') },
   { name: 'hubrow', desc: 'Hubs: Forget a saved hub (the row goes at once, rows after it in the list slide up)', setup: async (p) => { await goTab(p, 'shell:hubs'); await p.waitForTimeout(300); },
     go: async (p) => p.getByRole('button', { name: /^Forget / }).first().click() },
   { name: 'menu', desk: true, desc: 'context menu opens (popover rise), dismissed mid-way', setup: async (p) => { await goTab(p, 'cat2'); await p.waitForTimeout(300); },

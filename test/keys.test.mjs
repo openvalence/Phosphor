@@ -1,12 +1,15 @@
 /**
- * keys.test.mjs -- ph-vdk.60.11: the key table, F1 key help, F3 look-for and
+ * keys.test.mjs -- ph-vdk.60.11: the key table, ? key help, F1 docs, F3 look-for and
  * the rail's Alt-drag.
  *
  *   table    every binding in src/model/keys.js exists in the file it names
  *            (a grep-level probe per entry; an entry without a probe fails)
- *   help     F1 opens the table and keeps the browser's help shut; F1 and
+ *   help     ? opens the table, never from a text field; ? and
  *            Escape close it; focus returns; nothing in the layout moves; the
  *            panel sits inside the viewport at full (two columns) and glance
+ *   docs     F1 shows the note and keeps the browser's help shut; F1 again
+ *            inside the window opens the page's docs with no confirm; Escape
+ *            or the window's end cancels (ph-fhu8)
  *   look     F3 and Ctrl+F open the palette and keep the find bar shut;
  *            typing narrows; Enter jumps to a control on another page and
  *            focuses it; the locate sweep runs on the field's ring, then is
@@ -31,6 +34,7 @@ import { catalogEtag, toHex } from '../../Valence/clients/js/sha256.js';
 import { buildSettingsModel, WIDGET } from '../src/model/settings.js';
 import { labelFor } from '../src/model/format.js';
 import { KEYS } from '../src/model/keys.js';
+import { goTab } from './nav.mjs';
 
 const args = process.argv.slice(2);
 const SHOTS = args.includes('--shots') ? args[args.indexOf('--shots') + 1] : null;
@@ -45,7 +49,8 @@ const shot = (page, name, opts = {}) => (SHOTS ? page.screenshot({ path: join(SH
 // ---- table: one probe per entry, matched in the named file ------------------
 console.log('[table] every binding in keys.js exists');
 const PROBES = {
-  'Global|F1': /e\.key === 'F1'/,
+  'Global|F1 twice': /e\.key === 'F1'[\s\S]*DOCS_ARM_MS[\s\S]*ask: false/,
+  'Global|?': /e\.key === '\?' && !e\.ctrlKey/,
   'Global|F3, Ctrl+F': /key\.toLowerCase\(\) === 'f'[\s\S]*e\.key !== 'F3'/,
   'Global|Escape': /e\.key === 'Escape'/,
   'Global|Ctrl+Z': /e\.key\.toLowerCase\(\) !== 'z'[\s\S]*\(e\.shiftKey \? redo : undo\)\(\)/,
@@ -246,7 +251,7 @@ function fakeHub(ws) {
 }
 
 const browser = await chromium.launch();
-async function open(w, h) {
+async function open(w, h, upSel = '[role=tab]') {
   const ctx = await browser.newContext({ viewport: { width: w, height: h } });
   await ctx.addInitScript(([etag, hex]) => {
     try {
@@ -261,7 +266,7 @@ async function open(w, h) {
   page.on('pageerror', (e) => ok('no page error', false, String(e)));
   page.on('console', (m) => { if (m.text().startsWith('[')) console.log('    page: ' + m.text()); });
   await page.goto('http://127.0.0.1:' + PORT + '/');
-  const up = await page.waitForSelector('[role=tab]', { timeout: 15000 }).then(() => true).catch(() => false);
+  const up = await page.waitForSelector(upSel, { timeout: 15000 }).then(() => true).catch(() => false);
   await sleep(600);
   // Recorded after the app's own window handlers, so it sees their preventDefault.
   await page.evaluate(() => addEventListener('keydown', (e) => {
@@ -282,16 +287,15 @@ const inView = (page, sel) => page.evaluate((sel) => {
 }, sel);
 
 // ---- help ---------------------------------------------------------------------
-console.log('\n[help] F1 key help');
+console.log('\n[help] ? key help');
 {
   const { ctx, page, up } = await open(1400, 900);
   ok('the app came up', up);
   const tab = page.locator('[role=tab][aria-selected=true]').first();
   await tab.focus();
   const before = await layout(page);
-  await page.keyboard.press('F1');
-  ok('F1 opens the key table', await page.locator('.kh').isVisible());
-  ok('F1 keeps the browser help shut (default prevented)', await page.evaluate(() => window.__prevented?.F1 === true));
+  await page.keyboard.press('Shift+Slash');
+  ok('? opens the key table', await page.locator('.kh').isVisible());
   ok('nothing in the layout moves', await layout(page) === before);
   ok('full: the panel is inside the viewport, below the top strip', await inView(page, '.kh'));
   ok('full: two columns', await page.locator('.kh-cols').evaluate((el) => getComputedStyle(el).columnCount) === '2');
@@ -319,24 +323,88 @@ console.log('\n[help] F1 key help');
   ok('only the panel scrolls; the panel keeps its size',
     await list.evaluate((el) => getComputedStyle(el).overflowY === 'auto'), panelBox);
   await sleep(300);
-  await shot(page, 'f1-full.png');
-  await page.keyboard.press('F1');
-  ok('F1 closes it', await page.locator('.kh').count() === 0);
+  await shot(page, 'keyhelp-full.png');
+  await page.keyboard.press('Shift+Slash');
+  ok('? closes it', await page.locator('.kh').count() === 0);
   ok('focus returns to the opener', await page.evaluate(() => document.activeElement.getAttribute('role') === 'tab'
     && document.activeElement.getAttribute('aria-selected') === 'true'));
-  await page.keyboard.press('F1');
+  await page.keyboard.press('Shift+Slash');
   await page.keyboard.press('Escape');
   ok('Escape closes it', await page.locator('.kh').count() === 0);
   await ctx.close();
 }
 {
   const { ctx, page } = await open(230, 480);
-  await page.keyboard.press('F1');
+  await page.keyboard.press('Shift+Slash');
   ok('glance: the panel is inside the viewport, below the top strip', await page.locator('.kh').isVisible() && await inView(page, '.kh'));
   ok('glance: one column', await page.locator('.kh-list').evaluate((el) => getComputedStyle(el).columnCount) !== '2');
   ok('glance: the page itself does not scroll sideways', await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   await sleep(300);
-  await shot(page, 'f1-glance.png');
+  await shot(page, 'keyhelp-glance.png');
+  await ctx.close();
+}
+
+// ---- docs (ph-fhu8) ----------------------------------------------------------
+console.log('\n[docs] F1 twice opens the docs for this page');
+{
+  const DOCS = 'https://openvalence.org/phosphor/docs/';
+  const NOTE = 'F1 again: docs for this page · Esc to cancel';
+  const { ctx, page } = await open(1400, 900);
+  // The web build opens a new tab: window.open is the hand-off, recorded here instead.
+  await page.evaluate(() => { window.__opened = []; window.open = (u) => { window.__opened.push(u); return null; }; });
+  const opened = () => page.evaluate(() => window.__opened);
+  const note = () => page.locator('.topstrip .status .st-text').first().textContent().catch(() => '');
+  await page.locator('[role=tab][aria-selected=true]').first().focus();
+  const before = await layout(page);
+  await page.keyboard.press('F1');
+  ok('the first F1 shows the note in the status slot', await note() === NOTE, await note());
+  await shot(page, 'docs-note.png', { clip: { x: 0, y: 0, width: 1400, height: 120 } });
+  ok('F1 keeps the browser help shut (default prevented)', await page.evaluate(() => window.__prevented?.F1 === true));
+  ok('...opens nothing, and nothing in the layout moves', (await opened()).length === 0 && await page.locator('.kh').count() === 0 && await layout(page) === before);
+  await page.keyboard.press('F1');
+  await sleep(100);
+  ok('F1 again inside the window opens the docs, no confirm', JSON.stringify(await opened()) === JSON.stringify([DOCS])
+    && await page.locator('.overlay').count() === 0, await opened());
+  ok('the note is gone once it opened', await note() !== NOTE);
+  await page.keyboard.press('F1');
+  await page.keyboard.press('Escape');
+  ok('Escape cancels: the note goes', await note() !== NOTE);
+  await page.keyboard.press('F1');
+  ok('after Escape, F1 arms again instead of opening', (await opened()).length === 1 && await note() === NOTE);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('F1');
+  await sleep(3300);
+  ok('the window ends: the note clears by itself', await note() !== NOTE);
+  await page.keyboard.press('F1');
+  ok('an F1 after the window arms again, opens nothing', (await opened()).length === 1 && await note() === NOTE);
+  await page.keyboard.press('Escape');
+  await goTab(page, 'log');
+  await sleep(300);
+  await page.keyboard.press('F1');
+  await page.keyboard.press('F1');
+  await sleep(100);
+  ok('context: the Log page opens the log section of troubleshooting', (await opened())[1] === DOCS + 'troubleshooting/#s-log', await opened());
+  // ? is a character in a text field: it types there and Key help stays shut.
+  await page.evaluate(() => { const i = document.createElement('input'); i.id = 'q-probe'; document.body.append(i); i.focus(); });
+  await page.keyboard.press('Shift+Slash');
+  ok('? in a text field types, Key help stays shut', await page.locator('#q-probe').inputValue() === '?' && await page.locator('.kh').count() === 0);
+  await ctx.close();
+}
+{
+  const { ctx, page } = await open(390, 800, '.menu-btn');
+  await page.click('.menu-btn');
+  const item = page.locator('.phone-menu .menu-docs');
+  ok('phone: the menu carries Docs', await item.isVisible());
+  await sleep(300);
+  await item.scrollIntoViewIfNeeded();
+  await shot(page, 'docs-phone-menu.png');
+  await item.click();
+  await sleep(200);
+  const ask = await page.locator('.overlay').textContent().catch(() => '');
+  ok('phone: Docs asks first (Open link?, the docs on the Dash)', /Open link\?/.test(ask) && ask.includes('openvalence.org/phosphor/docs') && await page.locator('.phone-menu').count() === 0, ask);
+  await shot(page, 'docs-phone-ask.png');
+  await page.click('.overlay button:has-text("Cancel")');
+  ok('phone: Cancel leaves the app where it was', await page.locator('.overlay').count() === 0);
   await ctx.close();
 }
 
@@ -455,25 +523,28 @@ console.log('\n[index] F3 indexes every page and every layout, and rebuilds on c
 }
 
 // ---- exclusive overlays (ph-ubwk) ---------------------------------------------
-console.log('\n[overlays] F1, F3 and a confirm are one overlay at a time');
+console.log('\n[overlays] ?, F3 and a confirm are one overlay at a time');
 {
   const { ctx, page } = await open(1400, 900);
   const dialogs = () => page.locator('.kh, .lf, .overlay').count();
   await page.locator('[role=tab][aria-selected=true]').first().focus();
-  await page.keyboard.press('F1');
+  await page.keyboard.press('Shift+Slash');
   await page.keyboard.press('F3');
-  ok('F1 then F3 leaves the look-for alone', await page.locator('.kh').count() === 0 && await page.locator('.lf').count() === 1, await dialogs());
-  await page.keyboard.press('F1');
-  ok('...and F1 then replaces it', await page.locator('.kh').count() === 1 && await page.locator('.lf').count() === 0);
+  ok('? then F3 leaves the look-for alone', await page.locator('.kh').count() === 0 && await page.locator('.lf').count() === 1, await dialogs());
+  await page.keyboard.press('Shift+Slash');
+  ok('...and ? in its search types there, the look-for stays', await page.locator('.kh').count() === 0 && await page.locator('.lf').count() === 1);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Shift+Slash');
+  ok('? with the look-for closed opens Key help alone', await page.locator('.kh').count() === 1 && await page.locator('.lf').count() === 0);
   await page.keyboard.press('Escape');
   const flip = page.locator('.topstrip .rw-flip');
   if (await flip.count()) {
     await flip.click();
     await sleep(200);
     ok('a flip asks for a confirm', await page.locator('.overlay.hazard').count() === 1);
-    await page.keyboard.press('F1');
+    await page.keyboard.press('Shift+Slash');
     await page.keyboard.press('F3');
-    ok('F1 and F3 do not open over a pending confirm', await page.locator('.kh, .lf').count() === 0 && await page.locator('.overlay.hazard').count() === 1);
+    ok('? and F3 do not open over a pending confirm', await page.locator('.kh, .lf').count() === 0 && await page.locator('.overlay.hazard').count() === 1);
     await page.keyboard.press('Escape');
     ok('one Escape closes the confirm', await dialogs() === 0);
     await page.keyboard.press('F3');

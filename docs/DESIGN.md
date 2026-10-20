@@ -1287,7 +1287,7 @@ derives from one unit, and no size is tuned by hand.
   at the compact tap height, the Phosphor section in flow like the others;
   the desktop rail's shaded foot block is the rail's alone. The page operations ride the drawer's pill
   and stay in the page footer too, one tap from the thumb (`ph-5u0g.4`, the
-  agent's reading, veto-able). Seams: `src/App.svelte` (`sideTabs`, shared
+  agent's reading, veto-able). The drawer ends with Docs (§10.13). Seams: `src/App.svelte` (`sideTabs`, shared
   with the desktop rail), `src/ui/PhoneMenu.svelte`, the hamburger in
   `src/ui/LinkBar.svelte`.
   - Android back (operator 2026-10-11): the system gesture and button reach
@@ -1338,6 +1338,18 @@ derives from one unit, and no size is tuned by hand.
   a plugin page, and rebuilds when any of them changes. Matching is fuzzy,
   Blender F3 style: words in any order and subsequences ("spd in" finds "In
   speed"), ranked by how tight the match is, a label hit before a path hit.
+- Docs (operator 2026-10-20, `ph-fhu8`): F1 shows one note in the status
+  slot, `F1 again: docs for this page · Esc to cancel`, for 3 s (over a
+  link fault, so it shows on Hubs too); F1 again inside it opens the docs
+  page for what is on screen in the system browser, a new tab in a browser
+  build, with no `Open link?`: the second press is the confirm. Escape or
+  the 3 s cancel it; a pending confirm blocks it. The phone has no F1: its
+  menu ends with Docs, the same page through `Open link?`. The page map is
+  `src/ui/docs.js`: the funscript player, the node graph (focused or
+  fullscreen), Plugins and other plugin pages, Hubs, Pairing and Log to
+  their pages and sections of openvalence.org/phosphor/docs, anything else
+  to its index. Key help moves from F1 to ? (Shift+/), never from a text
+  field.
 - In the node editor F3 is the node search (operator 2026-10-09,
   `ph-5wo6`): every node source on the same matcher, Enter adds at the
   pointer, Shift+Enter shows the one placed; its add menu groups sources as
@@ -1374,7 +1386,7 @@ derives from one unit, and no size is tuned by hand.
     a Svelte `transition:` (both continue from where they are); keyframes
     only for one-way changes.
   - Arrivals animate, dismissals are instant: the phone drawer, a dialog,
-    popover, menu, F1, F3 or the Dash edit chrome arrives in motion and is
+    popover, menu, Key help, F3 or the Dash edit chrome arrives in motion and is
     gone on the frame it is closed, out of the DOM and the focus order at
     once. Things that change place (list rows, boxes after a height change,
     the rail's faces) animate both ways.
@@ -1833,6 +1845,8 @@ behind the menu.
   (`src/ui/external.js`) and one link (`src/ui/ExtLink.svelte`, the mark
   and the tip) carry it: this page's link, the credits (About, Plugins),
   the web build's Downloads, a plugin's `openUrl` and the health reports.
+  F1 twice is the one link that does not ask: the second press is the
+  confirm (§10.13, Docs).
 - The hosted page keeps its address field and recent hubs; the status
   lines, Retry now and Stop are shared.
 
@@ -1958,3 +1972,4 @@ behind the menu.
 | 2026-10-18 | §10.19 | Upload firmware: a Firmware card on the machine's System page, shell only; local image checks (magic, chip P4, app descriptor, compiled version); Official or Unrecognized by SHA-256 against the Nucleus releases' SHA256SUMS, can't-check allowed; the PAIR press flow with countdown, progress, restart and the /diag verdict by slot (done, on trial, rollback); refusals mapped to one action each (`ph-z6pz`). | operator, ruled 2026-10-19 (the flow, checks, labels, refusal words, desktop and Android, System or Setup); the System page over Setup, the slot as evidence, any tier seeing the card, the Bluetooth line, the 150 s wait and the first page of releases are the agent's, veto-able |
 | 2026-10-18 | §10.20 | The connecting page: never a dead end. The phase and hub, a countdown line (`Next try in N s · attempt N`) over a bar draining to the next try and the close reason on its own line; Retry now and Stop in fixed slots; the dialed address editable in place; the saved hubs with Neutrino last; a LAN scan on arrival and Scan; a Troubleshooting link to the find section of the docs; every link that leaves the app asks first in one shared confirm (`Open link?`, the destination, Open link, Cancel) and opens through tauri-plugin-opener, http and https (`ph-u3b2.1`, `ph-u3b2.2`). | PROPOSED: operator (2026-10-18, stuck on a phone redialing a saved address that no longer answers: other hubs, a Virtual button, previous machines, troubleshooting, cancel, edit the address, a clearer countdown); Neutrino named in place of "Virtual" (the 2026-10-15 naming ruling), the LAN scan on arrival, Stop ending this session's redial only, the drain bar are the agent's, veto-able; ruled 2026-10-18: the Neutrino row stays, the link confirms before leaving the app ("open link"), through the opener plugin on every platform, the copy fallback dropped, http allowed beside https (the confirm is the safeguard), the shell's own URL launchers deleted |
 | 2026-10-18 | §10.3, plugins | The funscript player's media fullscreen (docs/plugins/FUNSCRIPT.md PP7 to PP11; PP11 is the state table, the source of truth the tests read): three layers over the video, none of which moves another. The bar is the stage's overlay in a fixed slot at the bottom edge (the heat seek, no hover tip, over one row of buttons), fading in place with the controls; the stack (the motion preview over the quick rail's travel window) stands fixed on the slot's top edge, a 40 % ghost until hovered on mouse systems (hovered it is full and keeps the controls up), full under touch while paused and the ghost while playing (its first touch only wakes it); it is the page's own surface over the video (`data-stage-surface`: the pointer shows over it, a tap on it is never the stage's); the wave's height grip (pref `fsWave`) and a sideways drag on the wave that scrubs (while playing it pauses for the drag and plays on at release); the moving layers slide on sub-pixel transforms (no judder). The transport (previous, Play, next, the times) sits in the bar's middle on a fine pointer and on the video's center on a coarse one, clear of the stop pair and the stack. While the player runs the preview and the window are a display but for the wave's scrub; paused, all take input, the jog tape included. The timeline toggle (Preview) shows or hides the wave (pref, on by default). The stop pair is never part of any of it and keeps its 50 % rest (2026-10-03). A media page's fullscreen takes the quick rail's horizontal form on the phone class too; stacked, it is part of that fullscreen: a tap on the video never closes it, Escape and back leave the fullscreen, a library or Settings drawer puts the stack away until it closes. A return to the app rejoins the shell's media fullscreen if the page's stage drifted out of it. The motion preview's playhead is fixed at its center with the script moving past it, a hatch outside the first and last action; telemetry drawn stays while paused and while scrubbing and clears when playback starts (`ph-7ri8`, `ph-10c4`, `ph-f012`). | operator (superfan feedback 2026-10-18; on the builds 2026-10-18 and 2026-10-19; 2026-10-19 "what if wins": the what-if layout of lp/player-alt over rounds 4 to 7, which are parked on lp/connect-player-r7; the hatch, the copy and the state table as the source of truth); the rulings on PP11's six questions 2026-10-19 |
+| 2026-10-20 | §10.13, §10.12, §10.20 | F1 opens the docs: the first press shows a 3 s note in the status slot (over a link fault), the second inside it opens the docs page for what is on screen with no `Open link?`, Escape or the timeout cancel; the page map lives in `src/ui/docs.js`; the phone menu ends with Docs through `Open link?`; Key help moves from F1 to ? (Shift+/), never from a text field (`ph-fhu8`). | operator (2026-10-20: "press F1, small notice, F1 again to open docs, Esc to cancel"); the page map, the note over a link fault and Key help on ? are the agent's, veto-able |
