@@ -27,7 +27,8 @@ tauri-plugin-log = "2"
 # Rust-side fetch: /uitoken minting from a native origin (main.js shell branch)
 # No cookie jar: the plugin's lives in the user cache folder, outside a portable
 # build's PhosphorData (src/portable.rs). Hubs and the shipped plugins set none.
-tauri-plugin-http = { version = "2", default-features = false, features = ["rustls-tls", "http2", "charset", "macos-system-configuration"] }
+# stream: the flasher's upload body with progress (src/ota.rs).
+tauri-plugin-http = { version = "2", default-features = false, features = ["rustls-tls", "http2", "charset", "macos-system-configuration", "stream"] }
 # Native clipboard for the context menu's Paste and Copy: a webview read asks
 # the user for clipboard permission, a native one does not (capabilities: read
 # and write text only).

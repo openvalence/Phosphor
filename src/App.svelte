@@ -31,6 +31,7 @@
   import LogPane from './ui/LogPane.svelte';
   import PairingPane from './ui/PairingPane.svelte';
   import ThemePicker from './ui/ThemePicker.svelte';
+  import FirmwareCard from './ui/FirmwareCard.svelte';
   import HeroStrip from './ui/HeroStrip.svelte';
   import Home from './ui/Home.svelte';
   import DashGrid from './ui/dash/DashGrid.svelte';
@@ -44,7 +45,7 @@
   import { untrack, tick } from 'svelte';
   import { view } from './model/viewport.svelte.js';
   import { projectGroups } from './model/rclass.js';
-  import { machine } from './model/machine.svelte.js';
+  import { machine, linkKind } from './model/machine.svelte.js';
   import { isFieldEnabled, resetsToDefault, WIDGET } from './model/settings.js';
   import { UI_CATEGORY, UI_CATEGORY_TIER, UI_NAV_TIER } from '../../Valence/clients/js/index.js';
   import { navIcon, navIconKey } from './ui/navIcons.js';
@@ -641,10 +642,15 @@
   // the diagnostic cards with no section, last, follow a Diagnostics row.
   const DIAG_HEAD = {};
   const headOf = (g) => (g ? g.section || (g.diagnostic ? DIAG_HEAD : '') : '');
+  // The flasher's card heads the System page, the registry's home for firmware (DESIGN §10.19): shell, not iOS, a real hub.
+  const FLASHER = SHELL && import.meta.env.TAURI_ENV_PLATFORM !== 'ios';
+  const firmwareHere = $derived(FLASHER && !!current?.cat?.known && current.cat.id === UI_CATEGORY.system
+    && (machine.link.dialed, linkKind()) !== 'local');
   const settingItems = $derived([
     ...(current && current.cat ? current.cat.heroes : []).map((h) =>
       ({ id: 'hero:' + h.id, title: h.title || capitalize(h.id), snippet: heroCard, hero: heroShown(h),
          fields: heroFields.filter((f) => h.fields.claimed.has(f.uid) && (showAdvanced || !heroAdvUids.has(f.uid))) })),
+    ...(firmwareHere ? [{ id: 'client:firmware', title: 'Firmware', snippet: firmwareCard }] : []),
     ...projectGroups(visibleGroups.groups, view.cls).flatMap(({ group: g, drill: promoted }, i, all) => [
       ...(headOf(g) && headOf(g) !== headOf(all[i - 1]?.group)
         ? [{ id: 'section:' + current.cat.id + ':' + (g.section || '~diagnostic'), kind: 'section', title: g.section || 'Diagnostics' }] : []),
@@ -678,6 +684,8 @@
     <span aria-hidden="true">›</span>
   </button>
 {/snippet}
+
+{#snippet firmwareCard()}<FirmwareCard />{/snippet}
 
 {#snippet heroCard(item)}
   <item.hero.component fields={item.hero.fields} hero={item.hero} />

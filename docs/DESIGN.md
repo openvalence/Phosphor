@@ -1732,6 +1732,70 @@ else.
   because the webview writes its data folder the moment it starts.
 - **About.** Settings, About shows Install: Portable and the data folder.
 
+### 10.19 Upload firmware (operator rulings 2026-10-18, `ph-z6pz`; ruled 2026-10-19)
+
+The flasher puts a Nucleus `.bin` on the connected machine over the hub's own
+HTTP `/ota` (plain HTTP on :80, never over Valence: SPEC 1.2-8). The machine
+is the authority: it takes an update only after a PAIR double press at the
+machine and only while halted with motor power off (Nucleus `val-ktal`,
+`flagship_p4/src/system/ValenceOta.h`). Phosphor checks, labels and reports;
+it never decides.
+
+- Where: one Firmware card at the top of the machine's System page, the
+  registry's home for firmware (`ui_categories.system`: "power, thermals,
+  memory, firmware, logs"). Setup is commissioning (RFC-079), not upkeep. The
+  page exists only while a catalog is adopted, which is the "machine
+  connected" gate. Shell only (Windows, macOS, Linux, Android; not iOS): the
+  web builds are https and cannot reach a hub's plain HTTP, so the card is
+  absent there. Absent for Neutrino; on a Bluetooth link the card says
+  "Needs a Wi-Fi link: connect by address". Any tier sees it: the press is
+  the authority, not the session.
+- Checks before anything is sent, all local: ESP image magic 0xE9, chip id
+  P4 (0x0012 at header offset 12), the `esp_app_desc` magic, project name
+  and build, and the FIRMWARE_VERSION string compiled in (exactly one, the
+  rule `tools/ota.py` uses; the descriptor's version is the git describe,
+  `val-1vdq`). A failed check names the fault with one action and disables
+  Update.
+- Origin: the file's SHA-256 against the `SHA256SUMS` asset of each release
+  on the first page of github.com/openvalence/Nucleus releases. "Official
+  <tag>" on a match, "Unrecognized build" otherwise, "Can't check: no published
+  checksums" or "Can't check: GitHub didn't answer". Every label flashes;
+  the label informs, it does not gate. This is the flasher's only request
+  off the LAN, made when a file is picked, and the privacy page says so
+  (openvalence.github.io `privacy.html`).
+- Flow, one status slot: Update arms (`POST /ota/arm`), then "Double-press
+  PAIR on the machine" with the window's countdown (60 s), polling once a
+  second; approved starts the upload at once (the machine holds an approval
+  30 s); progress in percent; "Restarting"; then `/diag` every 2 s for up to
+  150 s. Done: the running slot changed and `img=valid` ("Updated to
+  <version>"). On trial: the new slot with `img=pending` ("Confirming
+  <version>"). Rollback: the machine restarted and the old slot is back
+  ("The new firmware failed to start: back on <version>"). A same-version
+  reflash moves the slot, so the slot, not the version, is the evidence.
+- Refusals, plain words and one action each: motion running ("Motion is
+  running: stop the machine first"), motor power on ("Motor power is on:
+  latch the E-stop first"), the window closed ("The window closed: try
+  again"), not approved (403: "Not approved: press Update, then double-press
+  PAIR"), another request waiting, an image the machine refused, a broken
+  upload ("The upload broke off: the machine keeps its firmware, try
+  again"), no answer, an unreadable file. A bench
+  image's token path is not offered; a bench machine shows the same press
+  flow and its 403 speaks.
+- Layout: the card's rows (Running, File, Image, Origin, the status slot,
+  the progress bar and the buttons) are drawn in every state, empty when
+  unused, so no step changes the card's height (§10.12, no page shifting).
+  The status slot changes on the frame (§10.13: a refusal or a degradation
+  is never animated). Another machine connected clears the card: nothing
+  of the last machine is shown as this one's.
+- Mechanism: `src/model/flasher.svelte.js` holds the flow outside the card
+  (the link drops during the restart and the page may re-render);
+  `src-tauri/src/ota.rs` streams the image (the HTTP plugin's JS fetch sends
+  a body as a JSON number array and reports no upload progress) and emits
+  `ota-progress`, with one 120 s deadline over the request; Android's IPC
+  has no raw body, so the command also takes the image as a JSON number
+  array. Arm, status, `/diag` and GitHub ride the plugin's fetch. An IPv6
+  hub is bracketed in the URL.
+
 ### 10.20 The connecting page (2026-10-18, `ph-u3b2.1`, `ph-u3b2.2`, PROPOSED)
 
 Until a catalog is in, the page area is the connecting page
@@ -1891,5 +1955,6 @@ behind the menu.
 | 2026-10-17 | §10.18 | The Windows portable build is contained: a `Phosphor/` folder in the zip, `phosphor.portable` beside the exe turns portable mode on, every write goes to `PhosphorData` beside it (the WebView2 data folder included), a launch from a shared folder root (drive, Downloads, Desktop, Documents, user folder) or the temporary folder is stopped by a native dialog before any write (`ph-5fdg`). | operator ("the portable needs to be genuinely portable, writing only to the folder it is run from, and an alert if it's running straight in the downloads etc"; "phosphor.exe and its storage folders sit in their OWN folder"; "a user doesn't accidentally just run the bare app and have it create its stores in the root of a user library folder"; Move / Continue here / Quit); the marker and folder names, `Phosphor (2)` numbering, dropping the cookie jar and the dialog wording are the agent's, veto-able |
 | 2026-10-17 | §10.13 | Touch slop: a touch or pen adjusts a control only past 8 px along its axis or a 400 ms hold, from the value it had; across its axis it scrolls the page; a slider track tap moves nothing; buttons act on a clean tap; each draggable declares its `touch-action`; the wheel scrolls past an unfocused slider or knob. The Android, iOS, Material and HIG touch-slop practice (`ph-7v53`). | operator ("it's still WAY too easy to adjust a control while scrolling ... there must be a best practice standardized for this"); a knob turning sideways under touch, a 2D handle claiming along its own way, a cancel dropping a plugin handle's draft and the per-press axis on `drag()` are the agent's, veto-able |
 | 2026-10-18 | §10.13 | The motion system: duration and easing tokens (`--ease-settle` added), the `src/ui/motion.js` primitives and the rules (purposeful; interruptible; arrivals animate and dismissals are instant; transform and opacity, FLIP for height changes; sticky bars and the arriving page fade and never travel; no view transitions, which take pointer input in their scope (Chromium 151, measured); safety UI never animated; a degradation shows on the frame; readouts never smoothed). On it: the phone drawer, `<details>` and plugin card carets, hub rows, F1, F3 and the setup dialogs, Dash edit chrome, the rail's face cross-fade, the link dot's fill on connect, scroll shades; page switches keep their opacity fade and the theme changes atomically; the right dock slides in over the page and the content re-fits once at the end (`ph-kgck`). | operator ("transitions etc in phosphor, fluidity is the identity ... make it resume worthy"; ruled 2026-10-18 on the prototype: opening animates and closing is instant, the plain page fade, the rail face cross-fade with the outgoing face inert at once, the dock sliding over then re-fitting once, safety states instant in the status slot with notes and idle free to cross-fade, the HeroStrip collapse first in the next batch); every token, curve, the dock's handheld slide and the safety list are the agent's, veto-able |
+| 2026-10-18 | §10.19 | Upload firmware: a Firmware card on the machine's System page, shell only; local image checks (magic, chip P4, app descriptor, compiled version); Official or Unrecognized by SHA-256 against the Nucleus releases' SHA256SUMS, can't-check allowed; the PAIR press flow with countdown, progress, restart and the /diag verdict by slot (done, on trial, rollback); refusals mapped to one action each (`ph-z6pz`). | operator, ruled 2026-10-19 (the flow, checks, labels, refusal words, desktop and Android, System or Setup); the System page over Setup, the slot as evidence, any tier seeing the card, the Bluetooth line, the 150 s wait and the first page of releases are the agent's, veto-able |
 | 2026-10-18 | §10.20 | The connecting page: never a dead end. The phase and hub, a countdown line (`Next try in N s · attempt N`) over a bar draining to the next try and the close reason on its own line; Retry now and Stop in fixed slots; the dialed address editable in place; the saved hubs with Neutrino last; a LAN scan on arrival and Scan; a Troubleshooting link to the find section of the docs; every link that leaves the app asks first in one shared confirm (`Open link?`, the destination, Open link, Cancel) and opens through tauri-plugin-opener, http and https (`ph-u3b2.1`, `ph-u3b2.2`). | PROPOSED: operator (2026-10-18, stuck on a phone redialing a saved address that no longer answers: other hubs, a Virtual button, previous machines, troubleshooting, cancel, edit the address, a clearer countdown); Neutrino named in place of "Virtual" (the 2026-10-15 naming ruling), the LAN scan on arrival, Stop ending this session's redial only, the drain bar are the agent's, veto-able; ruled 2026-10-18: the Neutrino row stays, the link confirms before leaving the app ("open link"), through the opener plugin on every platform, the copy fallback dropped, http allowed beside https (the confirm is the safeguard), the shell's own URL launchers deleted |
 | 2026-10-18 | §10.3, plugins | The funscript player's media fullscreen (docs/plugins/FUNSCRIPT.md PP7 to PP11; PP11 is the state table, the source of truth the tests read): three layers over the video, none of which moves another. The bar is the stage's overlay in a fixed slot at the bottom edge (the heat seek, no hover tip, over one row of buttons), fading in place with the controls; the stack (the motion preview over the quick rail's travel window) stands fixed on the slot's top edge, a 40 % ghost until hovered on mouse systems (hovered it is full and keeps the controls up), full under touch while paused and the ghost while playing (its first touch only wakes it); it is the page's own surface over the video (`data-stage-surface`: the pointer shows over it, a tap on it is never the stage's); the wave's height grip (pref `fsWave`) and a sideways drag on the wave that scrubs (while playing it pauses for the drag and plays on at release); the moving layers slide on sub-pixel transforms (no judder). The transport (previous, Play, next, the times) sits in the bar's middle on a fine pointer and on the video's center on a coarse one, clear of the stop pair and the stack. While the player runs the preview and the window are a display but for the wave's scrub; paused, all take input, the jog tape included. The timeline toggle (Preview) shows or hides the wave (pref, on by default). The stop pair is never part of any of it and keeps its 50 % rest (2026-10-03). A media page's fullscreen takes the quick rail's horizontal form on the phone class too; stacked, it is part of that fullscreen: a tap on the video never closes it, Escape and back leave the fullscreen, a library or Settings drawer puts the stack away until it closes. A return to the app rejoins the shell's media fullscreen if the page's stage drifted out of it. The motion preview's playhead is fixed at its center with the script moving past it, a hatch outside the first and last action; telemetry drawn stays while paused and while scrubbing and clears when playback starts (`ph-7ri8`, `ph-10c4`, `ph-f012`). | operator (superfan feedback 2026-10-18; on the builds 2026-10-18 and 2026-10-19; 2026-10-19 "what if wins": the what-if layout of lp/player-alt over rounds 4 to 7, which are parked on lp/connect-player-r7; the hatch, the copy and the state table as the source of truth); the rulings on PP11's six questions 2026-10-19 |

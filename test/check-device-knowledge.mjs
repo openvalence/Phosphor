@@ -86,6 +86,7 @@ const RETIRED_NAMES = [
 /** Paths exempt from the check, and why. */
 const EXEMPT = [
   join('src', 'model', 'roles.js'),  // registry vocabulary, not device facts
+  join('src', 'model', 'firmware.js'),  // the flasher reads ESP image headers and GitHub releases, never the catalog (DESIGN §10.19)
 ];
 
 function walk(dir, out = []) {
@@ -135,6 +136,7 @@ function deviceFieldNames() {
 /** Exempt from the name-binding rule only: RENDERING §10 protocol-pane. */
 const NAME_EXEMPT = [
   join('src', 'ui', 'ValencePane.svelte'),
+  join('src', 'model', 'firmware.js'),  // GitHub release asset names (DESIGN §10.19)
 ];
 
 const allFiles = walk(SRC);
