@@ -312,8 +312,12 @@ console.log('\n--- a busy host is not a bad network (ph-rnr2) ---');
   const mq = { cond: 'updates-stalled', count: 1, peakMs: 780, who: 'machine' };
   ok('a stalled-updates incident on a quiet machine: "Machine quiet for 780 ms"', lineOf(mq) === 'Machine quiet for 780 ms' && tipLines(mq).includes('Send a report'), [lineOf(mq), tipLines(mq)]);
   // Copy rules hold for every variant.
-  const variants = Object.entries(CONDITIONS).flatMap(([id, d]) => Object.entries(d.by || {}).map(([who, v]) => [id + '/' + who, { cond: id, who, count: 1, peakMs: 300 }, { ...d, ...v }]));
-  ok('every pinned variant is a short fragment with its number, one sentence and one act', variants.length === 3 && variants.every(([, inc, v]) => {
+  // A slow round trip timed by a page that stalled is this device's (ph-owiz).
+  const slow = { cond: 'slow-link', count: 1, m: M['slow-link'], who: 'device' };
+  ok('a slow round trip on a busy device: "This device was busy, round trip 80 ms"', lineOf(slow) === 'This device was busy, round trip 80 ms'
+    && tipLines(slow).includes('Close other apps') && !/wifi|router/i.test(lineOf(slow) + tipLines(slow).join(' ')), [lineOf(slow), tipLines(slow)]);
+  const variants = Object.entries(CONDITIONS).flatMap(([id, d]) => Object.entries(d.by || {}).map(([who, v]) => [id + '/' + who, { cond: id, who, count: 1, peakMs: 300, m: M[id] }, { ...d, ...v }]));
+  ok('every pinned variant is a short fragment with its number, one sentence and one act', variants.length === 4 && variants.every(([, inc, v]) => {
     const l = lineOf(inc);
     return l.length < 60 && /\d/.test(l) && !/\. |\.$/.test(l) && !/phosphor/i.test(l) && (v.detail.match(/\. |\.$/g) || []).length === 1 && v.action && !/;|, or |, then | then /.test(v.action);
   }), variants.map((v) => lineOf(v[1])));

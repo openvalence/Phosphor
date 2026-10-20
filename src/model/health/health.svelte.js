@@ -170,8 +170,9 @@ function attach(s) {
     exch.push({ at: t, ...c });
     if (exch.length > 32) exch.shift();
     // An exchange that overlaps a stall of this page timed the stall, not the link: no round trip,
-    // no uplink sample, no spike and no late arrival from it.
-    if (stalledOver(t, c.rttUs / 1000)) return;
+    // no uplink sample, no spike and no late arrival from it. Nor one in the first 2 s after the page
+    // shows, where no stall is measured: the page is catching up (ph-owiz).
+    if (stalledOver(t, c.rttUs / 1000) || t - wokeAt <= 2000) return;
     rtts.push({ t, v: c.rttUs / 1000 });
     const best = bestOffsetUs(t);
     // CLOCK's own algebra: t1 - t0 = offset + rtt/2, so the uplink leg is that less the true offset.
@@ -467,11 +468,21 @@ function evaluate(t, row, md) {
   const lead1 = row.lead;
   tracker.level('send-margin', streaming(t) ? band('send-margin', lead1 != null && lead1 < H / 4, lead1 != null && lead1 >= H / 3, 'info') : null, t,
     lead1 != null ? { m: { leadMs: lead1, onMs: H / 4 } } : undefined);
-  // slow-link: RTT p50 and jitter over the last minute.
-  const r = vals(inWin(rtts, t - 60000, t));
+  // slow-link: RTT p50 and jitter over the last minute. When the round trips timed within 1 s of a
+  // stall of this page are what raise it, the page read the replies late: this device (ph-owiz).
+  // The cause is judged only while the signal is on; a held incident keeps it.
+  const rs = inWin(rtts, t - 60000, t), r = vals(rs);
   if (r.length >= 3) {
-    const p50 = quantile(r, 0.5), jit = quantile(r, 0.95) - p50;
-    tracker.level('slow-link', band('slow-link', p50 > 50 || jit > 30, p50 < 30 && jit < 15, 'warn'), t, { m: { p50Ms: p50, p95Ms: p50 + jit } });
+    const slow = (x) => quantile(x, 0.5) > 50 || quantile(x, 0.95) - quantile(x, 0.5) > 30;
+    const p50 = quantile(r, 0.5), jit = quantile(r, 0.95) - p50, on = slow(r);
+    const info = { m: { p50Ms: p50, p95Ms: p50 + jit } };
+    if (on) {
+      drainLongs();
+      const stalls = [...inWin(lags, t - 61000, t), ...inWin(longs, t - 61000, t)].filter((x) => x.v > LAG_HEALTHY_MS);
+      const calm = vals(rs.filter((x) => !stalls.some((s) => Math.abs(s.t - x.t) <= 1000)));
+      info.who = calm.length >= 3 && slow(calm) ? undefined : 'device';
+    }
+    tracker.level('slow-link', band('slow-link', on, p50 < 30 && jit < 15, 'warn'), t, info);
   } else tracker.level('slow-link', isOpen('slow-link') ? 'warn' : null, t);
   // updates-stalled: no inbound frame for 500 ms on a live link. A busy page only logs it (who: device,
   // info); settleStall pins it on the machine or the network once the next frame says which.
