@@ -17,6 +17,8 @@ protocol. It is one Svelte 5 app, delivered two ways:
 The two deliveries differ only in `src/main.js`. The rest of the app renders
 the catalog the hub sends.
 
+What changed in each release: [CHANGELOG.md](CHANGELOG.md).
+
 ## Device independence
 
 Phosphor binds only to **protocol vocabulary**. Its source contains no
