@@ -62,7 +62,8 @@ const SHELL = !!import.meta.env.TAURI_ENV_PLATFORM;
 const native = (cmd, args) => import('@tauri-apps/api/core').then(({ invoke }) => invoke('plugin:clipboard-manager|' + cmd, args));
 
 let lastCopy = '';
-function copy(text, done) {
+/** Copies `text` (native clipboard in the shell), then says `done` in the status slot. */
+export function copy(text, done) {
   lastCopy = text;
   (SHELL ? native('write_text', { text }) : Promise.reject()).catch(() => navigator.clipboard?.writeText(text)).catch(() => {});
   if (done) say(done);
