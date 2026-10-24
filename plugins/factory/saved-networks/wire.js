@@ -153,3 +153,14 @@ export function readVisible(f, read, list = null) {
 
 /** Signal bars, 1 to 4, from dBm. */
 export const bars = (rssi) => (!Number.isInteger(rssi) || rssi === NO_RSSI ? 0 : rssi >= -55 ? 4 : rssi >= -67 ? 3 : rssi >= -78 ? 2 : 1);
+
+/**
+ * The config-mode opening line (RFC-121): the hub holds saved networks and none is connected. '' otherwise,
+ * and '' below configure, where the names are unread.
+ */
+export function unreachableLine(f, read) {
+  const list = f && f.nets ? readList(f.nets, f.names, read) : null;
+  const named = list && list.named && !list.entries.some((e) => e.live) ? list.entries.filter((e) => e.ssid) : [];
+  if (!named.length) return '';
+  return "Can't reach " + named[0].ssid + (named.length > 1 ? ' (+' + (named.length - 1) + ')' : '') + ', retrying, or set up a different network';
+}

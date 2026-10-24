@@ -8,7 +8,7 @@ import { ACCESS, NACK } from '../../Valence/clients/js/index.js';
 import { PAIRING_EVENT_KIND } from '../../Valence/clients/js/frames.js';
 import { CORE_CHANNEL } from '../../Valence/clients/js/generated/registry_vocab.js';
 import {
-  createSetupFlow, needsSetup, setupFirst, SETUP, ASK_EXPIRE_MS, ASK_GRACE_MS, HANDOVER_MS,
+  createSetupFlow, needsSetup, SETUP, ASK_EXPIRE_MS, ASK_GRACE_MS, HANDOVER_MS,
 } from '../src/shell/ble-setup.js';
 import { joinFailure } from '../src/model/provision.js';
 
@@ -78,13 +78,10 @@ const pairEvt = (kind, id, role = ACCESS.configure) => ({
 
 // ---- the hub list's mark and order ----------------------------------------
 assert.equal(needsSetup({ pairing: false, ws: false, configMode: true }), true, 'config mode');
-assert.equal(needsSetup({ pairing: false, ws: false, configMode: false }), true, 'RFC-117: no WS, no config mode');
+assert.equal(needsSetup({ pairing: false, ws: false, configMode: false }), false, 'RFC-121: offline outside config mode is reconnecting');
 assert.equal(needsSetup({ pairing: false, ws: true, configMode: false }), false);
 assert.equal(needsSetup({ configMode: false }), false, 'ws unknown is not offline');
 assert.equal(needsSetup(null), false, 'an unread scan response is unknown, not offline');
-const flagsOf = (d) => d.adv;
-const scan = [{ n: 'a', adv: { ws: true } }, { n: 'b', adv: { ws: false } }, { n: 'c', adv: null }, { n: 'd', adv: { configMode: true, ws: false } }];
-assert.deepEqual(setupFirst(scan, flagsOf).map((d) => d.n), ['b', 'd', 'a', 'c'], 'needs-setup first, order kept');
 
 // ---- config mode: the window is open, the grant is immediate ---------------
 {
@@ -262,11 +259,24 @@ assert.equal(joinFailure(null).text, 'Join failed');
   session.emit('pairGrant', { token: TOKEN, role: ACCESS.configure });
   const p = flow.joinResult({ ok: true, applied: { 4: 0xc0a80164, 5: 82 } });
   await clock.advance(HANDOVER_MS + 5000);
-  await p;
-  assert.equal(flow.state.step, SETUP.failed, 'gives up after the window');
-  assert.equal(flow.state.reason, 'handover');
-  assert.equal(flow.state.retry, 'handover');
+  assert.equal(flow.state.step, SETUP.handingOver, 'keeps looking past the window (SPEC 13.4.1)');
+  assert.equal(flow.state.phase, 'overdue');
+  assert.equal(flow.state.text, 'Found at 192.168.1.100, not reachable');
   assert.deepEqual(flow.state.target, { host: '192.168.1.100', port: 82 });
+  flow.stop();
+  await clock.advance(5000);
+  await p;
+}
+{
+  const { session, flow, clock } = rig({ reach: async () => false, rediscover: async () => null });
+  flow.attach(session);
+  session.emit('pairGrant', { token: TOKEN, role: ACCESS.configure });
+  const p = flow.joinResult({ ok: true, applied: { 4: 0, 5: 0 } });
+  await clock.advance(HANDOVER_MS + 5000);
+  assert.equal(flow.state.text, 'Not on WiFi yet, still looking', 'nothing found anywhere');
+  flow.stop();
+  await clock.advance(5000);
+  await p;
 }
 
 // ---- discovery by hub_instance_id when the address is wrong or absent ------
@@ -301,4 +311,46 @@ assert.equal(joinFailure(null).text, 'Join failed');
   void clock;
 }
 
-console.log('PASS -- ble-setup: grant paths, expiry, rival asks, join and access refusals in words, handover with retry');
+// ---- the advertised endpoint when UDP finds nothing: a hint, verified before the token goes there ----
+{
+  const hint = { host: '192.168.1.50', port: 82 };
+  const connected = [];
+  let tokenAt = -1;
+  const { session, flow, clock, tokens } = rig({
+    reach: async (h) => h === hint.host,
+    connect: async (t) => { connected.push({ ...t, withToken: tokens.some((x) => x.origin.host === t.host) }); return true; },
+    rediscover: async () => null,
+    advertised: async () => hint,
+  });
+  flow.attach(session);
+  session.emit('pairGrant', { token: TOKEN, role: ACCESS.configure });
+  const p = flow.joinResult({ ok: true, applied: { 4: 0, 5: 0 } });
+  await clock.advance(5000);
+  await p;
+  tokenAt = connected.findIndex((c) => c.withToken);
+  assert.equal(flow.state.step, SETUP.done);
+  assert.equal(connected.length, 2, 'connect once without the token, verify, then with it');
+  assert.equal(connected[0].withToken, false, 'no token at an unverified advertised endpoint');
+  assert.equal(tokenAt, 1);
+}
+{
+  // Another hub answers at the advertised address: connect reports the identity mismatch, the flow keeps looking.
+  const { session, flow, clock, tokens } = rig({
+    reach: async () => true,
+    connect: async () => false,
+    rediscover: async () => null,
+    advertised: async () => ({ host: '192.168.1.66', port: 82 }),
+  });
+  flow.attach(session);
+  session.emit('pairGrant', { token: TOKEN, role: ACCESS.configure });
+  const p = flow.joinResult({ ok: true, applied: { 4: 0, 5: 0 } });
+  await clock.advance(HANDOVER_MS + 5000);
+  assert.equal(flow.state.step, SETUP.handingOver);
+  assert.equal(flow.state.text, 'Found at 192.168.1.66, not reachable');
+  assert.ok(!tokens.some((t) => t.origin.host === '192.168.1.66'), 'the token never goes to an unverified hub');
+  flow.stop();
+  await clock.advance(5000);
+  await p;
+}
+
+console.log('PASS -- ble-setup: grant paths, expiry, rival asks, join and access refusals in words, handover that keeps looking');

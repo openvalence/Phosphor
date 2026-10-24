@@ -15,20 +15,22 @@
    * - Rows never move: found rows keep first-seen order and their last-seen
    *   time; status lines are fixed slots.
    * - Saved hubs are prefs.js's; a hub is saved once it is live over WiFi.
-   * - Needs setup: a Bluetooth-only row whose scan response says config mode or
-   *   no WS (ble-setup.js). Set up a machine opens SetupFlow.svelte, the
-   *   ceremony from that row through the WiFi handover.
+   * - Needs setup: a Bluetooth-only row whose scan response says config mode
+   *   (ble-setup.js); its one action is Set up (SetupFlow.svelte, the ceremony
+   *   through the WiFi handover). Any other Bluetooth row is a discovery hint:
+   *   Connect dials its advertised endpoint over WS, and with WiFi clear it is
+   *   offline, reconnecting, with Connect off (hubs.svelte.js).
    * - The built-in machine (virtual.svelte.js) is always the last row; its
    *   Connect boots it and offers Stop. Sim on a saved hub opens the replay
    *   of its vault record.
    */
   import HostEntry from '../ui/HostEntry.svelte';
   import MarkSpinner from '../ui/MarkSpinner.svelte';
-  import { advFlags } from './ble-adv.js';
+  import { advFlags, advEndpoint } from './ble-adv.js';
   import { needsSetup } from './ble-setup.js';
   import SetupFlow from './SetupFlow.svelte';
   import { flipMove, rise } from '../ui/motion.js';
-  import { hubs, scanHubs, scan, pickBle, connectWs, upgrade, setup, openSetup, startSetup } from './hubs.svelte.js';
+  import { hubs, scanHubs, scan, pickBle, connectWs, setup, openSetup } from './hubs.svelte.js';
   import { foundVia } from './found.js';
   import { machine, disconnect, retryNow } from '../model/machine.svelte.js';
   import { savedHubs, renameHub, forgetHub, hubLabel } from '../model/prefs.js';
@@ -58,7 +60,7 @@
         + (link.closeReason ? ': ' + link.closeReason : '') };
       case 'failed': return { phase: 'fault', text: 'Failed: ' + (link.error || link.closeReason || 'the hub closed the link') };
       case 'live': return link.virtual ? { phase: 'settled', text: 'Virtual: settings stage for Merge' }
-        : { phase: 'settled', text: 'Live on ' + who + (hubs.mode === 'ble' ? ' over Bluetooth (watch tier)' : '') };
+        : { phase: 'settled', text: 'Live on ' + who + (hubs.mode === 'ble' ? ' over Bluetooth (setup)' : '') };
       default: return { phase: null, text: 'Not connected' };
     }
   });
@@ -82,9 +84,6 @@
     <div class="row">
       <button type="button" class="og-btn" disabled={idle} onclick={disconnect}>Disconnect</button>
       <button type="button" class="og-btn" disabled={link.phase !== 'retrying' && link.phase !== 'failed'} onclick={retryNow}>Retry now</button>
-      <button type="button" class="og-btn" disabled={!hubs.target}
-              data-tip={hubs.target ? '' : 'No WiFi endpoint known'}
-              onclick={upgrade}>Upgrade to WiFi{hubs.target ? ' (' + hubs.target.host + ':' + hubs.target.port + ')' : ''}</button>
     </div>
     <p class="pane-status" role="status" data-phase={ladder.phase} data-tip={ladder.text}>{#if ladder.phase === 'pending'}<MarkSpinner />{/if} {ladder.text}</p>
   </section>
@@ -139,7 +138,7 @@
       <button type="button" class="og-btn" class:on={hubs.scanning} aria-pressed={hubs.scanning} onclick={scan}>
         {hubs.scanning ? 'Stop Bluetooth scan' : 'Scan Bluetooth'}
       </button>
-      <button type="button" class="og-btn" data-tip="A hub with no WiFi, over Bluetooth" onclick={openSetup}>Set up a machine</button>
+      <button type="button" class="og-btn" data-tip="A hub in setup mode, over Bluetooth" onclick={openSetup}>Set up a machine</button>
     </div>
     <HostEntry value={hubs.manualHost} onpick={connectWs} recent={false} />
     <p class="pane-status" role="status" data-phase={hubs.finding || hubs.scanning ? 'pending' : null} data-tip={discoveryText}>{discoveryText}</p>
@@ -152,20 +151,22 @@
           {@const adv = f.ble && advFlags(f.ble)}
           {@const live = !!f.lan && dialedWs(f.lan.ip, f.lan.ws_port)}
           {@const setupNeeded = !f.lan && needsSetup(adv)}
+          {@const hint = !f.lan && !setupNeeded ? advEndpoint(f.ble) : null}
+          {@const offline = !f.lan && !setupNeeded && !hint && adv?.ws === false}
           <li animate:flipMove in:rise>
             <span class="who">
-              <span class="name">{f.lan?.hub_name || f.ble?.name || 'hub'}{#each foundVia(f) as v (v)}<span class="mark via">{v}</span>{/each}{#if setupNeeded}<span class="mark setup">needs setup</span>{/if}{#if f.lan?.pairing_window_open || adv?.pairing}<span class="mark">pairing open</span>{/if}</span>
+              <span class="name">{f.lan?.hub_name || f.ble?.name || 'hub'}{#each foundVia(f) as v (v)}<span class="mark via">{v}</span>{/each}{#if setupNeeded}<span class="mark setup">needs setup</span>{:else if offline}<span class="mark">offline, reconnecting</span>{/if}{#if f.lan?.pairing_window_open || adv?.pairing}<span class="mark">pairing open</span>{/if}</span>
               {#if f.lan}
                 <span class="meta mono" data-tip={f.lan.ip + ':' + f.lan.ws_port}>{f.lan.ip}:{f.lan.ws_port} · fw {f.lan.fw_version || '?'}{f.lan.hub_instance_id ? ' · id ' + f.lan.hub_instance_id : ''}</span>
               {:else}
-                <span class="meta mono" data-tip={f.ble.address}>{f.ble.address}{f.ble.rssi ? ' · ' + f.ble.rssi + ' dBm' : ''}{adv?.ws ? ' · WiFi offered' : ''}</span>
+                <span class="meta mono" data-tip={f.ble.address}>{f.ble.address}{f.ble.rssi ? ' · ' + f.ble.rssi + ' dBm' : ''}{hint ? ' · at ' + hint.host + ':' + hint.port : ''}</span>
               {/if}
             </span>
             <span class="seen mono">{live ? 'connected' : 'seen ' + ago(f.seenAt, now)}</span>
             <span class="acts">
-              {#if setupNeeded}<button type="button" class="og-btn sm" onclick={() => startSetup(f.ble)}>Set up</button>{/if}
-              <button type="button" class="og-btn sm" disabled={live}
-                      onclick={() => (f.lan ? connectWs(f.lan.ip, f.lan.ws_port) : pickBle(f.ble))}>Connect</button>
+              <button type="button" class="og-btn sm" disabled={live || (!f.lan && !setupNeeded && !hint)}
+                      data-tip={!f.lan && !setupNeeded && !hint ? 'No WiFi endpoint advertised' : ''}
+                      onclick={() => (f.lan ? connectWs(f.lan.ip, f.lan.ws_port) : pickBle(f.ble))}>{setupNeeded ? 'Set up' : 'Connect'}</button>
             </span>
           </li>
         {/each}

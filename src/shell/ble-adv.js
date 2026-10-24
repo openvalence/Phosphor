@@ -1,18 +1,18 @@
 /**
- * ble-adv.js — a Valence hub's BLE scan response, and the BLE-to-WS upgrade
- * decision (SPEC §13.1 SHOULD auto-upgrade, §13.4 flags byte, §6.3 ws_port /
- * ipv4 and transport migration).
+ * ble-adv.js -- a Valence hub's BLE scan response (SPEC §13.4): the flags byte and, while ws_available is set,
+ * the endpoint tail (RFC-121).
  *
  * Constraints:
  * - Pure: no Tauri import, so test/ble-adv.test.mjs runs it with no radio.
- * - Advertisements are untrusted input (SPEC §13.7): read, never trusted to
- *   be well formed.
+ * - Advertisements are untrusted input (SPEC §13.7): read, never trusted to be well formed. The endpoint is a
+ *   hint: private (RFC 1918) and link-local addresses only, and the hub's identity comes from WELCOME's
+ *   hub_instance_id, never from the advertisement.
  */
 
 import { BLE_ADV_FLAG } from '../../../Valence/clients/js/generated/registry_vocab.js';
 
-// Registry ble_identity.msd_company_id (RFC-072): the flags record is
-// company_id:u16le + flags:u8 (SPEC 13.4). Hand-copied: codegen omits it.
+// Registry ble_identity.msd_company_id (RFC-072): the record is company_id:u16le + flags:u8, then
+// ipv4 (4 B, network order) + ws_port:u16le while ws_available is set (SPEC 13.4). Hand-copied: codegen omits it.
 export const ADV_COMPANY_ID = 0xffff;
 
 /**
@@ -26,7 +26,7 @@ export function advFlags(dev) {
   return {
     pairing: !!(rec[0] & BLE_ADV_FLAG.pairing_window_open),
     ws: !!(rec[0] & BLE_ADV_FLAG.ws_available),
-    // RFC-079: booted into config mode; the hub list marks it "needs setup".
+    // Booted into config mode (SPEC 13.4.1): the only hub a BLE session reaches.
     configMode: !!(rec[0] & BLE_ADV_FLAG.config_mode),
   };
 }
@@ -37,14 +37,18 @@ export function ipv4ToString(v) {
   return [(v >>> 24) & 255, (v >>> 16) & 255, (v >>> 8) & 255, v & 255].join('.');
 }
 
-/**
- * Where a live BLE session should hop to, or null. WELCOME's endpoint is
- * required and 0 means not offered (§6.3). The scan response can only veto:
- * ws_available=0 says no listener right now, while an unread scan response
- * says nothing either way.
- */
-export function upgradeTarget({ mode, phase, endpoint, adv }) {
-  if (mode !== 'ble' || phase !== 'live' || !endpoint) return null;
-  if (!endpoint.ipv4 || !endpoint.wsPort || adv?.ws === false) return null;
-  return { host: ipv4ToString(endpoint.ipv4), port: endpoint.wsPort };
+/** 10/8, 172.16/12, 192.168/16 (RFC 1918) or 169.254/16 (link-local). */
+export function privateIpv4(v) {
+  const a = (v >>> 24) & 255, b = (v >>> 16) & 255;
+  return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
+}
+
+/** The advertised WebSocket endpoint {host, port}, or null: ws_available set, both fields nonzero, a private address. */
+export function advEndpoint(dev) {
+  const rec = dev?.manufacturerData?.[ADV_COMPANY_ID];
+  if (!Array.isArray(rec) || rec.length < 7 || !(rec[0] & BLE_ADV_FLAG.ws_available)) return null;
+  const ip = ((rec[1] << 24) | (rec[2] << 16) | (rec[3] << 8) | rec[4]) >>> 0;
+  const port = rec[5] | (rec[6] << 8);
+  if (!ip || !port || !privateIpv4(ip)) return null;
+  return { host: ipv4ToString(ip), port };
 }

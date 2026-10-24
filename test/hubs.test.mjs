@@ -7,7 +7,10 @@
  *   empty LAN result starts the BLE scan exactly once and its hit lists BLE.
  * - Scan Bluetooth works on its own beside LAN rows (restated 2026-10-03).
  * - A hub found both ways is one row, connecting over LAN (found.js).
- * - Set up a machine lists Bluetooth hubs with no WiFi marked needs setup.
+ * - RFC-121: a config-mode BLE hit is "needs setup" and its one button is Set
+ *   up; a normal-mode hit dials its advertised endpoint over WS; WiFi clear
+ *   outside config mode reads offline, reconnecting, Connect off. Set up a
+ *   machine lists config-mode hubs only.
  * - ph-dwy: a remembered hub on 8282 redials 8282 at launch; the host field
  *   keeps the dialed port; a LAN reply moves a saved hub, port included, and
  *   its Connect then dials the new port.
@@ -29,7 +32,11 @@ const ok = (n, c, extra) => { console.log('  [' + (c ? 'PASS' : 'FAIL') + '] ' +
 const ID_A = 'aabbccddeeff0011';
 const LAN_A = { hub_name: 'bench', ip: '127.0.0.1', ws_port: 8282, hub_instance_id: ID_A, fw_version: '1.0.0', pairing_window_open: false };
 const LAN_B = { hub_name: 'shop', ip: '10.0.0.7', ws_port: 82, hub_instance_id: '1122334455667788', fw_version: '1.0.0', pairing_window_open: true };
-const DEV = { address: 'AA:BB:CC:DD:EE:01', name: 'nucleus-p4', rssi: -60, services: [BLE_SERVICE], manufacturerData: { 65535: [1] } };
+// Flags 0x05: pairing window open, config mode (SPEC 13.4).
+const DEV = { address: 'AA:BB:CC:DD:EE:01', name: 'nucleus-p4', rssi: -60, services: [BLE_SERVICE], manufacturerData: { 65535: [5] } };
+// ws_available with the endpoint tail 10.0.0.7:8282; and an offline one (ws_available clear, not config mode).
+const DEV_ON = { address: 'AA:BB:CC:DD:EE:02', name: 'online-hub', rssi: -55, services: [BLE_SERVICE], manufacturerData: { 65535: [2, 10, 0, 0, 7, 0x5a, 0x20] } };
+const DEV_OFF = { address: 'AA:BB:CC:DD:EE:03', name: 'offline-hub', rssi: -70, services: [BLE_SERVICE], manufacturerData: { 65535: [0] } };
 
 // ---- found.js -------------------------------------------------------------------
 console.log('\n--- found.js ---');
@@ -95,7 +102,7 @@ function fakeHub(port) {
 
 // `storage` seeds localStorage once; `lan` is what discover_hubs answers.
 // The page reports every Bluetooth scan it starts in window.__bleScans.
-async function boot(storage, lan, { hubsTab = true, viewport = { width: 1440, height: 900 } } = {}) {
+async function boot(storage, lan, { hubsTab = true, viewport = { width: 1440, height: 900 }, devs = [DEV] } = {}) {
   const ctx = await browser.newContext({ viewport });
   await ctx.addInitScript(([seed, etag, catHex]) => {
     try {
@@ -108,7 +115,7 @@ async function boot(storage, lan, { hubsTab = true, viewport = { width: 1440, he
     } catch (e) { /* no storage */ }
   }, [storage, ETAG, Buffer.from(CAT).toString('hex')]);
   await ctx.addInitScript(TAURI_STUB);
-  await ctx.addInitScript(([replies, dev]) => {
+  await ctx.addInitScript(([replies, found]) => {
     const cbs = new Map();
     let n = 1000;
     const stub = window.__TAURI_INTERNALS__.invoke;
@@ -121,12 +128,12 @@ async function boot(storage, lan, { hubsTab = true, viewport = { width: 1440, he
       'plugin:blec|stop_scan': () => null,
       'plugin:blec|scan': (args) => {
         window.__bleScans++;
-        setTimeout(() => cbs.get(args.onDevices.id)?.({ index: 0, message: [dev] }), 50);
+        setTimeout(() => cbs.get(args.onDevices.id)?.({ index: 0, message: found }), 50);
         return null;
       },
     };
     window.__TAURI_INTERNALS__.invoke = (cmd, args) => (cmd in answers ? Promise.resolve(answers[cmd](args)) : stub(cmd, args));
-  }, [lan, DEV]);
+  }, [lan, devs]);
   await ctx.routeWebSocket(/:82\//, fakeHub(82));
   await ctx.routeWebSocket(/:8282\//, fakeHub(8282));
   const page = await ctx.newPage();
@@ -234,6 +241,28 @@ console.log('\n--- Scan: an empty LAN result falls back to Bluetooth once ---');
   ok('the Bluetooth scan ran exactly once', (await page.evaluate(() => window.__bleScans)) === 1);
   ok('its hit lists marked BLE with the advertised pairing flag', r[0].via === 'BLE' && /nucleus-p4/.test(r[0].text)
     && /pairing open/.test(r[0].text) && /AA:BB:CC:DD:EE:01/.test(r[0].text), r[0].via + ': ' + r[0].text);
+  ok('a config-mode hit is needs setup, its one button Set up', /needs setup/.test(r[0].text) && /Set up$/.test(r[0].text), r[0].text);
+  ok('no page errors', errors.length === 0, errors.join(' | '));
+  await ctx.close();
+}
+
+console.log('\n--- RFC-121: a normal-mode advertisement is an endpoint hint; offline reads offline ---');
+{
+  const before = { ...opens };
+  // The pre-RFC-121 cache at the advertised host: migrated at start, so the WS session takes the etag fast path.
+  const { ctx, page, errors } = await boot({ shell_host: '10.0.0.9', shell_mode: 'ws', 'phosphor.prefs': JSON.stringify({ v: 1, reconnect: false }),
+    'valence.catalog.10.0.0.7': JSON.stringify({ etag: ETAG, bytes: Buffer.from(CAT).toString('hex') }) }, [], { devs: [DEV_ON, DEV_OFF] });
+  await scanBtn(page).click();
+  await page.waitForFunction(() => document.querySelectorAll('section[aria-labelledby="hp-find"] .rows li').length === 2, null, { timeout: 8000 });
+  const r = await foundRows(page);
+  ok('the online hit shows its advertised endpoint', /online-hub/.test(r[0].text) && /at 10\.0\.0\.7:8282/.test(r[0].text) && !/needs setup/.test(r[0].text), r[0].text);
+  ok('the offline hit reads offline, reconnecting', /offline-hub/.test(r[1].text) && /offline, reconnecting/.test(r[1].text), r[1].text);
+  const off = page.locator('section[aria-labelledby="hp-find"] .rows li').nth(1).locator('button');
+  ok('the offline hit offers no connect', (await off.count()) === 1 && await off.isDisabled());
+  await page.locator('section[aria-labelledby="hp-find"] .rows li').nth(0).locator('button:has-text("Connect")').click();
+  await untilLive(page);
+  ok('Connect dials the advertised endpoint over WS, never Bluetooth', opens[8282] > before[8282] && (await hubFact(page)) === '10.0.0.7:8282',
+    await hubFact(page));
   ok('no page errors', errors.length === 0, errors.join(' | '));
   await ctx.close();
 }
@@ -252,13 +281,15 @@ console.log('\n--- Scan Bluetooth on its own: a config-mode hub beside a WiFi hu
   await ctx.close();
 }
 
-console.log('\n--- Set up a machine: the overlay lists a hub with no WiFi, marked, and closes ---');
+console.log('\n--- Set up a machine: the overlay lists config-mode hubs only, marked, and closes ---');
 {
-  const { ctx, page, errors } = await boot({ shell_host: '10.0.0.9', shell_mode: 'ws', 'phosphor.prefs': JSON.stringify({ v: 1, reconnect: false }) }, []);
+  const { ctx, page, errors } = await boot({ shell_host: '10.0.0.9', shell_mode: 'ws', 'phosphor.prefs': JSON.stringify({ v: 1, reconnect: false }) }, [],
+    { devs: [DEV_ON, DEV, DEV_OFF] });
   await page.locator('section[aria-labelledby="hp-find"] button', { hasText: /^Set up a machine$/ }).click();
   await page.waitForSelector('.su .pane-list li', { timeout: 8000 });
   const row = await page.$eval('.su .pane-list li', (l) => l.textContent.replace(/\s+/g, ' ').trim());
   ok('the Bluetooth hit lists with the needs-setup mark', /nucleus-p4/.test(row) && /needs setup/.test(row), row);
+  ok('only the config-mode hub is listed', (await page.locator('.su .pane-list li').count()) === 1);
   await page.click('.su .pane-list li button');
   await page.waitForFunction(() => /nucleus-p4/.test(document.querySelector('.su .pane-status')?.textContent || ''), null, { timeout: 5000 });
   ok('Set up moves to connecting, the hub named', true);

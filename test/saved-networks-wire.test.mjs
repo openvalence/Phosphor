@@ -4,7 +4,7 @@
  * visible list (detection, the two halves joined by scan counter, the connected row first, saved marks).
  * Run: node test/saved-networks-wire.test.mjs
  */
-import { DRAFT, SPEC, passphraseProblem, ssidProblem, readList, occupancy, refusalWords, isConflict, slotOf, scanSupported, scanRefusal, joinWords, readVisible, scanOf, isInterlock, bars } from '../plugins/factory/saved-networks/wire.js';
+import { DRAFT, SPEC, passphraseProblem, ssidProblem, readList, occupancy, refusalWords, isConflict, slotOf, scanSupported, scanRefusal, joinWords, readVisible, scanOf, isInterlock, bars, unreachableLine } from '../plugins/factory/saved-networks/wire.js';
 
 let fails = 0;
 const ok = (name, cond, extra) => {
@@ -37,6 +37,10 @@ ok('no networks sample yet: the held list, or null', readList(wrap({}), null, re
 ok('names without a sample (no generation) read as counts only', !readList(nets(7), wrap({}), read, null).named);
 ok('a newer matched pair replaces the held list', readList(nets(8, { count: 1 }), names(8), read, paired).count === 1);
 
+const F = (n, m) => ({ nets: n, names: m });
+ok('config mode, saved and none live: the opening line names the first', unreachableLine(F(nets(7, { live: 255 }), names(7)), read) === "Can't reach Neutrino (+1), retrying, or set up a different network");
+ok('one saved network reads without a count', unreachableLine(F(nets(7, { live: 255, count: 1 }), names(7)), read) === "Can't reach Neutrino, retrying, or set up a different network");
+ok('a live network, none saved, or no names: no line', unreachableLine(F(nets(7), names(7)), read) === '' && unreachableLine(F(nets(7, { live: 255, count: 0 }), names(7)), read) === '' && unreachableLine(F(nets(7, { live: 255 }), null), read) === '' && unreachableLine(null, read) === '');
 ok('an entry is found again by name, not by slot', slotOf(paired, 'cafe') === 1 && slotOf(paired, 'gone') === -1 && slotOf(bare, 'cafe') === -1);
 
 ok('refusals read in words',

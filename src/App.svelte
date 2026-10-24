@@ -126,7 +126,8 @@
   // fixed views placed by tier membership (DESIGN §10.11). The fixed ones are
   // the only hardcoded entries in the page. Tab ids are storage keys: 'machine'
   // is the Dash's layout view id (Home.svelte), 'valence' the Link pane's.
-  const ready = $derived(machine.catalog.ready);
+  // A provisioning catalog is never the machine (SPEC §8.6): config mode stays on the connecting page, "needs setup".
+  const ready = $derived(machine.catalog.ready && !machine.link.configMode);
   const tierOf = (c) => (c.known && UI_CATEGORY_TIER[c.id]) || UI_NAV_TIER.machine;
   const catTabs = (tier) => categories.filter((c) => tierOf(c) === tier)
     .map((c) => ({ id: 'cat' + c.key, label: c.label, cat: c }));

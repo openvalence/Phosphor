@@ -27,6 +27,7 @@ const THEME_CSS = LAZY_CSS
 // the theme's behavior (docs/THEMES.md, Behavior). Nothing per frame here.
 import.meta.glob('./themes/*/boot.js', { eager: true });
 import { connect, machine, parseHost, recentHubs } from './model/machine.svelte.js';
+import { catalogCache } from './model/catalog-cache.js';
 import { applyStoredTheme, onTheme } from './model/theme.js';
 import { installDynamicColor } from './model/dynamicColor.js';
 import { installReveal } from './ui/reveal.js';
@@ -113,6 +114,8 @@ function bootFault(step, e) {
 // The web builds' line in the top bar (web/WebNote.svelte), null elsewhere.
 let note = null;
 async function boot() {
+  // The first connect reads the catalog cache synchronously: hydrate it first, never waiting on it past a beat.
+  await Promise.race([catalogCache.ready, new Promise((r) => setTimeout(r, 1000))]);
   if (WEB) {
     import('./web/web.js').then((m) => { m.followScheme(); return m.startBuiltin(); }).catch((e) => bootFault('Neutrino', e));
     note = await import('./web/WebNote.svelte').then((m) => m.default).catch((e) => { bootFault('web note', e); return null; });

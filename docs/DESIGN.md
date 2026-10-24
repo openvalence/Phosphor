@@ -196,19 +196,41 @@ Nucleus's own board for the sim side).
   runs the 1.5 s LAN probe, then on no reply the BLE scan, appending its
   rows; Scan Bluetooth stays as the manual backup for a config-mode hub
   (BLE only, SPEC §13.4.1) beside a WiFi hub. The launch probe is LAN only.
-- **Set up a machine** (ph-e8f2; RFC-114 and RFC-117 drafts, built as if
-  accepted). A Bluetooth-only hub whose scan response says config mode or no
-  WS is marked "needs setup" (`needsSetup`, `src/shell/ble-setup.js`; an
-  unread scan response is unknown, never offline). The Hubs pane's Set up a
-  machine (or a row's Set up) opens `SetupFlow.svelte`: BLE connect with the
-  automatic WS hop off, a bare PAIR_REQ asking `configure`, the "Press Pair
-  on the machine" prompt while the ask is pending (120 s, then "ask again"),
-  then ProvisionWizard over the `setup` category with `provision` actions
-  waiting the §13.9 join timeout and reporting the outcome in words
-  (`src/model/provision.js`). On the ECHO the token is stored for the WS
-  origin too and the flow retries the WS connect for 30 s, falling back to UDP
-  discovery by `hub_instance_id`. Credentials live only in the wizard's
-  payload inputs and the one INTENT.
+- **Bluetooth is setup and discovery only** (RFC-121, SPEC §13.4). A BLE
+  session opens only to a hub whose scan response says config mode
+  (`connectBle` refuses any other). A normal-mode advertisement is a hint:
+  its endpoint tail (`advEndpoint`, `src/shell/ble-adv.js`; private and
+  link-local addresses only) is dialed over WS like a typed address, and the
+  hub is who its WELCOME's `hub_instance_id` says. A row with WiFi clear
+  outside config mode reads "offline, reconnecting" with Connect off. There
+  is no BLE-to-WS upgrade and no fallback to BLE.
+- **The catalog cache** (`src/model/catalog-cache.js`, SPEC §8.6): catalog
+  bytes keyed by etag in IndexedDB (memory in the mini build), and per hub
+  the etag of its machine catalog and of its provisioning catalog. A
+  config-mode session (a BLE link, or WELCOME identity `config_mode`) writes
+  only the setup pointer: it never sets, clears or presents the machine's
+  etag, is never recorded in the vault, and renders as "needs setup" on the
+  connecting page, never as the machine. The pre-RFC-121 localStorage cache
+  moves in once at start.
+- **Set up a machine** (ph-e8f2, ph-ad5x; RFC-114 draft, RFC-121). Only a
+  hub in config mode is "needs setup" (`needsSetup`,
+  `src/shell/ble-setup.js`) and listed; a row's one action is Set up. The
+  Hubs pane's Set up a machine (or a row's Set up) opens `SetupFlow.svelte`:
+  BLE connect, a bare PAIR_REQ asking `configure`, the "Press Pair on the
+  machine" prompt while the ask is pending (120 s, then "ask again"; a
+  claimed hub in config mode answers only after that press), then the
+  network picker or ProvisionWizard over the `setup` category with
+  `provision` actions waiting the §13.9 join timeout and reporting the
+  outcome in words in place (`src/model/provision.js`; a refused join is
+  retried without reconnecting). On a hub holding saved networks, none
+  connected, the step opens on "Can't reach <SSID>, retrying, or set up a
+  different network". On the ECHO the token is stored for the WS origin too
+  and the flow keeps looking until it connects or is closed: the ECHO's
+  endpoint, UDP discovery by `hub_instance_id`, then the advertised
+  endpoint (connected once without the token, verified by
+  `hub_instance_id`, then with it). Past 30 s the line reads "Found at <ip>,
+  not reachable" or "Not on WiFi yet, still looking". Credentials live only
+  in the wizard's payload inputs and the one INTENT.
 - The UI kernel stays publishable as the community "webui framework" project
   regardless of §8's outcome.
 
@@ -1973,3 +1995,4 @@ behind the menu.
 | 2026-10-18 | §10.20 | The connecting page: never a dead end. The phase and hub, a countdown line (`Next try in N s · attempt N`) over a bar draining to the next try and the close reason on its own line; Retry now and Stop in fixed slots; the dialed address editable in place; the saved hubs with Neutrino last; a LAN scan on arrival and Scan; a Troubleshooting link to the find section of the docs; every link that leaves the app asks first in one shared confirm (`Open link?`, the destination, Open link, Cancel) and opens through tauri-plugin-opener, http and https (`ph-u3b2.1`, `ph-u3b2.2`). | PROPOSED: operator (2026-10-18, stuck on a phone redialing a saved address that no longer answers: other hubs, a Virtual button, previous machines, troubleshooting, cancel, edit the address, a clearer countdown); Neutrino named in place of "Virtual" (the 2026-10-15 naming ruling), the LAN scan on arrival, Stop ending this session's redial only, the drain bar are the agent's, veto-able; ruled 2026-10-18: the Neutrino row stays, the link confirms before leaving the app ("open link"), through the opener plugin on every platform, the copy fallback dropped, http allowed beside https (the confirm is the safeguard), the shell's own URL launchers deleted |
 | 2026-10-18 | §10.3, plugins | The funscript player's media fullscreen (docs/plugins/FUNSCRIPT.md PP7 to PP11; PP11 is the state table, the source of truth the tests read): three layers over the video, none of which moves another. The bar is the stage's overlay in a fixed slot at the bottom edge (the heat seek, no hover tip, over one row of buttons), fading in place with the controls; the stack (the motion preview over the quick rail's travel window) stands fixed on the slot's top edge, a 40 % ghost until hovered on mouse systems (hovered it is full and keeps the controls up), full under touch while paused and the ghost while playing (its first touch only wakes it); it is the page's own surface over the video (`data-stage-surface`: the pointer shows over it, a tap on it is never the stage's); the wave's height grip (pref `fsWave`) and a sideways drag on the wave that scrubs (while playing it pauses for the drag and plays on at release); the moving layers slide on sub-pixel transforms (no judder). The transport (previous, Play, next, the times) sits in the bar's middle on a fine pointer and on the video's center on a coarse one, clear of the stop pair and the stack. While the player runs the preview and the window are a display but for the wave's scrub; paused, all take input, the jog tape included. The timeline toggle (Preview) shows or hides the wave (pref, on by default). The stop pair is never part of any of it and keeps its 50 % rest (2026-10-03). A media page's fullscreen takes the quick rail's horizontal form on the phone class too; stacked, it is part of that fullscreen: a tap on the video never closes it, Escape and back leave the fullscreen, a library or Settings drawer puts the stack away until it closes. A return to the app rejoins the shell's media fullscreen if the page's stage drifted out of it. The motion preview's playhead is fixed at its center with the script moving past it, a hatch outside the first and last action; telemetry drawn stays while paused and while scrubbing and clears when playback starts (`ph-7ri8`, `ph-10c4`, `ph-f012`). | operator (superfan feedback 2026-10-18; on the builds 2026-10-18 and 2026-10-19; 2026-10-19 "what if wins": the what-if layout of lp/player-alt over rounds 4 to 7, which are parked on lp/connect-player-r7; the hatch, the copy and the state table as the source of truth); the rulings on PP11's six questions 2026-10-19 |
 | 2026-10-20 | §10.13, §10.12, §10.20 | F1 opens the docs: the first press shows a 3 s note in the status slot (over a link fault), the second inside it opens the docs page for what is on screen with no `Open link?`, Escape or the timeout cancel; the page map lives in `src/ui/docs.js`; the phone menu ends with Docs through `Open link?`; Key help moves from F1 to ? (Shift+/), never from a text field (`ph-fhu8`). | operator (2026-10-20: "press F1, small notice, F1 again to open docs, Esc to cancel"); the page map, the note over a link fault and Key help on ? are the agent's, veto-able |
+| 2026-10-23 | §6 | RFC-121 consumer (`ph-ad5x`): Bluetooth opens only to a hub in config mode; a normal-mode advertisement is a WS endpoint hint (private and link-local only, identity from WELCOME); WiFi clear outside config mode reads "offline, reconnecting"; the BLE-to-WS upgrade and the Upgrade to WiFi button are gone; the catalog cache is etag-keyed in IndexedDB with per-hub machine and setup pointers, a config-mode catalog never the machine (connecting page, "needs setup"); setup opens on "Can't reach <SSID>, retrying, or set up a different network" and the handover keeps looking, "Found at <ip>, not reachable". | PROPOSED: RFC-121 as landed (Valence 28a0051) and the bead's copy; the setup list showing config-mode hubs only, the Set up label on a config-mode row's one button, "(+N)" for more saved networks and "Not on WiFi yet, still looking" are the agent's, veto-able |
