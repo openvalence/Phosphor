@@ -1,8 +1,7 @@
 /**
- * ble-setup.js -- "Set up a machine": the flow from a hub that has no WiFi to
+ * ble-setup.js -- "Set up a machine": the flow from a hub in config mode to
  * a WS session on its network (SPEC §13.4.1 clients, §13.9, §12.3, §6.3;
- * RFC-114 draft for the configure ask, RFC-117 draft for the fallback
- * advertisement).
+ * RFC-114 draft for the configure ask).
  *
  * Constraints:
  * - Pure: no Tauri and no Svelte import, so test/ble-setup.test.mjs drives it
@@ -12,9 +11,13 @@
  *   joinResult. Nothing here sees, stores or logs a SSID or passphrase.
  * - The ask is a bare PAIR_REQ naming configure. It never spends a window
  *   that grants less (RFC-114), and the tier is read off PAIR_GRANT.
- * - A config-mode or fallback hub can reboot after the answer, so the
- *   handover retries (HANDOVER_MS) and falls back to UDP discovery by
- *   hub_instance_id.
+ * - A config-mode hub reboots after the answer, so the handover keeps
+ *   looking until it connects or the flow stops: the ECHO's endpoint, then
+ *   UDP discovery by hub_instance_id, then the endpoint the hub's
+ *   advertisement carries. Never back to Bluetooth (SPEC §13.4.1).
+ * - deps.connect verifies WELCOME's hub_instance_id. An advertised endpoint
+ *   is a hint (SPEC §13.4): the token is stored for it only once the hub
+ *   there proved to be this one, then the session reconnects with it.
  * - The channel is the core id and the result keys are SPEC §13.9's, never a
  *   name.
  */
@@ -49,14 +52,8 @@ export const HANDOVER_MS = 30000;
 export const HANDOVER_TRY_MS = 1500;
 const REDISCOVER_EVERY = 4;
 
-/** Needs setup: config mode, or WiFi absent from a read scan response. Unknown (null) is not offline. */
-export const needsSetup = (adv) => !!adv && (adv.configMode === true || adv.ws === false);
-
-/** Scan hits with the needs-setup ones first; order inside each group is kept. */
-export function setupFirst(devs, flagsOf) {
-  const rank = (d) => (needsSetup(flagsOf(d)) ? 0 : 1);
-  return devs.map((d, i) => [d, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map((x) => x[0]);
-}
+/** Needs setup: config mode only (SPEC §13.4.1); a hub offline outside it is reconnecting, not unset. */
+export const needsSetup = (adv) => !!adv && adv.configMode === true;
 
 const realClock = {
   now: () => Date.now(),
@@ -80,9 +77,11 @@ const PHASE = {
  * @param {(state) => void} [deps.onChange] every state change, a fresh object
  * @param {(origin, token: Uint8Array) => void} deps.setToken persist a PAIR_GRANT token for an origin {host, port}
  * @param {(host, port) => Promise<boolean>} deps.reach does the WS endpoint answer
- * @param {(target) => Promise<boolean>} deps.connect move the app's session to WS; true once live
+ * @param {(target, hubId) => Promise<boolean>} deps.connect move the app's session to WS; true once live with WELCOME's
+ *   hub_instance_id equal to hubId (when known)
  * @param {() => string|null} [deps.hubId] hub_instance_id learned from WELCOME
  * @param {(hubId) => Promise<{host, port}|null>} [deps.rediscover] UDP discovery by hub_instance_id
+ * @param {() => Promise<{host, port}|null>} [deps.advertised] the endpoint the hub's BLE advertisement carries
  * @param {{now, after}} [deps.clock] a fake in tests
  * @param {Uint8Array} [deps.instanceId] this client's identity; the stored one by default
  */
@@ -213,35 +212,50 @@ export function createSetupFlow(deps) {
       await this.handover(target);
     },
 
-    /** Reach the hub on its network: retry for HANDOVER_MS, UDP discovery between tries. */
+    /**
+     * Reach the hub on its network until it connects or the flow stops; past HANDOVER_MS the line says where it
+     * stands (overdue) and the looking goes on.
+     */
     async handover(target) {
       const mine = ++gen;
       const deadline = clock.now() + HANDOVER_MS;
+      let seen = target;
       set(SETUP.handingOver, 'Waiting for the hub on WiFi', { target });
       for (let tries = 0; ; tries++) {
         let t = target;
-        if (deps.rediscover && hubId && (!t || (tries && tries % REDISCOVER_EVERY === 0))) {
-          const found = await deps.rediscover(hubId).catch(() => null);
+        if (hubId && (!t || (tries && tries % REDISCOVER_EVERY === 0))) {
+          const found = deps.rediscover ? await deps.rediscover(hubId).catch(() => null) : null;
           if (mine !== gen) return;
           if (found) {
             t = found;
             if (token) deps.setToken({ host: t.host, port: t.port }, token);
+          } else if (deps.advertised) {
+            const hint = await deps.advertised().catch(() => null);
+            if (mine !== gen) return;
+            if (hint) t = { host: hint.host, port: hint.port, hint: true };
           }
         }
+        if (t) seen = t;
         if (t && await deps.reach(t.host, t.port)) {
           if (mine !== gen) return;
           set(SETUP.handingOver, 'Connecting to ' + t.host, { target: t });
-          if (await deps.connect(t)) {
-            if (mine === gen) set(SETUP.done, 'Connected over WiFi', { target: t });
-            return;
+          let ok = await deps.connect(t, hubId);
+          if (ok && t.hint && token) {
+            if (mine !== gen) return;
+            deps.setToken({ host: t.host, port: t.port }, token);
+            ok = await deps.connect(t, hubId);
           }
+          if (mine !== gen) return;
+          if (ok) { set(SETUP.done, 'Connected over WiFi', { target: t }); return; }
         }
         if (mine !== gen) return;
-        if (clock.now() >= deadline) break;
+        if (clock.now() >= deadline) {
+          set(SETUP.handingOver, seen ? 'Found at ' + seen.host + ', not reachable' : 'Not on WiFi yet, still looking',
+            { target: seen, phase: 'overdue' });
+        }
         await sleep(HANDOVER_TRY_MS);
         if (mine !== gen) return;
       }
-      fail('handover', 'Joined, but the hub did not appear on WiFi', 'handover', { target });
     },
 
     /** Take the retry the failed state offers; 'connect' is the host's to redo. Returns the kind. */
@@ -249,7 +263,6 @@ export function createSetupFlow(deps) {
       const r = st.step === SETUP.failed ? st.retry : null;
       if (r === 'ask') this.ask();
       else if (r === 'join') set(SETUP.granted, '');
-      else if (r === 'handover') this.handover(st.target);
       return r;
     },
 

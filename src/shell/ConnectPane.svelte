@@ -12,13 +12,18 @@
    * - One LAN scan on arrival (UDP, no permission prompt); Bluetooth only on
    *   Scan, which asks for the permission.
    * - The rows are HubsPane's look and motion (DESIGN §10.13: a row rises in,
-   *   rows that stay slide) without its upkeep (rename, Sim, Forget, setup):
-   *   that pane stays the place to manage hubs. The status lines change on
-   *   the frame (a degradation is never animated).
+   *   rows that stay slide) without its upkeep (rename, Sim, Forget): that
+   *   pane stays the place to manage hubs. A Bluetooth row is hubs.svelte.js
+   *   pickBle's: Set up on a hub in config mode (the overlay opens here too),
+   *   else its advertised endpoint, else offline with Connect off. The status
+   *   lines change on the frame (a degradation is never animated).
    */
   import { onMount, untrack } from 'svelte';
   import HostEntry from '../ui/HostEntry.svelte';
-  import { hubs, scanHubs, pickBle, connectWs } from './hubs.svelte.js';
+  import { hubs, scanHubs, pickBle, connectWs, setup } from './hubs.svelte.js';
+  import { advFlags, advEndpoint } from './ble-adv.js';
+  import { needsSetup } from './ble-setup.js';
+  import SetupFlow from './SetupFlow.svelte';
   import { foundVia } from './found.js';
   import { machine, hostLabel } from '../model/machine.svelte.js';
   import { savedHubs, hubLabel } from '../model/prefs.js';
@@ -69,17 +74,20 @@
     <ul class="pane-list cp-rows">
       {#each hubs.found as f (f.key)}
         {@const on = !!f.lan && dialedWs(f.lan.ip, f.lan.ws_port)}
+        {@const setupNeeded = !f.lan && needsSetup(advFlags(f.ble))}
+        {@const dead = !f.lan && !setupNeeded && !advEndpoint(f.ble)}
         <li animate:flipMove in:rise>
           <span class="who">
-            <span class="name">{f.lan?.hub_name || f.ble?.name || 'hub'}{#each foundVia(f) as v (v)}<span class="mark">{v}</span>{/each}</span>
+            <span class="name">{f.lan?.hub_name || f.ble?.name || 'hub'}{#each foundVia(f) as v (v)}<span class="mark">{v}</span>{/each}{#if setupNeeded}<span class="mark">needs setup</span>{:else if dead}<span class="mark">offline</span>{/if}</span>
             <span class="meta mono">{f.lan ? f.lan.ip + ':' + f.lan.ws_port : f.ble.address}</span>
           </span>
-          <button type="button" class="og-btn sm" disabled={on} aria-label={'Connect ' + (f.lan?.hub_name || f.ble?.name || 'hub')}
-                  onclick={() => (f.lan ? connectWs(f.lan.ip, f.lan.ws_port) : pickBle(f.ble))}>{on ? 'Dialing' : 'Connect'}</button>
+          <button type="button" class="og-btn sm" disabled={on || dead} aria-label={(setupNeeded ? 'Set up ' : 'Connect ') + (f.lan?.hub_name || f.ble?.name || 'hub')}
+                  onclick={() => (f.lan ? connectWs(f.lan.ip, f.lan.ws_port) : pickBle(f.ble))}>{on ? 'Dialing' : setupNeeded ? 'Set up' : 'Connect'}</button>
         </li>
       {/each}
     </ul>
   {/if}
+  {#if setup.open}<SetupFlow />{/if}
 </div>
 
 <style>

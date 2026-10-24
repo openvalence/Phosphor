@@ -8,10 +8,10 @@
  * - The shell's setup flow mounts the same picker (mountPicker) with its credential binding; the card
  *   here never sends wifi_join.
  */
-import { SPEC } from './wire.js';
+import { SPEC, unreachableLine } from './wire.js';
 import { mountPicker, pickerReady } from './picker.js';
 
-export { SPEC, mountPicker, pickerReady };
+export { SPEC, mountPicker, pickerReady, unreachableLine };
 
 export function activate(api) {
   api.registerHero({

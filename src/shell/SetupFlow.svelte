@@ -1,7 +1,8 @@
 <script>
   /**
-   * SetupFlow.svelte -- Set up a machine: pick a Valence hub over Bluetooth,
-   * ask configure, then the setup category wizard, then the WiFi handover.
+   * SetupFlow.svelte -- Set up a machine: pick a Valence hub in config mode
+   * over Bluetooth, ask configure, then the setup category wizard, then the
+   * WiFi handover.
    * SHELL ONLY: renders hubs.svelte.js's setup state (ble-setup.js is the
    * state machine); owns no state of its own.
    *
@@ -12,17 +13,18 @@
    *   catalog's setup category. Never a hub-specific screen. This file draws
    *   the steps around it: the list, the Pair prompt, the handover.
    * - The status slot is one fixed line; a state change never moves a button.
-   * - Needs-setup hubs sort first; every row still connects.
+   *   On a hub holding saved networks, none connected, the wizard opens on
+   *   that line (RFC-121): it can't reach them, or set up another.
+   * - Only hubs in config mode are listed (SPEC 13.4): no other opens BLE.
    */
-  import { advFlags } from './ble-adv.js';
-  import { needsSetup, SETUP } from './ble-setup.js';
+  import { SETUP } from './ble-setup.js';
   import { hubs, scan, setup, startSetup, retrySetup, backToList, closeSetup, setupAct } from './hubs.svelte.js';
   import { machine } from '../model/machine.svelte.js';
   import { provisionCategory } from '../ui/wizard/steps.js';
   import ProvisionWizard from '../ui/ProvisionWizard.svelte';
   import PluginSlot from '../plugins/PluginSlot.svelte';
   import { shellApi } from '../plugins/plugins.svelte.js';
-  import { mountNetworkPicker, networkPickerReady, NETWORK_PICKER_SPEC } from '../plugins/factory.js';
+  import { mountNetworkPicker, networkPickerReady, networkReachLine, NETWORK_PICKER_SPEC } from '../plugins/factory.js';
   import { claimRoles } from '../model/roles.js';
   import '../ui/pane.css';
   import { rise } from '../ui/motion.js';
@@ -41,14 +43,16 @@
     updateHero: (i) => i && i.update(),
     unmountHero: (i) => i && i.unmount(),
   } };
-  const note = $derived(st.text ? { phase: st.phase, text: st.text } : null);
+  const reach = $derived(inWizard && picked ? networkReachLine(picked, shellApi.value) : '');
+  const note = $derived(st.text ? { phase: st.phase, text: st.text } : reach ? { phase: 'overdue', text: reach } : null);
   const listing = $derived(st.step === SETUP.scanning);
-  const again = $derived(st.step === SETUP.failed ? { ask: 'Ask again', handover: 'Try again', connect: 'Reconnect' }[st.retry] : null);
+  const again = $derived(st.step === SETUP.failed ? { ask: 'Ask again', connect: 'Reconnect' }[st.retry] : null);
 </script>
 
 {#if inWizard && picker}
   <div class="su" role="dialog" aria-labelledby="su-title" in:rise>
     <header><h2 id="su-title">Wi-Fi</h2></header>
+    <p class="pane-status" role="status" data-phase={reach ? 'overdue' : null} data-tip={reach}>{reach}</p>
     <PluginSlot hero={PICKER} fields={picked} />
     <div class="acts"><button type="button" class="og-btn" onclick={closeSetup}>Close</button></div>
   </div>
@@ -60,14 +64,13 @@
 
     {#if listing}
       {#if !setup.devs.length}
-        <p class="pane-empty">{hubs.scanning ? 'Scanning Bluetooth' : 'No hub on Bluetooth'}</p>
+        <p class="pane-empty">{hubs.scanning ? 'Scanning Bluetooth' : 'No hub in setup mode'}</p>
       {:else}
         <ul class="pane-list">
           {#each setup.devs as d (d.address)}
-            {@const adv = advFlags(d)}
             <li>
               <span class="who">
-                <span class="name">{d.name || 'hub'}{#if needsSetup(adv)}<span class="mark">needs setup</span>{/if}</span>
+                <span class="name">{d.name || 'hub'}<span class="mark">needs setup</span></span>
                 <span class="meta mono">{d.address}{d.rssi ? ' · ' + d.rssi + ' dBm' : ''}</span>
               </span>
               <button type="button" class="og-btn sm" onclick={() => startSetup(d)}>Set up</button>

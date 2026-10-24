@@ -51,11 +51,11 @@
   const down = $derived(link.phase === 'retrying' || link.phase === 'failed');
   const dialing = $derived(!!hub && link.phase !== 'idle' && link.phase !== 'failed');
   // the link is on its way: dialing, handshaking, or receiving the catalog (this view is pre-catalog)
-  const loading = $derived(!!hub && (link.phase === 'connecting' || link.phase === 'handshaking' || link.phase === 'live'));
+  const loading = $derived(!!hub && !(link.configMode && link.phase === 'live') && (link.phase === 'connecting' || link.phase === 'handshaking' || link.phase === 'live'));
   const status = $derived.by(() => {
     if (!hub) return 'No hub chosen';
     switch (link.phase) {
-      case 'live': return 'Receiving catalog from ' + hub + (receiveS ? ' (' + receiveS + ' s)' : '') + '…';
+      case 'live': return link.configMode ? hub + ' needs setup' : 'Receiving catalog from ' + hub + (receiveS ? ' (' + receiveS + ' s)' : '') + '…';
       case 'handshaking': return 'Handshaking with ' + hub + '…';
       case 'retrying': return 'Redialing ' + hub;
       case 'failed': return 'Link to ' + hub + ' closed';

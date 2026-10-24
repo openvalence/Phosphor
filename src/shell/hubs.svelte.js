@@ -1,7 +1,7 @@
 /**
- * hubs.svelte.js -- the shell's discovery and transport: the Scan, the WS or
- * BLE connect, and the BLE-to-WS upgrade. Module state, so it outlives
- * HubsPane.svelte, which only renders it. SHELL ONLY.
+ * hubs.svelte.js -- the shell's discovery and transport: the Scan, the WS
+ * connect, and the BLE link to a hub in config mode. Module state, so it
+ * outlives HubsPane.svelte, which only renders it. SHELL ONLY.
  *
  * Constraints:
  * - Shell code, not kernel UI: it may know transports and addresses, but it
@@ -16,15 +16,16 @@
  * - A LAN reply carrying a saved hub's hub_instance_id moves that saved
  *   endpoint, port included. Discovery never adds a saved hub: a hub is saved
  *   once it is live over WiFi (settings-pane.js).
- * - BLE sessions have no HTTP sideband, so no /uitoken: they land at watch
- *   tier by design. Control arrives with the WS upgrade.
- * - A live BLE session hops to WS once, automatically, when WELCOME offers
- *   an endpoint (SPEC 13.1 SHOULD). It hops only after a probe socket
- *   opens, and falls back to BLE if the WS session is not live in time.
- * - Set up a machine (ble-setup.js) rides the same one session: a BLE connect
- *   with the automatic WS hop off, because the flow hops itself once the hub
- *   has joined WiFi. The wizard collects the credentials; this file never
- *   sees them.
+ * - BLE opens only to a hub whose advertisement says config mode (SPEC 13.4,
+ *   RFC-121): a hub serves no BLE session outside it. connectBle refuses any
+ *   other, so every caller (the Hubs and Connect panes, onboarding) inherits
+ *   the rule. A BLE session is Set up a machine (ble-setup.js); it never falls
+ *   back to or from WS.
+ * - A normal-mode advertisement is a discovery hint: its endpoint tail
+ *   (ble-adv.js advEndpoint, private and link-local only) is dialed over WS
+ *   like a typed address, and the hub is who its WELCOME says. A row with
+ *   ws_available clear is offline, reconnecting, and offers no connect.
+ * - The wizard collects the credentials; this file never sees them.
  * - shell_mode and shell_host keep their names, and shell_host stays a bare
  *   host: settings-pane.js reads both. The dialed port rides in shell_port
  *   (ph-dwy).
@@ -37,8 +38,8 @@ import { machine, connect, disconnect, hostLabel, getSession } from '../model/ma
 import { setPairedToken } from '../../../Valence/clients/js/index.js';
 import { savedHubs } from '../model/prefs.js';
 import { makeBleWebSocket, BLE_SERVICE, MTU_FLOOR, bleStats, holdForMigration, releaseHeld } from './ble-ws.js';
-import { upgradeTarget, advFlags } from './ble-adv.js';
-import { createSetupFlow, setupFirst, SETUP } from './ble-setup.js';
+import { advFlags, advEndpoint } from './ble-adv.js';
+import { createSetupFlow, needsSetup, SETUP } from './ble-setup.js';
 import { isProvisioning } from '../model/provision.js';
 import { mergeFound, learnBleId } from './found.js';
 import { lan } from './lan.svelte.js';
@@ -62,26 +63,16 @@ class Hubs {
   finding = $state(false);
   found = $state([]);
   stats = $state('');
-  // The scan hit a BLE session rides: its flags gate the upgrade, and it is
-  // what a failed upgrade falls back to.
+  // The scan hit a BLE session rides.
   bleDev = $state(null);
-  target = $derived(upgradeTarget({ mode: this.mode, phase: machine.link.phase,
-    endpoint: machine.link.endpoint || null, adv: this.bleDev && advFlags(this.bleDev) }));
 }
 export const hubs = new Hubs();
 
-// Plain, not $state: one automatic attempt per operator-chosen BLE connect,
-// so a fallback cannot loop. The manual button stays for a retry.
-let upgradeTried = false;
-let upgrading = false;
 // BLE address -> hub_instance_id, learned from a live BLE session's WELCOME:
 // an advertisement carries no identity (SPEC 13.4).
 const bleIds = new Map();
 
 $effect.root(() => {
-  $effect(() => {
-    if (hubs.target && !upgradeTried) { upgradeTried = true; untrack(upgrade); }
-  });
   $effect(() => {
     const id = hubs.mode === 'ble' && machine.link.phase === 'live' && machine.link.hubIdentity?.hub_instance_id;
     const dev = hubs.bleDev;
@@ -106,6 +97,7 @@ $effect.root(() => {
 
 const LAN_SCAN_MS = 1500;
 const BLE_SCAN_MS = 6000;
+const ADV_SCAN_MS = 3000;
 const DISCOVERY_PORT = 22096; // for the empty-result line only; discovery.rs is the home
 
 // A saved hub answering from another endpoint (a moved lease): its saved row
@@ -171,12 +163,16 @@ export async function scan() {
   await startBle();
 }
 
+/** A Bluetooth-found row's Connect: a config-mode hub opens Set up, an online one is dialed at its advertised endpoint. */
 export function pickBle(dev) {
-  upgradeTried = false;
-  connectBle(dev);
+  if (needsSetup(advFlags(dev))) { startSetup(dev); return; }
+  const at = advEndpoint(dev);
+  if (at) connectWs(at.host, at.port);
+  else hubs.note = (dev.name || dev.address) + ': offline, reconnecting';
 }
 
 async function connectBle(dev) {
+  if (!needsSetup(advFlags(dev))) { hubs.note = (dev.name || dev.address) + ': not in setup mode'; return false; }
   // Never GATT-connect with a scan still running: Android's stack handles
   // it badly, and the scan has done its job the moment a hub is chosen.
   if (hubs.scanning) { await stopScan().catch(() => {}); hubs.scanning = false; }
@@ -184,8 +180,9 @@ async function connectBle(dev) {
   hubs.bleDev = dev;
   hubs.mode = 'ble';
   store('shell_mode', 'ble');
-  hubs.note = 'Bluetooth: ' + (dev.name || dev.address) + ' (watch tier)';
-  connect({ host: dev.address, bleName: dev.name, WebSocketImpl: makeBleWebSocket(dev.address) });
+  hubs.note = 'Bluetooth: ' + (dev.name || dev.address) + ' (setup)';
+  connect({ host: dev.address, bleName: dev.name, ble: true, WebSocketImpl: makeBleWebSocket(dev.address) });
+  return true;
 }
 
 export function connectWs(host, port) {
@@ -228,26 +225,17 @@ async function untilLive(ms) {
   return false;
 }
 
-// Same instance_id on the new transport (the session client persists it),
-// so the hub treats the HELLO as a migration (SPEC 6.3), not a newcomer.
-export async function upgrade() {
-  const t = hubs.target, dev = hubs.bleDev;
-  if (!t || !dev || upgrading) return;
-  upgrading = true;
-  try { await hop(t, dev); } finally { upgrading = false; }
-}
-
-async function hop(t, dev) {
-  const url = 'ws://' + t.host + ':' + t.port;
-  hubs.note = 'Probing ' + url;
-  if (!(await wsReachable(t.host, t.port))) { hubs.note = url + ' unreachable, staying on Bluetooth'; return; }
-  holdForMigration();
-  connectWs(t.host, t.port);
-  const live = await untilLive(WS_LIVE_MS);
-  await releaseHeld();
-  if (live) { hubs.note = 'Upgraded to ' + url; return; }
-  hubs.note = 'WiFi upgrade failed, back on Bluetooth';
-  connectBle(dev);
+// One short Bluetooth scan for a device's advertisement; its endpoint tail, or null.
+async function advertisedBy(address) {
+  if (hubs.scanning || !address) return null;
+  let hit = null;
+  try {
+    hubs.scanning = true;
+    await startScan((devices) => { hit = devices.find((d) => d.address === address) || hit; }, ADV_SCAN_MS);
+    await new Promise((r) => setTimeout(r, ADV_SCAN_MS + 100));
+  } catch (e) { /* no radio or no permission: UDP stays the path */ }
+  hubs.scanning = false;
+  return hit && advEndpoint(hit);
 }
 
 // ---- Set up a machine (ble-setup.js) ----------------------------------------
@@ -261,11 +249,13 @@ const flow = createSetupFlow({
   onChange: (s) => { setup.st = s; },
   setToken: (origin, token) => { setPairedToken(origin, token); },
   reach: wsReachable,
-  connect: async ({ host, port }) => {
+  // Live, and the hub there is the one set up: WELCOME's hub_instance_id, never the address, says so.
+  connect: async ({ host, port }, id) => {
     if (hubs.mode === 'ble' && machine.link.phase === 'live') holdForMigration();
     connectWs(host, port);
     const live = await untilLive(WS_LIVE_MS);
     await releaseHeld();
+    if (live && id && machine.link.hubIdentity?.hub_instance_id !== id) { disconnect(); return false; }
     return live;
   },
   hubId: () => machine.link.hubIdentity?.hub_instance_id || null,
@@ -273,13 +263,14 @@ const flow = createSetupFlow({
     const hit = (await invoke('discover_hubs', { timeoutMs: LAN_SCAN_MS })).find((h) => h.hub_instance_id === id);
     return hit ? { host: hit.ip, port: hit.ws_port } : null;
   },
+  advertised: () => advertisedBy(setup.dev?.address),
 });
 setup.st = flow.state;
 
 $effect.root(() => {
-  // Needs-setup hubs first; rows keep scan order inside each group.
+  // Only a hub in config mode can be set up over Bluetooth; rows keep scan order.
   $effect(() => {
-    setup.devs = setupFirst(hubs.found.filter((f) => f.ble).map((f) => f.ble), (d) => advFlags(d));
+    setup.devs = hubs.found.filter((f) => f.ble && needsSetup(advFlags(f.ble))).map((f) => f.ble);
   });
   // A link that never reaches WELCOME or gives up mid-ceremony is the flow's failure.
   $effect(() => {
@@ -311,8 +302,7 @@ export async function startSetup(dev) {
   setup.dev = dev;
   flow.stop();
   flow.connecting(dev.name || dev.address);
-  upgradeTried = true;
-  await connectBle(dev);
+  if (!(await connectBle(dev))) { flow.failLink('Not in setup mode'); return; }
   const s = getSession();
   if (!s) return;
   const timer = setTimeout(() => {

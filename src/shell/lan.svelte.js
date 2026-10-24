@@ -6,6 +6,9 @@
  * Constraints:
  * - A remote is one more session of Neutrino's hub: tiers, pairing and ownership are the hub's, and
  *   discovery replies and ESTOP datagrams are the hub's too (neutrino_datagram). Nothing here reads a frame.
+ * - A remote is a network session, never this page's in-process one: the in-process configure tier stops at
+ *   this host (SPEC §12.2), so a remote pairs with the hub like any WebSocket client. Its id (lan.rs
+ *   REMOTE_ID_BASE and up) is what tells the hub apart.
  * - Up only while the pref is on and Neutrino runs. Going down, lan_stop sends every remote BYE and
  *   closes it first; then, when the hub lives on, each remote's session gets the same BYE, so the hub
  *   runs its full teardown (ownership released) instead of parking the session STALE.

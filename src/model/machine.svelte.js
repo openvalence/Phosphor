@@ -45,6 +45,8 @@ import { ROLE } from './roles.js';
 import { filteredHubNowUs } from './motion.js';
 import { endpointLabel, setHubClock, unitOf } from './format.js';
 import { recorder } from './vault.js';
+import { catalogCache } from './catalog-cache.js';
+import { hubKey } from './prefs.js';
 import { bump } from './changes.js';
 import { countFrames } from './activity.js';
 import { blankLink, createLinkStats, machineLink } from './linkstats.js';
@@ -151,6 +153,7 @@ export const machine = $state({
     staleTick: 0,           // advances at 1 Hz while stale, so stale ages re-render
     openedAt: 0,            // this socket's open; older samples are a past session's
     virtual: null,          // {key, name} while the session rides Virtual Valence (shell/virtual.svelte.js)
+    configMode: false,      // SPEC §13.4.1: the hub serves its provisioning catalog; never rendered as the machine
   },
 
   /** Catalog + everything derived from it. Replaced wholesale on adoption. */
@@ -548,8 +551,16 @@ export function connect(opts = {}) {
   let adopted = false;
   let withdrawn = new Set();
 
-  // A replay is not evidence: a virtual session records nothing (vault.js).
-  const cap = opts.virtual ? null : recorder();
+  // SPEC §13.4: a hub runs BLE sessions in config mode only, so a BLE link is config mode before WELCOME says so.
+  machine.link.configMode = !!opts.ble;
+  let welcomeKey = null;
+  const catalogStore = opts.catalogStore || catalogCache.sessionStore({
+    configMode: () => machine.link.configMode,
+    hubKey: () => welcomeKey,
+  });
+
+  // A replay is not evidence: a virtual session records nothing (vault.js), nor does a config-mode one (§8.6).
+  const cap = opts.virtual || opts.ble ? null : recorder();
   _cap = cap;
 
   let s = null;
@@ -562,7 +573,7 @@ export function connect(opts = {}) {
     instanceId: getInstanceId(),
     // The virtual hub grants its tier to every session; there is no /uitoken to ask.
     token: opts.virtual ? null : opts.token || ((h, origin) => acquireToken(origin)),
-    catalogStore: opts.catalogStore,
+    catalogStore,
     subscriptions: HELLO_WISHES,
     autoReconnect: true,
     // Shell seam: a non-WS binding (BLE GATT) rides in as a WebSocket duck.
@@ -607,7 +618,12 @@ export function connect(opts = {}) {
     // SPEC §7.2: a new boot voids every hub timestamp (format.js staleMoment).
     machine.link.bootId = w.bootId ?? null;
     machine.link.hubIdentity = w.identity || null;
-    if (cap) cap.welcome(w.identity, host, opts.port || 82);
+    // Before the session's cache check, which runs after this event: a config-mode catalog never touches the machine's.
+    // TODO(val-qijf): the Valence JS client does not decode identity key 7 yet; config_mode reads absent until it does.
+    machine.link.configMode = !!opts.ble || w.identity?.config_mode === true;
+    welcomeKey = hubKey(w.identity, host, opts.port || 82);
+    if (!opts.catalogStore) catalogCache.welcome(host, welcomeKey, w.catalogEtag, machine.link.configMode);
+    if (cap && !machine.link.configMode) cap.welcome(w.identity, host, opts.port || 82);
     // RFC-046: where the WS upgrade lives, for a session that arrived over
     // BLE. null on hubs that advertise none.
     machine.link.endpoint = w.endpoint || null;
@@ -897,6 +913,7 @@ function forgetDevice() {
   machine.stats = blankStats();
   machine.safety = null;
   machine.link.hubIdentity = null;
+  machine.link.configMode = false;
   machine.link.limits = {};
   machine.link.subsDropped = 0;
   safetyMaxSeq = -1;
