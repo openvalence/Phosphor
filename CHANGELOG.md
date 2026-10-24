@@ -15,6 +15,7 @@ Newest first. Each entry has two parts: what you will notice, and what changed i
 - **The rail's comet keeps up after the phone sleeps.** On Android it could trail the numbers by seconds, or park on an old sample, until the app restarted.
 - **Health blames the right thing.** When the page itself stalled (a busy phone, for example), a slow round trip is now reported as this device with "Close other apps", not as the network.
 - **Upload firmware.** The machine's System page has a Firmware card. Pick a Nucleus .bin and Phosphor checks it, tells you whether it is an Official release or Unrecognized, then asks you to double-press PAIR on the machine. It shows progress, waits for the restart and tells you whether the new firmware is running or the machine rolled back. Desktop and Android apps only; Wi-Fi only; not for Neutrino.
+- **Copy your versions for a bug report.** Right-click the build stamp in the footer (long press on touch) for Copy versions or Copy diagnostics (JSON). The diagnostics hold versions, platform and link readouts, and no tokens, ids or addresses.
 - **Docs from any page.** Press F1, then F1 again within 3 s, to open the docs for the page you are on. Escape cancels. Key help moved to `?`. The phone menu has a Docs item.
 - The Windows installer shows WebView2's own progress window while it installs it, so a slow machine no longer looks stuck.
 

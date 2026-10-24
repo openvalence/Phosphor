@@ -18,7 +18,8 @@
    * deadman, state pushes, session, reconnects, last rx; under 442 px the
    * "LINK" label goes too. The scale control and "UI build:etag" (screenshot
    * debugging) never drop; the build cell may ellipsize, and it alone gives
-   * the dock toggle's slot its room.
+   * the dock toggle's slot its room. Its right-click or long press is the
+   * stamp menu (stampmenu.js).
    *
    * Read-only and quiet on purpose: the controls are the UI scale
    * (ScaleControl), the right dock's toggle at the right end beside it, and
@@ -46,6 +47,7 @@
   import { since, clock, compact, seconds } from '../model/format.js';
   import ScaleControl from './ScaleControl.svelte';
   import { dock, toggleDock } from './Dock.svelte';
+  import { openStampMenu } from './stampmenu.js';
 
   let { pinned = false } = $props();
   let fsH = $state(0);
@@ -104,7 +106,7 @@
     <span data-part="status-fact" class="fact d2" data-tip={usTitle('Hub round trip', rttUs)}><span class="k">clock rtt</span><span class="v mono" style="--w: 7ch">{rttUs != null ? seconds(rttUs) : '--'}</span></span>
     <span data-part="status-fact" class="fact d3" data-tip={deadmanMs ? deadmanMs + ' ms' : undefined}><span class="k">deadman</span><span class="v mono" style="--w: 5ch">{deadman}</span></span>
     <span data-part="status-fact" class="fact d7"><span class="k">last rx</span><span class="v mono" style="--w: 6ch">{rxAge}</span></span>
-    <span data-part="status-fact" class="fact fact-ui" data-tip="UI build {uiCell}, catalog etag {etag || '--'}"><span class="k">ui</span><span class="v mono" style="--w: 18ch">{uiCell}</span></span>
+    <span data-part="status-fact" class="fact fact-ui" data-tip="UI build {uiCell}, catalog etag {etag || '--'}" oncontextmenu={openStampMenu}><span class="k">ui</span><span class="v mono" style="--w: 18ch">{uiCell}</span></span>
     <button type="button" data-part="status-fact" class="fact fact-btn d5" onclick={() => (sessionMs = !sessionMs)}
             data-tip={sessionMs ? 'Hide milliseconds' : 'Show milliseconds'}>
       <span class="k">session</span><span class="v mono" style="--w: {sessionMs ? 11 : 7}ch">{sessionAge}</span>
@@ -197,8 +199,9 @@
     white-space: nowrap;
   }
   /* The build id is static, so it alone may narrow and ellipsize where the
-     corner insets take the row's ends; the live cells keep their slots. */
-  .fact-ui { flex: 0 1 auto; min-width: 0; overflow: hidden; }
+     corner insets take the row's ends; the live cells keep their slots. No
+     callout or selection under the stamp menu's long press. */
+  .fact-ui { flex: 0 1 auto; min-width: 0; overflow: hidden; -webkit-touch-callout: none; user-select: none; }
   .fact-ui .v { flex: 0 1 auto; min-width: 0; }
   /* A fact that happens to be clickable stays a fact: same metrics, no button
      chrome, so the strip does not grow a control that looks like a control. */

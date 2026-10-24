@@ -70,6 +70,7 @@
   import { view } from '../model/viewport.svelte.js';
   import { history } from '../model/history.svelte.js';
   import { DOCS_NOTE } from './docs.js';
+  import { STAMP_SAYS } from '../model/stamp.js';
   import { prefs, setPref } from '../model/prefs.js';
 
   // onopenlog: called after the strip points LogPane at its Safety feed; App
@@ -235,7 +236,8 @@
     const link = machine.link;
     const latch = machine.safety;
     // The F1 note answers a key just pressed: 3 s over a link fault, or the second F1 is blind on Hubs.
-    if (history.msg === DOCS_NOTE) return { kind: 'notice', text: history.msg };
+    // The stamp menu's copy answers a pick, and is most wanted with the link down (ph-75yn).
+    if (history.msg === DOCS_NOTE || STAMP_SAYS.includes(history.msg)) return { kind: 'notice', text: history.msg };
     if (link.error) return { kind: 'fault', text: 'Link error: ' + link.error };
     if (link.phase !== 'live') {
       return { kind: 'fault', text: (PHASE_WORD[link.phase] || link.phase) + ': no hub link'
