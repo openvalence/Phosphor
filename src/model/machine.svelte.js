@@ -619,7 +619,7 @@ export function connect(opts = {}) {
     machine.link.bootId = w.bootId ?? null;
     machine.link.hubIdentity = w.identity || null;
     // Before the session's cache check, which runs after this event: a config-mode catalog never touches the machine's.
-    // TODO(val-qijf): the Valence JS client does not decode identity key 7 yet; config_mode reads absent until it does.
+    // WELCOME identity config_mode (key 7, RFC-121) is the hub's word; a BLE link stays config mode regardless (§13.4).
     machine.link.configMode = !!opts.ble || w.identity?.config_mode === true;
     welcomeKey = hubKey(w.identity, host, opts.port || 82);
     if (!opts.catalogStore) catalogCache.welcome(host, welcomeKey, w.catalogEtag, machine.link.configMode);
