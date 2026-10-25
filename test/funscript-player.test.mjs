@@ -59,7 +59,7 @@ const CONTRACT = {
   [P + 'ui.js']: ['CSS', 'COPY', 'FULL_UP', 'GLANCE_UP', 'HOVER_IDLE_MS', 'RESTART_MS', 'SKIP_MS', 'createPlayer', 'createControl', 'compositionOf', 'clampOffset',
     'windowShare', 'ceilingOf', 'localScene', 'extraNote', 'PLAY_CSS', 'mountPlay', 'pageClass'],
   [P + 'timeline.js']: ['ZOOMS', 'HEAT_BINS', 'HEAT_MID_UPS', 'HEAT_TOP_UPS', 'TRACE_MS', 'MIN_SPAN', 'CSS', 'COPY', 'curvePoints', 'dotPath', 'kinPoints',
-    'seekAt', 'heatColor', 'heatStops', 'traceLines', 'clampRange', 'zoomStep', 'mountTimeline', 'PINCH_STEP', 'pinchZoom'],
+    'seekAt', 'heatColor', 'heatStops', 'speedColor', 'speedBins', 'speedStops', 'SPEED_BINS', 'SPEED_LEVELS', 'SPEED_SLACK', 'traceLines', 'clampRange', 'zoomStep', 'mountTimeline', 'PINCH_STEP', 'pinchZoom'],
   [P + 'scale.js']: ['RANGES', 'SCALE', 'cleanScale', 'mapOf', 'fitMap', 'wire', 'COPY', 'mountScale'],
   [P + 'prefs.js']: ['PREFS', 'readPrefs', 'writePref'],
   [P + 'queue.js']: ['COPY', 'toStored', 'fromStored', 'move', 'mountQueue'],
@@ -118,7 +118,7 @@ if (prefs) {
     return { m, prefs: { get: (k) => (m.has(k) ? JSON.parse(m.get(k)) : null), set: (k, v) => m.set(k, JSON.stringify(v)) } };
   };
   const want = { T: { offsetMs: 0, lo: 0, hi: 1, invert: false }, motion: true, audio: { vol: 1, muted: false },
-    stash: { base: '', key: '' }, lib: { q: '', sort: 'date', direction: 'DESC', scripted: true }, view: 'player', zoomMs: 10000, settingsOpen: false, libOpen: true, queue: [], autoplay: false, tlOpen: true, fsStack: true, fsWave: 0, split: 0,
+    stash: { base: '', key: '' }, lib: { q: '', sort: 'date', direction: 'DESC', scripted: true }, view: 'player', zoomMs: 10000, speedColor: false, settingsOpen: false, libOpen: true, queue: [], autoplay: false, tlOpen: true, fsStack: true, fsWave: 0, split: 0,
     interp: { scale: 1, scaleAuto: true },
     play: { loop: false, loopCount: 0, home: false, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33, seekMs: 500, autoLatency: false } };
   {
@@ -3011,7 +3011,7 @@ if (!LIVE) {
       shadow: getComputedStyle(dt).boxShadow.includes('inset'), motionInBar: !!document.querySelector(c + ' .fsp-tr .fsp-motion') };
   }, C);
   ok('head: the timeline head holds caret, (zoom,) A-B, Offset (og-num, ms), Invert, Graph; Motion is the bar\'s (PR6/PR7)',
-    same(head.head.filter((k) => k !== 'fsp-zoom'), ['fsp-tlcaret', 'fsp-tlgap', 'fsp-ab', 'fsp-off', 'fsp-inv', 'fsp-expand']) && /ms/.test(head.unit) && head.num && head.motionInBar, head);
+    same(head.head.filter((k) => k !== 'fsp-zoom' && k !== 'fsp-spd'), ['fsp-tlcaret', 'fsp-tlgap', 'fsp-ab', 'fsp-off', 'fsp-inv', 'fsp-expand']) && /ms/.test(head.unit) && head.num && head.motionInBar, head);
   ok('head: the wave and the heat sit on --screen with the inset shadow', head.dtBg && head.ovBg && head.shadow, head);
   const red = await page.evaluate((c) => {
     const probe = document.createElement('i');
@@ -3674,6 +3674,36 @@ if (!LIVE && !args.includes('--stash-live')) {
     .then(() => true, () => false);
   // ponytail: >= 0.95: the f32 step (0.05000000074) snaps the range's top to 0.95 (bd ph-y3mg note).
   ok('D: smoothness at its top re-renders the twin, nothing written', !!smoothed && +smoothed[1] >= 0.95 && reSmooth && hub.intents.length === nW, smoothed);
+  // ---- E: Color by speed (ph-piak): off by default, the same line colored along time by the render's speed against the limit ----
+  const spd = async () => {
+    await page.waitForFunction((c) => (document.querySelector(c + ' .fsp-dt .int[data-kin]')?.getAttribute('points') || '').split(' ').length > 500, C, { timeout: 10000 }).catch(() => {});
+    return page.evaluate((c) => {
+    const q = (s) => document.querySelector(c + ' ' + s), int = q('.fsp-dt .int'), sp = q('.fsp-speed');
+    return { pressed: q('.fsp-spd').getAttribute('aria-pressed'), tip: q('.fsp-spd').dataset.tip, stroke: int.style.stroke, n: document.querySelectorAll(c + ' .fsp-dt linearGradient stop').length,
+      leg: sp.hasAttribute('data-leg'), txt: sp.textContent, head: q('.fsp-tlh').getBoundingClientRect().height, pts: int.getAttribute('points').split(' ').length,
+      pref: localStorage.getItem('phosphor.funscript.speedColor') };
+    }, C);
+  };
+  const e0 = await spd();
+  ok('E: Color by speed is off by default: a plain line, the readout without a limit, the tooltip one fragment',
+    e0.pressed === 'false' && !e0.stroke && !e0.leg && !/ \/ /.test(e0.txt) && e0.tip === 'Color by speed', e0);
+  await page.click(C + ' .fsp-spd');
+  await page.waitForFunction((c) => document.querySelector(c + ' .fsp-speed').hasAttribute('data-leg'), C, { timeout: 5000 }).catch(() => {});
+  const e1 = await spd();
+  const stopsRgb = await page.evaluate((c) => [...document.querySelectorAll(c + ' .fsp-dt linearGradient stop')].map((s) => getComputedStyle(s).stopColor), C);
+  ok('E: on, the same polyline takes a gradient stroke with more than a plain two stops, the readout reads now / limit mm/s, nothing shifts',
+    e1.pressed === 'true' && /^url\(/.test(e1.stroke) && e1.n > 8 && e1.leg && /^\d+ \/ \d+ mm\/s$/.test(e1.txt)
+    && e1.head === e0.head, e1);
+  ok('E: the gradient has more than a few distinct colors and the polyline is the same line', new Set(stopsRgb).size > 3 && e1.pts === e0.pts, { colors: new Set(stopsRgb).size, a: e0.pts, b: e1.pts });
+  ok('E: the pref is kept (mirror phosphor.funscript.speedColor)', e1.pref === 'true', e1.pref);
+  if (SHOT) {
+    await page.locator(C + ' .fsp-tlbox').screenshot({ path: SHOT.replace(/[^/\\]+$/, 'v-speedcolor.png') });
+    await page.locator(C).screenshot({ path: SHOT.replace(/[^/\\]+$/, 'v-speedcolor-card.png') });
+  }
+  await page.click(C + ' .fsp-spd');
+  await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-speed').hasAttribute('data-leg'), C, { timeout: 5000 }).catch(() => {});
+  const e2 = await spd();
+  ok('E: off again restores the plain line', e2.pressed === 'false' && !e2.stroke && !e2.leg && e2.pts === e0.pts, e2);
   ok('visuals: no page error', errors.length === 0, errors.slice(0, 3));
   clearInterval(hub.timer);
   await ctx.close();

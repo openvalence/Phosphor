@@ -104,7 +104,7 @@ scheduler, stash, library, timeline, prefs, scale, analyzer, rows, axes, osc`; `
 
 // Prefs: api.prefs keys, stored as plugin.funscript-player.<key>; prefs.js owns the defaults
 { T: {offsetMs: 0, lo: 0, hi: 1, invert: false}, motion: true, audio: {vol: 1, muted: false},
-  stash: {base: '', key: ''}, lib: {q: '', sort: 'date', direction: 'DESC', scripted: true}, view: 'player' (| 'queue' | 'library'), zoomMs: 10000, settingsOpen: false, libOpen: true, queue: [], autoplay: false, tlOpen: true,
+  stash: {base: '', key: ''}, lib: {q: '', sort: 'date', direction: 'DESC', scripted: true}, view: 'player' (| 'queue' | 'library'), zoomMs: 10000, speedColor: false, settingsOpen: false, libOpen: true, queue: [], autoplay: false, tlOpen: true,
   interp: {scale: 1, scaleAuto: true},   // Scale (scale.js); any other stored field is dropped on read
   play: {loop: false, loopCount: 0, home: false, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33,   // ph-smvd.12
          seekMs: 500, autoLatency: false} }   // a stored lowLatency is dropped on read
@@ -722,6 +722,11 @@ export function heatColor(ups);   // -> CSS color: --bg-sunken at rest, color-mi
 export function heatStops(script, T, ceiling);   // -> [{from, to (ms), ups, color, over}]: one run per action span by
   // |dpos| / dt in units/s (pos 0..100), equal neighbors merged, the lead-in before the first action at rest; over:
   // the chord speed through T's Range past ceiling.vmax
+export const SPEED_BINS = 400, SPEED_LEVELS = 20, SPEED_SLACK = 1.01;
+export function speedColor(n);   // -> CSS color for a speed n x the limit: --reality at 0, color-mix in oklab to --highlight at 1, --warn above SPEED_SLACK
+export function speedBins(a, b, bins, { kin, script, T, spanMm });   // -> Float32Array: the peak speed (mm/s, script time) in each bin of
+  // [a, b] ms; kin's |vel| ({t0, dtMs, vel}), else the chord speed of each action span through T's Range over spanMm; zeros otherwise
+export function speedStops(bins, vmax);   // -> [[offset 0..1, color]]: equal levels merged into one run, for a userSpaceOnUse gradient
 export function traceLines(trace, fromMs, toMs, W, H, key = 'u', clipFrom = fromMs, clipTo = toMs), clampRange(T, key, v), zoomStep(ms, dir);   // pure, node-tested;
   // traceLines draws trace[i][key]: 'u' reality, 'p' the plan, the points inside [clipFrom, clipTo] over [fromMs, toMs],
   // as lines [{stale, parts: [{id, d, k0, k1, n}]}]: a monotone cubic (PCHIP) through every point, no segment outside
@@ -732,7 +737,7 @@ export function traceLines(trace, fromMs, toMs, W, H, key = 'u', clipFrom = from
 export const PINCH_STEP = 1.25;
 export function pinchZoom(ms, scale);   // -> the zoom after a pinch whose finger distance moved by scale since the last
   // step: >= PINCH_STEP one step narrower, <= 1 / PINCH_STEP one wider, else ms (pure, node-tested)
-export function mountTimeline(el, { ui, onSeek, onScrub, onRange, zoomMs = 10000, onZoom, onLoop, ovHost, ovBefore, overlay });
+export function mountTimeline(el, { ui, onSeek, onScrub, onRange, zoomMs = 10000, onZoom, colorSpeed = false, onColor, onLoop, ovHost, ovBefore, overlay });
   // ui: api.ui; the heat scrubs through ui.drag (a touch after horizontal intent or a hold, ph-5u0g peeve 14).
   // Nothing rides the detail but the playhead, the range pills and overlay (PR7); the returned zoomEl (zoom out,
   // the span in s, zoom in) and abEl (A-B) are the caller's to place in its timeline head. Two touches on the
@@ -742,9 +747,13 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, zoomMs = 10000
   // The playhead is one bar: its grip on the heat (the bottom band) and its line up through the
   // detail at the same x; the detail window is [m - s x zoom, m + (1 - s) x zoom], s = m / duration.
   // zoomMs: the starting window; onZoom(ms) on each zoom step (persisted as prefs zoomMs).
+  // colorSpeed / onColor(on): the colorEl toggle (Color by speed, pref speedColor): the intent curve's stroke becomes a
+  // userSpaceOnUse gradient along the span's time axis (speedBins, speedStops) against the speed limit, ceiling.vmax else
+  // the render's own vmax; the polyline's points are untouched. speedMax: that limit in mm/s as the machine moves
+  // (ceiling.rt, the playback rate, applied), 0 while off or with no limit known; the card's readout shows it.
   // timeline.js may import only funscript.js, so its tf() restates applyT; the two must agree.
   // onSeek(ms); onScrub('start'|'move'|'end', ms); onRange(partialT, commit: boolean)
-  // -> { zoomEl, abEl, setScript(script, T, ceiling, raw?), frame(mediaMs, trace, kin?), setLoop({a, b}), menuEls,
+  // -> { zoomEl, colorEl, abEl, speedMax, setScript(script, T, ceiling, raw?), frame(mediaMs, trace, kin?), setLoop({a, b}), menuEls,
   //      timeAt(clientX, node), unmount() }
   // menuEls: [the detail with its lanes, the overview], the context menu's elements; timeAt: the media ms under
   // clientX on the overview or the detail holding node, null without a script
@@ -752,7 +761,7 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, zoomMs = 10000
   // T.offsetMs; without it or during a Range drag, straight lines between the actions
   // script: the wire (scale.js wire()), its actions drawn as --intent dots; raw: the parsed one; the heat
   // is heatStops(raw or script) as one linearGradient of hard stops over the overview, over-limit runs striped --warn
-  // ceiling: {vmax: number | null, spanMm: number | null}
+  // ceiling: {vmax: number | null, spanMm: number | null, rt?: playback rate}; vmax is in script time (the machine's / rt)
   // trace: Array<{m: media ms, at: performance.now() ms, u: 0..1 | null, stale: boolean, p?: 0..1 | null}>, telemetry.position on the
   //   media axis, last 8 s by media time and by age (a loop wrap folds m back); p is plan.current as a window share (null when stale or absent), drawn under the script
 ```
@@ -838,7 +847,7 @@ export function mountAnalyzer(el, { api, trace, script, T, fit, onRender });   /
   // nothing from the host; api.onChanged over the same channels calls onRender, so a change shows within a frame
   // with nothing else drawing (the watch renewed per catalog, dropped on unmount)
   // kinetic: the latest render of the current script() (null while a newer script renders) through kinetic.wasm with limit.input.*, geometry.max_travel and
-  // window.min/max by role and the Tuning rows as shown (drafts included), plus {t0, dtMs, lo, hi}
+  // window.min/max by role and the Tuning rows as shown (drafts included), plus {t0, dtMs, lo, hi, vmax}
   // fit: once kinetic is current and fit() is a Script, one render of it with the same mm geometry in the middle
   // half of a window twice as wide (pos_e4 and endVelE3 through WIDE_*), the wall guards out of reach: extent is
   // wideExtent over the script's span; null without rail room for that window or on a refusal

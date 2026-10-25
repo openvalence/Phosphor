@@ -18,7 +18,7 @@
 import { parseFunscript } from '../plugins/factory/funscript-player/funscript.js';
 import { createMediaClock } from '../plugins/factory/funscript-player/clock.js';
 import { createScheduler, STOP_MS } from '../plugins/factory/funscript-player/scheduler.js';
-import { curvePoints, seekAt, traceLines, heatStops, heatColor, HEAT_MID_UPS, HEAT_TOP_UPS, clampRange, zoomStep, ZOOMS, pinchZoom }
+import { speedColor, speedBins, speedStops, SPEED_LEVELS, curvePoints, seekAt, traceLines, heatStops, heatColor, HEAT_MID_UPS, HEAT_TOP_UPS, clampRange, zoomStep, ZOOMS, pinchZoom }
   from '../plugins/factory/funscript-player/timeline.js';
 import { toStored, fromStored, move } from '../plugins/factory/funscript-player/queue.js';
 import { createControl, compositionOf, pageClass, clampOffset, windowShare, planShareOf, ceilingOf, localScene, extraNote, COPY }
@@ -118,6 +118,21 @@ console.log('(a) timeline');
   const hc = heatStops(hs, { ...T0, hi: 0.5 }, { vmax: 150, spanMm: 100 });
   ok('heat: a ceiling through the Range marks the spans past it (mm/s = units/s x span x Range / 100)',
     same(hc.map((r) => r.over), [false, false, false, true, false]), hc.map((r) => r.over));
+  // Color by speed (ph-piak): bins of peak speed, stops by level against the limit.
+  const kinR = { t0: 0, dtMs: 10, vel: Float32Array.from({ length: 100 }, (_, j) => (j < 50 ? 100 : -400)) };
+  const sb = speedBins(0, 1000, 10, { kin: kinR });
+  ok('speed: a render bins to its peak |vel| per bin (the sign is dropped)', sb.length === 10 && sb[0] === 100 && sb[4] === 100 && sb[5] === 400 && sb[9] === 400, [...sb]);
+  const cb = speedBins(0, 2250, 9, { script: hs, T: { ...T0, hi: 0.5 }, spanMm: 100 });
+  ok('speed: without a render the chord speed of each span through the Range (units/s x span x Range / 100 = mm/s)',
+    Math.round(cb[1]) === 100 && Math.round(cb[7]) === 200 && cb[4] === 0 && Math.round(cb[8]) === 50, [...cb].map(Math.round));
+  ok('speed: nothing to measure bins to zero', speedBins(0, 1000, 4, {}).every((x) => x === 0) && speedBins(5, 5, 4, { kin: kinR }).every((x) => x === 0));
+  const ss = speedStops(Float32Array.from([0, 0, 500, 500, 1000, 2000]), 1000);
+  ok('speed: equal levels merge into one run (two stops), offsets never step back, the first at 0 and the last at 1',
+    ss.length === 8 && ss[0][0] === 0 && ss.at(-1)[0] === 1 && ss.every((s, i) => !i || s[0] >= ss[i - 1][0]) && ss[0][1] === ss[1][1] && ss[2][1] === ss[3][1], ss);
+  ok('speed: --reality at rest, --highlight at the limit, --warn past it (1 % float slack), never a hex or red',
+    speedColor(0) === 'color-mix(in oklab, var(--highlight) 0%, var(--reality))' && speedColor(1) === 'color-mix(in oklab, var(--highlight) 100%, var(--reality))'
+    && speedColor(1.005) === speedColor(1) && speedColor(1.02) === 'var(--warn)' && speedColor(0.5) === 'color-mix(in oklab, var(--highlight) 50%, var(--reality))'
+    && SPEED_LEVELS === 20 && ss.every((s) => !/#|red|--bad|--estop/.test(s[1])));
   ok('range: lo kept MIN_SPAN under hi', near(clampRange({ lo: 0, hi: 0.5 }, 'lo', 0.9).lo, 0.45));
   ok('range: hi kept in 0..1 and over lo', clampRange({ lo: 0.2, hi: 1 }, 'hi', 2).hi === 1 && near(clampRange({ lo: 0.2, hi: 1 }, 'hi', 0).hi, 0.25));
   ok('zoom: steps and stops at the ends', zoomStep(10000, 1) === 20000 && zoomStep(10000, -1) === 5000

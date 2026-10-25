@@ -561,6 +561,12 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   ms), Invert, Graph. The wave screen sits under it with nothing over it.
   On phones the band collapses to its head by the user's own tap (kept as
   pref `tlOpen`) and zoom is pinch. The split bar stays on the desktop only.
+  Color by speed (`ph-piak`, pref `speedColor`, off by default) is a toggle
+  right of the zoom group (the full card only, like it): the motion line's stroke runs from `--reality` at
+  rest to `--highlight` at the machine's speed limit, `--warn` past it, from
+  the planner render's speed (the chord speed of each span without one); the
+  line itself does not change. The stroke speed reading then reads
+  `now / limit mm/s` and its bar is the scale.
 - **As built, PR5 to PR7 (`ph-1qs5.3`, where it differs from the text):**
   the bar takes its two rows (scrub over buttons) on phones and on the
   handheld dash card. A desktop page whose player column would drop under

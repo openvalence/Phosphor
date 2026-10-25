@@ -323,7 +323,7 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
     };
     if (sc !== kinSc || key !== kinKey) {
       kinSc = sc; kinKey = key;
-      run(sc, win, null, (r, t0, every) => { kinR = r.error ? { error: r.error } : { ...r, t0, dtMs: every, lo: win[0], hi: win[1], sc }; });
+      run(sc, win, null, (r, t0, every) => { kinR = r.error ? { error: r.error } : { ...r, t0, dtMs: every, lo: win[0], hi: win[1], vmax: limits.vmax, sc }; });
       return;
     }
     const f = fit();

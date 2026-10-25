@@ -23,6 +23,7 @@ export const PREFS = deepFreeze({
   lib: { q: '', sort: 'date', direction: 'DESC', scripted: true }, // scripted: Stash's interactive filter (library.js)
   view: 'player', // the handheld card's tab: player, queue or library
   zoomMs: 10000,
+  speedColor: false, // the timeline's motion line colored by speed (timeline.js speedStops)
   settingsOpen: false, // the page's Settings section (page.js)
   libOpen: true, // the full card's library column (ui.js caret)
   queue: [], // queue.js toStored entries (ph-1qs5.9); never the Stash key
