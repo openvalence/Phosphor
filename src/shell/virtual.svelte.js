@@ -22,6 +22,7 @@ import { bootNeutrino } from '../model/neutrino-boot.js';
 import { BUILTIN_MACHINE_NAME } from '../model/builtin.js';
 import { connect, disconnect, getSession, machine } from '../model/machine.svelte.js';
 import { loadMachine, hubOptions, catalogStoreFor } from '../model/vault.js';
+import { catalogCache } from '../model/catalog-cache.js';
 import { loadStaging, saveStaging, stageEcho } from '../model/merge.js';
 import { hubs } from './hubs.svelte.js';
 import { lanAttach, lanDetach, lanFromHost, lanWanted } from './lan.svelte.js';
@@ -89,6 +90,7 @@ export function persistStaging() {
  */
 export async function openVirtual(key = null, name = '') {
   if (!key) return openSim();
+  await catalogCache.ready;
   const m = loadMachine(key);
   if (!m) { hubs.note = 'No cached catalog for that hub'; return; }
   disconnect();

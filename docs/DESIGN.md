@@ -211,7 +211,9 @@ Nucleus's own board for the sim side).
   only the setup pointer: it never sets, clears or presents the machine's
   etag, is never recorded in the vault, and renders as "needs setup" on the
   connecting page, never as the machine. The pre-RFC-121 localStorage cache
-  moves in once at start.
+  moves in once at start, and so do the vault's hex catalog entries (once
+  IndexedDB is open; `migrateVault`). The vault pins the catalog of each
+  machine it recorded, so it outlives the hub pointers.
 - **Set up a machine** (ph-e8f2, ph-ad5x; RFC-114 draft, RFC-121). Only a
   hub in config mode is "needs setup" (`needsSetup`,
   `src/shell/ble-setup.js`) and listed; a row's one action is Set up. The
@@ -1132,6 +1134,10 @@ connected, then merge the setting changes onto the machine, ticked per item.
   (prefs.js `hubKey`: `hub_instance_id`, else host:port), the catalog bytes,
   the WELCOME identity, the raw retained STATE of every channel and every
   store item read, in `phosphor.vault.<key>` and `phosphor.vault.<key>.catalog`.
+  The catalog entry is the etag alone; the bytes are the catalog cache's,
+  pinned under the machine key (a 1 MiB catalog was 4 MB of localStorage hex,
+  over the quota). The settings backup carries the etag, not the bytes: a
+  restored backup needs one connect to that machine before Sim has its catalog.
   A virtual session records nothing.
 - **The hub** is Valence's `createLocalHub` (`clients/js/localhub.js`), a
   page-resident hub on the session's `WebSocketImpl` seam. The normal
@@ -1998,3 +2004,4 @@ behind the menu.
 | 2026-10-23 | §6 | RFC-121 consumer (`ph-ad5x`): Bluetooth opens only to a hub in config mode; a normal-mode advertisement is a WS endpoint hint (private and link-local only, identity from WELCOME); WiFi clear outside config mode reads "offline, reconnecting"; the BLE-to-WS upgrade and the Upgrade to WiFi button are gone; the catalog cache is etag-keyed in IndexedDB with per-hub machine and setup pointers, a config-mode catalog never the machine (connecting page, "needs setup"); setup opens on "Can't reach <SSID>, retrying, or set up a different network" and the handover keeps looking, "Found at <ip>, not reachable". | PROPOSED: RFC-121 as landed (Valence 28a0051) and the bead's copy; the setup list showing config-mode hubs only, the Set up label on a config-mode row's one button, "(+N)" for more saved networks and "Not on WiFi yet, still looking" are the agent's, veto-able |
 | 2026-10-23 | §10.3, §10.13 | The footer's UI build:etag cell has its own context menu (right-click, or the long press that is the touch right-click): Copy versions (Phosphor version and build, firmware, the Valence version) and Copy diagnostics (JSON), an allowlist of versions, platform, build mode (app, web, mini), hub product and transport, catalog etag, boot id, tier, deadman, link counters and the health readouts; never tokens, session or instance ids, the hub's name, network names or addresses. The shell menu stays out of the cell; the status slot says Versions copied or Diagnostics copied, over a link fault too (`src/model/stamp.js`, `src/ui/stampmenu.js`, `ph-75yn`). | operator (2026-10-18: "context menu on the footer stamp ... Copy versions, Copy diagnostics"); the JSON field set, the menu holding only the two items, the copy words showing over a link fault and no keyboard path (the cell is not focusable) are the agent's, veto-able |
 | 2026-10-24 | §10.3 | The funscript player's timeline head gets a Color by speed toggle (`ph-piak`, pref `speedColor`, off by default, the full card only like the zoom group): the motion line's stroke runs --reality at rest to --highlight at the machine's speed limit and --warn past it, from the planner render's speed; the readout shows now / limit in mm/s with the scale as its bar; trimmed knots are not marked (the render reports anomalies as totals only). | PROPOSED: the bead text; the ramp and the readout form are the agent's, veto-able |
+| 2026-10-24 | §10.10 | The vault keeps a machine's catalog in the catalog cache, pinned by machine key (`ph-rfo2`): the vault entry is the etag, existing hex entries move once when IndexedDB is open, the settings backup carries the etag and a restored backup needs one connect before Sim has the catalog. | PROPOSED: the bead text; the backup's etag-only catalog is the agent's, veto-able |

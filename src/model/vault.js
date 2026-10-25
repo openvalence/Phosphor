@@ -7,8 +7,14 @@
  * - Pure: no runes, no DOM, so test/vault.test.mjs runs it under node.
  * - Keyed per machine by prefs.js hubKey: hub_instance_id, else host:port.
  *   One machine is two keys, `<prefix><key>` (identity, snapshots, items;
- *   rewritten throttled) and `<prefix><key>.catalog` (etag and bytes; written
- *   on adoption only).
+ *   rewritten throttled) and `<prefix><key>.catalog` ({etag}, written on
+ *   adoption only). The catalog bytes are catalog-cache.js's, pinned under the
+ *   machine key (a 1 MiB catalog is 4 MB of localStorage hex: over quota). The
+ *   settings backup carries the etag, not the bytes: a restored backup needs one
+ *   connect to that machine before Sim has its catalog again.
+ * - A pre-cache entry ({etag, bytes: hex}) is read as it stands and moved into
+ *   the cache once IndexedDB is open (migrateVault); with no IndexedDB (the
+ *   mini build, node) it stays hex.
  * - Raw STATE bytes as the wire sent them, never re-encoded from decoded
  *   values: a replay must not invent a value the machine never reported.
  * - A virtual session records nothing: a replay is not evidence.
@@ -17,6 +23,7 @@
 
 import { FRAME, parseFrames, toHex, fromHex, catalogEtag, LIMITS } from '../../../Valence/clients/js/index.js';
 import { hubKey } from './prefs.js';
+import { catalogCache } from './catalog-cache.js';
 
 export const VAULT_PREFIX = 'phosphor.vault.';
 const THROTTLE_MS = 2000;
@@ -30,13 +37,14 @@ function write(storage, k, v) {
 }
 
 /** The stored picture of one machine, or null. Bytes come back as Uint8Array. */
-export function loadMachine(key, storage = store()) {
+export function loadMachine(key, storage = store(), cache = catalogCache) {
   if (!storage || !key) return null;
   const m = read(storage, VAULT_PREFIX + key);
   const c = read(storage, VAULT_PREFIX + key + '.catalog');
-  if (!m || !c || typeof c.bytes !== 'string') return null;
+  if (!m || !c) return null;
   try {
-    const catalogBytes = fromHex(c.bytes);
+    const catalogBytes = cache.pinned(key) || (typeof c.bytes === 'string' ? fromHex(c.bytes) : null);
+    if (!catalogBytes) return null;
     const snapshots = {};
     for (const [ch, hex] of Object.entries(m.snaps || {})) snapshots[ch] = fromHex(hex);
     const items = Object.entries(m.items || {}).map(([k, hex]) => {
@@ -48,6 +56,34 @@ export function loadMachine(key, storage = store()) {
     return null;
   }
 }
+
+const LEGACY = /^phosphor\.vault\.(.+)\.catalog$/;
+
+/**
+ * Moves every hex catalog entry into the cache, once IndexedDB is open and only then (a memory-only cache would lose
+ * them at reload). Resolves with how many moved.
+ */
+export async function migrateVault(storage = store(), cache = catalogCache) {
+  if (!storage) return 0;
+  const old = [];
+  try {
+    for (let i = 0; i < storage.length; i++) { const m = LEGACY.exec(storage.key(i) || ''); if (m) old.push([m[1], storage.key(i)]); }
+  } catch (e) { return 0; }
+  const held = [];
+  for (const [key, k] of old) {
+    const c = read(storage, k);
+    if (!c || typeof c.bytes !== 'string') continue;
+    try {
+      const bytes = fromHex(c.bytes);
+      if (bytes.length && toHex(catalogEtag(bytes, LIMITS.etag_bytes)) === String(c.etag).toLowerCase()) held.push([k, cache.pin(key, bytes)]);
+    } catch (e) { /* unreadable: left as it is */ }
+  }
+  await cache.ready;
+  if (!cache.durable) return 0;
+  for (const [k, etag] of held) write(storage, k, { etag });
+  return held.length;
+}
+export const vaultMigrated = migrateVault();
 
 /** Does this machine have a replayable picture? */
 export function hasMachine(key, storage = store()) {
@@ -76,6 +112,7 @@ export function catalogStoreFor(m) {
  */
 export function recorder(o = {}) {
   const storage = o.storage !== undefined ? o.storage : store();
+  const cache = o.cache || catalogCache;
   const throttleMs = o.throttleMs ?? THROTTLE_MS;
   let rec = null;
   let timer = null;
@@ -104,7 +141,7 @@ export function recorder(o = {}) {
     },
     catalog(bytes) {
       if (!rec || !bytes || !storage) return;
-      write(storage, VAULT_PREFIX + rec.key + '.catalog', { etag: toHex(catalogEtag(bytes, LIMITS.etag_bytes)), bytes: toHex(bytes) });
+      write(storage, VAULT_PREFIX + rec.key + '.catalog', { etag: cache.pin(rec.key, bytes) });
     },
     frame(data) {
       if (!rec || !(data instanceof ArrayBuffer)) return;

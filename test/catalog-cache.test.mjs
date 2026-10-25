@@ -152,6 +152,26 @@ function fakeIdb() {
   assert.deepEqual([...idb.data.keys()], [hex(CAT)], 'unreferenced bytes leave IndexedDB');
 }
 
+// ---- pins: the vault's catalog for a machine the hub is away from -------------------------------------
+{
+  const s = memStorage();
+  const idb = fakeIdb();
+  const c = createCatalogCache({ storage: s, idb });
+  assert.equal(c.durable, false, 'not durable before IndexedDB opens');
+  await c.ready;
+  assert.equal(c.durable, true);
+  assert.equal(c.pin('m1', CAT), hex(CAT));
+  c.sessionStore(ctx(false)).save('h', etag(PROV), PROV);
+  c.sessionStore(ctx(false)).clear('h');   // the hub's own pointer goes; the pin keeps CAT, PROV (unpinned) goes
+  await new Promise((r) => setTimeout(r, 5));
+  assert.deepEqual([...idb.data.keys()], [hex(CAT)], 'a pinned catalog survives the hub pointers dropping; the unreferenced one leaves');
+  const fresh = createCatalogCache({ storage: s, idb });
+  assert.equal(fresh.pinned('m1'), null, 'not before hydration');
+  await fresh.ready;
+  assert.equal(toHex(catalogEtag(fresh.pinned('m1'), LIMITS.etag_bytes)), hex(CAT), 'hydrated pin');
+  assert.equal(fresh.pinned('nope'), null);
+}
+
 // ---- real sessions: machine, then config mode at the same address, then the machine's fast path -------
 {
   const c = createCatalogCache({ storage: memStorage(), idb: null });

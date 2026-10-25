@@ -11,7 +11,8 @@
  *   to IndexedDB and hydrated from it by `ready`. No IndexedDB in the mini build (web/storage.js) or under node:
  *   bytes stay in memory there.
  * - Pointers are small JSON in localStorage (POINTERS): hosts (dialed host -> hub key), machine and setup
- *   (hub key -> etag hex). Bytes no pointer names are dropped.
+ *   (hub key -> etag hex), vault (vault.js machine key -> etag hex: pin() keeps a machine's last catalog for
+ *   Virtual Valence while the hub is away). Bytes no pointer names are dropped.
  * - The pre-RFC-121 cache (`valence.catalog.<host>`, hex in localStorage) is moved in once and removed.
  * - Every storage access degrades to a no-op on a throw: the cache is a fast path, never a requirement.
  */
@@ -42,7 +43,7 @@ export function createCatalogCache(o = {}) {
   const storage = o.storage !== undefined ? o.storage : (() => { try { return globalThis.localStorage || null; } catch (e) { return null; } })();
   const idb = o.idb !== undefined ? o.idb : (import.meta.env?.MODE !== 'mini' && globalThis.indexedDB) || null;
   const mem = new Map();
-  let p = { hosts: {}, machine: {}, setup: {} };
+  let p = { hosts: {}, machine: {}, setup: {}, vault: {} };
   try {
     const raw = JSON.parse(storage?.getItem(POINTERS) || 'null');
     if (raw && typeof raw === 'object') for (const k of Object.keys(p)) if (raw[k] && typeof raw[k] === 'object') p[k] = raw[k];
@@ -60,7 +61,7 @@ export function createCatalogCache(o = {}) {
     try { storage?.setItem(POINTERS, JSON.stringify(p)); } catch (e) { /* quota or private mode */ }
   }
   function prune() {
-    const used = new Set([...Object.values(p.machine), ...Object.values(p.setup)]);
+    const used = new Set([...Object.values(p.machine), ...Object.values(p.setup), ...Object.values(p.vault)]);
     for (const e of [...mem.keys()]) if (!used.has(e)) { mem.delete(e); tx((s) => s.delete(e)); }
   }
   function put(e, bytes) {
@@ -111,6 +112,23 @@ export function createCatalogCache(o = {}) {
 
   return {
     ready,
+
+    /** True once IndexedDB is open: bytes written now outlive the page. False under node, in the mini build or after a failure. */
+    get durable() { return !!db; },
+
+    /** vault.js: keep `bytes` as the catalog of vault machine `key`, whatever the hub's own pointers do. Returns the etag hex. */
+    pin(key, bytes) {
+      const e = etagOf(bytes);
+      put(e, bytes);
+      if (p.vault[key] !== e) { p.vault[key] = e; prune(); persist(); }
+      return e;
+    },
+
+    /** The bytes pinned for vault machine `key`, or null (not pinned, or not yet hydrated from IndexedDB). */
+    pinned(key) {
+      const e = p.vault[key];
+      return (e && mem.get(e)) || null;
+    },
 
     /**
      * One session's catalogStore. ctx.configMode(): this session is in config mode (a BLE link, or WELCOME
