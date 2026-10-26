@@ -186,7 +186,7 @@ console.log('(c) hero spec');
 const index = mods[P + 'index.js'];
 const ENTRIES = decodeCatalog(new Uint8Array(readFileSync(new URL('./fixtures/neutrino-catalog.bin', import.meta.url))));
 const SEG_CH = 0x2101;   // neutrino-sim motion-segment (registry 0x2101), test-side only
-// Tuning fixture, test-side ids: the recording (neutrino-sim 0.1.7-p4hub) carries RFC-094 'Tuning / '
+// Tuning fixture, test-side ids: the recording (neutrino-sim 0.1.71-p4hub) carries RFC-094 'Tuning / '
 // groups, trial_mask (meta.trial_pending) on the kinetic-planner STATE and settings-trial (core 0x16, RFC-099).
 const CH_PLANNER = 0x1122, CH_TRIAL = 0x16;
 function tuningCatalog() {
@@ -234,7 +234,7 @@ const an = mods[P + 'analyzer.js'];
 if (an) {
   const tg = an.tuningGroups(buildSettingsModel(decodeCatalog(tuningCatalog().bytes)));
   const names = tg.map((g) => g.name);
-  const TUNED = ['Motion behavior', 'Streaming', 'Safety', 'Sample streams', 'Curve', 'Ceilings', 'Re-planning'];
+  const TUNED = ['Motion behavior', 'Streaming', 'Safety', 'Radios', 'Sample streams', 'Curve', 'Ceilings', 'Re-planning'];
   ok('every Tuning section with a control, then the kinetic channel\'s ceilings, then limit.input.*',
     same([...names].sort(), [...TUNED, 'Ceiling overrides', 'Machine-driven limits'].sort())
       && names.indexOf('Ceiling overrides') > Math.max(...TUNED.map((n) => names.indexOf(n))), names);

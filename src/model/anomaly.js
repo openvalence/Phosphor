@@ -27,8 +27,9 @@ const TIME_S = { [UNIT_ID.us]: 1e-6, [UNIT_ID.ms]: 1e-3, [UNIT_ID.s]: 1 };
 // A unitless integer is a word, a cause or an id: printed as sent, never grouped, never in the sentence.
 const isId = (f, v) => Number.isInteger(v) && !unitOf(f) && !(f && /^f/.test(f.typeName));
 const word = (name) => humanize(name).toLowerCase();
-/** A field's row label: the catalog's own short desc, else its name. */
-const labelOf = (f) => descLabel(f) || (f.desc && f.desc.length <= 32 ? f.desc : humanize(f.name));
+/** A field's row label: the catalog's own short desc or its first clause, else its name. */
+const clauseOf = (desc) => (desc ? String(desc).split(/[.,;:]/)[0].trim() : '');
+const labelOf = (f) => descLabel(f) || (f.desc && f.desc.length <= 32 ? f.desc : clauseOf(f.desc).length <= 32 && clauseOf(f.desc)) || humanize(f.name);
 
 /** The window the machine reports now, as {lo, hi, field}, or null until both ends are reported. */
 export function windowSpan(model, samples) {
