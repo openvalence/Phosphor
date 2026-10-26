@@ -22,6 +22,7 @@ import {
 import { bumpAll, seq, watch } from '../model/changes.js';
 import { WIDGET, isFieldEnabled, modTargetUid } from '../model/settings.js';
 import { tierGate } from '../model/tier.js';
+import { inputChannels } from '../model/roles.js';
 import { needsConfirm, settingNeedsConfirm, confirmCopy, railOwners, railOwned, actionTag } from '../model/actions.js';
 import { streamGate, conflictWords, latchWords } from '../model/motion.js';
 import { askConfirm } from '../ui/confirm.svelte.js';
@@ -208,6 +209,7 @@ $effect.root(() => {
     if (byRole !== roleSrc) {
       roleSrc = byRole;
       roleChannels = new Map([...(byRole || [])].map(([r, fs]) => [r, [...new Set(fs.map((f) => f.channelId))]]));
+      for (const [r, ids] of inputChannels(byRole)) roleChannels.set(r, ids);
     }
     bumpAll();
   });

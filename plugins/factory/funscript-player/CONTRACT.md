@@ -942,7 +942,7 @@ export function activate(api);   // -> deactivate()
 //   const player = createPlayer(api);
 //   api.registerHero({ id: 'player', title: 'Funscript player', absorb: false,
 //     cells: { h: [16, 12], v: [8, 16] },
-//     spec: { require: { target: 'input.target', dur: 'input.duration' },
+//     spec: { stream: 'segments', require: { target: 'input.target', dur: 'input.duration' },
 //             optional: { pos: 'telemetry.position', lo: 'window.min', hi: 'window.max',
 //                         vmax: 'limit.input.speed', patRun: 'pattern.running', advRun: 'advgen.running',
 //                         planEl: 'plan.elapsed', planDur: 'plan.duration' } },

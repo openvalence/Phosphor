@@ -21,7 +21,9 @@ import {
   CROSS_ARCHETYPE, placementLook, resetsToDefault, splitGroup, controlKey, migratedKey,
 } from '../src/model/settings.js';
 import { rekeyStore } from '../src/model/grid.js';
-import { claimRoles, claimAll, withoutClaimed, ROLE, AXIS_HERO_SPEC } from '../src/model/roles.js';
+import { claimRoles, claimAll, withoutClaimed, ROLE, AXIS_HERO_SPEC, inputField } from '../src/model/roles.js';
+import { motionStream } from '../src/model/motion.js';
+import { STREAM_KIND } from '../../Valence/clients/js/index.js';
 import { labelFor, unitOf, precisionFor, statTag, hubSecToWallMs, wallMsToHubSec, armMoment, staleMoment } from '../src/model/format.js';
 import { readFileSync } from 'node:fs';
 import { NAV_ICONS, navIcon } from '../src/ui/navIcons.js';
@@ -953,6 +955,43 @@ ok('an unknown role is carried, not rejected', weird.fields[0].role === 'some.fu
   ok('a nest member and a saved module member follow',
      'uid:' + built.byRole.get('mod.rise')[0].uid in v['nest:1'].nest.map && 'uid:' + built.byRole.get('mod.rise')[0].uid in store.modules.kit.members);
   ok('a second run changes nothing', rekeyStore(store, key) === false);
+}
+
+// ---- Valence RFC-123: input.* binds within its c2h STREAM entry, per stream_kind
+{
+  const lay = (name, role, unitId = UNIT_ID.normalized) => lf(name, PACKED.u16, { role, unitId, scale: 10000 });
+  const stream = (id, kind, layout) => ({
+    id, name: 's' + id.toString(16), cls: CHANNEL_CLASS.STREAM, clsName: 'STREAM', dirName: 'c2h', streamKind: kind,
+    dir: 0, access: 0, maxRateHz: 100, priority: 1, category: null, settingChannel: null, schema: null, layout,
+  });
+  const seg = (id) => stream(id, STREAM_KIND.segments, [lay('pos', FIELD_ROLE.input_target), lay('len', FIELD_ROLE.input_duration, UNIT_ID.ms),
+    lf('ev', PACKED.i16, { role: FIELD_ROLE.input_end_velocity })]);
+  const smp = (id) => stream(id, STREAM_KIND.samples, [lay('pos', FIELD_ROLE.input_target)]);
+  // An accessory's streams come first in catalog order and must never be the motion input; a second entry per kind follows the real one.
+  const entries = [seg(0x8010), smp(0x8011), smp(0x2100), seg(0x2101), smp(0x2102), seg(0x2103)];
+  const built = buildSettingsModel(entries);
+  const ids = (kind) => ['input.target', 'input.duration', 'input.end_velocity'].map((r) => (inputField(built.byRole, r, kind) || {}).channelId);
+  ok('byRole holds no input.* from a c2h STREAM', ![...built.byRole.keys()].some((r) => r.startsWith('input.')));
+  ok('samples: the first non-user entry, its target', ids('samples')[0] === 0x2100 && ids('samples')[1] == null);
+  ok('segments: target, duration and end velocity from one entry, the first non-user', ids('segments').every((c) => c === 0x2101));
+  ok('motionStream picks the same entries, never a user-space one',
+     motionStream(entries, STREAM_KIND.samples).entry.id === 0x2100 && motionStream(entries, STREAM_KIND.segments).entry.id === 0x2101
+     && motionStream(entries.slice(0, 2), STREAM_KIND.samples) === null && motionStream(entries.slice(0, 2), STREAM_KIND.segments) === null);
+  ok('the first entry of a kind answers even if it lacks the duration: no later entry stands in',
+     motionStream([stream(0x2200, STREAM_KIND.segments, [lay('pos', FIELD_ROLE.input_target)]), seg(0x2201)], STREAM_KIND.segments) === null);
+  const spec = (stream, extra = {}) => ({ stream, require: { target: 'input.target', ...extra } });
+  const cs = claimRoles(built.byRole, spec('segments', { dur: 'input.duration' }));
+  const cm = claimRoles(built.byRole, spec('samples'));
+  ok('a segments claim takes target and dur from the same entry', cs && cs.target.channelId === 0x2101 && cs.dur.channelId === 0x2101);
+  ok('a samples claim takes its own entry', cm && cm.target.channelId === 0x2100);
+  ok('samples carry no duration: that claim declines', claimRoles(built.byRole, spec('samples', { dur: 'input.duration' })) === null);
+  ok('a spec without a stream takes the samples entry', claimRoles(built.byRole, { require: { target: 'input.target' } }).target.channelId === 0x2100);
+  ok('the user-space entry alone yields no motion input', inputField(buildSettingsModel(entries.slice(0, 2)).byRole, 'input.target', 'samples') === null);
+  const tk = inputField(built.byRole, 'input.target', 'samples');
+  ok('an input.* field keys on its uid, never the role', controlKey(tk, built.byRole) === 'uid:' + tk.uid);
+  ok('role:input.target migrates to the first motion entry, a duplicate suffix kept',
+     migratedKey('role:input.target', built.byRole) === 'uid:' + tk.uid && migratedKey('role:input.target#2', built.byRole) === 'uid:' + tk.uid + '#2');
+  ok('limit.input.* keys are not input.* keys', migratedKey('role:limit.input.speed', built.byRole) === 'role:limit.input.speed');
 }
 
 console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS — the renderer is machine-agnostic.'));

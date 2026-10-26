@@ -21,7 +21,7 @@
 import {
   PACKED, UI_RANK, UI_ARCHETYPE, VALUE_ASPECT, UI_CATEGORY, SAFETY_OP, FIELD_ROLE, LIMITS, CHANNEL_CLASS,
 } from '../../../Valence/clients/js/index.js';
-import { ROLE, ROLE_LABEL, isActionRole, indexChannels } from './roles.js';
+import { ROLE, ROLE_LABEL, isActionRole, isInputRole, firstInputField, indexChannels, indexInputs } from './roles.js';
 import { isPersistentAction } from './actions.js';
 
 // ---------------------------------------------------------------------------
@@ -474,8 +474,9 @@ export function buildSettingsModel(entries) {
       if (f.rank === UI_RANK.hidden) continue;
       // Roles are indexed for EVERY field, categorized or not — a hero widget
       // wants `telemetry.position` from the motion channel, which carries no
-      // category because it is not a setting.
-      addRole(field.role, field);
+      // category because it is not a setting. Not input.* on a c2h STREAM: those
+      // repeat once per entry (SPEC 8.8, RFC-123) and bind through indexInputs.
+      if (!(isInputRole(field.role) && entry.cls === CHANNEL_CLASS.STREAM && entry.dirName === 'c2h')) addRole(field.role, field);
       fields.push(field);
     }
   }
@@ -636,6 +637,7 @@ export function buildSettingsModel(entries) {
     });
 
   indexChannels(byRole, fields);
+  indexInputs(byRole, fields, entries);
   return { categories, actions, looseActions, byRole, fields };
 }
 
@@ -843,12 +845,12 @@ export function minCells(presentationOrCells, orientation = 'h') {
 }
 
 /**
- * A role that binds within its own entry (SPEC §8.8, RFC-122): a modulator's
- * and a store writer's roles repeat once per entry, so no catalog-wide first
- * field answers for them. An EVENT body role is one too and never enters the
- * model.
+ * A role that binds within its own entry (SPEC §8.8, RFC-122, RFC-123): a modulator's,
+ * a store writer's and a motion stream's roles repeat once per entry, so no
+ * catalog-wide first field answers for them. An EVENT body role is one too
+ * and never enters the model.
  */
-export const bindsInEntry = (role) => /^(mod|store)\./.test(role);
+export const bindsInEntry = (role) => /^(mod|store|input)\./.test(role);
 
 /**
  * Persisted key for a single-field control (law 10): its registry role when
@@ -867,13 +869,14 @@ export function controlKey(f, byRole) {
 
 /**
  * A saved key with its within-entry role parts re-keyed on the uid of the
- * role's first field in `byRole`: what `role:mod.amount` meant before
- * RFC-122. A role this catalog lacks, and every other key, comes back as it
- * was.
+ * role's first field: what `role:mod.amount` meant before RFC-122 and
+ * `role:input.target` before RFC-123 (the first field in `byRole`, for an
+ * input.* role the first in a motion entry). A role this catalog lacks, and
+ * every other key, comes back as it was.
  */
-export const migratedKey = (key, byRole) => key.replace(/role:((?:mod|store)\.[^+#]+)/g, (m, r) => {
-  const first = byRole && byRole.get(r);
-  return first && first.length ? uidKey(first[0]) : m;
+export const migratedKey = (key, byRole) => key.replace(/role:((?:mod|store|input)\.[^+#]+)/g, (m, r) => {
+  const first = isInputRole(r) ? firstInputField(byRole, r) : ((byRole && byRole.get(r)) || [])[0];
+  return first ? uidKey(first) : m;
 });
 
 /** The all-uid key. Builds before ph-e82.9 saved role fields under it; placements accept it as an alias. */

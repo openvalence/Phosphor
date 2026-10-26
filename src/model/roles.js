@@ -33,6 +33,8 @@
  * If the two ever disagree, the registry wins.
  */
 
+import { CHANNEL_CLASS, STREAM_KIND, FIELD_ROLE } from '../../../Valence/clients/js/index.js';
+
 /** Registry `field_roles` vocabulary. */
 export const ROLE = {
   // kinematic limits — CEILINGS, never targets
@@ -272,13 +274,18 @@ export function isActionRole(role) {
  * hero widget from half-rendering against a machine that does not have what it
  * needs, which is how a UI ends up lying.
  *
+ * The motion-input roles (`input.*`) repeat once per c2h STREAM entry (SPEC 8.8, RFC-123), so no
+ * catalog-wide list holds them: a spec that names one says its entry's stream kind in `stream`
+ * ('samples' or 'segments') and all its `input.*` roles come from that one entry.
+ *
  * @param {Map<string, Array>} byRole from buildSettingsModel
- * @param {{require?: Object, optional?: Object}} spec
+ * @param {{require?: Object, optional?: Object, stream?: string}} spec
  * @returns {Object|null} { key: field, ... , claimed: Set<uid> }
  */
 export function claimRoles(byRole, spec) {
   const out = { claimed: new Set() };
   const take = (role) => {
+    if (isInputRole(role)) return inputField(byRole, role, spec.stream);
     const list = byRole.get(role);
     if (!list || !list.length) return null;
     // Ambiguity is possible in principle (two channels both claiming
@@ -348,6 +355,61 @@ export function claimRoles(byRole, spec) {
       out[name] = Object.fromEntries(list.map((f) => [f.name, f]));
       for (const f of list) out.claimed.add(f.uid);
     }
+  }
+  return out;
+}
+
+/** SPEC 8.10: 0x8000-0xBFFF (registry channel_id_ranges `user`) is the accessory space. */
+export const isUserSpace = (ch) => ch >= 0x8000 && ch <= 0xbfff;
+
+export const isInputRole = (role) => typeof role === 'string' && role.startsWith('input.');
+
+/**
+ * The c2h STREAM entry of `kind` that takes motion (SPEC 8.8 role cardinality, RFC-123): the first in
+ * catalog order carrying input.target. An entry in the user space is never the motion input, whatever it carries.
+ */
+export function motionEntry(entries, kind) {
+  return (entries || []).find((e) => e.cls === CHANNEL_CLASS.STREAM && e.dirName === 'c2h' && e.streamKind === kind
+    && !isUserSpace(e.id) && (e.layout || []).some((f) => f.role === FIELD_ROLE.input_target)) || null;
+}
+
+// byRole -> { byKind: stream kind -> {role: field} of that kind's motion entry, first: role -> the first of those in catalog order }.
+const INPUTS = new WeakMap();
+/** Index the motion entries' input.* fields (settings.js); byRole itself holds none of them. */
+export function indexInputs(byRole, fields, entries) {
+  const byKind = new Map(), first = new Map();
+  for (const kind of new Set((entries || []).filter((e) => e.cls === CHANNEL_CLASS.STREAM && e.dirName === 'c2h').map((e) => e.streamKind))) {
+    const e = motionEntry(entries, kind);
+    if (!e) continue;
+    const m = {};
+    for (const f of fields) if (f.channelId === e.id && isInputRole(f.role) && !(f.role in m)) m[f.role] = f;
+    byKind.set(kind, m);
+  }
+  for (const f of fields) {
+    if (isInputRole(f.role) && !first.has(f.role) && [...byKind.values()].some((m) => m[f.role] === f)) first.set(f.role, f);
+  }
+  INPUTS.set(byRole, { byKind, first });
+}
+
+/** The motion entry's field of an input.* `role` for a stream kind ('samples' by default), or null. */
+export function inputField(byRole, role, kind = 'samples') {
+  const idx = byRole && INPUTS.get(byRole);
+  const m = idx && idx.byKind.get(typeof kind === 'string' ? STREAM_KIND[kind] : kind);
+  return (m && m[role]) || null;
+}
+
+/** An input.* role's field in the first motion entry that has one, in catalog order: what an old catalog-wide binding meant. */
+export const firstInputField = (byRole, role) => {
+  const idx = byRole && INPUTS.get(byRole);
+  return (idx && idx.first.get(role)) || null;
+};
+
+/** Every channel id carrying an input.* role in some motion entry, per role (api.changed). */
+export function inputChannels(byRole) {
+  const out = new Map();
+  const idx = byRole && INPUTS.get(byRole);
+  for (const m of idx ? idx.byKind.values() : []) {
+    for (const [role, f] of Object.entries(m)) out.set(role, [...new Set([...(out.get(role) || []), f.channelId])]);
   }
   return out;
 }

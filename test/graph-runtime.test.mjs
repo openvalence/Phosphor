@@ -22,6 +22,8 @@ import { createPluginHost } from '../src/plugins/host.js';
 import { manifest, graphRuntime, HERO } from '../src/plugins/graph.js';
 import { MAP, readStoreItem } from '../src/model/graph.js';
 import { CBOR_FIELD } from '../../Valence/clients/js/frames.js';
+import { buildSettingsModel } from '../src/model/settings.js';
+import { inputField } from '../src/model/roles.js';
 import { CORE_CHANNEL, STORE_OP, CHANNEL_CLASS } from '../../Valence/clients/js/generated/registry_vocab.js';
 
 let fails = 0;
@@ -508,6 +510,32 @@ console.log('(j) Valence RFC-122: an EVENT body field is never a target');
   ok('the same field on an INTENT channel is offered (the check is the channel class)', field(r4.targets()));
   r4.dispose();
 }
+
+console.log('(k) Valence RFC-122/123: saved refs keyed on a within-entry role move to the field uid');
+{
+  const lay = (name, role, type = 2) => ({ name, type, typeName: String(type), unit: '', scale: 1, unitId: null, role, rank: 1, aspect: 0 });
+  const stat = (id, layout) => ({ id, name: 'e' + id, cls: CHANNEL_CLASS.STATE, clsName: 'STATE', dir: 0, access: 0, maxRateHz: 0, priority: 1, category: null, settingChannel: null, schema: null, layout });
+  const strm = (id) => ({ ...stat(id, [lay('pos', 'input.target')]), cls: CHANNEL_CLASS.STREAM, clsName: 'STREAM', dirName: 'c2h', streamKind: 0 });
+  // The accessory's stream is first in catalog order: it is never the motion input.
+  const mm = buildSettingsModel([strm(0x8050), stat(0x0e01, [lay('amount', 'mod.amount')]), strm(0x2100)]);
+  const mod = mm.byRole.get('mod.amount')[0], tgt = inputField(mm.byRole, 'input.target', 'samples');
+  const store = { data: JSON.stringify({ v: 2, nodes: [
+    { id: 'n1', ref: { kind: 'field', key: 'role:mod.amount' }, x: 0, y: 0 },
+    { id: 'n2', ref: { kind: 'field', key: 'role:input.target' }, x: 0, y: 0 },
+    { id: 'n3', ref: { kind: 'field', key: 'role:store.slot' }, x: 0, y: 0 },
+    { id: 'n4', ref: { kind: 'field', key: 'role:telemetry.position' }, x: 0, y: 0 },
+  ], rels: [] }) };
+  const api5 = { catalog: () => mm, value: () => undefined, status: () => 'confirmed', stale: () => '', write() {}, log() {} };
+  const r5 = graphRuntime(api5, shell, { ...env, storage: { getItem: () => store.data, setItem: (k, v) => { store.data = v; } } });
+  r5.sources();
+  const key = (id) => r5.graph.nodes.find((n) => n.id === id).ref.key;
+  ok('role:mod.* moves to the first modulator field uid', key('n1') === 'uid:' + mod.uid);
+  ok('role:input.* moves to the first motion entry, not the accessory stream', key('n2') === 'uid:' + tgt.uid && tgt.channelId === 0x2100);
+  ok('a role this catalog lacks, and a catalog-wide role, stay as saved', key('n3') === 'role:store.slot' && key('n4') === 'role:telemetry.position');
+  ok('the migration is persisted', JSON.parse(store.data).nodes.find((n) => n.id === 'n1').ref.key === 'uid:' + mod.uid);
+  r5.dispose();
+}
+
 
 host.setEnabled('graph', false);
 console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');

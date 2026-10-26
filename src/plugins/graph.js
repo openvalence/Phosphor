@@ -20,14 +20,14 @@ import {
   MAP, MAPS, TICK_MS, refKey, homeOf, interlock, isUserSpace, addNode, connect, removeRel,
   refuseConnect, checkRel, freeRelId, loadLocal, saveLocal, createRunner, findHub, storeVerb,
   storeItem, readStoreItem, rosterBits, removeNode, addDraft, planWire, createHistory, snap, endRange,
-  OPS, addOp, planLink, addLink, insOf, outOf, opLabel, MS_PORT, DEFAULT_MS,
+  OPS, addOp, planLink, addLink, insOf, outOf, opLabel, MS_PORT, DEFAULT_MS, rekeyNodes,
 } from '../model/graph.js';
 import { traces } from '../model/trace.js';
 import { PRESETS } from '../model/graph-presets.js';
 import { pace, gapOf } from './bp-pace.js';
 import { ROLE, claimRoles } from '../model/roles.js';
 import { rosterCount } from '../ui/widgets/roster.js';
-import { controlKey, WIDGET, reportedValue } from '../model/settings.js';
+import { controlKey, migratedKey, WIDGET, reportedValue } from '../model/settings.js';
 import { labelFor, unitOf, hubTitle } from '../model/format.js';
 import { PACKED, CHANNEL_CLASS, CORE_CHANNEL, STORE_OP, UI_CATEGORY_TIER, UI_NAV_TIER, FIELD_ROLE } from '../../../Valence/clients/js/generated/registry_vocab.js';
 import { CBOR_FIELD } from '../../../Valence/clients/js/frames.js';
@@ -91,9 +91,12 @@ export function graphRuntime(api, shell, env) {
   const persist = () => saveLocal(env.storage, g, view);
 
   // ---- fields --------------------------------------------------------------
+  let keyedFor = null;
   function allFields() {
     const m = api.catalog();
     if (!m) return [];
+    // Nodes saved before RFC-122/123 keyed a within-entry role (mod.*, store.*, input.*) on the role: re-keyed once per catalog.
+    if (m.byRole !== keyedFor) { keyedFor = m.byRole; if (rekeyNodes(g, (k) => migratedKey(k, m.byRole))) persist(); }
     const seen = new Set();
     const out = [];
     for (const f of [...m.fields, ...[...m.byRole.values()].flat()]) {
