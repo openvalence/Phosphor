@@ -22,7 +22,7 @@ import { createPluginHost } from '../src/plugins/host.js';
 import { manifest, graphRuntime, HERO } from '../src/plugins/graph.js';
 import { MAP, readStoreItem } from '../src/model/graph.js';
 import { CBOR_FIELD } from '../../Valence/clients/js/frames.js';
-import { CORE_CHANNEL, STORE_OP } from '../../Valence/clients/js/generated/registry_vocab.js';
+import { CORE_CHANNEL, STORE_OP, CHANNEL_CLASS } from '../../Valence/clients/js/generated/registry_vocab.js';
 
 let fails = 0;
 const ok = (name, cond, extra) => {
@@ -488,6 +488,25 @@ console.log('(i) Valence RFC-112: a client map into the oscillator amplitude end
   r2.edit(rel.id, { out_max: 20 });
   ok('an out range in mm clears the note', r2.unitNote === '', r2.unitNote);
   r2.dispose();
+}
+
+console.log('(j) Valence RFC-122: an EVENT body field is never a target');
+{
+  // A model that holds one anyway (a stale build, a bad merge): the graph still refuses to offer it.
+  const EVT = { uid: '16640:target', channelId: 0x4100, key: 'target', name: 'target', label: 'Target', unit: 'mm', min: 0, max: 500, isIntentField: true, role: 'telemetry.target' };
+  const m3 = { fields: [POS, SPEED], byRole: new Map([['telemetry.position', [POS]], ['telemetry.target', [EVT]]]), actions: [], categories: [] };
+  const api3 = { catalog: () => m3, value: () => undefined, status: () => 'confirmed', stale: () => '', write() {}, log() {} };
+  const env3 = { ...env, entries: () => [{ id: 0x4100, cls: CHANNEL_CLASS.EVENT }] };
+  const r3 = graphRuntime(api3, shell, env3);
+  await delay(10);
+  const field = (list) => list.some((s) => s.ref.kind === 'field' && s.ref.key === 'role:telemetry.target');
+  ok('the EVENT field is not a target', !field(r3.targets()));
+  ok('a writable setting still is', r3.targets().some((s) => s.ref.kind === 'field' && s.ref.key === 'uid:130:speed'));
+  r3.dispose();
+  const r4 = graphRuntime(api3, shell, { ...env, entries: () => [{ id: 0x4100, cls: CHANNEL_CLASS.INTENT }] });
+  await delay(10);
+  ok('the same field on an INTENT channel is offered (the check is the channel class)', field(r4.targets()));
+  r4.dispose();
 }
 
 host.setEnabled('graph', false);

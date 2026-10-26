@@ -13,7 +13,7 @@
 import { readFileSync } from 'node:fs';
 import { decodeCatalog } from '../../Valence/clients/js/catalog.js';
 import { UNIT_ID } from '../../Valence/clients/js/index.js';
-import { describeEvent, windowSpan } from '../src/model/anomaly.js';
+import { describeEvent, windowSpan, bodyRows } from '../src/model/anomaly.js';
 import { ROLE } from '../src/model/roles.js';
 
 let fails = 0;
@@ -26,17 +26,19 @@ const today = decodeCatalog(new Uint8Array(readFileSync(new URL('./fixtures/neut
   .find((e) => e.role === 'events.anomaly');
 const ev = (kind, body) => ({ channel: today.id, kind, body });
 
-// The same entry as a firmware would declare it with one field per meaning.
+// The same entry as a firmware declares it with one field per meaning: the target in mm, the client frame (RFC-122).
 const field = (key, name, typeName, extra) => ({ key, name, typeName, unit: '', desc: '', ...extra });
 const declared = {
   ...today,
   schema: [
-    ...today.schema.map((f) => (f.name === 'target' ? { ...f, unitId: UNIT_ID.normalized, role: ROLE.telemetryTarget } : f)),
+    ...today.schema.map((f) => (f.name === 'target' ? { ...f, unit: 'mm', unitId: UNIT_ID.mm, role: ROLE.telemetryTarget } : f)),
     field(6, 'kept', 'f32_t', { unit: '%', unitId: UNIT_ID.percent, step: 1 }),
     field(7, 'ceiling_ratio', 'f32_t', { unit: 'x' }),
     field(8, 'refusal', 'uint_t', { options: ['non-finite', 'in the past', 'timeline full'] }),
   ],
 };
+// A declaration that still sends the target normalized 0-1 against the window.
+const declaredNorm = { ...declared, schema: declared.schema.map((f) => (f.name === 'target' ? { ...today.schema.find((t) => t.name === 'target'), unitId: UNIT_ID.normalized, role: ROLE.telemetryTarget } : f)) };
 const win = { name: 'w', channelId: 1, unit: 'mm', unitId: UNIT_ID.mm, step: 1 };
 const model = { byRole: new Map([[ROLE.windowMin, [{ ...win, name: 'lo' }]], [ROLE.windowMax, [{ ...win, name: 'hi' }]]]) };
 const span = windowSpan(model, { 1: { lo: 0, hi: 500 } });
@@ -66,11 +68,22 @@ ok('an event with no kind reads as the channel', describeEvent({ channel: 1, bod
 
 console.log('\nper-meaning fields declared');
 const q = (e) => sp(describeEvent(e, declared, span)).text;
-ok('a declared position becomes mm against the reported window', q(ev(3, { target: 0.32, kept: 72 })) === 'Knot trimmed · kept 72 % · at 160 mm', q(ev(3, { target: 0.32, kept: 72 })));
-ok('a declared position with no window stays norm', sp(describeEvent(ev(3, { target: 0.32 }), declared, null)).text === 'Knot trimmed · target 0.32 norm');
-ok('a ratio reads with its own unit', q(ev(6, { target: 0.32, ceiling_ratio: 12.64 })) === 'Piece over ceiling · ceiling ratio 12.64 x · at 160 mm', q(ev(6, { target: 0.32, ceiling_ratio: 12.64 })));
+const qn = (e) => sp(describeEvent(e, declaredNorm, span)).text;
+ok('a target declared in mm reads as sent, no window conversion', q(ev(3, { target: 160, kept: 72 })) === 'Knot trimmed · kept 72 % · at 160.00 mm', q(ev(3, { target: 160, kept: 72 })));
+ok('an mm target outside the window is not clamped or scaled', q(ev(3, { target: 640 })).endsWith('at 640.00 mm'), q(ev(3, { target: 640 })));
+ok('an mm target reads the same with no window reported', sp(describeEvent(ev(3, { target: 160 }), declared, null)).text === 'Knot trimmed · at 160.00 mm');
+console.log('  a declaration that still sends it normalized');
+ok('a declared normalized position becomes mm against the reported window', qn(ev(3, { target: 0.32, kept: 72 })) === 'Knot trimmed · kept 72 % · at 160 mm', q(ev(3, { target: 0.32, kept: 72 })));
+ok('a declared normalized position with no window stays norm', sp(describeEvent(ev(3, { target: 0.32 }), declaredNorm, null)).text === 'Knot trimmed · target 0.32 norm');
+ok('a ratio reads with its own unit', q(ev(6, { target: 160, ceiling_ratio: 12.64 })) === 'Piece over ceiling · ceiling ratio 12.64 x · at 160.00 mm', q(ev(6, { target: 160, ceiling_ratio: 12.64 })));
 ok('an option field reads as its label', q(ev(5, { refusal: 1 })) === 'Knot refused · in the past', q(ev(5, { refusal: 1 })));
-ok('a position outside the window reads outside it', q(ev(3, { target: 1.2 })).endsWith('at 600 mm'), q(ev(3, { target: 1.2 })));
+ok('a normalized position outside the window reads outside it', qn(ev(3, { target: 1.2 })).endsWith('at 600 mm'), qn(ev(3, { target: 1.2 })));
+
+console.log('\nbody roles bind within the entry (RFC-122)');
+{
+  ok('a row carries its field role; an unroled field carries none',
+    bodyRows(ev(3, { target: 160, detail: 1 }), declared).map((r) => r.role).join() === ROLE.telemetryTarget + ',');
+}
 
 console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');
 process.exit(fails ? 1 : 0);

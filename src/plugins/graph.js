@@ -29,7 +29,7 @@ import { ROLE, claimRoles } from '../model/roles.js';
 import { rosterCount } from '../ui/widgets/roster.js';
 import { controlKey, WIDGET, reportedValue } from '../model/settings.js';
 import { labelFor, unitOf, hubTitle } from '../model/format.js';
-import { PACKED, CORE_CHANNEL, STORE_OP, UI_CATEGORY_TIER, UI_NAV_TIER, FIELD_ROLE } from '../../../Valence/clients/js/generated/registry_vocab.js';
+import { PACKED, CHANNEL_CLASS, CORE_CHANNEL, STORE_OP, UI_CATEGORY_TIER, UI_NAV_TIER, FIELD_ROLE } from '../../../Valence/clients/js/generated/registry_vocab.js';
 import { CBOR_FIELD } from '../../../Valence/clients/js/frames.js';
 
 export const manifest = {
@@ -104,7 +104,9 @@ export function graphRuntime(api, shell, env) {
     return out;
   }
   const fieldFor = (key) => (allFields().find((x) => x.key === key) || {}).f || null;
-  const writable = (f) => f.isIntentField || !f.readOnly;
+  // An EVENT body field is never a target (SPEC §9.4, RFC-122); the model holds none, and this keeps it so.
+  const writable = (f) => (f.isIntentField || !f.readOnly)
+    && !(env.entries() || []).some((e) => e.id === f.channelId && e.cls === CHANNEL_CLASS.EVENT);
   const toAccessory = (f) => !!f && isUserSpace(f.isIntentField ? f.channelId : f.writeChannel);
 
   // Valence RFC-112: the oscillator amplitude and its drive's out bounds are mm, once a window share. A client map

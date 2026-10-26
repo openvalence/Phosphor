@@ -46,7 +46,7 @@
   import { view } from './model/viewport.svelte.js';
   import { projectGroups } from './model/rclass.js';
   import { machine, linkKind } from './model/machine.svelte.js';
-  import { isFieldEnabled, resetsToDefault, WIDGET } from './model/settings.js';
+  import { isFieldEnabled, resetsToDefault, migratedKey, WIDGET } from './model/settings.js';
   import { UI_CATEGORY, UI_CATEGORY_TIER, UI_NAV_TIER } from '../../Valence/clients/js/index.js';
   import { navIcon, navIconKey } from './ui/navIcons.js';
   import { writeSetting, inFlight } from './model/shadow.svelte.js';
@@ -68,7 +68,7 @@
   import { say, history as edits } from './model/history.svelte.js';
   import { docsKey, docsUrl } from './ui/docs.js';
   import { openExternal } from './ui/external.js';
-  import { layouts, orderedLayoutNames, switchLayout, addLayout, dashEdit, redHint } from './model/dashboard.svelte.js';
+  import { layouts, orderedLayoutNames, switchLayout, addLayout, dashEdit, redHint, rekey } from './model/dashboard.svelte.js';
   import './ui/select.css';
 
   // shell: the Tauri shell's strip row from main.js, null on the served page. note: the web builds' line (web/WebNote.svelte).
@@ -79,6 +79,8 @@
   const DEMO = import.meta.env.MODE === 'mini';
 
   const model = $derived(machine.catalog.model);
+  // Placements saved before RFC-122 keyed within-entry roles (mod.*, store.*) on the role.
+  $effect(() => { const by = model && model.byRole; if (by) untrack(() => rekey((k) => migratedKey(k, by))); });
 
   // Hero widgets get first refusal on the fields they understand. Whatever they
   // take is removed from the generic tree so no value is drawn twice.

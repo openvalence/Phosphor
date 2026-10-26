@@ -7,6 +7,8 @@
  *   words, unit and option labels from its schema. No kind table, no field
  *   name is matched; a field is placed by its declared type, unit and role.
  * - A kind the entry does not label reads as its decimal number, never a guess.
+ * - A body field's role describes it within its entry and is never looked up
+ *   catalog-wide (SPEC §9.4, RFC-122); a position role in mm reads "at <mm>".
  * - A normalized position becomes mm only when the field declares it: unit
  *   0-1 AND a position role, against the window the machine reported when the
  *   event arrived. Otherwise it stays normalized and says so.
@@ -50,7 +52,7 @@ export function bodyRows(evt, entry) {
     else if (field) display = formatWithUnit(field, v);
     else if (typeof v === 'number') display = formatValue(null, v);
     else display = String(v);
-    return { key: k, raw: v, display };
+    return { key: k, raw: v, display, role: (field && field.role) || null };
   });
 }
 
@@ -82,6 +84,8 @@ export function describeEvent(evt, entry, span) {
     if (!f || typeof r.raw !== 'number') continue;
     if (f.options) phrases.push(r.display);
     else if (TIME_S[f.unitId] != null) continue;
+    // A body role binds within this entry (SPEC §9.4, RFC-122): a position role in mm is the emit-time position as sent.
+    else if (f.unitId === UNIT_ID.mm && POSITION_ROLES.has(f.role)) where.push('at ' + r.display);
     else if (f.unitId === UNIT_ID.normalized && POSITION_ROLES.has(f.role) && span) {
       where.push('at ' + formatWithUnit(span.field, span.lo + r.raw * (span.hi - span.lo)));
     } else if (isId(f, r.raw)) continue;
