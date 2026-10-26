@@ -1,11 +1,28 @@
 # Agent Instructions
 
+This file is documentation, not policy: the Canon and the repo's rules files rule; a contradiction here is a defect here.
+
+| What | Where |
+|---|---|
+| The Canon (C-1..C-12, the Canon Flag, the amendment ritual) | `../Nucleus/.claude/rules/governance.md`, its one home; this repo has no copy |
+| `.claude/rules/governance.md` | the Canon pointer, Valence read-only, Phosphor is a client (no device knowledge) |
+| `.claude/rules/webui.md` | build chain, ground truth and render traps |
+| Design rulings | `docs/DESIGN.md`: read it before touching `src/ui/heroes.js`, `src/model/` or `src-tauri/`; the plugin contract is `docs/PLUGINS.md` |
+| Build and test commands | `README.md` |
+| Lint (zero findings is the bar) | `npm run check` |
+| Board | `bd`, prefix `ph-` |
+| Formulas (workspace-root `.beads/formulas`, poured from inside this repo) | `ui-pass` (a UI pass), `rfc-lifecycle` (a wire gap, fixed in Valence first) |
+
+JS and CSS work here runs in ponytail mode: reuse before you write,
+stdlib and native before a dependency, shortest working diff. Commit
+messages carry no `Co-Authored-By` trailer for a model or assistant.
+
 This project uses **bd** (beads) for issue tracking. Run `bd prime` for full workflow context.
 
 > **Architecture in one line:** Issues live in a local Dolt database
 > (`.beads/dolt/`); cross-machine sync uses `bd dolt push/pull` (a
 > git-compatible protocol), stored under `refs/dolt/data` on your git
-> remote — separate from `refs/heads/*` where your code lives.
+> remote, separate from `refs/heads/*` where your code lives.
 > `.beads/issues.jsonl` is a passive export, not the wire protocol.
 >
 > See [SYNC_CONCEPTS.md](https://github.com/gastownhall/beads/blob/main/docs/SYNC_CONCEPTS.md)
