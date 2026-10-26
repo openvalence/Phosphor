@@ -6,7 +6,9 @@
  * Constraints (operator 2026-10-10; docs/PLUGINS.md, Factory plugins, arcade):
  * - Nothing moves until allow(true), the user's "Allow motion". It is refused while the gate speaks
  *   (no link, not authorized, paused, e-stop latched, a pattern running, another producer) and while
- *   the machine reports no position: the first segment starts from where the carriage is.
+ *   the machine reports no position: the first segment starts from where the carriage is, held to the
+ *   window. A carriage outside it (a bench homed at 0 under a stored window) enters on the hub's own
+ *   move: seeded outside 0..1 the drive sent its first segments at 3 to 5 times its cap (Nucleus val-1qji).
  * - Speed and acceleration stay at CAPS (0.5 and 2 of the window a second) and at most FRAC (40 %) of
  *   the machine's own ceilings when it reports them in mm: well under the user's limits.
  * - Any gate words or refusal at a send drops the consent: a Pause or a Halt stops the game's motion and
@@ -89,7 +91,7 @@ export function createDrive(api, { fields = null, now = () => performance.now(),
       if (g) return (reason = g);
       const p = here();
       if (p == null) return (reason = 'the machine reports no position');
-      pos = p; vel = 0; lastEnd = 0; warmUntil = now() + CAPS.warmMs;
+      pos = clamp(p, 0, 1); vel = 0; lastEnd = 0; warmUntil = now() + CAPS.warmMs;
       reason = '';
       allowed = true;
       api.submitSegments([]);   // warms the grant
