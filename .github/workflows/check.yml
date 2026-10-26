@@ -1,0 +1,45 @@
+# npm run check on every push to main and every pull request. An alarm, not a
+# gate: no branch protection reads it. Kept out of build.yml so a red check
+# never touches the release or signing jobs.
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # The sibling layout the check suites read: Valence (the JS client and
+      # registry.yaml) at Nucleus's valence.pin, beside Phosphor.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: Phosphor
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: openvalence/Nucleus
+          path: Nucleus
+      - name: Valence at Nucleus's valence.pin
+        id: pin
+        run: echo "sha=$(head -n1 Nucleus/valence.pin | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: openvalence/Valence
+          ref: ${{ steps.pin.outputs.sha }}
+          path: Valence
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Phosphor/package-lock.json
+      - run: npm ci
+        working-directory: Phosphor
+      - run: npm run check
+        working-directory: Phosphor
