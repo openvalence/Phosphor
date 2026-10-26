@@ -146,5 +146,17 @@ console.log('\n--- input loss and stop ---');
   ok('and nothing after it', api.sent.length === n + 1 && !drive.allowed);
 }
 
+// A carriage outside the window (homed at 0 under a 55..268.7 window): no segment over the cap.
+{
+  const api = stubApi({ pos: 0, lo: 55, hi: 268.7 });
+  let t = 1000;
+  const drive = createDrive(api, { now: () => t });
+  drive.allow(true);
+  for (let i = 0; i < 120; i++) { t += 1000 / 60; drive.tick(0.9); }
+  const { worstV } = limits(api.sent, 0, drive.caps());
+  ok('outside the window: every segment within the speed cap, from the window edge', api.sent.length > 5 && worstV <= drive.caps().v + 1e-9,
+    'worst ' + worstV.toFixed(3) + ' of ' + drive.caps().v);
+}
+
 console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS -- arcade'));
 process.exit(fails ? 1 : 0);
