@@ -14,12 +14,13 @@
  * - Any gate words or refusal at a send drops the consent: a Pause or a Halt stops the game's motion and
  *   it never resumes on its own; the user allows motion again. A refused send sends no hold.
  * - Segments are SEG_MS long, back to back, sent when under LEAD_MS is left queued: at most LEAD + SEG
- *   (160 ms) is ever ahead, so when the game stops ticking (input lost, window hidden, page left) the
- *   machine runs out of segments within that quiet window and stops.
+ *   (200 ms) is ever ahead, so when the game stops ticking (input lost, window hidden, page left) the
+ *   machine runs out of segments within that quiet window and stops. LEAD is 100 ms (operator 2026-10-26):
+ *   over WiFi a segment accepted under 100 ms before its start starves the planner into a brake (Nucleus val-1qji).
  * - stop() is the game's own stop: one decelerating hold (end velocity 0), then no more segments.
  * - Never writes a setting. Pure but for the api it is handed: test/arcade.test.mjs drives it with a stub.
  */
-export const CAPS = Object.freeze({ v: 0.5, a: 2, frac: 0.4, lo: 0.05, hi: 0.95, segMs: 100, leadMs: 60, minLeadMs: 15, aheadMs: 160, warmMs: 3000, gain: 4 });
+export const CAPS = Object.freeze({ v: 0.5, a: 2, frac: 0.4, lo: 0.05, hi: 0.95, segMs: 100, leadMs: 100, minLeadMs: 15, aheadMs: 200, warmMs: 3000, gain: 4 });
 export const ROLES = Object.freeze({ target: 'input.target', pos: 'telemetry.position', lo: 'window.min', hi: 'window.max',
   vmax: 'limit.input.speed', amax: 'limit.input.accel' });
 

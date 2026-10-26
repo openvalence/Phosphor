@@ -993,7 +993,7 @@ Shipped:
   each note's pitch. Motion needs the card's **Allow motion** switch (off on
   every mount, beside its one-line warning) and leaves only through
   `submitSegments` (`drive.js`): 100 ms segments back to back, at most
-  160 ms queued, speed and acceleration capped at 0.5 and 2 of the window a
+  200 ms queued (each sent 100 ms ahead of its start), speed and acceleration capped at 0.5 and 2 of the window a
   second and at 40 % of `limit.input.speed` and `limit.input.accel` where the
   window is reported in mm; the first segment starts from the reported
   position (no position, no motion). Any gate words or refusal (Pause, Halt,

@@ -125,6 +125,7 @@ for (const g of GAMES) {
 }
 
 console.log('\n--- input loss and stop ---');
+ok('lead 100 ms, ahead 200 ms (WiFi starvation, Nucleus val-1qji)', CAPS.leadMs === 100 && CAPS.aheadMs === 200);
 {
   const api = stubApi();
   let ahead = 0;
