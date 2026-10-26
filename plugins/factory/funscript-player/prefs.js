@@ -23,6 +23,8 @@ export const PREFS = deepFreeze({
   lib: { q: '', sort: 'date', direction: 'DESC', scripted: true }, // scripted: Stash's interactive filter (library.js)
   view: 'player', // the handheld card's tab: player, queue or library
   zoomMs: 10000,
+  speedColor: 0, // Color by speed: 0 off, 1 the Range band tinted, 2 tinted and the line colored (timeline.js)
+  speedTint: 30, // the tint's opacity in %, 0..60
   settingsOpen: false, // the page's Settings section (page.js)
   libOpen: true, // the full card's library column (ui.js caret)
   queue: [], // queue.js toStored entries (ph-1qs5.9); never the Stash key
@@ -84,6 +86,8 @@ const REPAIR = {
   split: (v) => (v >= 64 ? Math.min(Math.round(v), 480) : 0),
   fsWave: (v) => (v >= 32 ? Math.min(Math.round(v), 2000) : 0),
   zoomMs: (z) => (z > 0 ? z : PREFS.zoomMs),
+  speedColor: (m) => clamp(Math.round(m), 0, 2),
+  speedTint: (v) => clamp(Math.round(v), 0, 60),
   interp: cleanScale,
   play: (p) => ({ ...p, loopCount: clamp(Math.round(p.loopCount), 0, 99), homeAfterMs: clamp(Math.round(p.homeAfterMs / 500) * 500, 1000, 60000),
     homePoint: clamp(p.homePoint, 0, 1), homeSpeed: clamp(p.homeSpeed, 0.05, 2), seekMs: clamp(Math.round(p.seekMs / 50) * 50, 0, 3000) }),

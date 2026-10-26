@@ -561,6 +561,19 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   ms), Invert, Graph. The wave screen sits under it with nothing over it.
   On phones the band collapses to its head by the user's own tap (kept as
   pref `tlOpen`) and zoom is pinch. The split bar stays on the desktop only.
+  Color by speed (`ph-piak`, pref `speedColor`, off by default) is a toggle
+  right of the zoom group (the full card only, like it); a click steps
+  through off, Speed tint (A) and Tint and line (B). One color per moment,
+  from the planner render's speed (the chord speed of each span without one)
+  against the machine's speed limit: a turbo-like ramp, deep blue at rest
+  through cyan, green, yellow and orange to red at the limit (tokens
+  `--spd-0` to `--spd-8`, per chassis, 3:1 on the timeline surfaces), and
+  `--spd-over` (magenta) past it. A tints the Range band behind the line
+  over the script's time (opacity from the slider beside the toggle, pref
+  `speedTint`, 0 to 60 %, default 30 with a detent; Shift fine, Ctrl snap),
+  the line staying `--intent` over a `--screen` halo; B also strokes the
+  line with the ramp, thicker past the limit. The stroke speed reading
+  carries the legend: the ramp with 0, half and the limit in mm/s.
 - **As built, PR5 to PR7 (`ph-1qs5.3`, where it differs from the text):**
   the bar takes its two rows (scrub over buttons) on phones and on the
   handheld dash card. A desktop page whose player column would drop under

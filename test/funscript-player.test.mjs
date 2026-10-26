@@ -60,7 +60,7 @@ const CONTRACT = {
   [P + 'ui.js']: ['CSS', 'COPY', 'FULL_UP', 'GLANCE_UP', 'HOVER_IDLE_MS', 'RESTART_MS', 'SKIP_MS', 'createPlayer', 'createControl', 'compositionOf', 'clampOffset',
     'windowShare', 'ceilingOf', 'localScene', 'extraNote', 'PLAY_CSS', 'mountPlay', 'pageClass'],
   [P + 'timeline.js']: ['ZOOMS', 'HEAT_BINS', 'HEAT_MID_UPS', 'HEAT_TOP_UPS', 'TRACE_MS', 'MIN_SPAN', 'CSS', 'COPY', 'curvePoints', 'dotPath', 'kinPoints',
-    'seekAt', 'heatColor', 'heatStops', 'traceLines', 'clampRange', 'zoomStep', 'mountTimeline', 'PINCH_STEP', 'pinchZoom'],
+    'seekAt', 'heatColor', 'heatStops', 'speedColor', 'speedBins', 'speedStops', 'overRuns', 'overPath', 'SPEED_BINS', 'SPEED_LEVELS', 'SPEED_SLACK', 'SPEED_STEPS', 'TINT_MAX', 'TINT_DETENT', 'traceLines', 'clampRange', 'zoomStep', 'mountTimeline', 'PINCH_STEP', 'pinchZoom'],
   [P + 'scale.js']: ['RANGES', 'SCALE', 'cleanScale', 'mapOf', 'fitMap', 'wire', 'COPY', 'mountScale'],
   [P + 'prefs.js']: ['PREFS', 'readPrefs', 'writePref'],
   [P + 'queue.js']: ['COPY', 'toStored', 'fromStored', 'move', 'mountQueue'],
@@ -119,7 +119,7 @@ if (prefs) {
     return { m, prefs: { get: (k) => (m.has(k) ? JSON.parse(m.get(k)) : null), set: (k, v) => m.set(k, JSON.stringify(v)) } };
   };
   const want = { T: { offsetMs: 0, lo: 0, hi: 1, invert: false }, motion: true, audio: { vol: 1, muted: false },
-    stash: { base: '', key: '' }, lib: { q: '', sort: 'date', direction: 'DESC', scripted: true }, view: 'player', zoomMs: 10000, settingsOpen: false, libOpen: true, queue: [], autoplay: false, tlOpen: true, fsStack: true, fsWave: 0, split: 0,
+    stash: { base: '', key: '' }, lib: { q: '', sort: 'date', direction: 'DESC', scripted: true }, view: 'player', zoomMs: 10000, speedColor: 0, speedTint: 30, settingsOpen: false, libOpen: true, queue: [], autoplay: false, tlOpen: true, fsStack: true, fsWave: 0, split: 0,
     interp: { scale: 1, scaleAuto: true },
     play: { loop: false, loopCount: 0, home: false, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33, seekMs: 500, autoLatency: false } };
   {
@@ -3023,7 +3023,7 @@ if (!LIVE) {
       shadow: getComputedStyle(dt).boxShadow.includes('inset'), motionInBar: !!document.querySelector(c + ' .fsp-tr .fsp-motion') };
   }, C);
   ok('head: the timeline head holds caret, (zoom,) A-B, Offset (og-num, ms), Invert, Graph; Motion is the bar\'s (PR6/PR7)',
-    same(head.head.filter((k) => k !== 'fsp-zoom'), ['fsp-tlcaret', 'fsp-tlgap', 'fsp-ab', 'fsp-off', 'fsp-inv', 'fsp-expand']) && /ms/.test(head.unit) && head.num && head.motionInBar, head);
+    same(head.head.filter((k) => !['fsp-zoom', 'fsp-spd', 'fsp-tint'].includes(k)), ['fsp-tlcaret', 'fsp-tlgap', 'fsp-ab', 'fsp-off', 'fsp-inv', 'fsp-expand']) && /ms/.test(head.unit) && head.num && head.motionInBar, head);
   ok('head: the wave and the heat sit on --screen with the inset shadow', head.dtBg && head.ovBg && head.shadow, head);
   const red = await page.evaluate((c) => {
     const probe = document.createElement('i');
@@ -3686,6 +3686,105 @@ if (!LIVE && !args.includes('--stash-live')) {
     .then(() => true, () => false);
   // ponytail: >= 0.95: the f32 step (0.05000000074) snaps the range's top to 0.95 (bd ph-y3mg note).
   ok('D: smoothness at its top re-renders the twin, nothing written', !!smoothed && +smoothed[1] >= 0.95 && reSmooth && hub.intents.length === nW, smoothed);
+  // ---- E: Color by speed (ph-piak): off by default; click cycles tint (A), tint and line (B), off; a slider sets the tint's opacity ----
+  const spd = async (pg = page) => {
+    await pg.waitForFunction((c) => (document.querySelector(c + ' .fsp-dt .int[data-kin]')?.getAttribute('points') || '').split(' ').length > 500, C, { timeout: 10000 }).catch(() => {});
+    return pg.evaluate((c) => {
+      const q = (s) => document.querySelector(c + ' ' + s), int = q('.fsp-dt .int'), sp = q('.fsp-speed'), tint = q('.fsp-dt .tint');
+      return { pressed: q('.fsp-spd').getAttribute('aria-pressed'), tip: q('.fsp-spd').dataset.tip, stroke: int.style.stroke, n: document.querySelectorAll(c + ' .fsp-dt linearGradient stop').length,
+        leg: sp.hasAttribute('data-leg'), txt: sp.querySelector('span').textContent, ticks: [...sp.querySelectorAll('small b')].map((b) => b.textContent),
+        head: q('.fsp-tlh').getBoundingClientRect().height, fits: Math.max(...[...q('.fsp-tlh').children].filter((e) => e.getClientRects().length).map((e) => e.getBoundingClientRect().right - q('.fsp-tlh').getBoundingClientRect().right)) <= 0.5,
+        headW: [Math.round(q('.fsp-tlh').getBoundingClientRect().width), [...q('.fsp-tlh').children].filter((e) => e.getClientRects().length).map((e) => Math.round(e.getBoundingClientRect().width)).join(',')], pts: int.getAttribute('points').split(' ').length,
+        halo: q('.fsp-dt .halo').getAttribute('points').split(' ').length, over: q('.fsp-dt .over').getAttribute('d').length,
+        tintW: +tint.getAttribute('width'), tintH: +tint.getAttribute('height'), tintA: getComputedStyle(tint).fillOpacity,
+        chip: q('.fsp-tint .ui-chip').textContent, slider: q('.fsp-tint input').disabled,
+        pref: localStorage.getItem('phosphor.funscript.speedColor'), prefT: localStorage.getItem('phosphor.funscript.speedTint') };
+    }, C);
+  };
+  const cycleTo = async (pg, tip) => {
+    for (let n = 0; n < 3 && (await pg.locator(C + ' .fsp-spd').getAttribute('data-tip')) !== tip; n++) await pg.click(C + ' .fsp-spd');
+    await pg.waitForTimeout(150);
+  };
+  const setTint = async (pg, v) => {
+    await pg.evaluate(([c, v]) => { const i = document.querySelector(c + ' .fsp-tint input'); i.value = String(v); i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new Event('change', { bubbles: true })); }, [C, v]);
+    await pg.waitForTimeout(100);
+  };
+  const e0 = await spd();
+  ok('E: Color by speed is off by default: a plain line, no tint, no legend, the slider dimmed, the tooltip one fragment',
+    e0.pressed === 'false' && !e0.stroke && !e0.leg && e0.tintW === 0 && e0.halo === 1 && e0.slider && e0.tip === 'Color by speed', e0);
+  await page.click(C + ' .fsp-spd');
+  await page.waitForFunction((c) => document.querySelector(c + ' .fsp-speed').hasAttribute('data-leg'), C, { timeout: 5000 }).catch(() => {});
+  const eA = await spd();
+  const stopsRgb = await page.evaluate((c) => [...document.querySelectorAll(c + ' .fsp-dt linearGradient stop')].map((s) => getComputedStyle(s).stopColor), C);
+  ok('E: A (Speed tint): the Range band is tinted at 30 %, the line keeps its color over a halo, the legend shows 0, half and the limit, the head holds still',
+    eA.pressed === 'true' && eA.tip === 'Speed tint' && !eA.stroke && eA.tintW > 100 && eA.tintH === 100 && eA.tintA === '0.3' && eA.halo === eA.pts && eA.over === 0
+    && eA.leg && /^\d+ mm\/s$/.test(eA.txt) && eA.ticks.length === 3 && eA.ticks[0] === '0' && +eA.ticks[2] === 2 * +eA.ticks[1] && !eA.slider && eA.head === e0.head && eA.fits && e0.fits, eA);
+  ok('E: the gradient has more than a few distinct colors and the polyline is the same line', new Set(stopsRgb).size > 6 && eA.n > 8 && eA.pts === e0.pts, { colors: new Set(stopsRgb).size, n: eA.n });
+  await page.click(C + ' .fsp-spd');
+  const eB = await spd();
+  ok('E: B (Tint and line): the line takes the same gradient', eB.tip === 'Tint and line' && /^url\(/.test(eB.stroke) && eB.tintW === eA.tintW && eB.pts === e0.pts && eB.head === e0.head, eB);
+  ok('E: the mode is kept (mirror phosphor.funscript.speedColor)', eB.pref === '2', eB.pref);
+  await setTint(page, 29);
+  const t29 = await spd();
+  await setTint(page, 35);
+  const t35 = await spd();
+  await setTint(page, 15);
+  const t15 = await spd();
+  ok('E: the slider has a detent: 29 snaps to 30 %, 35 stays; the opacity follows and the value is kept (speedTint)',
+    t29.chip === '30 %' && t29.tintA === '0.3' && t35.chip === '35 %' && t35.tintA === '0.35' && t15.tintA === '0.15' && t15.prefT === '15', { t29: t29.chip, t35: t35.chip, t15: t15.chip + ' ' + t15.prefT });
+  if (SHOT) {
+    // Screenshots: A and B at 15, 25 and 40 %, on this (dark) page.
+    for (const m of ['Speed tint', 'Tint and line']) {
+      await cycleTo(page, m);
+      for (const v of [15, 25, 40]) {
+        await setTint(page, v);
+        await page.locator(C).screenshot({ path: SHOT.replace(/[^/\\]+$/, 'v-speed-dark-' + (m === 'Speed tint' ? 'A' : 'B') + v + '.png') });
+      }
+    }
+    // The same on a light chassis, and a ramp swatch strip in both.
+    const { THEMES: ALL_THEMES } = await import('../src/model/theme.js');
+    for (const th of [ALL_THEMES.find((t) => t.id === 'phosphor'), ALL_THEMES.find((t) => t.id === 'paper')]) {
+      const hub2 = makeHub(tc);
+      hub2.values[CH.config + ':window_min'] = 0;
+      hub2.values[CH.config + ':window_max'] = 100;
+      Object.assign(hub2.values, KIN_VALUES);
+      const o2 = await open({ cat: tc, hub: hub2, width: 1280, prefs: { 'phosphor.theme': th, 'phosphor.funscript.interp': { mode: 'makima', scaleAuto: false } } });
+      await o2.page.setViewportSize({ width: 1280, height: 800 });
+      if (o2.up && await o2.page.click('[data-tab-id="plugin:funscript-player:player"]').then(() => o2.page.waitForSelector(C, { timeout: 5000 })).then(() => true, () => false) && await loadClip(o2.page, REAL_SCRIPT)) {
+        await o2.page.locator(C + ' .fsp-expand').click();
+        await spd(o2.page);
+        await o2.page.evaluate((c) => { const v = document.querySelector(c + ' video'); if (v) v.currentTime = 7.5; }, C);
+        await o2.page.waitForTimeout(500);
+        const tag = th.id === 'paper' ? 'light' : 'dark';
+        for (const m of ['Speed tint', 'Tint and line']) {
+          await cycleTo(o2.page, m);
+          for (const v of tag === 'light' ? [15, 25, 40] : []) {
+            await setTint(o2.page, v);
+            await o2.page.locator(C).screenshot({ path: SHOT.replace(/[^/\\]+$/, 'v-speed-light-' + (m === 'Speed tint' ? 'A' : 'B') + v + '.png') });
+          }
+        }
+        // The swatch strip: the ramp at 0, 12.5 ... 100 % and the over color, as drawn here.
+        await o2.page.evaluate(() => {
+          const strip = document.createElement('div');
+          strip.id = 'spd-strip';
+          strip.style.cssText = 'position:fixed;left:20px;bottom:20px;display:flex;gap:2px;padding:8px;background:var(--bg-sunken);z-index:99999';
+          for (const c of ['--spd-0', '--spd-1', '--spd-2', '--spd-3', '--spd-4', '--spd-5', '--spd-6', '--spd-7', '--spd-8', '--spd-over']) {
+            const d = document.createElement('div');
+            d.style.cssText = 'width:60px;height:36px;background:var(' + c + ');color:#fff;font:10px monospace;mix-blend-mode:normal';
+            d.textContent = c.slice(2);
+            strip.append(d);
+          }
+          document.body.append(strip);
+        });
+        await o2.page.locator('#spd-strip').screenshot({ path: SHOT.replace(/[^/\\]+$/, 'v-speed-swatch-' + tag + '.png') });
+      }
+      clearInterval(hub2.timer);
+      await o2.ctx.close();
+    }
+  }
+  await cycleTo(page, 'Color by speed');
+  const eOff = await spd();
+  ok('E: off again restores the plain line, no tint, no legend', eOff.pressed === 'false' && !eOff.stroke && !eOff.leg && eOff.tintW === 0 && eOff.halo === 1 && eOff.pts === e0.pts, eOff);
   ok('visuals: no page error', errors.length === 0, errors.slice(0, 3));
   clearInterval(hub.timer);
   await ctx.close();

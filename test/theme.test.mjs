@@ -241,5 +241,41 @@ const full = T.THEMES.find((x) => x.id === 'skins-full');
 ok('the full object is accepted, namespaced', full && full.chassis.hue === 30 && full.accents.highlight === '#FFFFFF');
 ok('a plugin cannot pin a safety token', full && !('--warn' in full.overrides) && full.overrides['--radius'] === '6px');
 
+// ---- the speed ramp (the funscript player's Color by speed) --------------------------
+console.log('speed ramp');
+{
+  // oklab of a hex, and the mix of two in oklab (what color-mix(in oklab) draws).
+  const lin = (c) => ((c /= 255) <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  const lab = (hex) => {
+    const [r, g, b] = T.hexToRgb(hex).map(lin);
+    const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b), m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b),
+      s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+    return [0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s, 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s, 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s];
+  };
+  const de = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+  const mixLab = (a, b, f) => a.map((v, i) => v + (b[i] - v) * f);
+  let floorC = 99, floorStep = 99, floorOver = 99, worstStep = '', worstOver = '';
+  for (const th of T.THEMES) {
+    const d = T.deriveTokens(th), tok = Object.fromEntries(Object.entries(d.speed)), surf = d.inkOn;
+    const ramp = [0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => tok['--spd-' + i]);
+    for (const c of [...ramp, tok['--spd-over']]) for (const s of surf) floorC = Math.min(floorC, T.contrast(c, s));
+    // The checkpoints 0, 25, 50, 75, 100 % of the limit: each clearly apart from the next.
+    const cp = [0, 2, 4, 6, 8].map((i) => lab(ramp[i]));
+    for (let i = 1; i < cp.length; i++) { const x = de(cp[i - 1], cp[i]); if (x < floorStep) { floorStep = x; worstStep = th.id + ' ' + i; } }
+    // Past the limit is no color of the ramp: its distance to every mixed level.
+    const ov = lab(tok['--spd-over']);
+    for (let n = 0; n <= 40; n++) {
+      const x = n / 40 * 8, k = Math.min(7, Math.floor(x)), c = mixLab(lab(ramp[k]), lab(ramp[k + 1]), x - k), y = de(c, ov);
+      if (y < floorOver) { floorOver = y; worstOver = th.id + ' ' + n; }
+    }
+  }
+  ok('every ramp stop and the over color read 3:1 on the timeline surfaces, on all ' + T.THEMES.length + ' chassis', floorC >= 3, floorC.toFixed(2));
+  ok('the 0, 25, 50, 75, 100 % stops are at least 0.10 apart in oklab on every chassis', floorStep >= 0.10, floorStep.toFixed(3) + ' at ' + worstStep);
+  ok('the over color is at least 0.12 from every level of the ramp on every chassis', floorOver >= 0.12, floorOver.toFixed(3) + ' at ' + worstOver);
+  ok('the ramp tokens are locked, not themeable', ['--spd-0', '--spd-8', '--spd-over'].every((k) => k in T.LOCKED && !T.TOKENS.includes(k)));
+  ok('themeCss carries the ramp, light and dark',
+    T.themeCss(T.THEMES.find((t) => t.id === 'paper')).includes('--spd-8:') && T.themeCss(T.DEFAULT_THEME).includes('--spd-over:'));
+}
+
 console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS'));
 process.exit(fails ? 1 : 0);

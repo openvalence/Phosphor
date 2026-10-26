@@ -52,6 +52,9 @@ rec.welcome({ hub_instance_id: ID, hub_name: 'Bench', product: 'neutrino-sim', e
 rec.catalog(CAT);
 rec.flush();
 const SEED = Object.fromEntries(mem);
+// The shell's first start finds the pre-cache shape (hex in the vault entry) and moves it into the catalog cache (vault.js migrateVault).
+delete SEED['phosphor.catalogs'];
+SEED['phosphor.vault.' + ID + '.catalog'] = JSON.stringify({ etag: ETAG, bytes: toHex(CAT) });
 
 // ---- the real machine: a fake hub with the same hub_instance_id --------------
 const wire = { opens: 0, urls: [], intents: [], snaps: new Map() };

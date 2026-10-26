@@ -110,6 +110,18 @@ export const KNOBS = {
 };
 const def = (group) => Object.fromEntries(Object.entries(KNOBS[group]).map(([k, r]) => [k, r[3]]));
 
+/**
+ * The funscript player's Color by speed: a turbo-like ramp, deep blue at rest through cyan, green, yellow and orange to
+ * red at the machine's speed limit, and a magenta for past it (never in the ramp). Per chassis, then moved along its own
+ * hue to 3:1 against the surfaces it sits on (derive). Not themeable: a recolored ramp stops reading as speed.
+ */
+export const SPEED_RAMP = {
+  dark: ['#3D5AFE', '#2E8BFF', '#1FD0F0', '#1FE59A', '#6BF03D', '#D6EA28', '#FFC21F', '#FF7A1A', '#F0301E'],
+  light: ['#1F2FC8', '#1565D0', '#0A8EA8', '#0E9460', '#3A9A10', '#8A9400', '#B88200', '#CC5400', '#B81414'],
+  over: { dark: '#FF3DF2', light: '#B0009F' },
+};
+export const SPEED_RAMP_FLOOR = 3;
+
 /** Never part of a theme, with the reason the editor shows. */
 export const LOCKED = {
   '--warn': 'safety color',
@@ -120,6 +132,7 @@ export const LOCKED = {
   '--glow-warn': 'safety color',
   '--warn-ink': 'safety color',
   '--bad-ink': 'safety color',
+  ...Object.fromEntries([...SPEED_RAMP.dark.map((_, i) => '--spd-' + i), '--spd-over'].map((k) => [k, 'speed ramp (the Color by speed ramp)'])),
   '--tap': 'touch floor (law 12)',
   '--range-hit': 'touch floor (law 12)',
   '--slider-thumb-w': 'touch floor (law 12)',
@@ -183,6 +196,13 @@ function safetyInk(hex, surfaces, dark, floor = 4.5) {
     if (worst(fromOklch(mid, C, h)) >= floor) hi = mid; else lo = mid;
   }
   return fromOklch(hi, C, h);
+}
+
+/** The speed ramp tokens for a chassis: each stop at its own hue, lightness moved only as far as SPEED_RAMP_FLOOR needs. */
+function speedInk(surfaces, dark) {
+  const k = dark ? 'dark' : 'light';
+  return Object.fromEntries([...SPEED_RAMP[k].map((c, i) => ['--spd-' + i, c]), ['--spd-over', SPEED_RAMP.over[k]]]
+    .map(([n, c]) => [n, safetyInk(c, surfaces, dark, SPEED_RAMP_FLOOR)]));
 }
 
 /** The safety inks' contrast floor for a Theme: 4.5:1, raised by its manifest's `inkFloor` (docs/THEMES.md, Safety). */
@@ -369,6 +389,7 @@ function derive(t) {
   }
   return {
     base, hivis, more, palette: p, dark, near,
+    speed: speedInk(inkOn, dark),
     ink: { '--warn-ink': safetyInk(SAFETY_HEX.amber, inkOn, dark, inkFloor(t.style)), '--bad-ink': safetyInk(SAFETY_HEX.red, inkOn, dark, inkFloor(t.style)) },
     inkOn,
     ratios: { text: ratio('--tx'), labels: ratio('--tx-mut'), reality: ratio('--reality') },
@@ -504,7 +525,7 @@ export function iconCss(styleId) {
 export function themeCss(theme) {
   const t = normalizeTheme(theme);
   const d = derive(t);
-  return ':root:root{' + decl(d.base) + decl(d.ink) + '--og-brackets:' + d.brackets + ';color-scheme:' + (d.dark ? 'dark' : 'light') + '}'
+  return ':root:root{' + decl(d.base) + decl(d.ink) + decl(d.speed) + '--og-brackets:' + d.brackets + ';color-scheme:' + (d.dark ? 'dark' : 'light') + '}'
     + '@media (prefers-contrast: more){:root:root{' + decl(d.more) + '}}'
     + ':root:root.hivis{' + decl(d.hivis) + '}'
     + (Object.keys(t.overrides).length ? ':root:root:root{' + decl(t.overrides) + '}' : '')

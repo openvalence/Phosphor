@@ -18,7 +18,7 @@
 import { parseFunscript } from '../plugins/factory/funscript-player/funscript.js';
 import { createMediaClock } from '../plugins/factory/funscript-player/clock.js';
 import { createScheduler, STOP_MS } from '../plugins/factory/funscript-player/scheduler.js';
-import { curvePoints, seekAt, traceLines, heatStops, heatColor, HEAT_MID_UPS, HEAT_TOP_UPS, clampRange, zoomStep, ZOOMS, pinchZoom }
+import { speedColor, speedBins, speedStops, overRuns, overPath, SPEED_LEVELS, curvePoints, seekAt, traceLines, heatStops, heatColor, HEAT_MID_UPS, HEAT_TOP_UPS, clampRange, zoomStep, ZOOMS, pinchZoom }
   from '../plugins/factory/funscript-player/timeline.js';
 import { toStored, fromStored, move } from '../plugins/factory/funscript-player/queue.js';
 import { createControl, compositionOf, pageClass, clampOffset, windowShare, planShareOf, ceilingOf, localScene, extraNote, COPY }
@@ -118,6 +118,26 @@ console.log('(a) timeline');
   const hc = heatStops(hs, { ...T0, hi: 0.5 }, { vmax: 150, spanMm: 100 });
   ok('heat: a ceiling through the Range marks the spans past it (mm/s = units/s x span x Range / 100)',
     same(hc.map((r) => r.over), [false, false, false, true, false]), hc.map((r) => r.over));
+  // Color by speed (ph-piak): bins of peak speed, stops by level against the limit.
+  const kinR = { t0: 0, dtMs: 10, vel: Float32Array.from({ length: 100 }, (_, j) => (j < 50 ? 100 : -400)) };
+  const sb = speedBins(0, 1000, 10, { kin: kinR });
+  ok('speed: a render bins to its peak |vel| per bin (the sign is dropped)', sb.length === 10 && sb[0] === 100 && sb[4] === 100 && sb[5] === 400 && sb[9] === 400, [...sb]);
+  const cb = speedBins(0, 2250, 9, { script: hs, T: { ...T0, hi: 0.5 }, spanMm: 100 });
+  ok('speed: without a render the chord speed of each span through the Range (units/s x span x Range / 100 = mm/s)',
+    Math.round(cb[1]) === 100 && Math.round(cb[7]) === 200 && cb[4] === 0 && Math.round(cb[8]) === 50, [...cb].map(Math.round));
+  ok('speed: nothing to measure bins to zero', speedBins(0, 1000, 4, {}).every((x) => x === 0) && speedBins(5, 5, 4, { kin: kinR }).every((x) => x === 0));
+  const ss = speedStops(Float32Array.from([0, 0, 500, 500, 1000, 2000]), 1000);
+  ok('speed: equal levels merge into one run (two stops), offsets never step back, the first at 0 and the last at 1',
+    ss.length === 8 && ss[0][0] === 0 && ss.at(-1)[0] === 1 && ss.every((s, i) => !i || s[0] >= ss[i - 1][0]) && ss[0][1] === ss[1][1] && ss[2][1] === ss[3][1], ss);
+  ok('speed: the ramp is --spd-0 at rest, the stops every eighth, mixed in oklab between them, --spd-8 at the limit, --spd-over past it (1 % float slack), never a hex',
+    speedColor(0) === 'var(--spd-0)' && speedColor(0.25) === 'var(--spd-2)' && speedColor(0.5) === 'var(--spd-4)' && speedColor(0.75) === 'var(--spd-6)'
+    && speedColor(1) === 'var(--spd-8)' && speedColor(1.005) === speedColor(1) && speedColor(1.02) === 'var(--spd-over)'
+    && speedColor(0.05) === 'color-mix(in oklab, var(--spd-1) 40%, var(--spd-0))' && SPEED_LEVELS === 40 && ss.every((s) => !/#/.test(s[1])),
+    [0, 0.05, 0.25, 1, 1.02].map(speedColor));
+  const ov = overRuns(Float32Array.from([0, 1200, 1300, 900, 1500, 1500]), 1000);
+  ok('speed: runs past the limit are the bins over it (1 % slack), one run per stretch', same(ov, [[1, 2], [4, 5]]) && overRuns(Float32Array.from([1000, 1005]), 1000).length === 0, ov);
+  const op = overPath('0,50 100,40 200,30 300,20 400,10 500,0', [[1, 2]], 5, 500);
+  ok('speed: the thick path takes the curve points inside the run and one either side, so it joins', op === 'M0,50L100,40L200,30L300,20L400,10' && overPath('', [[0, 1]], 5, 500) === '', op);
   ok('range: lo kept MIN_SPAN under hi', near(clampRange({ lo: 0, hi: 0.5 }, 'lo', 0.9).lo, 0.45));
   ok('range: hi kept in 0..1 and over lo', clampRange({ lo: 0.2, hi: 1 }, 'hi', 2).hi === 1 && near(clampRange({ lo: 0.2, hi: 1 }, 'hi', 0).hi, 0.25));
   ok('zoom: steps and stops at the ends', zoomStep(10000, 1) === 20000 && zoomStep(10000, -1) === 5000

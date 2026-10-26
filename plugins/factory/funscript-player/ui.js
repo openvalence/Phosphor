@@ -832,11 +832,13 @@ export const CSS = `
 /* A narrow head drops words before controls: the unit, then TIMELINE (the caret stays). */
 @container (max-width: 20em) { .fsp-tlh .fsp-off .unit { display: none; } }
 @container (max-width: 18.5em) { .fsp-tlcaret > span { display: none; } }
+/* The tint slider gives up its value (the tooltip carries it), a third of its length and the Offset unit before the head overflows. */
+@container (max-width: 44em) { .fsp-tlh .fsp-off .unit, .fsp-tlh .fsp-tint .ui-chip { display: none; } .fsp-tlh .fsp-tintsl { width: 2.25rem; } }
 .fsp-tlh > * { flex: none; }
 .fsp-tlh > .og-btn { min-height: var(--fsp-bar); padding-block: 0; }
 .fsp-tlgap { flex: 1 1 0; }
 .fsp-tlh > .fsp-tlcaret { flex: none; min-height: var(--fsp-bar); padding: 0 var(--sp-2) 0 0; }
-.fsp:is([data-comp=handheld], [data-cls=portrait], [data-cls=landscape]) .fsp-tlh .fsp-zoom { display: none; }
+.fsp:is([data-comp=handheld], [data-cls=portrait], [data-cls=landscape]) .fsp-tlh :is(.fsp-zoom, .fsp-spd, .fsp-tint) { display: none; }
 .fsp[data-comp=glance] :is(.fsp-tlh, .fsp-tlbox) { display: none; }
 .fsp[data-comp=glance] .fsp-speed { display: none; }
 .fsp[data-comp=glance] .fsp-time { font-size: .7rem; }
@@ -849,6 +851,13 @@ export const CSS = `
   pointer-events: none; }
 .fsp-speed i { position: absolute; left: 0; bottom: 0; width: 100%; height: 3px; background: var(--intent); transform: scaleX(0); transform-origin: 0 0; will-change: transform; }
 .fsp-speed[data-over] i { background: var(--warn); }
+.fsp-speed u, .fsp-speed small { display: none; }
+.fsp-speed[data-leg] { height: auto; min-width: 16ch; padding: 1px var(--sp-1); row-gap: 1px; border-radius: var(--r-s);
+  background: color-mix(in srgb, var(--screen) 78%, transparent); }
+.fsp-speed[data-leg] i { display: none; }
+.fsp-speed[data-leg] u { display: block; height: 6px; border-radius: 1px; background: linear-gradient(in oklab to right,
+  var(--spd-0), var(--spd-1), var(--spd-2), var(--spd-3), var(--spd-4), var(--spd-5), var(--spd-6), var(--spd-7), var(--spd-8)); }
+.fsp-speed[data-leg] small { display: flex; justify-content: space-between; font: .62rem/1 var(--mono); color: var(--tx-mut); }
 .fsp-speed span { color: var(--tx-mut); white-space: nowrap; overflow: hidden; }
 .fsp-speed[data-over] span { color: var(--tx); }
 .fsp-anbox { grid-area: an; min-width: 0; min-height: 0; display: none; }
@@ -1431,7 +1440,8 @@ export function createPlayer(api) {
     inv.setAttribute('data-search-key', 'invert');
     const speedBar = h('i');
     const speedTxt = h('span');
-    const speed = h('div', { class: 'fsp-speed', 'data-tip': COPY.speed }, speedBar, speedTxt);
+    const speedTicks = h('small', {}, h('b'), h('b'), h('b'));
+    const speed = h('div', { class: 'fsp-speed', 'data-tip': COPY.speed }, speedBar, speedTxt, h('u'), speedTicks);
     const setMuted = (m) => { video.muted = m; saveAudio(); render(); };
     const muteB = ui.button({ icon: 'volume', title: COPY.muteKey, class: 'fsp-mute', onClick: () => setMuted(!video.muted) });
     // The bar's Fullscreen and Settings are the page's (the dash card's hero has neither).
@@ -1638,6 +1648,10 @@ export function createPlayer(api) {
       overlay: [speed],
       zoomMs,
       onZoom: (z) => { zoomMs = z; writePref(api, 'zoomMs', z); },
+      colorSpeed: readPrefs(api).speedColor,
+      onColor: (m) => { writePref(api, 'speedColor', m); kick(); },
+      tintPct: readPrefs(api).speedTint,
+      onTint: (v) => writePref(api, 'speedTint', v),
       onLoop: () => ctl.markAB(),
       onSeek: (ms) => ctl.seek(ms),
       // A scrub while playing pauses for the drag (the motion with it) and plays on from the new time on release (PP11).
@@ -1649,6 +1663,8 @@ export function createPlayer(api) {
       onRange: (partial, commit) => { if (commit) ctl.setT(partial); },
     });
     tlCaret.after(tl.zoomEl);
+    tl.zoomEl.after(tl.colorEl);
+    tl.colorEl.after(tl.tintEl);
     // The keyboard's here is the playhead.
     const tlMenu = (at) => {
       const t = at.keyboard ? ctl.mediaNow() : tl.timeAt(at.x, at.target), { a, b } = st.ab;
@@ -1727,7 +1743,7 @@ export function createPlayer(api) {
     function render() {
       const ceil = ceilingOf(api, fields);
       const rt = video.playbackRate || 1, key = [st.script, st.shaped, st.T, ceil.vmax, ceil.spanMm, rt];
-      if (!tlKey || key.some((k, i) => k !== tlKey[i])) { tlKey = key; tl.setScript(st.shaped || st.script, st.T, { ...ceil, vmax: ceil.vmax && ceil.vmax / rt }, st.script); }
+      if (!tlKey || key.some((k, i) => k !== tlKey[i])) { tlKey = key; tl.setScript(st.shaped || st.script, st.T, { ...ceil, vmax: ceil.vmax && ceil.vmax / rt, rt }, st.script); }
       tl.setLoop(st.ab);
       const on = act();
       play.icon = on ? 'pause' : 'play';
@@ -1840,6 +1856,10 @@ export function createPlayer(api) {
         const sp2 = strokeSpeed(st.shaped || st.script, m, st.T, ceil.spanMm), rt = video.playbackRate || 1;
         sp2.v *= rt;
         const cap = sp2.unit === 'mm/s' && ceil.vmax ? ceil.vmax : 0;
+        // Color by speed: the readout carries the legend, the ramp with 0, half and the limit in mm/s (timeline.js speedMax).
+        const lim = sp2.unit === 'mm/s' ? tl.speedMax : 0;
+        speed.toggleAttribute('data-leg', lim > 0);
+        if (lim > 0) [...speedTicks.children].forEach((b, i) => setText(b, String(Math.round(lim * i / 2))));
         setText(speedTxt, Math.round(sp2.v) + ' ' + sp2.unit);
         xform(speedBar, 'scaleX(' + (cap ? clamp(sp2.v / cap, 0, 1) : 0) + ')');
         speed.toggleAttribute('data-over', !!cap && sp2.v > cap);
@@ -1848,6 +1868,7 @@ export function createPlayer(api) {
         for (const t of [tickI, moI]) { prop(t, 'hidden', false); tickAt(t, at, meterW.get(t.parentNode)); }
       } else {
         setText(speedTxt, '');
+        speed.removeAttribute('data-leg');
         xform(speedBar, 'scaleX(0)');
         prop(tickI, 'hidden', true);
         prop(moI, 'hidden', true);
