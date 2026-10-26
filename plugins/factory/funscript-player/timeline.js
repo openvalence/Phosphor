@@ -13,11 +13,14 @@
 //   of the file's actions by |dpos| / dt (units/s, pos 0..100), from the chassis dark
 //   through --reality to --highlight (heatColor), mixed in oklab. Never red: RENDERING
 //   law 13 keeps red for hazards.
-// - Color by speed (pref speedColor, the head's toggle): the intent curve's stroke is a userSpaceOnUse gradient along
-//   the span's time axis, one color per bin by its peak speed against the machine's speed limit: --reality at rest
-//   to --highlight at the limit, --warn past it (law 13: never red). Speeds are the Kinetic render's own (vel, mm/s),
-//   else the chord speed of each action span; with no limit known the stroke stays plain. The curve's points and
-//   path are untouched; only the stroke changes. The limit is the hub's field, else the render's own.
+// - Color by speed (pref speedColor, the head's toggle: 0 off, 1 tint, 2 tint and line): one userSpaceOnUse gradient
+//   along the span's time axis, one color per bin by its peak speed against the machine's speed limit, through the
+//   --spd-0..8 ramp (model/theme.js SPEED_RAMP: deep blue at rest to red at the limit), --spd-over past it. Mode 1
+//   fills the Range band over the script's time with that gradient at --fsp-tint opacity (pref speedTint, the head's
+//   slider) behind the curve, which keeps --intent over a --screen halo; mode 2 also strokes the curve with it, the
+//   runs past the limit again thicker. Speeds are the Kinetic render's own (vel, mm/s), else the chord speed of each
+//   action span; with no limit known nothing is colored. The curve's points and path are untouched. The limit is the
+//   hub's field, else the render's own. All of it is in the sliding span layer, rebuilt with the curve: no per-frame cost.
 // - The wheel is never captured: zoom is two buttons, and pinch on touch (pinchZoom).
 // - A sideways drag on the detail scrubs (onScrub, the heat's own path; 'start' and 'end' bracket a drag, a null time
 //   seeks nothing): the script follows the pointer through the
@@ -74,7 +77,7 @@ export const HEAT_BINS = 200;
 // Heat speeds, units/s: --bg-sunken at rest, --reality at HEAT_MID_UPS, --highlight from HEAT_TOP_UPS up.
 export const HEAT_MID_UPS = 200, HEAT_TOP_UPS = 400;
 export const TRACE_MS = 8000;
-export const SPEED_BINS = 400, SPEED_LEVELS = 20, SPEED_SLACK = 1.01;   // the planner holds the limit to float noise: not over
+export const SPEED_BINS = 400, SPEED_LEVELS = 40, SPEED_SLACK = 1.01, SPEED_STEPS = 8, TINT_MAX = 60, TINT_DETENT = 30;   // the planner holds the limit to float noise: not over
 const TRACE_GAP_MS = 250;   // samples farther apart are a dropout: a gap, never a guessed curve
 const TRACE_PART_MS = 500;  // a trace path part: a new sample redraws its own part and at most the one before
 export const MIN_SPAN = 0.05;
@@ -100,7 +103,8 @@ export const COPY = Object.freeze({
   abClear: 'Clear loop',
   V8: 'Oscillation amplitude',
   V9: 'Oscillation frequency',
-  colorSpeed: 'Color by speed',
+  colorModes: Object.freeze(['Color by speed', 'Speed tint', 'Tint and line']),
+  tint: 'Tint opacity',
 });
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -240,11 +244,34 @@ export function heatStops(script, T = T0, ceiling = null) {
   return out;
 }
 
-/** A speed as a share of the limit, as the line's stroke color: --reality at rest to --highlight at 1, --warn past it (SPEED_SLACK). */
+/** A speed as a share of the limit, as a CSS color: the --spd-0..8 ramp mixed in oklab, --spd-over past the limit (SPEED_SLACK). */
 export function speedColor(n) {
-  if (n > SPEED_SLACK) return 'var(--warn)';
-  const q = Math.round(clamp(n || 0, 0, 1) * SPEED_LEVELS) * 100 / SPEED_LEVELS;
-  return 'color-mix(in oklab, var(--highlight) ' + q + '%, var(--reality))';
+  if (n > SPEED_SLACK) return 'var(--spd-over)';
+  const x = Math.round(clamp(n || 0, 0, 1) * SPEED_LEVELS) / SPEED_LEVELS * SPEED_STEPS, k = Math.min(SPEED_STEPS - 1, Math.floor(x)), f = Math.round((x - k) * 100);
+  return f >= 100 ? 'var(--spd-' + (k + 1) + ')' : f ? 'color-mix(in oklab, var(--spd-' + (k + 1) + ') ' + f + '%, var(--spd-' + k + '))' : 'var(--spd-' + k + ')';
+}
+
+/** Bins [first, last] (inclusive) of v past the limit, one run per stretch: where the colored line is drawn thick. */
+export function overRuns(v, vmax) {
+  const out = [], over = (x) => x > vmax * SPEED_SLACK;
+  for (let i = 0, e; i < v.length; i = e + 1) {
+    for (e = i; e + 1 < v.length && over(v[e + 1]) === over(v[i]); e++);
+    if (over(v[i])) out.push([i, e]);
+  }
+  return out;
+}
+
+/** The curve's points ('x,y x,y ...') inside the runs as SVG path data, each run one subpath that starts a point early and ends one late so it joins. */
+export function overPath(points, runs, bins, W) {
+  const p = points ? points.split(' ').map((q) => q.split(',').map(Number)) : [];
+  let d = '';
+  for (const [i, e] of runs) {
+    const x0 = i / bins * W, x1 = (e + 1) / bins * W, j = p.findIndex((q) => q[0] >= x0);
+    if (j < 0) continue;
+    const t = p.findIndex((q, n) => n >= j && q[0] > x1), seg = p.slice(Math.max(0, j - 1), t < 0 ? p.length : t + 1);
+    if (seg.length > 1) d += 'M' + seg.map((q) => q[0] + ',' + q[1]).join('L');
+  }
+  return d;
 }
 
 /**
@@ -327,6 +354,13 @@ export const CSS = `
 .fsp-dt polyline, .fsp-dt line, .fsp-dt .real, .fsp-dt .plan { fill: none; vector-effect: non-scaling-stroke; }
 .fsp-dt .dots { fill: none; stroke: var(--intent); stroke-width: 5; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .fsp-dt .int { stroke: var(--intent); stroke-width: 2; }
+.fsp-dt .halo { stroke: var(--screen); stroke-width: 5; stroke-linejoin: round; opacity: .85; }
+.fsp-dt .tint { fill-opacity: var(--fsp-tint, .3); stroke: none; }
+.fsp-dt .over { stroke: var(--spd-over); stroke-width: 4; stroke-linejoin: round; }
+.fsp-tint { display: flex; align-items: center; gap: var(--sp-2); flex: none; }
+.fsp-tint[data-off] { opacity: .45; }
+.fsp-tintsl { width: 5.5rem; min-width: 0; position: relative; }
+.fsp-tintsl::after { content: ''; position: absolute; left: 50%; top: calc(50% - var(--sp-2)); height: var(--sp-4); border-left: 1px solid var(--tx-mut); pointer-events: none; }
 .fsp-dt .int.draft { stroke-dasharray: 6 4; }
 .fsp-dt .real { stroke: var(--reality); stroke-width: 1.5; }
 .fsp-dt .real.stale { opacity: .4; }
@@ -381,10 +415,10 @@ const s = (tag, attrs = {}) => {
   return e;
 };
 
-export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () => {}, zoomMs = 10000, colorSpeed = false, onColor = () => {}, ovHost = null, ovBefore = null, overlay = [], onLoop = null }) {
+export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () => {}, zoomMs = 10000, colorSpeed = 0, onColor = () => {}, tintPct = TINT_DETENT, onTint = () => {}, ovHost = null, ovBefore = null, overlay = [], onLoop = null }) {
   let script = null, raw = null, T = T0, ceiling = null, preview = null, m = 0, trace = [], ab = { a: null, b: null }, kin = null;
   let traceN = 0, traceLast = null, span = null, traceFor = {};
-  let zoom = ZOOMS.includes(zoomMs) ? zoomMs : 10000, byColor = !!colorSpeed;
+  let zoom = ZOOMS.includes(zoomMs) ? zoomMs : 10000, mode = clamp(Math.round(+colorSpeed) || 0, 0, 2), tint = clamp(Math.round(+tintPct), 0, TINT_MAX);
   const dur = () => (script ? script.durationMs : 0);
 
   // ---- overview: heat, window box, vertical-pill scrub (left-right)
@@ -447,13 +481,17 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
   const traceCv = h('canvas', { class: 'fsp-sl', 'aria-hidden': 'true' });
   for (const e of [scriptSvg, traceCv]) e.style.width = SLIDE * 100 + '%';
   const curve = s('polyline', { class: 'int' });
+  const halo = s('polyline', { class: 'halo' });
+  const tintR = s('rect', { class: 'tint', x: '0', width: '0', y: '0', height: '0' });
+  const overP = s('path', { class: 'over' });
   const sgid = 'fsp-spd-' + gid.slice(9);
   const sgrad = s('linearGradient', { id: sgid, gradientUnits: 'userSpaceOnUse', x1: '0', x2: String(1000 * SLIDE), y1: '0', y2: '0' });
   const sdefs = s('defs');
   sdefs.append(sgrad);
   const dots = s('path', { class: 'dots' });
   const abA = s('line', { class: 'ab', y1: '0', y2: '100' }), abB = s('line', { class: 'ab', y1: '0', y2: '100' });
-  scriptSvg.append(sdefs, abA, abB, curve, dots);
+  tintR.setAttribute('fill', 'url(#' + sgid + ')');
+  scriptSvg.append(sdefs, tintR, abA, abB, halo, curve, overP, dots);
   const ink = { plan: s('path', { class: 'plan' }), real: s('path', { class: 'real' }), stale: s('path', { class: 'real stale' }) };
   const inkSvg = s('svg', { 'aria-hidden': 'true' });
   inkSvg.style.display = 'none';
@@ -464,8 +502,22 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
   const setZoom = (z) => { zoom = z; onZoom(z); draw(); };
   zOut.addEventListener('click', () => setZoom(zoomStep(zoom, 1)));
   zIn.addEventListener('click', () => setZoom(zoomStep(zoom, -1)));
-  const zSpd = ui.button({ icon: 'M1.5 11.5L4.5 4.5 8 11l3-7 3.5 7.5', title: COPY.colorSpeed, pressed: byColor, class: 'fsp-spd',
-    onClick: () => { byColor = zSpd.pressed; onColor(byColor); draw(); } });
+  const modeTip = () => COPY.colorModes[mode];
+  const zSpd = ui.button({ icon: 'M1.5 11.5L4.5 4.5 8 11l3-7 3.5 7.5', title: modeTip(), pressed: mode > 0, class: 'fsp-spd',
+    onClick: () => { mode = (mode + 1) % 3; zSpd.pressed = mode > 0; zSpd.title = modeTip(); dimTint(); onColor(mode); draw(); } });
+  // The tint's opacity: the kit's slider (Shift fine, Ctrl snap), a detent at TINT_DETENT the thumb takes when dragged near it.
+  const zTint = ui.slider({ min: 0, max: TINT_MAX, step: 1, value: tint, label: COPY.tint, class: 'fsp-tintsl', format: (v) => v + ' %',
+    onInput: (v, e) => {
+      if (Math.abs(v - TINT_DETENT) <= 2 && !(e && e.shiftKey)) { v = TINT_DETENT; zTint.value = v; }
+      tint = v;
+      tintG.dataset.tip = COPY.tint + ' ' + v + ' %';
+      root.style.setProperty('--fsp-tint', String(v / 100));
+    },
+    onChange: () => onTint(tint) });
+  const tintG = h('span', { class: 'fsp-tint', 'data-tip': COPY.tint }, zTint, zTint.chip);
+  tintG.dataset.tip = COPY.tint + ' ' + tint + ' %';
+  const dimTint = () => { zTint.disabled = !mode; tintG.toggleAttribute('data-off', !mode); };
+  dimTint();
   const zAB = h('button', { type: 'button', class: 'og-btn sm fsp-ab', text: COPY.abGlyph, 'aria-pressed': 'false' });
   zAB.hidden = !onLoop;
   zAB.addEventListener('click', () => onLoop && onLoop());
@@ -545,6 +597,7 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
   const laneBox = h('div', { class: 'fsp-lanes' }, ...lanes.map((l) => l.el), lph);
   let axes = {};
   const root = h('div', { class: 'fsp-tl' }, dt, laneBox, ...(ovHost ? [] : [ov]));
+  root.style.setProperty('--fsp-tint', String(tint / 100));
   el.append(root);
   if (ovHost) ovHost.insertBefore(ov, ovBefore);
   // Content boxes of the boxes the layers move in (0 wide while hidden: nothing moves there).
@@ -568,22 +621,33 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
     const from = m - zoom / 2, to = from + zoom;
     const kk = kin && !preview ? kin : null;
     if (!span || from < span.a || to > span.b || span.zoom !== zoom || span.script !== script || span.kin !== kk || span.T !== Te
-      || span.axes !== axes || span.col !== byColor || span.ceil !== ceiling) {
+      || span.axes !== axes || span.col !== mode || span.ceil !== ceiling) {
       const a = from - (SLIDE - 1) / 2 * zoom, b = to + (SLIDE - 1) / 2 * zoom, W = 1000 * SLIDE;
       const k = kk ? { ...kk, t0: kk.t0 - (Te.offsetMs || 0) } : null;
-      curve.setAttribute('points', k ? kinPoints(k, a, b, W, 100, 2000 * SLIDE) : curvePoints(script, a, b, W, 100, Te));
+      const pts = k ? kinPoints(k, a, b, W, 100, 2000 * SLIDE) : curvePoints(script, a, b, W, 100, Te);
+      curve.setAttribute('points', pts);
       curve.toggleAttribute('data-kin', !!k);
       curve.classList.toggle('draft', !!preview);
       dots.setAttribute('d', dotPath(script, a, b, W, 100, Te));
-      const vm = byColor && script ? vmaxOf(kk) : 0;
+      const vm = mode && script ? vmaxOf(kk) : 0;
+      halo.setAttribute('points', vm ? pts : '');
+      overP.setAttribute('d', '');
+      curve.style.removeProperty('stroke');
+      tintR.setAttribute('width', '0');
       if (vm) {
         // The render's t0 already runs back by the offset (k); the chord path reads the wire, which the curve shows at its own times.
-        const stops = speedStops(speedBins(a, b, SPEED_BINS, { kin: k, script, T: Te, spanMm: ceiling && ceiling.spanMm }), vm);
-        sgrad.replaceChildren(...stops.map(([o, c]) => s('stop', { offset: String(+o.toFixed(4)), style: 'stop-color: ' + c })));
-        curve.style.stroke = 'url(#' + sgid + ')';
-      } else curve.style.removeProperty('stroke');
+        const bins = speedBins(a, b, SPEED_BINS, { kin: k, script, T: Te, spanMm: ceiling && ceiling.spanMm });
+        sgrad.replaceChildren(...speedStops(bins, vm).map(([o, c]) => s('stop', { offset: String(+o.toFixed(4)), style: 'stop-color: ' + c })));
+        // The tint: the Range band (the motion window), over the script's own time only (the hatch is no script).
+        const tx0 = clamp((script.at[0] - a) / (b - a) * W, 0, W), tx1 = clamp((script.at[script.at.length - 1] - a) / (b - a) * W, 0, W);
+        for (const [n, v] of [['x', tx0], ['width', Math.max(0, tx1 - tx0)], ['y', 100 - Te.hi * 100], ['height', (Te.hi - Te.lo) * 100]]) tintR.setAttribute(n, String(+v.toFixed(2)));
+        if (mode === 2) {
+          curve.style.stroke = 'url(#' + sgid + ')';
+          overP.setAttribute('d', overPath(pts, overRuns(bins, vm), SPEED_BINS, W));
+        }
+      }
       for (const l of lanes) if (axes[l.id]) l.line.setAttribute('points', curvePoints(axes[l.id], a, b, W, 100));
-      span = { a, b, zoom, script, kin: kk, T: Te, axes, col: byColor, ceil: ceiling };
+      span = { a, b, zoom, script, kin: kk, T: Te, axes, col: mode, ceil: ceiling };
     }
     // The trace before any write below: its ink read would otherwise force a second style pass.
     // The trace is redrawn only on a new sample, a new span, a new size or a step of the left clip, which trails the
@@ -665,8 +729,9 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
     zoomEl: h('span', { class: 'fsp-zoom' }, zOut, zSpan, zIn),
     abEl: zAB,
     colorEl: zSpd,
-    /** The limit the color scale ends at, mm/s as the machine moves (rate applied), or 0 while the line is not colored by speed. */
-    get speedMax() { return byColor ? vmaxOf(kin && !preview ? kin : null) * ((ceiling && ceiling.rt) || 1) : 0; },
+    tintEl: tintG,
+    /** The limit the color scale ends at, mm/s as the machine moves (rate applied), or 0 while Color by speed is off. */
+    get speedMax() { return mode ? vmaxOf(kin && !preview ? kin : null) * ((ceiling && ceiling.rt) || 1) : 0; },
     setScript(sc, t, ceil, rawSc) {
       script = sc || null;
       raw = rawSc || null;

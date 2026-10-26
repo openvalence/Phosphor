@@ -108,6 +108,10 @@
      the raw color). Glows, fills and borders stay --warn and --bad. */
   --warn-ink: var(--warn);
   --bad-ink:  var(--bad);
+  /* The funscript player's Color by speed: deep blue at rest to red at the speed limit, magenta past it.
+     Per chassis in model/theme.js (SPEED_RAMP); not themeable. */
+  --spd-0: #3D5AFE; --spd-1: #2E8BFF; --spd-2: #1FD0F0; --spd-3: #1FE59A; --spd-4: #6BF03D;
+  --spd-5: #D6EA28; --spd-6: #FFC21F; --spd-7: #FF7A1A; --spd-8: #F0301E; --spd-over: #FF3DF2;
   --good:    var(--reality);
 
   --reality-rgb:     77,166,255;

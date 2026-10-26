@@ -18,7 +18,7 @@
 import { parseFunscript } from '../plugins/factory/funscript-player/funscript.js';
 import { createMediaClock } from '../plugins/factory/funscript-player/clock.js';
 import { createScheduler, STOP_MS } from '../plugins/factory/funscript-player/scheduler.js';
-import { speedColor, speedBins, speedStops, SPEED_LEVELS, curvePoints, seekAt, traceLines, heatStops, heatColor, HEAT_MID_UPS, HEAT_TOP_UPS, clampRange, zoomStep, ZOOMS, pinchZoom }
+import { speedColor, speedBins, speedStops, overRuns, overPath, SPEED_LEVELS, curvePoints, seekAt, traceLines, heatStops, heatColor, HEAT_MID_UPS, HEAT_TOP_UPS, clampRange, zoomStep, ZOOMS, pinchZoom }
   from '../plugins/factory/funscript-player/timeline.js';
 import { toStored, fromStored, move } from '../plugins/factory/funscript-player/queue.js';
 import { createControl, compositionOf, pageClass, clampOffset, windowShare, planShareOf, ceilingOf, localScene, extraNote, COPY }
@@ -129,10 +129,15 @@ console.log('(a) timeline');
   const ss = speedStops(Float32Array.from([0, 0, 500, 500, 1000, 2000]), 1000);
   ok('speed: equal levels merge into one run (two stops), offsets never step back, the first at 0 and the last at 1',
     ss.length === 8 && ss[0][0] === 0 && ss.at(-1)[0] === 1 && ss.every((s, i) => !i || s[0] >= ss[i - 1][0]) && ss[0][1] === ss[1][1] && ss[2][1] === ss[3][1], ss);
-  ok('speed: --reality at rest, --highlight at the limit, --warn past it (1 % float slack), never a hex or red',
-    speedColor(0) === 'color-mix(in oklab, var(--highlight) 0%, var(--reality))' && speedColor(1) === 'color-mix(in oklab, var(--highlight) 100%, var(--reality))'
-    && speedColor(1.005) === speedColor(1) && speedColor(1.02) === 'var(--warn)' && speedColor(0.5) === 'color-mix(in oklab, var(--highlight) 50%, var(--reality))'
-    && SPEED_LEVELS === 20 && ss.every((s) => !/#|red|--bad|--estop/.test(s[1])));
+  ok('speed: the ramp is --spd-0 at rest, the stops every eighth, mixed in oklab between them, --spd-8 at the limit, --spd-over past it (1 % float slack), never a hex',
+    speedColor(0) === 'var(--spd-0)' && speedColor(0.25) === 'var(--spd-2)' && speedColor(0.5) === 'var(--spd-4)' && speedColor(0.75) === 'var(--spd-6)'
+    && speedColor(1) === 'var(--spd-8)' && speedColor(1.005) === speedColor(1) && speedColor(1.02) === 'var(--spd-over)'
+    && speedColor(0.05) === 'color-mix(in oklab, var(--spd-1) 40%, var(--spd-0))' && SPEED_LEVELS === 40 && ss.every((s) => !/#/.test(s[1])),
+    [0, 0.05, 0.25, 1, 1.02].map(speedColor));
+  const ov = overRuns(Float32Array.from([0, 1200, 1300, 900, 1500, 1500]), 1000);
+  ok('speed: runs past the limit are the bins over it (1 % slack), one run per stretch', same(ov, [[1, 2], [4, 5]]) && overRuns(Float32Array.from([1000, 1005]), 1000).length === 0, ov);
+  const op = overPath('0,50 100,40 200,30 300,20 400,10 500,0', [[1, 2]], 5, 500);
+  ok('speed: the thick path takes the curve points inside the run and one either side, so it joins', op === 'M0,50L100,40L200,30L300,20L400,10' && overPath('', [[0, 1]], 5, 500) === '', op);
   ok('range: lo kept MIN_SPAN under hi', near(clampRange({ lo: 0, hi: 0.5 }, 'lo', 0.9).lo, 0.45));
   ok('range: hi kept in 0..1 and over lo', clampRange({ lo: 0.2, hi: 1 }, 'hi', 2).hi === 1 && near(clampRange({ lo: 0.2, hi: 1 }, 'hi', 0).hi, 0.25));
   ok('zoom: steps and stops at the ends', zoomStep(10000, 1) === 20000 && zoomStep(10000, -1) === 5000
