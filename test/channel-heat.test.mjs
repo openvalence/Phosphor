@@ -137,7 +137,7 @@ try {
     const detail = () => page.$eval('.heat .panel .detail', (d) => d.innerText);
     const d0 = await detail();
     ok(tag + ': the details line reads the hovered block', compact
-      ? /^STATE\n26 channels · busiest: /.test(d0) && /refused: NOT_HOMED/.test(d0)
+      ? new RegExp('^STATE\\n' + entries.filter((e) => e.cls === 'STATE').length + ' channels · busiest: ').test(d0) && /refused: NOT_HOMED/.test(d0)
       : new RegExp('^' + first.name + '\\nSTATE · 0x[0-9A-F]{4} · rx [0-9.]+/s · [0-9.]+ [KM]?B/s · tx -- · seen \\d+s ago\\nrefused: NOT_HOMED$').test(d0), d0);
     ok(tag + ': the panel moves nothing', JSON.stringify(await box()) === JSON.stringify(busy));
     // A block in the panel: highlight, details, click.

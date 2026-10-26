@@ -139,6 +139,8 @@ const sorted = (pairs) => cbMap(pairs.sort((a, b) => a[0] - b[0]));
 function fakeHub(ws) {
   const send = (type, ch, payload, seq = 0) => { try { ws.send(Buffer.from(encodeFrame(type, ch, payload, seq))); } catch (e) { /* closed */ } };
   const pushState = (id) => {
+    // 0x0001 leads with the catalog etag; packed from defaults it would read as a new catalog.
+    if (id === 0x0001) return;
     const e = ENTRIES.find((x) => x.id === id);
     if (e && e.layout) send(FRAME.STATE, id, encodePacked(e));
   };
@@ -505,6 +507,8 @@ if (LIVE) {
   const MIND = settingOf('pattern-advanced', 'min_depth');
   const SPIN = settingOf('pattern-advanced', 'in_speed');
   const ACIN = settingOf('pattern-advanced', 'in_accel');
+  const MAXD_DEFAULT = Number(ADV.layout.find((f) => f.name === 'max_depth').default);
+  hub.values[MAXD.uid] = 10;   // the deep drag below needs headroom under the catalog's max depth
   {
     const { ctx, page, up } = await open();
     ok('boot: the shell adopted the fixture catalog', up);
@@ -670,7 +674,7 @@ if (LIVE) {
     await page.click('main.pane .ap .og-btn:has-text("Reset")');
     await page.waitForTimeout(300);
     ok('presets: Reset writes the moved controls back to their defaults',
-      hub.intents.slice(n4).some((i) => i.ch === MAXD.ch && i.val[MAXD.key] === 10));
+      hub.intents.slice(n4).some((i) => i.ch === MAXD.ch && i.val[MAXD.key] === MAXD_DEFAULT));
 
     // ---- confirm and run
     const n5 = hub.intents.length;

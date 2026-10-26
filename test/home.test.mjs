@@ -390,9 +390,9 @@ if (!LIVE) {
   const rides = await page.locator('main.pane .dash-cell[data-id="group:' + motion.id + ':ungrouped"] .field[data-uid="' + looseDiag.fields[0].uid + '"]').count();
   ok('diagnostics: Motion\'s ungrouped diagnostic field rides its Settings card, no one-field card of its own (ph-vrg)',
      rides === 1 && !motionIds.includes('diag:' + motion.id + ':ungrouped'), motionIds);
-  const TUNING = ['Motion behavior', 'Streaming', 'Safety', 'Curve', 'Ceilings', 'Sample streams', 'Planner',
-    'Re-planning', 'Active plan', 'Anomalies', 'Plan time', 'Stream ingress'];
-  ok('sections: Motion shows one Tuning section header with its twelve cards under it',
+  const TUNING = ['Motion behavior', 'Streaming', 'Safety', 'Radios', 'Curve', 'Ceilings', 'Sample streams', 'Re-planning',
+    'Planner', 'Active plan', 'Anomalies', 'Plan time', 'Stream ingress'];
+  ok('sections: Motion shows one Tuning section header with its thirteen cards under it',
      JSON.stringify(await sectionRuns()) === JSON.stringify([{ head: 'Tuning', cards: TUNING }]), await sectionRuns());
   const headTint = await page.$eval('main.pane .dash-section', (h) => {
     const out = [];
