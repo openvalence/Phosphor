@@ -18,7 +18,7 @@
  *   the shadow's door and the plugin gate.
  */
 
-import { ROLE } from './roles.js';
+import { ROLE, motionEntry } from './roles.js';
 import { reportedValue } from './settings.js';
 import { needsText } from './tier.js';
 import { CHANNEL_CLASS, STREAM_KIND, UNIT_ID, LIMITS, PACKED, FIELD_ROLE } from '../../../Valence/clients/js/index.js';
@@ -146,25 +146,24 @@ export function unspecified(f) {
 }
 
 /**
- * The c2h STREAM of `kind` that takes motion input: it carries `input.target`
- * in unit normalized (SPEC §9.6, RFC-071), and a segments STREAM also
- * `input.duration` in a time unit. A STREAM without the role is some other
- * input, never motion. `endVel` is the segments layout's `input.end_velocity`
- * field when it has one (normalized span per second, SPEC §9.6).
+ * The c2h STREAM of `kind` that takes motion input (SPEC §8.8 role cardinality, RFC-123): the first
+ * in catalog order carrying `input.target`, never one in the user space. Its target is in unit
+ * normalized (SPEC §9.6, RFC-071), and a segments STREAM also has `input.duration` in a time unit;
+ * an entry that lacks them is not motion, and no later entry stands in for it. The input.* fields
+ * bind within that one entry. `endVel` is the segments layout's `input.end_velocity` field when it
+ * has one (normalized span per second, SPEC §9.6).
  * @returns {{entry: Object, target: Object, duration?: Object, endVel?: Object}|null}
  */
 export function motionStream(entries, kind = STREAM_KIND.samples) {
-  for (const e of entries || []) {
-    if (e.cls !== CHANNEL_CLASS.STREAM || e.dirName !== 'c2h' || e.streamKind !== kind) continue;
-    const layout = e.layout || [];
-    const target = layout.find((f) => f.role === FIELD_ROLE.input_target);
-    if (!target || target.unitId !== UNIT_ID.normalized) continue;
-    if (kind !== STREAM_KIND.segments) return { entry: e, target };
-    const duration = layout.find((f) => f.role === FIELD_ROLE.input_duration && f.unitId in TIME_SCALE);
-    const endVel = layout.find((f) => f.role === FIELD_ROLE.input_end_velocity);
-    if (duration) return { entry: e, target, duration, endVel };
-  }
-  return null;
+  const e = motionEntry(entries, kind);
+  if (!e) return null;
+  const layout = e.layout || [];
+  const target = layout.find((f) => f.role === FIELD_ROLE.input_target);
+  if (target.unitId !== UNIT_ID.normalized) return null;
+  if (kind !== STREAM_KIND.segments) return { entry: e, target };
+  const duration = layout.find((f) => f.role === FIELD_ROLE.input_duration && f.unitId in TIME_SCALE);
+  const endVel = layout.find((f) => f.role === FIELD_ROLE.input_end_velocity);
+  return duration ? { entry: e, target, duration, endVel } : null;
 }
 
 /**

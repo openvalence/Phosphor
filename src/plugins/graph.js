@@ -20,16 +20,16 @@ import {
   MAP, MAPS, TICK_MS, refKey, homeOf, interlock, isUserSpace, addNode, connect, removeRel,
   refuseConnect, checkRel, freeRelId, loadLocal, saveLocal, createRunner, findHub, storeVerb,
   storeItem, readStoreItem, rosterBits, removeNode, addDraft, planWire, createHistory, snap, endRange,
-  OPS, addOp, planLink, addLink, insOf, outOf, opLabel, MS_PORT, DEFAULT_MS,
+  OPS, addOp, planLink, addLink, insOf, outOf, opLabel, MS_PORT, DEFAULT_MS, rekeyNodes,
 } from '../model/graph.js';
 import { traces } from '../model/trace.js';
 import { PRESETS } from '../model/graph-presets.js';
 import { pace, gapOf } from './bp-pace.js';
 import { ROLE, claimRoles } from '../model/roles.js';
 import { rosterCount } from '../ui/widgets/roster.js';
-import { controlKey, WIDGET, reportedValue } from '../model/settings.js';
+import { controlKey, migratedKey, WIDGET, reportedValue } from '../model/settings.js';
 import { labelFor, unitOf, hubTitle } from '../model/format.js';
-import { PACKED, CORE_CHANNEL, STORE_OP, UI_CATEGORY_TIER, UI_NAV_TIER, FIELD_ROLE } from '../../../Valence/clients/js/generated/registry_vocab.js';
+import { PACKED, CHANNEL_CLASS, CORE_CHANNEL, STORE_OP, UI_CATEGORY_TIER, UI_NAV_TIER, FIELD_ROLE } from '../../../Valence/clients/js/generated/registry_vocab.js';
 import { CBOR_FIELD } from '../../../Valence/clients/js/frames.js';
 
 export const manifest = {
@@ -91,9 +91,12 @@ export function graphRuntime(api, shell, env) {
   const persist = () => saveLocal(env.storage, g, view);
 
   // ---- fields --------------------------------------------------------------
+  let keyedFor = null;
   function allFields() {
     const m = api.catalog();
     if (!m) return [];
+    // Nodes saved before RFC-122/123 keyed a within-entry role (mod.*, store.*, input.*) on the role: re-keyed once per catalog.
+    if (m.byRole !== keyedFor) { keyedFor = m.byRole; if (rekeyNodes(g, (k) => migratedKey(k, m.byRole))) persist(); }
     const seen = new Set();
     const out = [];
     for (const f of [...m.fields, ...[...m.byRole.values()].flat()]) {
@@ -104,7 +107,9 @@ export function graphRuntime(api, shell, env) {
     return out;
   }
   const fieldFor = (key) => (allFields().find((x) => x.key === key) || {}).f || null;
-  const writable = (f) => f.isIntentField || !f.readOnly;
+  // An EVENT body field is never a target (SPEC §9.4, RFC-122); the model holds none, and this keeps it so.
+  const writable = (f) => (f.isIntentField || !f.readOnly)
+    && !(env.entries() || []).some((e) => e.id === f.channelId && e.cls === CHANNEL_CLASS.EVENT);
   const toAccessory = (f) => !!f && isUserSpace(f.isIntentField ? f.channelId : f.writeChannel);
 
   // Valence RFC-112: the oscillator amplitude and its drive's out bounds are mm, once a window share. A client map

@@ -48,7 +48,9 @@ export function activate(api) {
 A hero plugs into the **same claim pass** as the built-in heroes
 (`src/model/roles.js` `claimAll`, called from `src/ui/heroes.js`): built-ins
 first, then active plugins. `require` must all resolve or the hero declines
-and its fields stay generic. A spec may also carry `channels: {key: id}` and
+and its fields stay generic. A spec that names an `input.*` role also says
+`stream: 'samples' | 'segments'`, and takes every such role from that kind's one
+motion entry (RFC-123). A spec may also carry `channels: {key: id}` and
 `optionalChannels`, claiming a whole channel by id as `{fieldName: field}` for
 a channel the registry gives no roles yet (the RFC-116 and RFC-118 draft network
 channels, `saved-networks`); a registered role is never claimed this way, and roles
@@ -399,7 +401,7 @@ and moved on a reorder, so a control keeps its in-flight write.
 |---|---|---|
 | `activate(api)` returning optional `deactivate()` | module entry | **freeze candidate** |
 | `registerHero({id, title, spec, absorb, mount})`, `mount(el, fields)` returning `{update, unmount}` | the widget seam | **freeze candidate** |
-| `field(role)` | first field carrying a registry role, or null | **freeze candidate** |
+| `field(role, stream?)` | first field carrying a registry role, or null. An `input.*` role binds within its c2h STREAM entry (SPEC 8.8, RFC-123): `stream` is `'samples'` (default) or `'segments'`, and the fields of one stream kind come from one entry, never mixed; none from a user-space entry | **freeze candidate** |
 | `value(field)` | the value a control must show (reported, or the in-flight request while pending) | **freeze candidate** |
 | `status(field)` | `confirmed` / `pending` / `overdue` / `fault` | **freeze candidate** |
 | `age(field)` | ms since the field's channel last reported: since its hub sample time where the channel carries a `telemetry.sample_time` field (RFC-113 draft), else since its arrival (dim when stale, RENDERING §13 law 8) | **freeze candidate** |
@@ -1005,7 +1007,8 @@ Shipped:
   built-in machine.
 - `plugins/factory/funscript-player/`: plays a local or Stash video and
   drives the rail from its main (L0) funscript. One hero, `player`
-  (`absorb: false`), requires `input.target` and `input.duration`, so it
+  (`absorb: false`), requires `input.target` and `input.duration` of the
+  segments entry (`stream: 'segments'`), so it
   renders only where the hub has a segments STREAM (FUNSCRIPT.md D1); the window, the
   position, `limit.input.speed`, both generator run roles and the plan
   strip's elapsed and duration (automatic latency) are optional.

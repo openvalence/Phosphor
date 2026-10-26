@@ -45,7 +45,7 @@
 import { readFileSync } from 'node:fs';
 import { decodeCatalog, CHANNEL_CLASS, STREAM_KIND, UNIT_ID, LIMITS, PublishError, CH_CONTROL_OWNER, SOURCE_KIND, PLAN_FLAG, planFlagNames } from '../../Valence/clients/js/index.js';
 import { buildSettingsModel, reportedValue, placeableControls, minCells } from '../src/model/settings.js';
-import { ROLE, claimAll, claimRoles, ADVGEN_SPEC } from '../src/model/roles.js';
+import { ROLE, claimAll, claimRoles, ADVGEN_SPEC, inputField, motionEntry } from '../src/model/roles.js';
 import { motionTarget, createMotionDoor, bundleHead, leadCapMs, recordBytes, motionStream, roleStream, streamGate, conflictWords, filteredHubNowUs, CLOCK_KEEP, CLOCK_HUNT, CLOCK_HUNT_GAP_MS } from '../src/model/motion.js';
 import { railOwners, railOwnerName, railOwned, foreignOwner } from '../src/model/actions.js';
 import { createPluginHost, validateManifest, MOTION_HOLD_MS, isHubUrl, PAGES_KEY } from '../src/plugins/host.js';
@@ -718,7 +718,7 @@ console.log('(e2) segments lookahead door, streamGate, railOwners');
     });
     let P = null;
     host.add({ ...gaugeManifest, name: 'player', permissions: ['motion'] }, { activate(a) { P = a; } });
-    const durField = model.byRole.get('input.duration')[0];
+    const durField = inputField(model.byRole, 'input.duration', 'segments');
     const r = P.submitSegments([{ atMs: 0, norm: 0.5, durationMs: 50 }]);
     ok('a SOURCE_CONFLICT NACK reads refused: rail owned by <name>, takes no lock, leaves Play clear',
       !r.ok && r.reason === 'refused: rail owned by ' + label && P.gate(durField) === '', JSON.stringify(r));
@@ -810,7 +810,7 @@ console.log('(e3) role door: a samples STREAM by channel role');
 console.log('(i) one motion producer at a time');
 {
   let now = 0, base = 0;
-  const durField = model.byRole.get('input.duration')[0];
+  const durField = inputField(model.byRole, 'input.duration', 'segments');
   const segs = [];
   const { host, calls } = makeHost({
     now: () => now,
@@ -1402,6 +1402,34 @@ console.log('(h) editor geometry');
     zt[zt.length - 1][0] === 10 && near(zt[1][0], 0.05, 1e-9) && zt[1][1] === 0 && Math.max(...zt.map((q) => q[1])) > 0.9);
   ok('plan: no ceiling or travel draws nothing', planMotion({ ...pm, ceiling: 0 }, 10).length === 0 && planMotion({ ...pm, span: 0 }, 10).length === 0);
 }
+
+// ---- (k) Valence RFC-123: input.* binds within its c2h STREAM entry --------------
+console.log('(k) input.* per entry');
+{
+  const seg = entries.find((e) => e.cls === CHANNEL_CLASS.STREAM && e.dirName === 'c2h' && e.streamKind === STREAM_KIND.segments);
+  const smp = entries.find((e) => e.cls === CHANNEL_CLASS.STREAM && e.dirName === 'c2h' && e.streamKind === STREAM_KIND.samples && e.layout.some((f) => f.role === 'input.target'));
+  const decoy = (e, id) => ({ ...e, id, name: 'decoy' + id });
+  const apiOf = (list) => {
+    let A = null;
+    makeHost({ model: () => buildSettingsModel(list) }).host.add({ ...gaugeManifest, name: 'k' }, { activate(a) { A = a; } });
+    return A;
+  };
+  // An accessory's entries first in catalog order, a second entry of each kind last: neither is ever the motion input.
+  const mixed = [decoy(seg, 0x8040), decoy(smp, 0x8041), ...entries, decoy(seg, 0x2f01), decoy(smp, 0x2f02)];
+  const A = apiOf(mixed);
+  ok('byRole holds no input.* from the c2h STREAMs', ![...buildSettingsModel(mixed).byRole.keys()].some((r) => r.startsWith('input.')));
+  ok('api.field(input.target) defaults to the samples entry', A.field('input.target').channelId === smp.id);
+  const t = A.field('input.target', 'segments'), d = A.field('input.duration', 'segments'), v = A.field('input.end_velocity', 'segments');
+  ok('segments: target, duration and end velocity from the one segments entry', [t, d, v].every((f) => f && f.channelId === seg.id));
+  ok('no duration on the samples entry', A.field('input.duration', 'samples') === null);
+  ok('a plain role still answers catalog-wide', A.field('window.min').uid === buildSettingsModel(mixed).byRole.get('window.min')[0].uid);
+  const U = apiOf([decoy(seg, 0x8040), decoy(smp, 0x8041)]);
+  ok('a user-space entry alone gives no motion input', U.field('input.target') === null && U.field('input.target', 'segments') === null);
+  const drive = await import('../plugins/factory/arcade/drive.js');
+  ok('the arcade binds its input role inside the segments entry it sends on', drive.bindFields(A).target.channelId === seg.id);
+  ok('and no segments entry, no target', drive.bindFields(apiOf(entries.filter((e) => e.id !== seg.id))).target === null);
+}
+
 
 console.log(fails ? '\nFAIL — ' + fails + ' assertion(s)' : '\nPASS — plugin host');
 process.exit(fails ? 1 : 0);

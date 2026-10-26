@@ -39,7 +39,8 @@
     CH, SESSION_EVENT_KIND, SAFETY_EVENT_KIND, LOG_EVENT_KIND, LOG_LEVEL_NAME, NACK_NAME,
   } from '../../../Valence/clients/js/index.js';
   import { BUILTIN_MACHINE_NAME } from '../model/builtin.js';
-  import { optionLabel, formatValue, formatWithUnit, unitOf, compact, hexId } from '../model/format.js';
+  import { optionLabel, formatWithUnit, compact, hexId } from '../model/format.js';
+  import { bodyRows, describeEvent } from '../model/anomaly.js';
   import { logView } from './logview.svelte.js';
   import { folds, ingest, clearFold } from './logfold.js';
   import { history, undo, revertAll, revertPlan, fieldOfEntry, say } from '../model/history.svelte.js';
@@ -95,24 +96,9 @@
     [CH.LOG]: invert(LOG_EVENT_KIND),
   };
 
+  const entryOf = (evt) => machine.catalog.entries.find((e) => e.id === evt.channel);
   /** Decode evt.body generically via the emitting channel's OWN catalog schema. */
-  function bodyFields(evt) {
-    if (!evt || !evt.body) return [];
-    const entry = machine.catalog.entries.find((e) => e.id === evt.channel);
-    const byName = new Map(((entry && entry.schema) || []).map((f) => [f.name, f]));
-    return Object.keys(evt.body).map((k) => {
-      const v = evt.body[k];
-      const field = byName.get(k);
-      let display;
-      // A unitless integer is a word, a cause or an id: printed as sent, never grouped.
-      if (field && field.options) display = optionLabel(field, v);
-      else if (Number.isInteger(v) && !unitOf(field)) display = String(v);
-      else if (field) display = formatWithUnit(field, v);
-      else if (typeof v === 'number') display = formatValue(null, v);
-      else display = String(v);
-      return { key: k, raw: v, display };
-    });
-  }
+  const bodyFields = (evt) => bodyRows(evt, entryOf(evt));
 
   function levelName(raw) {
     return (typeof raw === 'number' && LOG_LEVEL_NAME[raw]) ? LOG_LEVEL_NAME[raw] : null;
@@ -174,8 +160,17 @@
     } else if (t === 'anomaly') {
       // Two channels never fold together, whatever their names read.
       p.id = evt.channel;
-      p.text = chan(evt, 'device');
-      p.kv = bodyFields(evt);
+      const entry = entryOf(evt);
+      if (entry) {
+        // The sentence is the row; every field as sent stays in the detail and in Copy.
+        const d = describeEvent(evt, entry, evt.span);
+        p.text = d.text;
+        p.facts = d.facts;
+        p.rawText = d.rawText;
+      } else {
+        p.text = chan(evt, 'device');
+        p.kv = bodyFields(evt);
+      }
     } else if (t === 'safety' && evt.diagnostic) {
       // ph-vdk.14: synthesized locally when the latch changed with no
       // matching edge; it states the gap, never a value the device did not send.
@@ -198,7 +193,7 @@
       p.superseded = !!evt.superseded;
     }
     p.kvText = p.kv.map((f) => f.key + '=' + f.display).join(' ');
-    p.hay = [p.src, p.tag, p.text, p.kvText].filter(Boolean).join(' ').toLowerCase();
+    p.hay = [p.src, p.tag, p.text, p.kvText, p.rawText].filter(Boolean).join(' ').toLowerCase();
     return p;
   }
 
@@ -395,7 +390,7 @@
   function lineOf(r) {
     const p = r.p;
     return [stamp(r.last), p.lvl && '[' + p.lvl + ']', p.src !== 'hub' && p.src !== p.tag && '[' + p.src + ']', p.tag && '[' + p.tag + ']',
-      textOf(r), p.kvText, p.superseded && '(superseded)', r.n > 1 && '×' + r.n + ' since ' + stamp(r.first)].filter(Boolean).join(' ');
+      textOf(r), p.kvText, p.rawText && '(' + p.rawText + ')', p.superseded && '(superseded)', r.n > 1 && '×' + r.n + ' since ' + stamp(r.first)].filter(Boolean).join(' ');
   }
 
   let flash = $state('');
@@ -528,7 +523,7 @@
                     {#if t.id === 'log'}<dt>Source</dt><dd>{r.p.src}{r.p.tag ? ' · ' + r.p.tag : ''}</dd>{/if}
                     <dt>{r.n > 1 ? 'First' : 'Time'}</dt><dd class="mono">{stamp(r.first)} · {ago(r.first)}</dd>
                     {#if r.n > 1}<dt>Last</dt><dd class="mono">{stamp(r.last)} · {ago(r.last)} · ×{r.n}</dd>{/if}
-                    {#each r.p.kv as f}<dt>{f.key}</dt><dd class="mono">{f.display}</dd>{/each}
+                    {#each r.p.facts ?? r.p.kv as f}<dt>{f.label ?? f.key}</dt><dd class="mono">{f.display}</dd>{/each}
                   </dl>
                   {#if r.n > 1}
                     <ol class="inst" aria-label="Instances">

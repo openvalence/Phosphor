@@ -99,7 +99,7 @@ function baseLabel(field) {
  * characters. Longer is prose, and prose in a label column is worse than the
  * raw name. Never a per-device name table: the catalog author owns the words.
  */
-function descLabel(field) {
+export function descLabel(field) {
   if (!field.desc) return '';
   const clause = String(field.desc).split(/[.,;:]/)[0].trim();
   if (!clause || clause.length > 30) return '';

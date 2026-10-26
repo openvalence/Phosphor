@@ -28,7 +28,7 @@ import { THEMES } from '../src/model/theme.js';
 import { shape, createFold, addTo } from '../src/ui/logfold.js';
 import { buildShellPage, TAURI_STUB } from './shell-build.mjs';
 import { decodeCatalog } from '../../Valence/clients/js/catalog.js';
-import { cbMap, cbUint, cbBstr, cbTstr, cbBool, cbArray, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
+import { cbMap, cbUint, cbF32, cbBstr, cbTstr, cbBool, cbArray, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
 import {
   encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, PACKED, LIMITS, NACK,
 } from '../../Valence/clients/js/frames.js';
@@ -439,6 +439,23 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['ph
   await settle();
   const anom = await page.$$eval('#lp-feed-anomaly > .line', (ls) => ls.map((l) => l.querySelector('.text').textContent + ' ' + l.querySelector('.n').textContent));
   ok('log: two device channels keep their own rows, a repeat on one folds', anom.length === 2 && /×2/.test(anom[1]), anom.join(' | '));
+  // A catalogued device event reads by its channel's own kind labels: one row per kind, the newest
+  // instance in full, and Copy keeps every field as sent.
+  const AN = ENTRIES.find((e) => e.role === 'events.anomaly');
+  const anomEv = (kind, seq, target, detail) => wire.send(FRAME.EVENT, AN.id, cbMap([[K.event_kind, cbUint(kind)],
+    [K.body, cbMap([[1, cbUint(kind)], [2, cbUint(seq)], [3, cbF32(target)], [4, cbF32(detail)], [5, cbUint(755038100)]])]]));
+  anomEv(3, 1, 0.5, 0.72);
+  anomEv(6, 2, 0.8, 12.64);
+  anomEv(3, 3, 0.25, 0.5);
+  await page.waitForFunction(() => /Knot trimmed.*×2/.test(document.querySelector('#lp-feed-anomaly')?.textContent || ''), null, { timeout: 5000 }).catch(() => {});
+  await settle();
+  const kinds = await page.$$eval('#lp-feed-anomaly > .line', (ls) => ls.map((l) => l.querySelector('.text').textContent + ' ' + l.querySelector('.n').textContent));
+  ok('log: anomalies fold per named kind, not per channel', kinds.some((k) => /^Piece over ceiling /.test(k)) && kinds.some((k) => /^Knot trimmed .*×2$/.test(k)), kinds.join(' | '));
+  await page.click('[data-feed="anomaly"]');
+  await page.click('#lp-feed-anomaly > .line:has-text("Knot trimmed") .head');
+  await settle();
+  const anInst = await page.$$eval('#lp-feed-anomaly > .line.open .inst li span', (ls) => ls.map((s) => s.textContent));
+  ok('log: the newest instance reads in full, never bare', anInst.length === 2 && anInst.every((t) => /^Knot trimmed . /.test(t)), anInst.join(' | '));
   await page.click('[data-feed="log"]');
 
   // The hub's refusals are Log rows (ph-s5mu.1): code, channel and detail, folded like any repeat.

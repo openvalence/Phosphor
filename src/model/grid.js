@@ -724,6 +724,28 @@ export function resetMap(map, members = false) {
   }
 }
 
+/**
+ * Re-key every placement in the store (each layout's views, their nests, the
+ * saved modules) through `fn(key)`. A key whose new form is already placed
+ * is dropped, never merged. True when any key changed.
+ */
+export function rekeyStore(store, fn) {
+  let changed = false;
+  const walk = (m) => {
+    for (const k of Object.keys(m)) {
+      if (isNest(m[k])) walk(m[k].nest.map);
+      const n = fn(k);
+      if (n === k) continue;
+      changed = true;
+      if (!own(m, n)) m[n] = m[k];
+      delete m[k];
+    }
+  };
+  for (const l of Object.values(store.layouts)) for (const [k, m] of Object.entries(l)) if (k !== 'opts') walk(m);
+  for (const m of Object.values(store.modules || {})) if (m && m.members) walk(m.members);
+  return changed;
+}
+
 export function deleteModule(store, name) {
   if (!store.modules || !own(store.modules, name)) return false;
   delete store.modules[name];

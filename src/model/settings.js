@@ -19,9 +19,9 @@
  */
 
 import {
-  PACKED, UI_RANK, UI_ARCHETYPE, VALUE_ASPECT, UI_CATEGORY, SAFETY_OP, FIELD_ROLE, LIMITS,
+  PACKED, UI_RANK, UI_ARCHETYPE, VALUE_ASPECT, UI_CATEGORY, SAFETY_OP, FIELD_ROLE, LIMITS, CHANNEL_CLASS,
 } from '../../../Valence/clients/js/index.js';
-import { ROLE, ROLE_LABEL, isActionRole, indexChannels } from './roles.js';
+import { ROLE, ROLE_LABEL, isActionRole, isInputRole, firstInputField, indexChannels, indexInputs } from './roles.js';
 import { isPersistentAction } from './actions.js';
 
 // ---------------------------------------------------------------------------
@@ -474,8 +474,9 @@ export function buildSettingsModel(entries) {
       if (f.rank === UI_RANK.hidden) continue;
       // Roles are indexed for EVERY field, categorized or not — a hero widget
       // wants `telemetry.position` from the motion channel, which carries no
-      // category because it is not a setting.
-      addRole(field.role, field);
+      // category because it is not a setting. Not input.* on a c2h STREAM: those
+      // repeat once per entry (SPEC 8.8, RFC-123) and bind through indexInputs.
+      if (!(isInputRole(field.role) && entry.cls === CHANNEL_CLASS.STREAM && entry.dirName === 'c2h')) addRole(field.role, field);
       fields.push(field);
     }
   }
@@ -498,8 +499,12 @@ export function buildSettingsModel(entries) {
   // with one is a verb — home, clear fault, save — and renders as a button
   // rather than a value editor. Without this, actions are undiscoverable and
   // every client hardcodes them, which is precisely what we are killing.
+  //
+  // INTENT entries only (SPEC §8.8, §9.4, RFC-122): an EVENT body field's role binds
+  // within its own entry, so it never enters byRole or the actions; the event
+  // log reads it from the entry's schema.
   for (const entry of entries) {
-    if (!entry.schema) continue;
+    if (!entry.schema || entry.cls !== CHANNEL_CLASS.INTENT) continue;
     for (const f of entry.schema) {
       if (f.rank === UI_RANK.hidden) continue;   // same law as pass 1
       // Index EVERY roled schema field, not just the verbs.
@@ -632,6 +637,7 @@ export function buildSettingsModel(entries) {
     });
 
   indexChannels(byRole, fields);
+  indexInputs(byRole, fields, entries);
   return { categories, actions, looseActions, byRole, fields };
 }
 
@@ -839,18 +845,39 @@ export function minCells(presentationOrCells, orientation = 'h') {
 }
 
 /**
+ * A role that binds within its own entry (SPEC §8.8, RFC-122, RFC-123): a modulator's,
+ * a store writer's and a motion stream's roles repeat once per entry, so no
+ * catalog-wide first field answers for them. An EVENT body role is one too
+ * and never enters the model.
+ */
+export const bindsInEntry = (role) => /^(mod|store|input)\./.test(role);
+
+/**
  * Persisted key for a single-field control (law 10): its registry role when
- * it is that role's first-authored field, else its uid. The uid (channel id
- * plus field name) is the RFC-080 draft's user-surface carve-out
- * (ph-e82.1 item 3); a key the catalog no longer resolves stays inert.
+ * the role binds catalog-wide and it is that role's first-authored field,
+ * else its uid. The uid (channel id plus field name) is the law 10 scoped
+ * exception, and the key of every within-entry role (RFC-122); a key the
+ * catalog no longer resolves stays inert.
  * Compares uids, never object identity: in the app `fields` are $state
  * proxies while `byRole` (a Map) holds the raw objects (ph-e82.9).
  */
 export function controlKey(f, byRole) {
   if (f.lo && f.hi) return controlKey(f.lo, byRole) + '+' + controlKey(f.hi, byRole);
-  const first = f.role && byRole && byRole.get(f.role);
+  const first = f.role && !bindsInEntry(f.role) && byRole && byRole.get(f.role);
   return first && first[0].uid === f.uid ? 'role:' + f.role : uidKey(f);
 }
+
+/**
+ * A saved key with its within-entry role parts re-keyed on the uid of the
+ * role's first field: what `role:mod.amount` meant before RFC-122 and
+ * `role:input.target` before RFC-123 (the first field in `byRole`, for an
+ * input.* role the first in a motion entry). A role this catalog lacks, and
+ * every other key, comes back as it was.
+ */
+export const migratedKey = (key, byRole) => key.replace(/role:((?:mod|store|input)\.[^+#]+)/g, (m, r) => {
+  const first = isInputRole(r) ? firstInputField(byRole, r) : ((byRole && byRole.get(r)) || [])[0];
+  return first ? uidKey(first) : m;
+});
 
 /** The all-uid key. Builds before ph-e82.9 saved role fields under it; placements accept it as an alias. */
 const uidKey = (f) => (f.lo && f.hi ? uidKey(f.lo) + '+' + uidKey(f.hi) : 'uid:' + f.uid);

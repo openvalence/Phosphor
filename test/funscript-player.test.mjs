@@ -31,6 +31,7 @@ import { readFileSync } from 'node:fs';
 import { decodeCatalog } from '../../Valence/clients/js/index.js';
 import { buildSettingsModel } from '../src/model/settings.js';
 import { claimAll } from '../src/model/roles.js';
+import { buildSettingsModel as buildModel } from '../src/model/settings.js';
 import { leadCapMs } from '../src/model/motion.js';
 import * as CB from '../../Valence/clients/js/cbor.js';
 
@@ -203,6 +204,17 @@ if (index) {
     const claim = (entries) => claimAll(buildSettingsModel(entries).byRole, [{ id: 'p', spec: h.spec, absorb: false }]);
     const w = claim(ENTRIES).widgets[0];
     ok('claims on the neutrino-sim fixture, dur on the segments STREAM', !!w && w.fields.dur.channelId === SEG_CH);
+    ok('target and dur come from the same entry (RFC-123), the segments one, not the 0x2100 samples entry',
+      !!w && w.fields.target.channelId === SEG_CH && w.fields.target.channelId === w.fields.dur.channelId);
+    {
+      // Decoys first in catalog order: an accessory's segments entry (user space) and a second segments entry later.
+      const seg = ENTRIES.find((e) => e.id === SEG_CH);
+      const decoy = (id) => ({ ...seg, id, name: 'decoy' + id });
+      const entries = [decoy(0x8040), ...ENTRIES, decoy(0x2f01)];
+      const wd = claimAll(buildModel(entries).byRole, [{ id: 'p', spec: h.spec, absorb: false }]).widgets[0];
+      ok('a user-space segments entry with input.* is ignored; a later entry of the kind never pairs',
+        !!wd && wd.fields.target.channelId === SEG_CH && wd.fields.dur.channelId === SEG_CH);
+    }
     ok('every optional role binds there', !!w && ['pos', 'lo', 'hi', 'vmax', 'patRun', 'advRun', 'planEl', 'planDur'].every((k) => w.fields[k]));
     ok('absorb false claims nothing away', claim(ENTRIES).claimed.size === 0);
     ok('declines without a segments STREAM (D1)', claim(ENTRIES.filter((e) => e.id !== SEG_CH)).widgets.length === 0);

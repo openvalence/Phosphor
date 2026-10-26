@@ -18,6 +18,7 @@
  */
 
 import { NAV_ICONS } from '../ui/navIcons.js';
+import { isInputRole, inputField } from '../model/roles.js';
 
 /** Host API major. Bumped only by a breaking change, which the freeze forbids once one external plugin exists. */
 export const API_VERSION = 1;
@@ -231,8 +232,9 @@ export function createPluginHost(deps) {
       // ---- read: the model, never the wire ----
       catalog: () => deps.model(),
       hub: () => (deps.hub ? deps.hub() : null),
-      field: (role) => {
+      field: (role, stream) => {
         const m = deps.model();
+        if (isInputRole(role)) return m && m.byRole ? inputField(m.byRole, role, stream) : null;
         const list = m && m.byRole && m.byRole.get(role);
         return list && list.length ? list[0] : null;
       },

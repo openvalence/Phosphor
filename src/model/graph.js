@@ -22,7 +22,7 @@ import {
 import {
   cbMap, cbUint, cbTstr, cbF32, cbArray, cbBool, cbBstr, cbDecodeFull,
 } from '../../../Valence/clients/js/cbor.js';
-import { ROLE } from './roles.js';
+import { ROLE, isUserSpace } from './roles.js';
 import { pushPoint } from './trace.js';
 
 export { M as MAP };
@@ -165,8 +165,7 @@ export const refKey = (ref) => (ref.kind === 'bp'
   ? 'bp:' + ref.device + ':' + ref.feature + ':' + ref.type
   : 'field:' + ref.key);
 
-/** SPEC 8.10: 0x8000-0xBFFF (registry channel_id_ranges `user`) is the accessory space. */
-export const isUserSpace = (ch) => ch >= 0x8000 && ch <= 0xbfff;
+export { isUserSpace };
 
 /**
  * Where an edge runs, and why, in words. `toAccessory`: the target is an
@@ -210,6 +209,22 @@ export const emptyGraph = () => ({ v: 2, nodes: [], rels: [], drafts: [], ops: [
 
 let seq = 0;
 const newId = (p) => p + Date.now().toString(36) + (seq++).toString(36);
+
+/**
+ * Re-key every field node of `g` through `fn(key)`. A node whose new key another node already holds
+ * stays as saved (two nodes never share a ref). True when any key changed.
+ */
+export function rekeyNodes(g, fn) {
+  let changed = false;
+  for (const n of g.nodes) {
+    if (n.ref.kind !== 'field') continue;
+    const key = fn(n.ref.key);
+    if (key === n.ref.key || g.nodes.some((m) => m !== n && m.ref.kind === 'field' && m.ref.key === key)) continue;
+    n.ref = { ...n.ref, key };
+    changed = true;
+  }
+  return changed;
+}
 
 /** The node for a ref, added at (x, y) when the graph has none. */
 export function addNode(g, ref, x = 0, y = 0) {

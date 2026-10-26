@@ -42,6 +42,7 @@ import { CORE_CHANNEL, CORE_CHANNEL_NAME } from '../../../Valence/clients/js/gen
 import { buildSettingsModel } from './settings.js';
 import { MAX_SUBSCRIBE_HZ, regrow, telemetryChannelIds } from './wishes.js';
 import { ROLE } from './roles.js';
+import { windowSpan } from './anomaly.js';
 import { filteredHubNowUs } from './motion.js';
 import { endpointLabel, setHubClock, unitOf } from './format.js';
 import { recorder } from './vault.js';
@@ -773,7 +774,8 @@ export function connect(opts = {}) {
     else if (evt.channel in CORE_CHANNEL_NAME) push(machine.events.session, rec, EVT_MAX);
     // TODO(rfc-x3n): no catalog key says which device EVENT channel is the
     // anomaly log, so every device-tier EVENT shares this ring.
-    else push(machine.events.anomaly, rec, ANOM_MAX);
+    // The window as reported now: a row is read against the window it arrived under.
+    else push(machine.events.anomaly, { ...rec, span: windowSpan(machine.catalog.model, machine.samples) }, ANOM_MAX);
   });
 
   session.on('sessionEvent', (evt) => {

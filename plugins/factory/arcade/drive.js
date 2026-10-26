@@ -25,9 +25,9 @@ const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 const num = (api, f) => (f ? Number(api.value(f)) : NaN);
 const unit = (f, id, text) => !!f && (f.unitId === id || f.unit === text);
 
-/** The fields the drive binds by role, each null when the hub has none. */
+/** The fields the drive binds by role, each null when the hub has none. The input role binds in the segments STREAM entry it sends on (RFC-123). */
 export function bindFields(api) {
-  return Object.fromEntries(Object.entries(ROLES).map(([k, role]) => [k, api.field(role) || null]));
+  return Object.fromEntries(Object.entries(ROLES).map(([k, role]) => [k, api.field(role, 'segments') || null]));
 }
 
 export function createDrive(api, { fields = null, now = () => performance.now(), onStop = () => {} } = {}) {

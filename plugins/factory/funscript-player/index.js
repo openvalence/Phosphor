@@ -4,8 +4,9 @@
  * docs/plugins/FUNSCRIPT.md.
  *
  * Constraints:
- * - The spec requires input.target and input.duration: on a hub without a
- *   segments STREAM the hero declines and nothing renders (D1, law 7).
+ * - The spec requires input.target and input.duration of the segments STREAM
+ *   entry, both from that one entry (RFC-123): on a hub without a segments
+ *   STREAM the hero declines and nothing renders (D1, law 7).
  * - absorb false: the claimed fields stay in the generic tree.
  * - deactivate disposes the player, which sends its one hold.
  * - planEl and planDur feed the automatic latency compensation only; without
@@ -23,6 +24,7 @@ export const HERO = Object.freeze({
   absorb: false,
   cells: { h: [16, 12], v: [8, 16] },
   spec: {
+    stream: 'segments',
     require: { target: 'input.target', dur: 'input.duration' },
     optional: { pos: 'telemetry.position', lo: 'window.min', hi: 'window.max',
       vmax: 'limit.input.speed', patRun: 'pattern.running', advRun: 'advgen.running',

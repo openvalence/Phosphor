@@ -113,6 +113,9 @@ export function undoLast() {
   return true;
 }
 
+/** Re-key the saved placements through `fn`; a repair of old keys, never an undo step. */
+export function rekey(fn) { if (G.rekeyStore(layouts, fn)) persist(); }
+
 export const layoutNames = () => Object.keys(layouts.layouts);
 /** Layout names in sidebar order, Default first and pinned (grid.js layoutOrder). */
 export const orderedLayoutNames = () => G.layoutOrder(layouts);
