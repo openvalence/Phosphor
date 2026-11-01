@@ -1,5 +1,9 @@
 # Copy
 
+Every user-visible string meets the family's standard and goes through its
+string pass: `../Nucleus/.claude/rules/strings.md` (operator ruling
+2026-11-01). This page holds only Phosphor's own copy mechanics on top of it.
+
 Tooltips, hints, placeholders, empty states and status lines read like a
 Blender tooltip (operator ruling 2026-10-02).
 
@@ -15,7 +19,7 @@ Blender tooltip (operator ruling 2026-10-02).
 10. A tooltip is `data-tip` (a kit control's `tip`); the native `title` attribute is never written, and `src/ui/tip.js` converts one that arrives anyway. `test/copy-lint.mjs` in `npm run check` fails a literal title, data-tip or placeholder over 60 characters, with ". ", or with "so that", "allows you", "simply", "just", "in order to".
 11. A health line (status slot, Log, Health list) is a measured fact with the number that raised it, never a verdict about Phosphor; its tooltip is its detail, one fragment a line: what was measured, since when, the threshold, the one action, the click. It never repeats the line (operator 2026-10-09; `test/health.test.mjs` holds every condition to it).
 
-12. Voice is plain and technical, in the standard terms of motion control and industrial equipment (axis, e-stop latch, fault, interlock, link loss, timeout, latency, retransmit). No jokes, winks or reassurance, and nothing the user already knows: Neutrino is software, so its copy never implies or denies that it moves; it says what a control does in the terms of the system it emulates (operator 2026-10-16).
+12. Voice is `strings.md`'s. Neutrino is software, so its copy never implies or denies that it moves; it says what a control does in the terms of the system it emulates (operator 2026-10-16).
 
 | Before | After |
 |---|---|

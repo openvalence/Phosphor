@@ -5,6 +5,7 @@ This file is documentation, not policy: the Canon and the repo's rules files rul
 | What | Where |
 |---|---|
 | The Canon (C-1..C-12, the Canon Flag, the amendment ritual) | `../Nucleus/.claude/rules/governance.md`, its one home; this repo has no copy |
+| User-visible strings (log lines, catalog text, refusals, UI, site copy) | `../Nucleus/.claude/rules/strings.md`, the standard and the string pass (workspace skill `string-pass`); this repo has no copy; `docs/COPY.md` holds Phosphor's own copy mechanics |
 | `.claude/rules/governance.md` | the Canon pointer, Valence read-only, Phosphor is a client (no device knowledge) |
 | `.claude/rules/webui.md` | build chain, ground truth and render traps |
 | Design rulings | `docs/DESIGN.md`: read it before touching `src/ui/heroes.js`, `src/model/` or `src-tauri/`; the plugin contract is `docs/PLUGINS.md` |
