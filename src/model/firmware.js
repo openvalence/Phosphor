@@ -8,7 +8,8 @@
  *   object, so test/flasher.test.mjs runs it under node and against a bench.
  * - The machine decides (Nucleus ValenceOta.h): nothing here refuses an
  *   update the machine would take, except an image that is not Nucleus P4
- *   firmware at all.
+ *   firmware at all. A board clash is said, never enforced: the machine
+ *   refuses another board's image itself (Nucleus OtaArm.h imageFit()).
  * - The running slot is the evidence of a new image, never the version: a
  *   same-version reflash moves the slot.
  * - One flow at a time; every await re-checks its run so a cancel or a new
@@ -17,13 +18,16 @@
 
 export const CHIP_P4 = 0x0012;
 export const PROJECT = 'flagship_p4';
-export const RELEASES = 'https://api.github.com/repos/openvalence/Nucleus/releases';
+export const FW_INDEX = 'https://openvalence.org/flash/fw/index.json';   // openvalence.github.io tools/fw_index.py
 export const DIAG_HEAD = '/diag?from=4294967295';   // the header and footer only (tools/ota.py)
 export const VERDICT_WAIT_MS = 150000;
 const CHIPS = { 0: 'ESP32', 2: 'ESP32-S2', 5: 'ESP32-C3', 9: 'ESP32-S3', 12: 'ESP32-C2', 13: 'ESP32-C6', 16: 'ESP32-H2', 18: 'ESP32-P4', 20: 'ESP32-C61', 23: 'ESP32-C5' };
 const APP_DESC_MAGIC = 0xabcd5432;
-// FIRMWARE_VERSION as tools/ota.py image_version() finds it; esp_app_desc's version is the git describe (val-1vdq).
+// FIRMWARE_VERSION as tools/ota.py image_version() finds it; esp_app_desc's version is "<product>/<git label>" (val-1vdq, val-3yls).
 const VERSION_RE = /\d+\.\d+\.\d+-p4hub[\w.-]*/g;
+// The product names the board, in the image (Nucleus flagship_p4/CMakeLists.txt) and in the site's release tags.
+const BOARDS = { 'nucleus-p4': 'Flagship', 'nucleus-p4b': 'Barnacle' };
+const boardOf = (product) => BOARDS[product] || product;
 
 /** The image's facts, or {error} naming the fault and its one action. */
 export function readImage(bytes) {
@@ -36,34 +40,45 @@ export function readImage(bytes) {
   const project = str(80, 32);
   if (project !== PROJECT) return { error: 'Not Nucleus firmware (' + project + '): pick a Nucleus .bin' };
   const found = new Set(new TextDecoder('latin1').decode(bytes).match(VERSION_RE));
-  return { chip: CHIPS[chip], project, build: str(48, 32), date: str(128, 16), version: found.size === 1 ? [...found][0] : null };
+  const desc = str(48, 32);
+  const product = /^nucleus-[^/]+(?=\/)/.exec(desc)?.[0] || null;
+  return {
+    chip: CHIPS[chip], project, product, board: product && boardOf(product), build: product ? desc.slice(product.length + 1) : desc,
+    date: str(128, 16), version: found.size === 1 ? [...found][0] : null,
+  };
+}
+
+/** The board a /diag version names (FIRMWARE_VERSION's suffix, Nucleus valence_config.h), or null. */
+export function runningBoard(version) {
+  if (/-p4hub-barnacle/.test(version || '')) return 'Barnacle';
+  return /-p4hub/.test(version || '') ? 'Flagship' : null;
+}
+
+/** What the machine will say about this image's board before it is armed, or ''. */
+export function boardClash(image, running) {
+  if (!image || image.error) return '';
+  if (!image.board) return 'Image names no board: the machine refuses it, use USB';
+  const here = running && runningBoard(running.version);
+  return here && here !== image.board ? image.board + ' image on a ' + here + ': the machine refuses it' : '';
 }
 
 export async function sha256(bytes) {
   return [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-/** True when a sha256sum-format file lists `hash`. */
-export function sumsHave(text, hash) {
-  return text.split(/\r?\n/).some((l) => l.trim().split(/\s+/)[0]?.toLowerCase() === hash);
-}
-
-/** {kind: official|unrecognized|unknown, label}. Every kind may be flashed; the label informs. */
+/** {kind: official|unrecognized|unknown, label}: the hash against the site's release index. Every kind may be flashed; the label informs. */
 export async function originOf(hash, net) {
-  const failed = { kind: 'unknown', label: "Can't check: GitHub didn't answer" };
+  const failed = { kind: 'unknown', label: "Can't check: openvalence.org didn't answer" };
   let releases;
   try {
-    const r = await net.get(RELEASES);
+    const r = await net.get(FW_INDEX);
     if (r.status !== 200) return failed;
-    releases = JSON.parse(r.text);
+    releases = JSON.parse(r.text).releases;
   } catch (e) { return failed; }
-  const sums = releases.flatMap((rel) => (rel.assets || []).filter((a) => a.name === 'SHA256SUMS')
-    .map((a) => ({ tag: rel.tag_name, url: a.browser_download_url })));
-  if (!sums.length) return { kind: 'unknown', label: "Can't check: no published checksums" };
-  const texts = await Promise.all(sums.map((s) => net.get(s.url).then((r) => (r.status === 200 ? r.text : null), () => null)));
-  const hit = texts.findIndex((t) => t && sumsHave(t, hash));
-  if (hit >= 0) return { kind: 'official', label: 'Official ' + sums[hit].tag };
-  return texts.some((t) => t != null) ? { kind: 'unrecognized', label: 'Unrecognized build' } : failed;
+  if (!Array.isArray(releases) || !releases.some((rel) => rel.files?.length)) return { kind: 'unknown', label: "Can't check: no published checksums" };
+  const hit = releases.find((rel) => (rel.files || []).some((f) => String(f.sha256).toLowerCase() === hash));
+  if (!hit) return { kind: 'unrecognized', label: 'Unrecognized build' };
+  return { kind: 'official', label: 'Official ' + boardOf(hit.product) + ' ' + hit.version + (hit.prerelease ? ' · prerelease' : '') };
 }
 
 /** `/diag`'s first line: {version, slot, img, up} or null. */

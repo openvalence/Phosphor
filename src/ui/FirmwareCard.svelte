@@ -10,6 +10,7 @@
    */
   import { untrack } from 'svelte';
   import { flash, flasher } from '../model/flasher.svelte.js';
+  import { boardClash } from '../model/firmware.js';
   import { machine, linkKind } from '../model/machine.svelte.js';
   import './pane.css';
 
@@ -18,9 +19,12 @@
   const busy = $derived(['checking', 'arming', 'waiting', 'uploading', 'restarting'].includes(flash.phase));
   const imageOk = $derived(!!flash.image && !flash.image.error);
   const pct = $derived(flash.total ? Math.round((100 * flash.sent) / flash.total) : 0);
-  const status = $derived(kind === 'ble' ? 'Needs a Wi-Fi link: connect by address' : flash.status);
+  // A board clash is said while the file waits; the flow's own status outranks it.
+  const clash = $derived(flash.phase === 'ready' && !flash.status ? boardClash(flash.image, flash.running) : '');
+  const status = $derived(kind === 'ble' ? 'Needs a Wi-Fi link: connect by address' : flash.status || clash);
+  const tone = $derived(kind === 'ble' || clash ? 'fault' : flash.tone);
   const run = $derived(flash.running);
-  const img = $derived(imageOk ? [flash.image.version || 'version unknown', flash.image.project, flash.image.date].join(' · ') : '--');
+  const img = $derived(imageOk ? [flash.image.version || 'version unknown', flash.image.board ? flash.image.board + ' image' : 'No board', flash.image.date].join(' · ') : '--');
   const file = $derived(flash.file ? flash.file.name + ' · ' + (flash.file.size / 1048576).toFixed(2) + ' MB' : '--');
 
   // What the machine runs: read on arrival and on every return to live (the restart drops the link).
@@ -43,7 +47,7 @@
     <dt>Image</dt><dd class="mono" title={imageOk ? img : null}>{img}</dd>
     <dt>Origin</dt><dd data-kind={flash.origin?.kind} title={flash.hash || null}>{flash.origin?.label || '--'}</dd>
   </dl>
-  <p class="pane-status" data-phase={kind === 'ble' ? 'fault' : flash.tone} title={status || null} aria-live="polite">{status}</p>
+  <p class="pane-status" data-phase={tone} title={status || null} aria-live="polite">{status}</p>
   <div class="bar" role="progressbar" aria-label="Upload" aria-valuemin="0" aria-valuemax="100" aria-valuenow={pct}
        class:on={flash.phase === 'uploading' || flash.phase === 'restarting'}><span style:width={pct + '%'}></span></div>
   <div class="acts">

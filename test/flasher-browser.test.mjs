@@ -27,7 +27,7 @@ function fixtureImage() {
   const dv = new DataView(b.buffer);
   b[0] = 0xe9; dv.setUint16(12, 0x12, true); dv.setUint32(32, 0xabcd5432, true);
   const put = (o, s) => b.set(new TextEncoder().encode(s), o);
-  put(48, 'abc1234'); put(80, 'flagship_p4'); put(128, 'Oct 18 2026'); put(4000, '0.1.60-p4hub');
+  put(48, 'nucleus-p4/abc1234'); put(80, 'flagship_p4'); put(128, 'Oct 18 2026'); put(4000, '0.1.60-p4hub');
   return Buffer.from(b);
 }
 const IMAGE = existsSync(BENCH) ? { name: 'firmware.bin', buffer: readFileSync(BENCH) } : { name: 'firmware.bin', buffer: fixtureImage() };
@@ -80,7 +80,7 @@ function MACHINE_STUB() {
   const reqs = new Map();
   const HEAD = (ver, slot, up) => `# nucleus-p4 ${ver} git=x slot=${slot} img=valid boot=1 reset=software up=${up}s\n# archive`;
   const answer = (method, url) => {
-    if (url.includes('api.github.com')) return [200, '[]'];
+    if (url.includes('openvalence.org/flash/fw/index.json')) return [200, '{"releases":[]}'];
     if (url.includes('/diag')) {
       if (!fw.uploaded) return [200, HEAD('0.1.58-p4hub-bench', 'ota_0', 900)];
       return fw.after === 'rollback' ? [200, HEAD('0.1.58-p4hub-bench', 'ota_0', 3)] : [200, HEAD('0.1.60-p4hub', 'ota_1', 3)];
@@ -167,7 +167,7 @@ console.log('\n--- the whole flow at 1428x900 ---');
   await page.setInputFiles('.fw input[type=file]', { ...IMAGE, mimeType: 'application/octet-stream' });
   await page.waitForFunction(() => /Can't check/.test(document.querySelector('.fw dd[data-kind]')?.textContent || ''), null, { timeout: 5000 });
   const facts = await page.$$eval('.fw dd', (ds) => ds.map((d) => d.textContent.trim()));
-  ok('the image facts and the origin show', /^\d+\.\d+\.\d+-p4hub\S* · flagship_p4 · /.test(facts[2]) && facts[3] === "Can't check: no published checksums", facts.join(' | '));
+  ok('the image facts and the origin show', /^\d+\.\d+\.\d+-p4hub\S* · (Flagship image|No board) · /.test(facts[2]) && facts[3] === "Can't check: no published checksums", facts.join(' | '));
   ok('Update is ready', !(await page.isDisabled('.fw button.primary')));
   heights.push(await fwBox(page));
   await shot(page, '1428-picked');

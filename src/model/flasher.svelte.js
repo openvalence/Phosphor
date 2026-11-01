@@ -6,7 +6,7 @@
  * - The state lives here, not in the card: the link drops while the machine
  *   restarts and the System page may re-render under the flow.
  * - Shell only. The page's fetch cannot reach a hub (CSP, CORS); the HTTP
- *   plugin's fetch carries arm, status, /diag and GitHub, and
+ *   plugin's fetch carries arm, status, /diag and the site's firmware index, and
  *   `ota_upload` (src-tauri/src/ota.rs) streams the image with progress.
  */
 import { blank, createFlasher } from './firmware.js';

@@ -1793,16 +1793,29 @@ it never decides.
 - Checks before anything is sent, all local: ESP image magic 0xE9, chip id
   P4 (0x0012 at header offset 12), the `esp_app_desc` magic, project name
   and build, and the FIRMWARE_VERSION string compiled in (exactly one, the
-  rule `tools/ota.py` uses; the descriptor's version is the git describe,
-  `val-1vdq`). A failed check names the fault with one action and disables
-  Update.
-- Origin: the file's SHA-256 against the `SHA256SUMS` asset of each release
-  on the first page of github.com/openvalence/Nucleus releases. "Official
-  <tag>" on a match, "Unrecognized build" otherwise, "Can't check: no published
-  checksums" or "Can't check: GitHub didn't answer". Every label flashes;
-  the label informs, it does not gate. This is the flasher's only request
-  off the LAN, made when a file is picked, and the privacy page says so
-  (openvalence.github.io `privacy.html`).
+  rule `tools/ota.py` uses). A failed check names the fault with one action
+  and disables Update.
+- Board: the descriptor's version is `<product>/<git label>` (Nucleus
+  `flagship_p4/CMakeLists.txt`, `val-3yls`); `nucleus-p4` reads "Flagship
+  image" and `nucleus-p4b` "Barnacle image" in the Image row, an image built
+  before the board went in "No board". The machine refuses another board's
+  image, and one naming none, with a 409 before it erases anything (Nucleus
+  `OtaArm.h` `imageFit()`); Phosphor says so first, while the file waits, in
+  the status slot ("Barnacle image on a Flagship: the machine refuses it",
+  "Image names no board: the machine refuses it, use USB"), the running
+  board read off `/diag`'s FIRMWARE_VERSION suffix (`-p4hub-barnacle` the
+  barnacle, any other `-p4hub` the Flagship). Update stays on: the machine
+  decides.
+- Origin: the file's SHA-256 against every file of every release in the
+  site's firmware index, https://openvalence.org/flash/fw/index.json
+  (openvalence.github.io `tools/fw_index.py`: product, version, prerelease,
+  per-file sha256), the web flasher's own list. "Official <board> <version>"
+  on a match, with " · prerelease" for a prerelease, "Unrecognized build"
+  otherwise, "Can't check: no published checksums" or "Can't check:
+  openvalence.org didn't answer". Every label flashes; the label informs, it
+  does not gate. This is the flasher's only request off the LAN, made when a
+  file is picked, and the privacy page says so (openvalence.github.io
+  `privacy.html`).
 - Flow, one status slot: Update arms (`POST /ota/arm`), then "Double-press
   PAIR on the machine" with the window's countdown (60 s), polling once a
   second; approved starts the upload at once (the machine holds an approval
@@ -1818,7 +1831,8 @@ it never decides.
   again"), not approved (403: "Not approved: press Update, then double-press
   PAIR"), another request waiting, an image the machine refused, a broken
   upload ("The upload broke off: the machine keeps its firmware, try
-  again"), no answer, an unreadable file. A bench
+  again"), no answer, an unreadable file. A 409 the machine words itself
+  (another board's image, no board, busy) reads verbatim. A bench
   image's token path is not offered; a bench machine shows the same press
   flow and its 403 speaks.
 - Layout: the card's rows (Running, File, Image, Origin, the status slot,
@@ -1833,7 +1847,7 @@ it never decides.
   a body as a JSON number array and reports no upload progress) and emits
   `ota-progress`, with one 120 s deadline over the request; Android's IPC
   has no raw body, so the command also takes the image as a JSON number
-  array. Arm, status, `/diag` and GitHub ride the plugin's fetch. An IPv6
+  array. Arm, status, `/diag` and the firmware index ride the plugin's fetch. An IPv6
   hub is bracketed in the URL.
 
 ### 10.20 The connecting page (2026-10-18, `ph-u3b2.1`, `ph-u3b2.2`, PROPOSED)
@@ -2005,3 +2019,4 @@ behind the menu.
 | 2026-10-23 | §10.3, §10.13 | The footer's UI build:etag cell has its own context menu (right-click, or the long press that is the touch right-click): Copy versions (Phosphor version and build, firmware, the Valence version) and Copy diagnostics (JSON), an allowlist of versions, platform, build mode (app, web, mini), hub product and transport, catalog etag, boot id, tier, deadman, link counters and the health readouts; never tokens, session or instance ids, the hub's name, network names or addresses. The shell menu stays out of the cell; the status slot says Versions copied or Diagnostics copied, over a link fault too (`src/model/stamp.js`, `src/ui/stampmenu.js`, `ph-75yn`). | operator (2026-10-18: "context menu on the footer stamp ... Copy versions, Copy diagnostics"); the JSON field set, the menu holding only the two items, the copy words showing over a link fault and no keyboard path (the cell is not focusable) are the agent's, veto-able |
 | 2026-10-24 | §10.3 | The funscript player's timeline head gets a Color by speed control (`ph-piak`, the full card only like the zoom group): a toggle stepping off, Speed tint, Tint and line (pref `speedColor`, off by default) and a tint-opacity slider (pref `speedTint`, 0 to 60 %, default 30 with a detent; Shift fine, Ctrl snap). One color per moment from the planner render's speed against the machine's speed limit, on a turbo-like ramp (deep blue at rest through cyan, green, yellow, orange to red at the limit; tokens `--spd-0` to `--spd-8`, locked, per chassis, 3:1 on the timeline surfaces, in `src/model/theme.js`) and a magenta `--spd-over` past the limit. Speed tint fills the Range band behind the line over the script's time, the line keeping `--intent` over a `--screen` halo; Tint and line also strokes the line with the ramp, thicker past the limit. The readout carries the legend: the ramp with 0, half and the limit in mm/s. The ramp is red at the limit by the operator's ruling (law 13 keeps red for hazards; the limit is the hazard edge). Trimmed knots are not marked (the render reports anomalies as totals only). | PROPOSED: the bead text and the operator's rulings 2026-10-24 (ramp, tint, slider); the stop colors, the halo and the readout form are the agent's, veto-able |
 | 2026-10-24 | §10.10 | The vault keeps a machine's catalog in the catalog cache, pinned by machine key (`ph-rfo2`): the vault entry is the etag, existing hex entries move once when IndexedDB is open, the settings backup carries the etag and a restored backup needs one connect before Sim has the catalog. | PROPOSED: the bead text; the backup's etag-only catalog is the agent's, veto-able |
+| 2026-11-01 | §10.19 | The flasher reads the image's board from its app descriptor (`<product>/<git label>`, Nucleus `val-3yls`): "Flagship image", "Barnacle image" or "No board" in the Image row, and before arming the status slot says when the machine will refuse it (another board than `/diag` names, or none); the machine's 409 reads verbatim. Origin reads the site's firmware index (https://openvalence.org/flash/fw/index.json, per-file sha256) instead of the Nucleus releases API: "Official <board> <version>" with " · prerelease" (`ph-q07p`). | operator, go 2026-11-01 (the hub refuses, Phosphor shows the board and the refusal, the site index); the clash copy, the label shape, the running board from the FIRMWARE_VERSION suffix and Update staying on under a clash are the agent's, veto-able |

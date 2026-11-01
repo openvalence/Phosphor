@@ -10,21 +10,21 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import {
-  readImage, sumsHave, originOf, diagHead, verdict, refusal, blank, createFlasher, sha256, RELEASES,
+  readImage, originOf, diagHead, verdict, refusal, blank, createFlasher, sha256, FW_INDEX, runningBoard, boardClash,
 } from '../src/model/firmware.js';
 
 let fails = 0;
 const ok = (n, c, extra) => { console.log('  [' + (c ? 'PASS' : 'FAIL') + '] ' + n + (extra !== undefined ? '  -- ' + extra : '')); if (!c) fails++; };
 
 // A minimal image: header (chip at 12), one segment header, the app description.
-function image({ magic = 0xe9, chip = 0x12, project = 'flagship_p4', version = '0.1.60-p4hub', size = 4096 } = {}) {
+function image({ magic = 0xe9, chip = 0x12, project = 'flagship_p4', version = '0.1.60-p4hub', desc = 'nucleus-p4/abc1234', size = 4096 } = {}) {
   const b = new Uint8Array(size);
   const dv = new DataView(b.buffer);
   b[0] = magic;
   dv.setUint16(12, chip, true);
   dv.setUint32(32, 0xabcd5432, true);
   const put = (o, s) => b.set(new TextEncoder().encode(s), o);
-  put(48, 'abc1234');
+  put(48, desc);
   put(80, project);
   put(128, 'Oct 18 2026');
   if (version) put(1000, version);
@@ -38,26 +38,51 @@ ok('wrong magic', /Not a firmware image/.test(readImage(image({ magic: 0x7f })).
 ok('an S3 image names its chip', readImage(image({ chip: 9 })).error === 'Built for ESP32-S3: pick a P4 image');
 ok('another project', /Not Nucleus firmware \(garnet\)/.test(readImage(image({ project: 'garnet' })).error));
 ok('no version string reads null, not an error', readImage(image({ version: '' })).version === null && !readImage(image({ version: '' })).error);
+ok('the board is the descriptor\'s product', good.product === 'nucleus-p4' && good.board === 'Flagship');
+const barn = readImage(image({ desc: 'nucleus-p4b/abc1234-dirty' }));
+ok('a barnacle image reads Barnacle and its build', barn.board === 'Barnacle' && barn.build === 'abc1234-dirty', JSON.stringify(barn));
+const old = readImage(image({ desc: '57716f1-dirty' }));
+ok('an image from before the board names none, not an error', old.board === null && old.product === null && old.build === '57716f1-dirty' && !old.error, JSON.stringify(old));
+ok('an unknown product names itself', readImage(image({ desc: 'nucleus-p4c/abc' })).board === 'nucleus-p4c');
+
+console.log('\n--- board ---');
+ok('/diag versions name their board', runningBoard('0.1.80-p4hub') === 'Flagship' && runningBoard('0.1.80-p4hub-bench') === 'Flagship'
+  && runningBoard('0.1.80-p4hub-barnacle') === 'Barnacle' && runningBoard('garnet-0.1') === null && runningBoard(undefined) === null);
+const on = (version) => ({ version, slot: 'ota_0', img: 'valid', up: 9 });
+ok('same board: nothing said', boardClash(good, on('0.1.80-p4hub-bench')) === '' && boardClash(barn, on('0.1.80-p4hub-barnacle')) === '');
+ok('barnacle image on a Flagship', boardClash(barn, on('0.1.80-p4hub')) === 'Barnacle image on a Flagship: the machine refuses it');
+ok('Flagship image on a barnacle', boardClash(good, on('0.1.80-p4hub-barnacle')) === 'Flagship image on a Barnacle: the machine refuses it');
+ok('no board: USB', boardClash(old, on('0.1.80-p4hub')) === 'Image names no board: the machine refuses it, use USB' && boardClash(old, null) === boardClash(old, on('x')));
+ok('machine not read yet: nothing said', boardClash(barn, null) === '' && boardClash(barn, on('odd')) === '');
+ok('a failed pick says nothing here', boardClash({ error: 'x' }, on('0.1.80-p4hub')) === '' && boardClash(null, null) === '');
+ok('the hub\'s board refusal reads verbatim', refusal(409, 'image is for the barnacle, this machine is a Flagship') === 'Image is for the barnacle, this machine is a Flagship'
+  && refusal(409, 'image names no board (an older build): flash it over USB') === 'Image names no board (an older build): flash it over USB');
 const BENCH = new URL('../../Nucleus/flagship_p4/.pio/build/flagship_p4_bench/firmware.bin', import.meta.url);
 if (existsSync(BENCH)) {
   const r = readImage(new Uint8Array(readFileSync(BENCH)));
-  ok('the bench build reads as Nucleus P4 with its compiled version', r.project === 'flagship_p4' && /-p4hub-bench$/.test(r.version || ''), JSON.stringify(r));
+  ok('the bench build reads as Nucleus P4 with its compiled version', r.project === 'flagship_p4' && /-p4hub-bench$/.test(r.version || '') && r.board !== 'Barnacle', JSON.stringify(r));
 }
 
 console.log('\n--- origin ---');
 const HASH = await sha256(image());
-const SUMS = HASH + '  fw-0.1.60-p4hub.bin\n' + 'ab'.repeat(32) + ' *other.bin\n';
-ok('SHA256SUMS lines match by hash', sumsHave(SUMS, HASH) && !sumsHave(SUMS, 'cd'.repeat(32)));
-const gh = (releases, sums = {}) => ({ get: async (u) => {
-  if (u === RELEASES) return releases instanceof Error ? Promise.reject(releases) : { status: 200, text: JSON.stringify(releases) };
-  return u in sums ? { status: 200, text: sums[u] } : { status: 404, text: '' };
+// The site's index (openvalence.github.io tools/fw_index.py): { releases: [{ product, version, tag, prerelease, files: [{ name, role, sha256 }] }] }.
+const gh = (releases, status = 200) => ({ get: async (u) => {
+  if (u !== FW_INDEX) return { status: 404, text: '' };
+  return releases instanceof Error ? Promise.reject(releases) : { status, text: typeof releases === 'string' ? releases : JSON.stringify({ releases }) };
 } });
-const rel = [{ tag_name: 'v0.1.60', assets: [{ name: 'SHA256SUMS', browser_download_url: 'u1' }] }];
-ok('a match is Official <tag>', (await originOf(HASH, gh(rel, { u1: SUMS }))).label === 'Official v0.1.60');
-ok('no match is Unrecognized build', (await originOf('cd'.repeat(32), gh(rel, { u1: SUMS }))).kind === 'unrecognized');
+const file1 = (sha256, name = 'nucleus-p4b-0.1.79-app.bin') => ({ name, role: 'app', size: 4096, sha256 });
+const rel = [
+  { product: 'barnacle-shim', version: '0.1.78', tag: 'barnacle-shim-0.1.78', prerelease: true, files: [file1('ab'.repeat(32), 'barnacle-shim-0.1.78.bin')] },
+  { product: 'nucleus-p4b', version: '0.1.79', tag: 'nucleus-p4b-0.1.79', prerelease: true, files: [file1('ef'.repeat(32), 'bootloader.bin'), file1(HASH.toUpperCase())] },
+  { product: 'nucleus-p4', version: '0.1.80', tag: 'nucleus-p4-0.1.80', prerelease: false, files: [file1('12'.repeat(32), 'nucleus-p4-0.1.80-app.bin')] },
+];
+ok('a match names the board, the version and a prerelease', (await originOf(HASH, gh(rel))).label === 'Official Barnacle 0.1.79 · prerelease', (await originOf(HASH, gh(rel))).label);
+ok('a release match reads without the flag', (await originOf('12'.repeat(32), gh(rel))).label === 'Official Flagship 0.1.80');
+ok('no match is Unrecognized build', (await originOf('cd'.repeat(32), gh(rel))).kind === 'unrecognized');
 ok('no releases: cannot check', (await originOf(HASH, gh([]))).label === "Can't check: no published checksums");
-ok('GitHub down: cannot check', (await originOf(HASH, gh(new Error('offline')))).label === "Can't check: GitHub didn't answer");
-ok('every SHA256SUMS fetch failing: cannot check', (await originOf(HASH, gh(rel, {}))).kind === 'unknown');
+ok('the site down: cannot check', (await originOf(HASH, gh(new Error('offline')))).label === "Can't check: openvalence.org didn't answer");
+ok('a 404 or a broken index: cannot check', (await originOf(HASH, gh(rel, 404))).kind === 'unknown' && (await originOf(HASH, gh('<html>'))).kind === 'unknown'
+  && (await originOf(HASH, gh('{"other":1}'))).label === "Can't check: no published checksums");
 
 console.log('\n--- the machine in plain words ---');
 ok('motion running', refusal(409, 'motion is running: stop the machine first') === 'Motion is running: stop the machine first');
@@ -146,7 +171,7 @@ async function runFlow(opts) {
   const st = blank();
   const f = createFlasher(st, fakeMachine().net, clock);
   await f.pick({ name: 's3.bin', size: 4096, arrayBuffer: async () => image({ chip: 9 }).buffer });
-  ok('a wrong image fails at pick and asks GitHub nothing', st.phase === 'failed' && st.status === 'Built for ESP32-S3: pick a P4 image' && st.origin === null);
+  ok('a wrong image fails at pick and asks the site nothing', st.phase === 'failed' && st.status === 'Built for ESP32-S3: pick a P4 image' && st.origin === null);
 }
 {
   const st = blank();
@@ -159,7 +184,7 @@ async function runFlow(opts) {
   let release;
   const m = fakeMachine();
   const slowGet = m.net.get;
-  m.net.get = (u) => (u.includes('api.github.com') ? new Promise((r) => { release = () => r({ status: 200, text: '[]' }); }) : slowGet(u));
+  m.net.get = (u) => (u === FW_INDEX ? new Promise((r) => { release = () => r({ status: 200, text: '{"releases":[]}' }); }) : slowGet(u));
   const st = blank();
   const f = createFlasher(st, m.net, clock);
   const picking = f.pick(file);
