@@ -15,13 +15,14 @@
    * - One scroller, the page's: no table or list scrolls on its own, so a
    *   narrow pane drops table columns instead of scrolling sideways.
    * - Refusals come last: a new code grows the page below everything else.
-   *   Code families and meanings are the registry's (registry-tables.js).
+   *   Code families are the registry's (registry-tables.js); meanings read nack-text.js first.
    * - logView.find is the Log page's search seam (ph-s5mu.1); the Log owns it.
    */
   import { tick, untrack } from 'svelte';
   import { machine, getSession } from '../model/machine.svelte.js';
   import { ACCESS_NAME, NACK_NAME } from '../../../Valence/clients/js/index.js';
-  import { NACK_FAMILY, NACK_MEANING, CHANNEL_RANGES } from '../model/registry-tables.js';
+  import { NACK_FAMILY, CHANNEL_RANGES } from '../model/registry-tables.js';
+  import { nackMeaning } from '../model/nack-text.js';
   import { bytes, since, hexId } from '../model/format.js';
   import { logView } from './logview.svelte.js';
   import { linkView, selectChannel } from './linkview.svelte.js';
@@ -103,7 +104,7 @@
       code, n: t.n, at: t.at, detail: t.detail,
       name: NACK_NAME[code] || hexId(code),
       family: NACK_FAMILY[code >> 8] || null,
-      meaning: NACK_MEANING[code] || '',
+      meaning: nackMeaning(code),
       causes: causes.slice(0, 3).map(([id, n]) => causeOf(Number(id)) + (causes.length > 1 ? ' ×' + n : ''))
         .concat(causes.length > 3 ? ['+' + (causes.length - 3) + ' more'] : []).join(', '),
     };

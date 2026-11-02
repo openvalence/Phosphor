@@ -2,7 +2,7 @@
  * link-page.test.mjs -- the Link page (DESIGN.md "The Link page", ph-bszw) on the built app
  * against a fake hub on the recorded neutrino-sim catalog. Asserts:
  *   refusals  grouped by code, newest first, with the registry's family and
- *             meaning (registry-tables.js), the count past the 60-deep ring,
+ *             meaning (nack-text.js, then registry-tables.js), the count past the 60-deep ring,
  *             the last time, the causing channel or range, the hub's detail;
  *             safety refusals render distinctly (amber, never red); Log opens
  *             the Log page on that code's refusal rows (ph-s5mu.1); the Link
@@ -30,7 +30,8 @@ import { join } from 'node:path';
 import { decodeCatalog } from '../../Valence/clients/js/catalog.js';
 import { cbMap, cbUint, cbBstr, cbTstr, cbBool, cbArray, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
 import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, LIMITS, NACK, NACK_NAME } from '../../Valence/clients/js/frames.js';
-import { CHANNEL_RANGES, NACK_FAMILY, NACK_MEANING, EXPERIMENTAL_RANGE } from '../src/model/registry-tables.js';
+import { CHANNEL_RANGES, NACK_FAMILY, EXPERIMENTAL_RANGE } from '../src/model/registry-tables.js';
+import { nackMeaning } from '../src/model/nack-text.js';
 import { THEMES } from '../src/model/theme.js';
 import { goTab } from './nav.mjs';
 import { DIST_HTML, EVIDENCE } from './dist.mjs';
@@ -150,8 +151,8 @@ const docTop = (page, sel) => page.$eval(sel, (el) => Math.round(el.getBoundingC
     border: getComputedStyle(l).borderTopColor, ink: getComputedStyle(l.querySelector('.r-head b')).color })));
   ok('refusals: one row per code, newest first', groups.map((g) => g.code).join() === [NACK.INVALID_VALUE, NACK.NOT_HOMED, NACK.CHUNK_UNAVAILABLE].join(), groups.map((g) => g.name));
   ok('refusals: names are the registry\'s', groups.every((g) => g.name === NACK_NAME[g.code]), groups.map((g) => g.name));
-  ok('refusals: each reads its family and the registry meaning',
-    groups.every((g) => g.fam === NACK_FAMILY[g.code >> 8].name && g.mean === g.fam + ' ' + NACK_MEANING[g.code] && NACK_MEANING[g.code].length > 8), groups.map((g) => g.mean));
+  ok('refusals: each reads its family and its meaning in user words',
+    groups.every((g) => g.fam === NACK_FAMILY[g.code >> 8].name && g.mean === g.fam + ' ' + nackMeaning(g.code) && nackMeaning(g.code).length > 8), groups.map((g) => g.mean));
   ok('refusals: counts past the 60-deep ring', groups.map((g) => g.n).join() === '×3,×1,×70', groups.map((g) => g.n));
   ok('refusals: last time ages per code', /^[01]s ago$/.test(groups[0].at) && /^[23]s ago$/.test(groups[2].at), groups.map((g) => g.at));
   const nameOf = (id) => ENTRIES.find((e) => e.id === id).name;
