@@ -35,7 +35,7 @@ export function readImage(bytes) {
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const chip = dv.getUint16(12, true);
   if (chip !== CHIP_P4) return { error: 'Built for ' + (CHIPS[chip] || 'chip ' + chip) + ': pick a P4 image' };
-  if (dv.getUint32(32, true) !== APP_DESC_MAGIC) return { error: 'No app description: pick a Nucleus .bin' };
+  if (dv.getUint32(32, true) !== APP_DESC_MAGIC) return { error: 'No firmware header: pick a Nucleus .bin' };
   const str = (o, n) => new TextDecoder().decode(bytes.subarray(o, o + n)).replace(/\0[\s\S]*$/, '');
   const project = str(80, 32);
   if (project !== PROJECT) return { error: 'Not Nucleus firmware (' + project + '): pick a Nucleus .bin' };
@@ -112,7 +112,7 @@ export function refusal(status, text, step) {
     return cap(why || 'the machine is busy: stop it first');
   }
   if (status === 400) return 'The machine refused the image (' + why + '): pick another .bin';
-  return 'The machine could not take it (' + (why || status) + '): restart it, try again';
+  return 'The machine could not accept the update (' + (why || status) + '): restart it, try again';
 }
 
 export const blank = () => ({
@@ -199,7 +199,7 @@ export function createFlasher(state, net, { sleep = (ms) => new Promise((r) => s
       if (!live()) return;
       const answer = st.status === 200 ? json(st.text).state : null;
       if (answer === 'approved') break;
-      if (answer === 'expired' || now() > end + 5000) return fail('The window closed: try again');
+      if (answer === 'expired' || now() > end + 5000) return fail('The PAIR approval timed out: try again');
     }
     set({ phase: 'uploading' });
     say('Sending', 'pending');

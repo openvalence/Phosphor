@@ -15,7 +15,7 @@ export const KEYS = [
     { keys: 'F1 twice', does: 'Docs for this page', where: 'Anywhere', src: 'src/ui/docs.js' },
     { keys: '?', does: 'Key help', where: 'Outside text fields', src: 'src/ui/KeyHelp.svelte' },
     { keys: 'F3, Ctrl+F', does: 'Look for a control', where: 'Anywhere', src: 'src/ui/LookFor.svelte' },
-    { keys: 'Ctrl+Z', does: 'Undo last setting write', where: 'Outside text fields and editors', src: 'src/model/history.svelte.js' },
+    { keys: 'Ctrl+Z', does: 'Undo last setting change', where: 'Outside text fields and editors', src: 'src/model/history.svelte.js' },
     { keys: 'Ctrl+Shift+Z', does: 'Redo', where: 'Outside text fields and editors', src: 'src/model/history.svelte.js' },
     { keys: 'Escape', does: 'Close dialog, menu or popover', where: 'Anywhere', src: 'src/ui/ConfirmLayer.svelte' },
     { keys: 'F11', does: 'Fullscreen', where: 'Plugin page', src: 'src/App.svelte' },
@@ -26,7 +26,7 @@ export const KEYS = [
     { keys: 'Ctrl+wheel', does: 'UI scale', where: 'Off canvases and sliders', src: 'src/ui/ScaleControl.svelte' },
   ] },
   { group: 'Safety', items: [
-    { keys: 'Enter, Space', does: 'Fire stop, pause or override', where: 'Focused safety op', src: 'src/ui/widgets/SafetyOp.svelte' },
+    { keys: 'Enter, Space', does: 'Trigger stop, pause or override', where: 'Focused safety control', src: 'src/ui/widgets/SafetyOp.svelte' },
     { keys: 'Hold Enter, Space', does: 'Release a latched e-stop', where: 'Focused e-stop', src: 'src/ui/widgets/SafetyOp.svelte' },
     { keys: 'Hold Enter, Space', does: 'Close Phosphor', where: 'Close popover', src: 'src/shell/ShellStrip.svelte' },
   ] },
@@ -73,7 +73,7 @@ export const KEYS = [
     { keys: 'Hold Enter, Space', does: 'Delete the layout', where: 'Layout x, one second', src: 'src/shell/RailLayouts.svelte' },
   ] },
   { group: 'Log page', items: [
-    { keys: 'F3', does: 'Focus the search; again, Look for', where: 'Log page', src: 'src/ui/LogPane.svelte' },
+    { keys: 'F3', does: 'Focus the search; again, open Look for', where: 'Log page', src: 'src/ui/LogPane.svelte' },
     { keys: 'Up, Down', does: 'Move between rows', where: 'Log list, search', src: 'src/ui/LogPane.svelte' },
     { keys: 'Home, End', does: 'First, last row', where: 'Log list', src: 'src/ui/LogPane.svelte' },
     { keys: 'Enter', does: 'Open or close the row detail', where: 'Log row', src: 'src/ui/LogPane.svelte' },
@@ -94,7 +94,7 @@ export const KEYS = [
     { keys: 'Tap', does: 'Show or hide the controls', where: 'Video, touch', src: 'src/plugins/kit.js' },
     { keys: 'Double-tap a side', does: 'Skip 10 s back, ahead', where: 'Video, touch', src: 'src/plugins/kit.js' },
     { keys: 'g', does: 'Toggle the graph', where: 'Player card', src: 'plugins/factory/funscript-player/ui.js' },
-    { keys: 'Up, Down', does: 'Resize the wave card; Shift for one', where: 'Split bar', src: 'src/plugins/kit.js' },
+    { keys: 'Up, Down', does: 'Resize the wave card; Shift for fine steps', where: 'Split bar', src: 'src/plugins/kit.js' },
     { keys: 'Ctrl+Arrows', does: 'Step to the next decade multiple', where: 'Offset, range pills', src: 'src/plugins/kit.js' },
   ] },
   { group: 'Node editor', items: [

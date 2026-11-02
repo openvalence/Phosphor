@@ -149,7 +149,7 @@ async function runFlow(opts) {
 }
 {
   const { st, m } = await runFlow({ expire: true });
-  ok('expired: the window closed, nothing sent', st.status === 'The window closed: try again' && !m.log.some((l) => l.startsWith('UPLOAD')), st.status);
+  ok('expired: the window closed, nothing sent', st.status === 'The PAIR approval timed out: try again' && !m.log.some((l) => l.startsWith('UPLOAD')), st.status);
 }
 {
   const { st, m } = await runFlow({ armStatus: 409, armText: 'motor power is on: latch the E-stop first' });
