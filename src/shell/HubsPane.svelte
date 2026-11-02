@@ -77,7 +77,7 @@
     <div class="pane-head"><h2 id="hp-link">Connection</h2></div>
     <dl class="pane-facts">
       <dt>Hub</dt><dd class:mono={!!link.dialed}>{link.dialed || '--'}</dd>
-      <dt>Transport</dt><dd>{idle ? '--' : link.virtual ? 'Virtual (in page)' : onSim() ? 'In app' : hubs.mode === 'ble' ? 'Bluetooth' : 'WiFi (WebSocket)'}</dd>
+      <dt>Transport</dt><dd>{idle ? '--' : link.virtual ? 'Virtual (in page)' : onSim() ? 'In app' : hubs.mode === 'ble' ? 'Bluetooth' : 'Wi-Fi (WebSocket)'}</dd>
       <dt>Link</dt><dd>{link.phase}</dd>
       <dt>Bluetooth wire</dt><dd class:mono={!!hubs.stats}>{hubs.stats || '--'}</dd>
     </dl>
@@ -165,7 +165,7 @@
             <span class="seen mono">{live ? 'connected' : 'seen ' + ago(f.seenAt, now)}</span>
             <span class="acts">
               <button type="button" class="og-btn sm" disabled={live || (!f.lan && !setupNeeded && !hint)}
-                      data-tip={!f.lan && !setupNeeded && !hint ? 'No WiFi endpoint advertised' : ''}
+                      data-tip={!f.lan && !setupNeeded && !hint ? 'No Wi-Fi endpoint advertised' : ''}
                       onclick={() => (f.lan ? connectWs(f.lan.ip, f.lan.ws_port) : pickBle(f.ble))}>{setupNeeded ? 'Set up' : 'Connect'}</button>
             </span>
           </li>

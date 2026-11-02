@@ -273,7 +273,7 @@ assert.equal(joinFailure(null).text, 'Join failed');
   session.emit('pairGrant', { token: TOKEN, role: ACCESS.configure });
   const p = flow.joinResult({ ok: true, applied: { 4: 0, 5: 0 } });
   await clock.advance(HANDOVER_MS + 5000);
-  assert.equal(flow.state.text, 'Not on WiFi yet, still looking', 'nothing found anywhere');
+  assert.equal(flow.state.text, 'Not on Wi-Fi yet, still looking', 'nothing found anywhere');
   flow.stop();
   await clock.advance(5000);
   await p;

@@ -235,7 +235,7 @@ await goTab(page, 'log');
 await page.click('[data-feed="log"]');
 const lines = await logLines(page);
 ok('Log: a health line per cause, the pause and its measured cause', lines.some((l) => /Motion paused .* · this device stalled \d+ ms/.test(l))
-  && lines.some((l) => /Motion paused .* · (WiFi delay|no updates for) \d+ ms \(likely\)/.test(l)), lines);
+  && lines.some((l) => /Motion paused .* · (Wi-Fi delay|no updates for) \d+ ms \(likely\)/.test(l)), lines);
 
 ok('no page error', errors.length === 0, errors);
 // ---- 2. the report ------------------------------------------------------------

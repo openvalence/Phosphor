@@ -245,7 +245,7 @@ export const ROLE_LABEL = {
 
   [ROLE.linkRssi]: 'Signal',
   [ROLE.linkResent]: 'Resent',
-  [ROLE.linkRetries]: 'WiFi retries',
+  [ROLE.linkRetries]: 'Wi-Fi retries',
 };
 
 /** Open convention (RFC-019): `action.<name>` marks an INTENT field as a verb. */

@@ -65,7 +65,7 @@ export const CONDITIONS = {
       detail: 'This device was too busy to time the round trip, so the delay was measured here and not on the network.',
       action: 'Close other apps' } } },
   'delay-spike': { area: 'link', sev: 'info', logOnly: true, clear: 30000,
-    line: (m, i) => 'WiFi delay spike ' + ms(i.peakMs),
+    line: (m, i) => 'Wi-Fi delay spike ' + ms(i.peakMs),
     what: 'One round trip or one-way delay sample', limit: 'Logged over 4 times the usual and over 100 ms', detail: '', action: '',
     by: { device: { line: (m, i) => 'This device was busy ' + ms(i.peakMs),
       detail: 'This computer was busy, so the delay was measured here and not on the network.', action: 'Close other apps' } } },
@@ -74,7 +74,7 @@ export const CONDITIONS = {
     what: 'Time since the last message from the machine',
     limit: 'Raised at 0.5 s on a live link',
     detail: "The machine's position updates stopped arriving for a moment.",
-    action: 'Check the WiFi',
+    action: 'Check the Wi-Fi',
     by: {
       device: { line: (m, i) => 'This device was busy ' + span(i.peakMs),
         detail: 'This computer was too busy to read the next update on time.', action: 'Close other apps' },
@@ -86,7 +86,7 @@ export const CONDITIONS = {
     what: 'Data this device queued that the network has not taken',
     limit: 'Raised when data waits 2 s',
     detail: 'This device has data waiting that the network is not taking.',
-    action: 'Check the WiFi' },
+    action: 'Check the Wi-Fi' },
   throttled: { area: 'link', sev: 'info', hold: 0, clear: 5000,
     line: (m) => 'Machine cut updates on ' + plural(m.channels, 'channel'),
     what: 'Channels the machine now updates less often than it granted',
@@ -100,16 +100,16 @@ export const CONDITIONS = {
     detail: 'The link to the machine keeps breaking and reconnecting.',
     action: 'Move the machine or the router closer' },
   'weak-signal': { area: 'link', sev: 'warn', hold: 30000, clear: 60000, needs: 'link.rssi',
-    line: (m) => 'Machine WiFi signal ' + num(m.dbm) + ' dBm',
+    line: (m) => 'Machine Wi-Fi signal ' + num(m.dbm) + ' dBm',
     what: 'How strongly the machine hears the router',
     limit: 'Raised under -75 dBm for 30 s',
     detail: 'The machine hears the router faintly, which causes delays.',
     action: 'Move the router closer' },
   'hub-wifi-drop': { area: 'link', sev: 'warn', clear: 60000, needs: 'link.drops',
-    line: (m) => 'Machine WiFi dropped ' + plural(m.n, 'time'),
-    what: 'WiFi disconnects the machine counted',
+    line: (m) => 'Machine Wi-Fi dropped ' + plural(m.n, 'time'),
+    what: 'Wi-Fi disconnects the machine counted',
     limit: 'Raised on any drop',
-    detail: 'The machine lost its WiFi connection and rejoined.',
+    detail: 'The machine lost its Wi-Fi connection and rejoined.',
     action: 'Check the router' },
 
   busy: { area: 'device', sev: 'warn', hold: 120000, clear: 120000,
@@ -205,7 +205,7 @@ export const CONDITIONS = {
 
 export const SEV_RANK = { info: 0, warn: 1, act: 2 };
 /** A cutout's words when its classifier left no measured fact (a restored incident). */
-export const CAUSE_WORD = { client: 'this device fell behind', network: 'WiFi delay', hub: 'machine fell behind', unknown: 'cause unknown' };
+export const CAUSE_WORD = { client: 'this device fell behind', network: 'Wi-Fi delay', hub: 'machine fell behind', unknown: 'cause unknown' };
 /** A cutout cause to its condition id. */
 export const CUTOUT = { client: 'cutout-client', network: 'cutout-network', hub: 'cutout-hub', unknown: 'cutout-unknown' };
 
@@ -327,7 +327,7 @@ export function classify(e) {
   const owd = e.starved && e.owdRecentMaxMs != null ? Math.max(e.owdRecentMaxMs, e.owdUpMaxMs ?? 0) : e.owdUpMaxMs;
   if (!here && owd != null && lead != null && owd > lead - lat - TICK_MS) {
     return { cause: 'network', confidence: 'likely', why: 'delay to the machine ' + Math.round(owd) + ' ms against ' + Math.round(lead) + ' ms sent ahead',
-      fact: 'WiFi delay ' + Math.round(owd) + ' ms' };
+      fact: 'Wi-Fi delay ' + Math.round(owd) + ' ms' };
   }
   const quiet = e.posGapMaxMs != null && e.posGapMaxMs >= Math.max(3 * (e.periodMs || 0), 100);
   if (quiet && gapWho({ rxGapMs: e.posGapMaxMs, hubGapMs: e.posHubGapMs, busy: !!here }) === 'machine') {

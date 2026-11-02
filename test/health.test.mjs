@@ -59,7 +59,7 @@ ok('the render tooltips say why in plain words, the threshold and one action', [
   && tipLines(incOf('clock-drift'))[3] === 'Restart Phosphor if it persists', tipLines(incOf('clock-drift')));
 ok('no user-facing text says "held" or "skew"', lines.every(([id, l, tip]) => !/\bheld\b|\bskew/i.test(l + tip.join(' ') + CONDITIONS[id].detail)));
 ok('a cutout line: the pause and its measured cause', lineOf(incOf('cutout-client')) === 'Motion paused 420 ms · this device stalled 690 ms'
-  && lineOf({ ...incOf('cutout-network'), count: 2 }) === 'Motion paused 420 ms · WiFi delay 300 ms (likely) ×2', [lineOf(incOf('cutout-client')), lineOf(incOf('cutout-network'))]);
+  && lineOf({ ...incOf('cutout-network'), count: 2 }) === 'Motion paused 420 ms · Wi-Fi delay 300 ms (likely) ×2', [lineOf(incOf('cutout-client')), lineOf(incOf('cutout-network'))]);
 const silent = Object.entries(CONDITIONS).filter(([id, c]) => !c.logOnly && !['log-drops', 'restarted'].includes(id) && (!c.detail || !c.action));
 ok('every surfaced condition has its plain sentence and one action', !silent.length, silent.map((s) => s[0]));
 const two = Object.entries(CONDITIONS).filter(([, c]) => /;|, or |, then | then /.test(c.action || ''));
@@ -273,8 +273,8 @@ console.log('\n--- a busy host is not a bad network (ph-rnr2) ---');
   const calm = { latMs: 1, rttP50Ms: 10, loopLagMaxMs: 4, leadSendMinMs: 50, owdUpMaxMs: 110, posGapMaxMs: null, periodMs: 20, hubWarn: 0 };
   // 1. The network is slow and this device is calm: WiFi.
   const net = classify(calm);
-  ok('late uplink, calm loop -> WiFi delay 110 ms', net.cause === 'network' && net.fact === 'WiFi delay 110 ms', net);
-  ok('...and the spike stays a WiFi spike', lineOf({ cond: 'delay-spike', count: 1, peakMs: 121 }) === 'WiFi delay spike 121 ms');
+  ok('late uplink, calm loop -> Wi-Fi delay 110 ms', net.cause === 'network' && net.fact === 'Wi-Fi delay 110 ms', net);
+  ok('...and the spike stays a Wi-Fi spike', lineOf({ cond: 'delay-spike', count: 1, peakMs: 121 }) === 'Wi-Fi delay spike 121 ms');
   ok('...and a gap whose machine sample time kept pace is WiFi', gapWho({ rxGapMs: 800, hubGapMs: 40, busy: false }) === 'network'
     && classify({ ...calm, owdUpMaxMs: 5, posGapMaxMs: 800, posHubGapMs: 40 }).cause === 'network');
   // 2. The same delay with this device busy: this device, never WiFi.
@@ -297,7 +297,7 @@ console.log('\n--- a busy host is not a bad network (ph-rnr2) ---');
   ok('a 40 ms stall is under the line (50 ms)', busyHere({ ...calm, loopLagMaxMs: 40 }) === null);
   const dev = { cond: 'delay-spike', count: 1, peakMs: 121, who: 'device' };
   ok('the spike line says this device: "This device was busy 121 ms"', lineOf(dev) === 'This device was busy 121 ms', lineOf(dev));
-  ok('...and gives the act, not the WiFi', tipLines(dev).includes('Close other apps') && !/wifi/i.test(lineOf(dev) + tipLines(dev).join(' ')), tipLines(dev));
+  ok('...and gives the act, not the WiFi', tipLines(dev).includes('Close other apps') && !/wi-?fi/i.test(lineOf(dev) + tipLines(dev).join(' ')), tipLines(dev));
   const stl = { cond: 'updates-stalled', count: 1, peakMs: 800, who: 'device' };
   ok('a stalled-updates incident on a busy device: "This device was busy 800 ms"', lineOf(stl) === 'This device was busy 800 ms', lineOf(stl));
   // 3. The machine's own sample time stopped too: the machine.

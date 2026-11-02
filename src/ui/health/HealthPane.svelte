@@ -64,7 +64,7 @@
       <dt>Data waiting</dt><dd class="mono">{L.backlog != null ? B(L.backlog) : '--'}</dd>
       <dt>Updates per second</dt><dd class="mono">{L.inPerS ?? '--'} from it · {L.outPerS ?? '--'} to it</dd>
       <dt>Machine signal</dt><dd class="nr">{NR}</dd>
-      <dt>Machine WiFi drops</dt><dd class="nr">{NR}</dd>
+      <dt>Machine Wi-Fi drops</dt><dd class="nr">{NR}</dd>
       <dt>Reconnects</dt><dd class="mono">{L.reconnects ?? '--'}</dd>
       <dt>Times it sent fewer updates</dt><dd class="mono">{L.cuts ?? '--'}</dd>
       <dt>Address</dt><dd class="mono">{machine.link.dialed || '--'}</dd>

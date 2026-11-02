@@ -220,7 +220,7 @@ export function createSetupFlow(deps) {
       const mine = ++gen;
       const deadline = clock.now() + HANDOVER_MS;
       let seen = target;
-      set(SETUP.handingOver, 'Waiting for the hub on WiFi', { target });
+      set(SETUP.handingOver, 'Waiting for the hub on Wi-Fi', { target });
       for (let tries = 0; ; tries++) {
         let t = target;
         if (hubId && (!t || (tries && tries % REDISCOVER_EVERY === 0))) {
@@ -246,11 +246,11 @@ export function createSetupFlow(deps) {
             ok = await deps.connect(t, hubId);
           }
           if (mine !== gen) return;
-          if (ok) { set(SETUP.done, 'Connected over WiFi', { target: t }); return; }
+          if (ok) { set(SETUP.done, 'Connected over Wi-Fi', { target: t }); return; }
         }
         if (mine !== gen) return;
         if (clock.now() >= deadline) {
-          set(SETUP.handingOver, seen ? 'Found at ' + seen.host + ', not reachable' : 'Not on WiFi yet, still looking',
+          set(SETUP.handingOver, seen ? 'Found at ' + seen.host + ', not reachable' : 'Not on Wi-Fi yet, still looking',
             { target: seen, phase: 'overdue' });
         }
         await sleep(HANDOVER_TRY_MS);
