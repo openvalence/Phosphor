@@ -1,6 +1,6 @@
 # The Nucleus commit neutrino.js and neutrino.wasm (bytes.js) were built from; bump with node test/neutrino-pin.mjs --write.
-nucleus 531ade38c7e57c754461e82c04c4746c6f4c0f05
-kinetic 2d0ca3a95a18ccf613331d6bb83ab18662265852
-etag bc2505faa40d813d
-wasm 718838 f984dd2a23bd3b5770d6a6d2291f02438e75d3bf58b520fa55973c3f74463b5d
+nucleus 31f4b85ba23a16f9a8a45fb8b85ca7c4fe0a4d43
+kinetic aedc319d37f37354130b5a9b15768f3c2c911497
+etag 9bb7fa824ada17af
+wasm 727992 57318cd6032c66e13a663767758abae9fbea9ca1834b3fd8a10e43ac3db726c0
 glue 12752 d4e0edfe95869da847b8e436a5942caa2c129e974c9822d500e65516d63cd8af
